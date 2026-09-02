@@ -1,4 +1,4 @@
-# Architecture contract (v0, 2026-09-02)
+# Architecture contract (v1, 2026-09-02 evening — v0 was the build-night seam contract; v1 folds in tickets 005–011 and `docs/DESIGN.md`)
 
 This file is the seam contract every engineer codes against. It is binding where it says MUST.
 Change it by contesting to the PM, never silently. Product name is a working name; it lives in
@@ -47,11 +47,12 @@ Module: `github.com/2185Lab/bunny-network`, Go 1.27 (auto toolchain), tailcat pi
 
 | File | Owner | Format |
 |---|---|---|
-| `host.key.json` | 001 | tailcat `PrivateKey` JSON (server key; stable token across restarts). `--ephemeral` skips it. |
-| `keys.json` | 003 | see Key store below; gateway hot-reloads on mtime change (checked ≤1/s) |
+| `host.key.json` | 001/009 | tailcat `PrivateKey` JSON: the host identity, created once (exclusive link; a racing second `serve` adopts the winner). `Addr() == SavedAddr(dir)` always. `--ephemeral` never writes it. |
+| `keys.json` | 003 | see Key store below; gateway re-reads on mtime change (≤1/s, plus on any lookup miss); the CLI pokes `POST /reload` on the admin socket after every write so changes are live at once |
 | `usage.jsonl` | 003 | one `usage.Event` per line, append-only |
-| `admin.sock` | 003 | unix socket, HTTP, read-only status |
-| `config.json` | 003 | persisted `serve` settings (upstream URL + key at 0600, slots, caps, dev-listen) so `serve` with no flags reuses them. `--log-prompts` and `--ephemeral` are per-run and never persisted (Protection 3). |
+| `admin.sock` | 003/009 | unix socket, HTTP: `GET /status`, `POST /reload` (Windows: loopback port in `admin.port` + token in `admin.token`) |
+| `config.json` | 003 | persisted `serve` settings: `upstream`, `upstream_key` (0600), `slots`, `dev_listen`, `derpmap_url`, `region`, `name`, `web_url`. `--log-prompts`, `--ephemeral`, `--verbose` are per-run and never persisted (Protection 3). Retired keys (`queue_timeout`, `request_timeout`, `max_body`) are ignored on load. |
+| `tunnel.log` | 005 | the tailcat/wgengine log (truncated at start); `serve --verbose` prints it instead |
 
 ## Invite format (001 defines in Go, 004 mirrors in TS; MUST match)
 
@@ -99,6 +100,7 @@ interface BunnyTunnel {
 interface Session {
   addr: string;
   privateKeyJSON: string;                       // persist to keep the same client identity
+  stats(): { liveFuncs: number };                // debug hook (005): js.Func handles alive; must stay flat across dials
   dial(port?: number): Promise<Conn>;           // default 80; MUST NOT redo the handshake; cheap
   ping(): Promise<{ rttMs: number; via: string; direct: boolean }>;  // via e.g. "DERP(nyc)"; in the browser this is a TCP connect through the relay (tailcat's disco ping is unusable under js/wasm) and direct is always false today
   close(): void;
@@ -118,9 +120,9 @@ Auth: `Authorization: Bearer <secret>` on every route except `/healthz`.
 | Route | Behaviour |
 |---|---|
 | `GET /healthz` | `{"ok":true}` always; no auth; no other info |
-| `GET /me` | `{key:{id,name,status}, limits:Limits, usage:{rpm_used, tpm_used, today_tokens, in_flight}, host:{name, upstream:{kind,healthy,model_context}, models:[ids], relay:{region}, log_prompts:bool}}` (`log_prompts` added 2026-09-02 by 006; the client discloses it) |
-| `GET /v1/models` | upstream list filtered by key's allowed models |
-| `POST /v1/chat/completions` | stream and non-stream. Gateway MUST: flush every SSE chunk immediately; inject `stream_options.include_usage=true` when streaming; clamp `max_tokens`; enforce context; pass `reasoning_content` through untouched |
+| `GET /me` | `{key:{id,name,status}, limits:Limits, usage:{rpm_used, tpm_used, today_tokens, in_flight}, host:{name, upstream:{kind,healthy,model_context}, models:[ids], relay:{region}, log_prompts:bool}}`. `kind` is `"unknown"` until an engine answered a signature probe; `healthy` reflects the last probe; the client discloses `log_prompts`. |
+| `GET /v1/models` | engine list filtered by the key's allowed models; per-key concurrency applies; **not counted against RPM** (ruled 2026-09-02, ticket 014: the friend's meter counts messages) |
+| `POST /v1/chat/completions` | stream and non-stream. Gateway MUST: flush every SSE chunk immediately; inject `stream_options.include_usage=true` when streaming; normalize the body once (strip engine-override aliases such as `n_predict`/`n`/`best_of`/`priority`, fill `model`, clamp `max_tokens` to the key's cap and shrink it to fit the context and the TPM/daily windows, floor 16); pass `reasoning_content` through untouched. An engine 400/422 caused by the request maps to 400 `invalid_request` with the engine's message; 5xx → 502 |
 | `POST /v1/embeddings` | pass-through with auth + limits |
 | anything else | 404 in error format |
 
@@ -145,25 +147,53 @@ daily_tokens 200000 · models [] (= all). Secret shown once at `keys add`; store
 
 ## Usage events (types by PM in `internal/usage/usage.go`; recorder by 003)
 
-One JSON object per request, no prompt content unless `--log-prompts`:
+One JSON object per authenticated request (401s are not recorded; `endpoint` capped at 64 bytes), no prompt
+content unless `--log-prompts`:
 `{ts, key_id, endpoint, model, status, code, stream, prompt_tokens, completion_tokens, queued_ms, ttft_ms, total_ms}`.
+`code` may be the usage-only status `client_closed` (never on the wire). `usage` and `status` count model
+calls as requests and show app polls (`/me`, `/v1/models`) separately.
 
-## Upstream (interface by PM in `internal/upstream/upstream.go`; impl by 003)
+## Engine (`internal/upstream`; state per `docs/DESIGN.md` §3, landed by 011)
 
-Detection order when `--upstream` absent: llama.cpp `127.0.0.1:8080` (`/props`) · Ollama `11434` (`/api/tags`) ·
-LM Studio `1234` (`/v1/models`) · vLLM `8000` (`/v1/models`). Kind-specific: llama.cpp `/props` gives
-`total_slots` and `default_generation_settings.n_ctx`; `/tokenize` exact counts. vLLM `/tokenize` exact counts;
-`/v1/models[].max_model_len`; slots from `--slots` (default 2). Others: estimate tokens = ceil(chars/4), slots default 1.
+The engine is a state, not a value: `Kind` is `Unknown` until a signature probe answers (`Generic` only when
+`/v1/models` answered without a signature); `Health{OK, Since, Err}`; `ModelContext`, `Slots` (override
+applied; 1 while Unknown), `Models` are last-known and survive a failed refresh. One `Refresh` is the only
+probe; `serve` polls it every 10 s and logs health transitions. Consumers **read** `Info()` when they
+decide (health at request entry, models/context at normalization, slots at slot acquire/release); nothing
+is pushed. The gateway depends only on
+```go
+type Engine interface { Info() Info; CountTokens(ctx, text) (n int, exact bool, err error); Do(ctx, method, path string, body []byte, stream bool) (*http.Response, error) }
+```
+`Do` owns the bearer, refuses redirects, applies the first-byte deadline (120 s) and the probe bound (3 s)
+on GETs; the engine's URL never crosses the seam (compile-time: the gateway names only `Engine`).
+Detection order when `--upstream` is absent: llama.cpp `127.0.0.1:8080` · Ollama `11434` · LM Studio
+`1234` · vLLM `8000`; probes carry `--upstream-key`; the first candidate that reaches OK wins. Exact token
+counts via `/tokenize` for llama.cpp and vLLM; others estimate ceil(chars/4). `--upstream auto` forgets a
+remembered URL and detects again.
 
-## Concurrency & queue (002)
+## Request pipeline, limits, and deadlines (006 + 010; `docs/DESIGN.md` §1)
 
-Global semaphore = upstream slots. Per-key semaphore = `max_concurrent`. Bounded wait `--queue-timeout` (default 30 s)
-then 503 `queue_timeout` with `Retry-After`. Request timeout `--request-timeout` (default 300 s). Body cap
-`--max-body` (default 4 MiB).
+One pipeline, one exit. A request record owns every resource; the stage order is fixed in one function:
+`checkHealth → admitKey (RPM + per-key concurrency) → readBody → normalize → count → checkBudgets (reserve
+`prompt + max_tokens`, shrunk to fit TPM/daily) → acquireSlot → callUpstream → relay → finish`. `finish`
+is the single deferred exit; it settles by the **outcome** table: rejected before the queue → not counted,
+reservation released · queue timeout → counted, 0 charged · client gone while waiting → not counted ·
+engine error → counted, 0 · served → charged as the engine's usage (or pre-check prompt + deltas seen when
+no usage object) · cut (client stopped reading / gone / engine stalled) → charged the reservation for a
+non-stream cut, deltas seen for a stream. RPM counts model calls (`/v1/chat/completions`,
+`/v1/embeddings`) only.
+
+Slot queue: FIFO; cap read live from `Info().Slots`; waiting set capped at max(2, 2×cap) with an immediate
+503 `queue_timeout` on overflow; `Queue()` exact under one mutex. No `SetSlots`.
+
+Deadlines, one owner each (no absolute request timeout): header read 30 s · body read 30 s · queue wait
+30 s · engine first byte 120 s · engine idle 60 s (reset per line) · client write 60 s (re-armed per event)
+· idle keep-alive 2 min · auxiliary engine call 3 s. A slow-but-live stream is never cut. Body cap 4 MiB.
+These are constants; the `--queue-timeout`, `--request-timeout`, `--max-body` flags are retired.
 
 ## Admin API (003), unix socket `admin.sock`, HTTP
 
-`GET /status` → `{product, version, uptime_s, tunnel:{addr, region, clients}, upstream:{kind, url, healthy, model_context, slots}, queue:{in_flight, waiting}, keys:[{id,name,status,in_flight,rpm_used,today_tokens,last_seen}]}`.
+`GET /status` → `{product, version, uptime_s, tunnel:{addr, region, clients}, upstream:{kind, url, healthy, since, model_context, slots}, queue:{in_flight, waiting}, keys:[{id,name,status,in_flight,rpm_used,today_tokens,last_seen}]}` — `queue` numbers are exact; `clients` = open port-80 connections. `POST /reload` re-reads `keys.json` now.
 
 ## Measurement (`docs/MEASURE.md`, PM)
 
