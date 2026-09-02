@@ -3,7 +3,7 @@ id: 019
 title: TestI6SettleTable is load-sensitive — make it deterministic
 kind: normal
 size: 1
-status: dispatched
+status: landed
 updated: 2026-09-02
 release: demo-1
 ---
@@ -158,3 +158,9 @@ Two further observations, no action taken:
 | contests | none — the fix needed no injectable clock or deadline in non-test code |
 | bought beyond the ticket | nothing |
 | production-touching actions | none. 36 and then 4 `yes > /dev/null` CPU hogs were started locally for the stress runs and killed after (`pgrep -x yes` = 0); no other process was signalled. max-ws.lab and the shared llama-server were not touched. |
+
+## Ruling (PM, 2026-09-02 20:05)
+
+**Landed** on main; gateway `-race` and full tests green, printed. Root cause was a departure race, not a
+deadline — the ticket's hypothesis was wrong and the engineer said so. The adjacent product defect is
+ticket 021 (same engineer).
