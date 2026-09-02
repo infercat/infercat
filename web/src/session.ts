@@ -5,8 +5,16 @@
 //
 // `reduce` is pure. It never closes anything: `dropped()` names the transports a transition
 // orphaned and `useSession` (App.tsx) is the single place that closes them.
-import type { FriendlyError, Me } from './api';
+import { needsRedial, type FriendlyError, type Me } from './api';
 import { describePath, type PingResult, type Transport } from './transport';
+
+/**
+ * What the host has done with this invite. `active` is the only state in which anything can be
+ * sent. `paused` is temporary and the host can undo it; `revoked` and `invalid` (rotated or deleted)
+ * are for good and the only move is a new code — but in every case the chat, the transport and the
+ * reader's words stay exactly where they are (014 promise 2, 020 promise 5).
+ */
+export type KeyState = 'active' | 'paused' | 'revoked' | 'invalid';
 
 /** One live connection to one host. `path`/`pathAt` are the last *successful* measurement. */
 export interface Live {
@@ -21,12 +29,12 @@ export interface Live {
   /** False when the last ping failed: the pill must stop presenting `path` as current. */
   pathOk: boolean;
   /**
-   * False when the last /me failed. `me` is then the last snapshot we had, which is history, not
-   * news: the meters must render "—", not the numbers that were true a minute ago (014 promise 3).
+   * False when the last /me did not reach the host — or the last request did not (020 promise 4).
+   * `me` is then the last snapshot we had, which is history, not news: the meters render "—", the
+   * pill says "not answering", and nothing about the engine is claimed until a /me gets through.
    */
   meOk: boolean;
-  /** The host has paused this invite: nothing can be sent until they resume it (014 promise 2). */
-  paused: boolean;
+  key: KeyState;
   /** True when another tab holds the persisted tunnel identity and this one connected fresh. */
   ephemeral: boolean;
 }
@@ -34,10 +42,10 @@ export interface Live {
 /**
  * What is wrong while still being usable. Anything worse is a `disconnected`.
  *
- * `key` (014 promise 2) is a paused invite: the host has switched the friend off for now, which is
- * news about the *invite*, not about the chat — the conversation, the composer's text and the
- * transport all stay exactly where they are. It is deliberately a reason and not a state, so the
- * chat screen keeps rendering from one payload (007's reading (ii), 008 ruling).
+ * `key` is an invite the host has paused, revoked or replaced: news about the *invite*, not about
+ * the chat — the conversation, the half-written answer and the transport all stay where they are.
+ * It is deliberately a reason and not a state, so the chat screen keeps rendering from one payload
+ * (007's reading (ii), 008 ruling).
  */
 export type Degradation = 'path' | 'engine' | 'both' | 'key';
 
@@ -67,8 +75,7 @@ export type SessionEvent =
   /** Throw this session away and dial the same host again (014 promise 13). */
   | { t: 'redial' }
   /** The attempt failed, or the reader pressed Disconnect (`error` null). */
-  | { t: 'abort'; error: FriendlyError | null }
-  | { t: 'revoked'; error: FriendlyError };
+  | { t: 'abort'; error: FriendlyError | null };
 
 export const IDLE: SessionState = { name: 'idle' };
 
@@ -88,41 +95,28 @@ export function reduce(s: SessionState, e: SessionEvent): SessionState {
     case 'verified':
       return s.name === 'verifying' && s.transport === e.live.transport ? settle(e.live) : s;
     case 'meOk':
-      // A /me that answers is also the end of a pause: `paused` is whatever the host last said.
-      return l ? settle({ ...l, me: e.me, meOk: true, paused: e.me.key.status === 'paused' }) : s;
+      // A /me that answers is the one source of the engine's health and the key's state (020
+      // promise 4): whatever it says is what the header says, and a pause ends the moment it says
+      // `active`.
+      return l ? settle({ ...l, me: e.me, meOk: true, key: e.me.key.status }) : s;
     case 'meError':
-      // Verifying: the invite never checked out, so the transport we opened for it goes.
-      // Connected: a fatal code ends the session; a pause degrades it; anything else transient
-      // keeps the last snapshot but stops presenting it as current (014 promise 3).
-      // At verify time there is no chat to keep, so even a pause has to be said on the connect
-      // screen; `paused` only degrades a session that already exists.
+      // Verifying: the invite never checked out, so the transport we opened for it goes. At verify
+      // time there is no chat to keep, so even a pause has to be said on the connect screen.
       if (s.name === 'verifying') return { name: 'disconnected', reason: e.error };
       if (!l) return s;
-      if (e.error.fatal) return { name: 'disconnected', reason: e.error };
-      return settle({ ...l, meOk: false, paused: l.paused || e.error.paused === true });
+      return settle(afterFailure(l, e.error));
     case 'pingOk':
       return l ? settle({ ...l, path: e.path, pathAt: e.at, pathOk: true }) : s;
     case 'pingFail':
       return l ? settle({ ...l, pathOk: false }) : s;
     case 'streamError':
-      if (e.error.fatal) return { name: 'disconnected', reason: e.error };
       if (!l) return s;
-      // A paused invite is not an ejection any more (014 promise 2): the chat stays, the header
-      // says why nothing can be sent, and the next /me that says `active` clears it.
-      if (e.error.paused) return settle({ ...l, paused: true });
-      // The host's engine answering 503, or not answering at all, is news about the host: the
-      // header stops claiming healthy until a /me says otherwise. A host we declared asleep failed
-      // a ping to earn that word, so the pill must stop showing a round-trip time too — otherwise
-      // the header says "not answering" next to "relayed via New York · 64 ms" (014 promise 3).
-      if (e.code === 'host_asleep') {
-        const host = { ...l.me.host, upstream: { ...l.me.host.upstream, healthy: false } };
-        return settle({ ...l, me: { ...l.me, host }, pathOk: false });
-      }
-      if (e.code === 'upstream_down') {
-        const host = { ...l.me.host, upstream: { ...l.me.host.upstream, healthy: false } };
-        return settle({ ...l, me: { ...l.me, host } });
-      }
-      return s;
+      // A request that did not reach the host at all — no head in 15 s, or the transport broke
+      // under it — leaves everything we hold as history: the path stops being a live number and
+      // the meters go blank until a /me gets through (014 promise 3). It asserts nothing about
+      // the engine: that is /me's to say, never a failed request's (020 promise 4).
+      if (needsRedial(e.code)) return settle({ ...l, pathOk: false, meOk: false });
+      return settle(afterFailure(l, e.error));
     // A tunnel session that has broken stays broken: retrying a request over it is what made the
     // reader wait 30 s three times for a host that was up (014 promise 13). Going back to
     // `connecting` is what drops it — `dropped()` closes it — and the redial effect in App.tsx is
@@ -130,9 +124,19 @@ export function reduce(s: SessionState, e: SessionEvent): SessionState {
     case 'redial':
       return l ? { name: 'connecting' } : s;
     case 'abort':
-    case 'revoked':
       return { name: 'disconnected', reason: e.error };
   }
+}
+
+/**
+ * What a failed /me or request says about a live session. A code about the *invite* changes the
+ * key's state and nothing else — the host answered, so the path and the snapshot are still news.
+ * Anything else transient keeps the last snapshot but stops presenting it as current.
+ */
+function afterFailure(l: Live, error: FriendlyError): Live {
+  if (error.paused) return { ...l, key: 'paused' };
+  if (error.fatal) return { ...l, key: error.code === 'key_revoked' ? 'revoked' : 'invalid' };
+  return { ...l, meOk: false };
 }
 
 /**
@@ -163,22 +167,24 @@ export function live(s: SessionState): Live | null {
 
 /**
  * One place decides which of `connected` / `degraded(reason)` the live payload is in. When more
- * than one thing is wrong the reader is told the most actionable one: a paused invite is something
- * their host can fix in a second, a dead engine is the host's to restart, and an unmeasurable path
- * is the least of it.
+ * than one thing is wrong the reader is told the most actionable one: a paused or revoked invite
+ * is something their host can fix in a second, a dead engine is the host's to restart, and an
+ * unmeasurable path is the least of it. The engine is only ever called unhealthy on the word of a
+ * /me that got through: a snapshot we could not refresh claims nothing (020 promise 4).
  */
 function settle(l: Live): SessionState {
-  const engine = !l.me.host.upstream.healthy;
+  const engine = l.meOk && !l.me.host.upstream.healthy;
   const path = !l.pathOk || !l.meOk;
-  const reason: Degradation | null = l.paused
-    ? 'key'
-    : engine && path
-      ? 'both'
-      : engine
-        ? 'engine'
-        : path
-          ? 'path'
-          : null;
+  const reason: Degradation | null =
+    l.key !== 'active'
+      ? 'key'
+      : engine && path
+        ? 'both'
+        : engine
+          ? 'engine'
+          : path
+            ? 'path'
+            : null;
   return reason ? { name: 'degraded', live: l, reason } : { name: 'connected', live: l };
 }
 
@@ -199,9 +205,10 @@ export function pathLine(l: Live, now: number): string {
 /**
  * True while what `me` holds is history rather than news: the meters must render "—" instead of
  * numbers that were true a minute ago (014 promise 3). A fabricated zero is the worst of the three.
+ * An invite the host has switched off has no current numbers either: /me refuses it.
  */
 export function metersUnknown(l: Live): boolean {
-  return !l.meOk;
+  return !l.meOk || l.key !== 'active';
 }
 
 export interface MeterView {
@@ -243,20 +250,54 @@ export function meters(l: Live): [MeterView, MeterView] {
   ];
 }
 
+/**
+ * The third meter (020 promise 3): how much of the model's context this chat has filled — the one
+ * limit that ends a conversation rather than a reply. `used` is what the last reply reported
+ * (prompt + completion, which is the whole thread as the engine saw it); null before any reply
+ * has, and then it reads "—" rather than a zero. Null when the host has not said how big the
+ * context is: a meter with no ceiling is not a meter.
+ */
+export function contextMeter(used: number | null, modelContext: number): MeterView | null {
+  if (modelContext <= 0) return null;
+  const unknown = used === null;
+  return {
+    label: unknown ? `— / ${compact(modelContext)} context` : `${compact(used)}/${compact(modelContext)} context`,
+    value: unknown ? 0 : Math.min(1, used / modelContext),
+    unknown,
+  };
+}
+
 export function compact(n: number): string {
   if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1)}M`;
   if (n >= 1000) return `${(n / 1000).toFixed(n >= 10_000 ? 0 : 1)}k`;
   return String(n);
 }
 
-/** One line for the header when the host itself is degraded. `path` alone speaks in the pill. */
-export function degradedLine(reason: Degradation, me: Me): string | null {
+/**
+ * One line for the header when the host itself is degraded. `path` alone speaks in the pill; the
+ * engine line only ever quotes a /me that got through (settle() guarantees it).
+ */
+export function degradedLine(reason: Degradation, l: Live): string | null {
   if (reason === 'path') return null;
+  const who = l.me.host.name.trim() || 'Your host';
   if (reason === 'key') {
-    const who = me.host.name.trim() || 'Your host';
-    return `${who} paused your invite. Your message is still here — send it again once they resume.`;
+    switch (l.key) {
+      case 'paused':
+        return `${who} paused your invite. Your message is still here — try again once they resume.`;
+      case 'revoked':
+        return `This invite was revoked — ask ${who} for a new code.`;
+      case 'invalid':
+        return `${who} no longer recognises this invite — ask them for a new code.`;
+      default:
+        return null;
+    }
   }
-  return `${me.host.upstream.kind} is not answering on the host — messages will fail until it is back`;
+  return `${l.me.host.upstream.kind} is not answering on the host — messages will fail until it is back`;
+}
+
+/** An invite that no waiting can bring back: the only move is a new code (020 promise 5). */
+export function keyDead(l: Live): boolean {
+  return l.key === 'revoked' || l.key === 'invalid';
 }
 
 export function ago(ms: number): string {

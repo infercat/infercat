@@ -23,14 +23,18 @@ declare const __DEFAULT_DIRECT_URL__: string;
 
 /**
  * An invite handed over as a link (`<app>/#bn1.…`, which the host's CLI prints). Read once, at
- * module load, and wiped from the address bar in the same breath: the field is filled in, the
- * reader still presses Connect, and the secret is not left in history or in a screenshot of the
- * address bar. Not a hook or an initializer — those run twice under StrictMode.
+ * module load, and wiped from the address bar in the same breath, so the secret is not left in
+ * history or in a screenshot of the address bar. Not a hook or an initializer — those run twice
+ * under StrictMode.
  */
 const HASH_INVITE = takeHashInvite();
 
-/** `?autoconnect` (dev) means once per page load. This screen remounts whenever a session ends,
- *  and a component-level ref would make a revoked invite reconnect itself for ever. */
+/**
+ * A code that arrived by link or from the last visit connects by itself — the click on the link,
+ * or the return, is the consent (020 promise 8, ruling) — once per page load. This screen remounts
+ * whenever a session ends, and a component-level ref would make a revoked invite reconnect itself
+ * for ever; after the one attempt the card is the reader's.
+ */
 let autoconnected = false;
 
 function takeHashInvite(): string {
@@ -43,7 +47,7 @@ function takeHashInvite(): string {
     /* no history access (sandboxed frame): the field is still filled in */
   }
   // Kept the moment it is read (014 promise 10): the link is gone from the address bar by design,
-  // so a reader who reloads before pressing Connect must not lose the invite with it.
+  // so a reader who reloads before the connect has finished must not lose the invite with it.
   save(KEYS.invite, found);
   return found;
 }
@@ -83,11 +87,12 @@ export default function Connect({ state, dispatch }: Props) {
   const field = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
-    field.current?.focus();
-    if (dev && params.has('autoconnect') && !autoconnected) {
+    if (!autoconnected && state.name === 'idle' && text !== '' && inviteProblem(text) === null) {
       autoconnected = true;
       void connect();
+      return;
     }
+    field.current?.focus();
     // Mount only: this is the entry point, not a reactive form.
   }, []);
 
@@ -129,9 +134,10 @@ export default function Connect({ state, dispatch }: Props) {
       transport = opened.transport;
       reached = 'verifying';
       // From here the machine owns it: every path out of `verifying` closes it, including a newer
-      // attempt superseding this one.
+      // attempt superseding this one — and a Cancel, which is a superseding attempt with no dial.
       dispatch({ t: 'sessionUp', transport });
       const me = await getMe(transport, secret);
+      if (mine !== attempt.current) return; // cancelled while verifying; the machine closed it
       save(KEYS.invite, raw);
       // What the connect screen may say next time before it has reconnected: a name and a scope,
       // both public. Never the secret (014 promise 9).
@@ -149,7 +155,7 @@ export default function Connect({ state, dispatch }: Props) {
         pathAt: Date.now(),
         pathOk: opened.path !== null,
         meOk: true,
-        paused: me.key.status === 'paused',
+        key: me.key.status,
         ephemeral: !exclusive,
       };
       // Promise 12: the privacy sentence on this page is only true when the host is not logging.
@@ -168,6 +174,12 @@ export default function Connect({ state, dispatch }: Props) {
           : { t: 'abort', error: describeConnectError(err, reached, who) },
       );
     }
+  }
+
+  /** Stops the attempt in flight: it becomes a superseded one, and the machine closes what it opened. */
+  function cancel(): void {
+    attempt.current++;
+    dispatch({ t: 'abort', error: null });
   }
 
   function forgetInvite(): void {
@@ -193,15 +205,45 @@ export default function Connect({ state, dispatch }: Props) {
   // reason next to it — the reason is what disables it.
   const formatError = text.trim() === '' ? null : inviteProblem(text);
   const malformed = formatError !== null;
+  // A code we already hold — from the link, or from the last visit — is a secret sitting in a text
+  // box on a screen somebody may be sharing: shown as what it is, and in full only when the reader
+  // asks (014 promise 9, 020 promise 8).
+  const known = !pasting && text !== '' && (text === HASH_INVITE || text === remembered);
   // A returning reader with history on this device gets their own face (014 promise 9). A code
   // that arrived by link is new news and takes precedence over "welcome back".
-  const returning =
-    !busy && !pasting && HASH_INVITE === '' && remembered !== '' && text === remembered && chats > 0;
+  const returning = !busy && !pasting && HASH_INVITE === '' && remembered !== '' && text === remembered && chats > 0;
   const who = lastHost?.name?.trim() ?? '';
   // A revoked or unrecognised invite cannot be retried; the only move is a new code from the host.
   const needsNewCode = failure?.fatal === true;
 
   if (disclosure) return <LogPromptsGate me={disclosure.me} onAccept={disclosure.accept} />;
+
+  // While an attempt runs the card says what is happening and offers the one thing that makes
+  // sense meanwhile. The reader never sees a field they cannot type into.
+  if (busy) {
+    return (
+      <main className="connect">
+        <div className="connect-card">
+          <h1>{PRODUCT_NAME}</h1>
+          <p className="pitch">{who ? `Connecting to ${who}…` : 'Connecting…'}</p>
+          <ol className="steps" aria-live="polite">
+            {steps.map((step, i) => (
+              <li key={step.at} className={i < at ? 'done' : i === at ? 'now' : 'next'}>
+                <span>{step.label}</span>
+                <span className="step-detail">{stepDetail(state, i, at)}</span>
+              </li>
+            ))}
+          </ol>
+          <div className="connect-actions">
+            <button className="ghost" onClick={cancel}>
+              Cancel
+            </button>
+          </div>
+          <p className="privacy">{privacyLine(who, false)}</p>
+        </div>
+      </main>
+    );
+  }
 
   return (
     <main className="connect">
@@ -209,8 +251,8 @@ export default function Connect({ state, dispatch }: Props) {
         <h1>{PRODUCT_NAME}</h1>
         {returning ? (
           <p className="pitch">
-            <strong>Welcome back.</strong> Your {chats} {chats === 1 ? 'chat' : 'chats'} with{' '}
-            {who || 'your host'} are still on this device.
+            <strong>Welcome back.</strong> Your {chats} {chats === 1 ? 'chat is' : 'chats are'} with{' '}
+            {who || 'your host'} still on this device.
           </p>
         ) : (
           <p className="pitch">
@@ -219,13 +261,12 @@ export default function Connect({ state, dispatch }: Props) {
           </p>
         )}
 
-        {HASH_INVITE !== '' && text === HASH_INVITE && !busy && (
+        {/* Never above a failure: a code that just failed is not "ready" (020 promise 5). */}
+        {HASH_INVITE !== '' && text === HASH_INVITE && !failure && (
           <p className="notice">Invite from your link is ready.</p>
         )}
 
-        {/* A remembered code is a secret sitting in a text box on a screen somebody may be sharing;
-            it is shown as what it is, and in full only when the reader asks (014 promise 9). */}
-        {returning && !showCode ? (
+        {known && !showCode ? (
           <div className="field">
             <span className="field-label">Invite code</span>
             <div className="masked">
@@ -246,7 +287,6 @@ export default function Connect({ state, dispatch }: Props) {
               autoCorrect="off"
               rows={3}
               placeholder="bn1.…"
-              disabled={busy}
               onChange={(e) => {
                 edit(e.target.value);
                 void import('./Chat'); // warm the chat chunk while they are still typing
@@ -255,7 +295,7 @@ export default function Connect({ state, dispatch }: Props) {
                 // An IME's Enter commits a candidate; it is not a submit (promise 9).
                 if (e.key === 'Enter' && !e.shiftKey && !composing(e)) {
                   e.preventDefault();
-                  void connect();
+                  if (!needsNewCode) void connect();
                 }
               }}
             />
@@ -264,31 +304,22 @@ export default function Connect({ state, dispatch }: Props) {
         {formatError && <p className="inline-error">{formatError}</p>}
 
         <div className="connect-actions">
+          {/* A code the host has revoked gets no Connect: pressing it could only reproduce the
+              failure below, whose own button is the one that works (020 promise 5). */}
           <button
             className="primary"
             onClick={() => void connect()}
-            disabled={busy || text.trim() === '' || malformed}
+            disabled={text.trim() === '' || malformed || needsNewCode}
           >
-            {busy ? 'Connecting…' : returning ? 'Reconnect' : 'Connect'}
+            {returning ? 'Reconnect' : 'Connect'}
           </button>
           {/* While a failure is showing, the same action lives inside it, next to the reason. */}
-          {remembered !== '' && !busy && !failure && (
+          {remembered !== '' && !failure && (
             <button className="ghost" onClick={forgetInvite}>
               Forget this invite
             </button>
           )}
         </div>
-
-        {busy && (
-          <ol className="steps" aria-live="polite">
-            {steps.map((step, i) => (
-              <li key={step.at} className={i < at ? 'done' : i === at ? 'now' : 'next'}>
-                <span>{step.label}</span>
-                <span className="step-detail">{stepDetail(state, i, at)}</span>
-              </li>
-            ))}
-          </ol>
-        )}
 
         {failure && (
           <div className="failure" role="alert">
@@ -323,7 +354,7 @@ export default function Connect({ state, dispatch }: Props) {
 
         {dev && (
           <label className="devmode">
-            <input type="checkbox" checked={direct} onChange={(e) => setDirect(e.target.checked)} disabled={busy} />
+            <input type="checkbox" checked={direct} onChange={(e) => setDirect(e.target.checked)} />
             Direct mode (dev) — talk to {__DEFAULT_DIRECT_URL__} instead of the tunnel
           </label>
         )}

@@ -40,8 +40,10 @@ export function reduceReply(r: Reply, e: StreamEvent): Reply {
         'interrupted',
         'The connection dropped before the host finished this reply — what is above is only part of it.',
       );
+    // "You stopped this reply" is reserved for the reader's own Stop (020 promise 2): an abort the
+    // app asked for carries its reason and is a cut, not a choice.
     case 'aborted':
-      return finish(r, 'stopped', 'You stopped this reply.');
+      return e.why ? finish(r, 'interrupted', e.why) : finish(r, 'stopped', 'You stopped this reply.');
     case 'error':
       // Said once (014 promise 10). A wait the reader has to sit out is explained by the banner,
       // with its countdown, so the message only says it did not go; everything else is explained
@@ -58,13 +60,18 @@ export function reduceReply(r: Reply, e: StreamEvent): Reply {
 
 /**
  * The failures whose explanation belongs in the one banner rather than under the message: they are
- * all "wait, then it works", and a countdown said twice is a countdown nobody believes.
+ * all "wait, then it works", and a countdown said twice is a countdown nobody believes. The three
+ * invite states are the same shape: the header line says what the host did and what to do about
+ * it, so the message says only that it did not go (020 promise 5).
  */
 const SHORT: Record<string, string> = {
   rate_limited: 'Too fast — not sent.',
   concurrency_limited: 'Not sent — one reply at a time.',
   queue_timeout: 'Not sent — every slot was taken.',
   budget_exhausted: 'Not sent — today’s tokens are used up.',
+  key_paused: 'Not sent — your invite is paused.',
+  key_revoked: 'Not sent — this invite was revoked.',
+  invalid_key: 'Not sent — this invite no longer works.',
 };
 
 export function saidInBanner(code: string): boolean {
@@ -97,4 +104,45 @@ function finish(r: Reply, status: MessageStatus, note?: string, details?: string
     };
   }
   return { ...base, status, ...(note ? { note } : {}) };
+}
+
+// ---- how a reply that ran out of allowance ended (020 promise 3) --------------------------------
+
+/**
+ * Which wall a `finish_reason: "length"` reply hit. `capped`: the invite's per-reply cap, and more
+ * of the same reply helps (Continue). `context`: the conversation has filled the model's memory,
+ * and nothing but a new chat helps — the copy that says "reply limit" next to numbers that add up
+ * to the context is the self-refuting screenshot this exists to end. `length`: the engine stopped
+ * for a length it did not tell us about. Null: it did not stop for length at all.
+ *
+ * One pure function over four numbers, so the two surfaces that say it (the ending line and the
+ * context meter) cannot disagree. `slack` absorbs the tokens an engine reserves or miscounts at
+ * the edge of its window: an exact sum is the common case (2971 + 1125 = 4096), not the only one.
+ */
+export type Ending = 'capped' | 'context' | 'length';
+
+export function replyEnding(
+  capped: boolean | undefined,
+  tokens: { in: number; out: number } | undefined,
+  maxOutputTokens: number,
+  modelContext: number,
+): Ending | null {
+  if (!capped) return null;
+  if (!tokens) return 'length';
+  if (maxOutputTokens > 0 && tokens.out >= maxOutputTokens) return 'capped';
+  if (modelContext > 0 && tokens.in + tokens.out >= modelContext - contextSlack(modelContext)) return 'context';
+  return 'length';
+}
+
+/** What the last reply says the whole thread cost the engine: the context meter's number. */
+export function contextUsed(messages: readonly Pick<Message, 'role' | 'tokens'>[]): number | null {
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const m = messages[i];
+    if (m?.role === 'assistant' && m.tokens) return m.tokens.in + m.tokens.out;
+  }
+  return null;
+}
+
+function contextSlack(modelContext: number): number {
+  return Math.max(8, Math.floor(modelContext / 64));
 }

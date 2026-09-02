@@ -1,5 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
+import { modelLabel } from '../api';
+import { compact } from '../session';
 import type { Message } from '../storage';
+import { replyEnding } from '../stream';
 import type { ThreadAction } from './Chat';
 import Markdown from './Markdown';
 
@@ -7,18 +10,23 @@ interface Props {
   message: Message;
   /** The host's display name: waiting and failure copy name the machine, never "the endpoint". */
   host: string;
-  /** True while this message is the one being streamed. */
+  /** True while this message is the one being streamed by this tab. */
   live: boolean;
-  /** True while any reply is streaming: actions that would start a second one stay hidden. */
+  /** True while any reply is streaming in this tab: actions that would start a second one stay hidden. */
   busy: boolean;
+  /** (User turns) the reply right after this turn is still arriving — in this tab or another. */
+  answering: boolean;
+  /** A follower tab (020 promise 6): nothing here may start a request or edit the thread. */
+  readOnly: boolean;
   /** Actions only appear on the last exchange, the way ChatGPT does it. */
   last: boolean;
   /** The one action this exchange offers, named for what it will do (Regenerate / Try again /
-   *  Reconnect). Composed by Chat, which is the only place that knows which of those is true. */
-  action: ThreadAction;
-  /** The invite's per-reply token cap, for the ending a capped reply gets (014 promise 14). */
-  capTokens: number;
+   *  Reconnect), or null when nothing can be sent. Composed by Chat, the only place that knows. */
+  action: ThreadAction | null;
+  /** The two walls a reply can hit (020 promise 3): the invite's reply cap and the model's context. */
+  limits: { maxOutputTokens: number; modelContext: number };
   onContinue: () => void;
+  onNewChat: () => void;
   onResend: (text: string) => void;
 }
 
@@ -27,10 +35,13 @@ export default function MessageView({
   host,
   live,
   busy,
+  answering,
+  readOnly,
   last,
   action,
-  capTokens,
+  limits,
   onContinue,
+  onNewChat,
   onResend,
 }: Props) {
   const [editing, setEditing] = useState(false);
@@ -55,14 +66,16 @@ export default function MessageView({
         </div>
       );
     }
-    const pending = m.pending === true && !busy;
+    // The pending mark is per turn (020 promise 1): this turn's own flag, hidden only while its
+    // own reply is on the way. Never a claim about any other turn.
+    const pending = m.pending === true && !answering;
     return (
       <div className="row user">
         <div className={`bubble ${pending ? 'pending' : ''}`}>{m.content}</div>
         <div className="actions">
           {/* The pending turn (014 promise 1): the reader's words are still here and still theirs. */}
           {pending && <span className="pending-mark">Not delivered</span>}
-          {last && !busy && (
+          {last && !busy && !readOnly && (
             <button className="ghost tiny" onClick={() => { setDraft(m.content); setEditing(true); }}>
               Edit
             </button>
@@ -76,6 +89,9 @@ export default function MessageView({
   // When the reply is all thinking and no answer, the explanation belongs inside the collapsed
   // Thinking block — there is nothing else for it to sit under. Otherwise it goes under the text.
   const inThinking = ended && m.content.trim() === '' && Boolean(m.reasoning);
+  // Which wall a complete-but-cut reply hit is one function over four numbers (020 promise 3), so
+  // this line and the context meter in the header can never disagree.
+  const ending = !live && m.status === 'complete' ? replyEnding(m.capped, m.tokens, limits.maxOutputTokens, limits.modelContext) : null;
   return (
     <div className="row assistant">
       {m.previous !== undefined && m.previous !== '' && (
@@ -87,7 +103,7 @@ export default function MessageView({
       {m.reasoning && (
         <Thinking
           text={m.reasoning}
-          answering={m.content !== '' || ended}
+          answering={m.content !== '' || ended || m.status === 'complete'}
           note={inThinking ? m.note : undefined}
         />
       )}
@@ -103,31 +119,46 @@ export default function MessageView({
               : 'Waiting for the first token…'}
         </p>
       )}
+      {/* A reply another tab is writing (020 promise 6): read as it is checkpointed, never as ours. */}
+      {!live && m.status === undefined && <p className="waiting">Arriving in another tab…</p>}
       {/* The reply did not simply stop: it says which way it stopped, under the text it kept. */}
       {ended && !inThinking && <p className={`ended ${m.status}`}>{m.note}</p>}
       {/* Running out of allowance is not finishing (014 promise 14): the reader is told where it
-          stopped and offered the only thing that helps — more of the same reply. */}
-      {!live && m.capped === true && m.status === 'complete' && (
+          stopped and offered the only thing that helps — more of the same reply, or, when the
+          model's memory is what filled, a new chat (020 promise 3). */}
+      {ending === 'capped' && (
         <p className="ended capped">
-          This stopped at your invite’s {capTokens}-token reply limit.{' '}
-          <button className="ghost tiny" onClick={onContinue}>
-            Continue
-          </button>
+          This stopped at your invite’s {limits.maxOutputTokens}-token reply limit.{' '}
+          {!readOnly && <button className="ghost tiny" onClick={onContinue}>Continue</button>}
+        </p>
+      )}
+      {ending === 'context' && (
+        <p className="ended capped">
+          This chat has filled the {compact(limits.modelContext)} memory on {host || 'the host'} — start a new chat to keep going.{' '}
+          {!readOnly && <button className="ghost tiny" onClick={onNewChat}>New chat</button>}
+        </p>
+      )}
+      {ending === 'length' && (
+        <p className="ended capped">
+          This stopped at a length limit on the host’s engine.{' '}
+          {!readOnly && <button className="ghost tiny" onClick={onContinue}>Continue</button>}
         </p>
       )}
       {/* The host's raw sentence is evidence, never what a stranger has to read first. */}
       {ended && m.details !== undefined && m.details !== '' && <Details text={m.details} />}
       <div className="meta">
         <span className="meta-text">
-          {m.model ?? ''}
+          {m.model ? modelLabel(m.model) : ''}
           {m.tokens ? ` · ${m.tokens.in} tokens in · ${m.tokens.out} out` : ''}
+          {/* A stopped reply never gets its usage chunk, but the host counted what it made. */}
+          {!m.tokens && m.status === 'stopped' ? ' · still counted against today’s tokens' : ''}
           {m.status === 'interrupted' || m.status === 'no_answer'
             ? ' · not part of the next question'
             : ''}
         </span>
         <span className="actions">
-          {last && !busy && m.content !== '' && <CopyButton text={m.content} />}
-          {last && !busy && (
+          {!live && m.content !== '' && <CopyButton text={m.content} />}
+          {last && !busy && action && (
             <button className="ghost tiny" onClick={action.run}>
               {action.label}
             </button>
@@ -156,7 +187,7 @@ function CopyButton({ text }: { text: string }) {
       onClick={() => {
         void navigator.clipboard?.writeText(text);
         setDone(true);
-        setTimeout(() => setDone(false), 1400);
+        setTimeout(() => setDone(false), 2000);
       }}
     >
       {done ? 'Copied' : 'Copy'}
@@ -164,19 +195,23 @@ function CopyButton({ text }: { text: string }) {
   );
 }
 
-/** Collapses itself the moment the answer starts, unless the reader opened or closed it by hand. */
+/**
+ * Collapses itself the moment the answer starts, unless the reader opened or closed it by hand.
+ * While the model is still thinking the block is a window that follows the newest line; once the
+ * answer has started it is a record, and opening it shows all of it (020 promise 7).
+ */
 function Thinking({ text, answering, note }: { text: string; answering: boolean; note?: string }) {
   const [manual, setManual] = useState<boolean | null>(null);
   const open = manual ?? !answering;
   const body = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (open && body.current) body.current.scrollTop = body.current.scrollHeight;
-  }, [open, text]);
+    if (open && !answering && body.current) body.current.scrollTop = body.current.scrollHeight;
+  }, [open, answering, text]);
 
   // The body stays mounted and animates its height, so collapsing is a glide, not a jump.
   return (
-    <div className={`thinking ${open ? 'open' : ''}`}>
+    <div className={`thinking ${open ? 'open' : ''} ${answering ? 'full' : ''}`}>
       <button className="thinking-toggle" aria-expanded={open} onClick={() => setManual(!open)}>
         Thinking
         <span className="thinking-hint">{open ? 'hide' : `${words(text)} words`}</span>

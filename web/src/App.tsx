@@ -103,7 +103,7 @@ function useRedial(
             pathAt: Date.now(),
             pathOk: opened.path !== null,
             meOk: true,
-            paused: me.key.status === 'paused',
+            key: me.key.status,
           },
         });
       } catch (err) {

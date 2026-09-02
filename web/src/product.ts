@@ -13,10 +13,22 @@ export const VERSION: string = import.meta.env.VITE_APP_VERSION ?? '0.0.1-dev';
  * than one. `logging` is the `--log-prompts` variant: same three surfaces, opposite fact, said once.
  */
 export function privacyLine(hostName: string, logging: boolean): string {
-  const name = hostName.trim();
-  const whose = name === '' ? 'your host’s computer' : `${name}’s computer`;
+  const whose = hostsComputer(hostName);
   if (logging) {
     return `Encrypted end-to-end from your device to ${whose} — but this host has prompt logging on, so everything you send and everything the model answers is written to a log on their machine.`;
   }
   return `Encrypted end-to-end from your device to ${whose} — the relay in between can’t read it. ${PRODUCT_NAME} records counts, never text. The model runs on their machine.`;
+}
+
+/**
+ * "Max’s computer" when the host is a person, "the computer named Max’s laptop" when the host has
+ * already named a machine — "Max’s laptop’s computer" reads as a template that forgot to branch
+ * (020 promise 9). A nameless host is "your host’s computer".
+ */
+export function hostsComputer(hostName: string): string {
+  const name = hostName.trim();
+  if (name === '') return 'your host’s computer';
+  return /(’s|'s|s’|s')$|\b(laptop|desktop|computer|machine|workstation|server|pc|mac|box|rig)$/i.test(name)
+    ? `the computer named ${name}`
+    : `${name}’s computer`;
 }
