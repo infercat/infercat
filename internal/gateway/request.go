@@ -20,7 +20,18 @@ type endpoint string
 const (
 	chatEndpoint       endpoint = "/v1/chat/completions"
 	embeddingsEndpoint endpoint = "/v1/embeddings"
+	// modelsEndpoint has no stage list; it is put on the record so the settle table can say what
+	// the request was (ticket 014 promise 5).
+	modelsEndpoint endpoint = "/v1/models"
 )
+
+// countsAgainstRPM: RPM is the friend's message allowance, so only a call that asks the model to do
+// work spends one of them. Listing the models an invite may use is bookkeeping the client does on
+// connect; counting it made the friend's first message read "2 of 20 used this minute" (ticket 014
+// ruling; measured on the real stack, 014 Log).
+func (e endpoint) countsAgainstRPM() bool {
+	return e == chatEndpoint || e == embeddingsEndpoint
+}
 
 // outcome is how a request ended, set by the stage that ended it (DESIGN §1.4). finish reads it
 // through the settle table: it alone decides what the request counted and what it is charged.
@@ -376,6 +387,7 @@ func (q *request) finish() {
 // settleRow is the settle table (DESIGN §1.4), read by finish: whether the request counted against
 // RPM and what it is charged against TPM and the daily budget.
 //
+//	Any /v1/models call               not counted; 0 (RPM is the message allowance — 014 promise 5)
 //	Rejected                          not counted; charged 0 (the reservation is released)
 //	QueueLost, timed out              counted (a place was held); 0
 //	QueueLost, client gone            not counted; 0
@@ -388,6 +400,9 @@ func (q *request) finish() {
 // A request that never reached an outcome (the pipeline was abandoned by a panic) is a rejection.
 // The event keeps what was observed; only the non-stream Cut charge differs from its token sum.
 func (q *request) settleRow() (counted bool, charged int) {
+	if !q.kind.countsAgainstRPM() {
+		return false, 0
+	}
 	switch q.outcome {
 	case outcomeQueueLost:
 		return q.ev.Code == string(CodeQueueTimeout), 0

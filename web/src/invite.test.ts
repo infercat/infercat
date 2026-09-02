@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { decodeInvite, encodeInvite, inviteFromHash, InviteError, type InviteErrorCode } from './invite';
+import { InviteError, decodeInvite, encodeInvite, inviteFromHash, maskInvite, type InviteErrorCode } from './invite';
 
 // The error table below is internal/invite/invite_test.go's TestDecodeErrors, case for case, with
 // each Go error value mapped to this side's code. ADDR is a real tailcat ConnBlob shape (base64url
@@ -103,5 +103,21 @@ describe('inviteFromHash', () => {
     for (const hash of ['', '#', '#section-2', '#bn2.something', '#%E0%A4%A', '#nope']) {
       expect(inviteFromHash(hash), hash).toBe('');
     }
+  });
+});
+
+// 014 promise 9: a returning reader sees their code as theirs, not as a secret on display.
+describe('maskInvite', () => {
+  const invite = `bn1.tco2FwWCCefFIUTGpLZzxLjFkzfi5BnYk9Lr2zui9eL.${'D'.repeat(38)}N96as`;
+
+  it('shows enough to recognise and not enough to use', () => {
+    expect(maskInvite(invite)).toBe('bn1.tco2…N96as');
+    expect(maskInvite(invite)).not.toContain('DDDD');
+    expect(maskInvite(invite).length).toBeLessThan(20);
+  });
+
+  it('leaves anything that is not an invite alone rather than pretending to mask it', () => {
+    expect(maskInvite('nonsense')).toBe('nonsense');
+    expect(maskInvite('  bn1.only-two-parts  ')).toBe('bn1.only-two-parts');
   });
 });

@@ -165,12 +165,30 @@ export async function openTransport(addr: string, opts: OpenOptions): Promise<Op
   return { transport: new TunnelTransport(session), path, privateKeyJSON: session.privateKeyJSON };
 }
 
-/** "relayed via sfo · 84 ms" — the truth about the path, never a green dot (pm/BELIEFS.md). */
+/**
+ * Relay regions as the places they are (014 promise 11). A stranger reads "relayed via New York"
+ * and knows how far their words went; "nyc" is a code they have to decode first. A region this
+ * table does not know is shown exactly as the relay named it — never guessed at.
+ */
+const CITIES: Record<string, string> = {
+  nyc: 'New York', sfo: 'San Francisco', lax: 'Los Angeles', ord: 'Chicago', dfw: 'Dallas',
+  sea: 'Seattle', den: 'Denver', mia: 'Miami', tor: 'Toronto', lhr: 'London', ams: 'Amsterdam',
+  fra: 'Frankfurt', par: 'Paris', mad: 'Madrid', waw: 'Warsaw', dub: 'Dublin', hel: 'Helsinki',
+  tok: 'Tokyo', nrt: 'Tokyo', sin: 'Singapore', hkg: 'Hong Kong', syd: 'Sydney', blr: 'Bangalore',
+  bom: 'Mumbai', sao: 'São Paulo', jnb: 'Johannesburg', dxb: 'Dubai',
+};
+
+export function cityFor(region: string): string {
+  const key = region.trim().toLowerCase();
+  return CITIES[key] ?? region.trim();
+}
+
+/** "relayed via New York · 84 ms" — the truth about the path, never a green dot (pm/BELIEFS.md). */
 export function describePath(path: PingResult | null, fallbackRegion?: string): string {
-  if (!path) return fallbackRegion ? `relayed via ${fallbackRegion}` : 'path unknown';
+  if (!path) return fallbackRegion ? `relayed via ${cityFor(fallbackRegion)}` : 'path unknown';
   const rtt = `${Math.round(path.rttMs)} ms`;
   if (path.direct) return `direct · ${rtt}`;
   const derp = /^DERP\(([^)]+)\)$/.exec(path.via);
-  if (derp) return `relayed via ${derp[1]} · ${rtt}`;
+  if (derp) return `relayed via ${cityFor(derp[1] ?? '')} · ${rtt}`;
   return `via ${path.via} · ${rtt}`;
 }

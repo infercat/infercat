@@ -313,7 +313,7 @@ func TestBodyReadDeadline(t *testing.T) {
 	}
 }
 
-// ---- 5. /v1/models metered ----
+// ---- 5. /v1/models metered by concurrency, never counted against RPM (014 promise 5) ----
 
 func TestModelsMetered(t *testing.T) {
 	h := newHarness(t, Config{}, nil)
@@ -348,18 +348,30 @@ func TestModelsMetered(t *testing.T) {
 	open()
 	<-done
 
-	// RPM applies to /v1/models and not to /me.
+	// RPM is the friend's message allowance (014 promise 5, settle table): a list call spends none
+	// of it however often it is made, /me spends none, and only the chat call moves the number the
+	// friend's meter shows. A key with RPM 1 can list twice and still have its one message.
 	h.store.set("third", &keys.Key{ID: "k_cat", Name: "cat", Status: keys.Active, Limits: keys.Limits{RPM: 1}})
-	if r := h.do(http.MethodGet, "/v1/models", "Bearer third", ""); r.status != 200 {
-		t.Fatalf("first models call: %d %s", r.status, r.body)
+	for i := range 2 {
+		if r := h.do(http.MethodGet, "/v1/models", "Bearer third", ""); r.status != 200 {
+			t.Fatalf("models call %d: %d %s", i+1, r.status, r.body)
+		}
 	}
-	h.expectErr(h.do(http.MethodGet, "/v1/models", "Bearer third", ""), CodeRateLimited)
 	if r := h.do(http.MethodGet, "/me", "Bearer third", ""); r.status != 200 {
 		t.Fatalf("/me under rpm: %d", r.status)
 	}
-	if c := h.gw.Counters("k_cat"); c.RPMUsed != 1 || c.InFlight != 0 {
-		t.Fatalf("models call counted once, slot released: %+v", c)
+	if c := h.gw.Counters("k_cat"); c.RPMUsed != 0 || c.InFlight != 0 {
+		t.Fatalf("list calls must not count against RPM, and must free their slot: %+v", c)
 	}
+	// The one message the key is allowed still gets through, and it is the thing that counts.
+	h.up.set("json")
+	if r := h.do(http.MethodPost, "/v1/chat/completions", "Bearer third", chatBody("m1", 1, "")); r.status != 200 {
+		t.Fatalf("chat after two list calls: %d %s", r.status, r.body)
+	}
+	if c := h.gw.Counters("k_cat"); c.RPMUsed != 1 {
+		t.Fatalf("the chat call is the one that counts: %+v", c)
+	}
+	h.expectErr(h.do(http.MethodPost, "/v1/chat/completions", "Bearer third", chatBody("m1", 1, "")), CodeRateLimited)
 }
 
 // ---- 6. no redirects upstream ----

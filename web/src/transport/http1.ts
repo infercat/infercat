@@ -86,9 +86,12 @@ export async function fetchOverConn(
   signal?.addEventListener('abort', closeConn, { once: true });
 
   try {
-    await conn.write(encodeRequest(req));
+    // Every await before the head arrives is raced against the signal. A tunnel conn to a peer that
+    // has gone away accepts a write and never settles it, and close() does not settle it either —
+    // so without this the deadline above (014 promise 1) waits for the relay's own timeout instead.
+    await raceAbort(conn.write(encodeRequest(req)), signal);
     const reader = new ConnReader(conn, signal);
-    const { status, statusText, headers } = parseResponseHead(await reader.readHead());
+    const { status, statusText, headers } = parseResponseHead(await raceAbort(reader.readHead(), signal));
     if (status < 200) throw new Http1Error(`unexpected ${status} response from the host`);
 
     const body = bodyStream(reader, req.method, status, headers, closeConn, signal);
@@ -125,6 +128,20 @@ function bodyStream(
   return streamOf(readToEOF(reader), done, signal);
 }
 
+/**
+ * Abort has to win the race, not wait for it: a promise that never settles must not outlive the
+ * signal that cancelled it. Used for every await that talks to a Conn.
+ */
+export function raceAbort<T>(p: Promise<T>, signal?: AbortSignal | null): Promise<T> {
+  if (!signal) return p;
+  if (signal.aborted) return Promise.reject(abortError());
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = () => reject(abortError());
+    signal.addEventListener('abort', onAbort, { once: true });
+    p.then(resolve, reject).finally(() => signal.removeEventListener('abort', onAbort));
+  });
+}
+
 /** Buffered pull-reader over a Conn. Handles reads that split heads, lines, and chunks anywhere. */
 class ConnReader {
   private buf: Uint8Array = new Uint8Array(0);
@@ -138,7 +155,7 @@ class ConnReader {
   private async pull(): Promise<boolean> {
     while (!this.eof) {
       if (this.signal?.aborted) throw abortError();
-      const chunk = await this.conn.read();
+      const chunk = await raceAbort(this.conn.read(), this.signal);
       if (this.signal?.aborted) throw abortError();
       if (chunk === null) {
         this.eof = true;

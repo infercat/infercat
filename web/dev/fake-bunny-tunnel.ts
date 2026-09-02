@@ -70,8 +70,12 @@ export class FakeSession implements Session {
 
   async ping(): Promise<PingResult> {
     await sleep(6);
+    const n = ++this.pings;
     if (this.opts.pingFails) throw new Error('no reply from the relay');
-    if (this.opts.pingFailsAfter !== undefined && ++this.pings > this.opts.pingFailsAfter) {
+    // A host that goes to sleep answered once, on the way in: that is what makes the failure a
+    // surprise mid-session rather than a connect error.
+    if (this.opts.hostAsleep && n > 1) throw new Error('no reply from the relay');
+    if (this.opts.pingFailsAfter !== undefined && n > this.opts.pingFailsAfter) {
       throw new Error('no reply from the relay');
     }
     const base = this.opts.rttMs ?? 84;
@@ -134,6 +138,10 @@ export class FakeConn implements Conn {
   }
 
   private async serve(req: FakeRequest): Promise<void> {
+    // A sleeping host does not refuse a request, it says nothing at all. That is exactly what makes
+    // the raw failure ("the connection closed inside the response") useless to a friend, and why
+    // 014 promise 1 exists. The conn simply never writes.
+    if (this.opts.hostAsleep && req.path.split('?')[0] === '/v1/chat/completions') return;
     const res = handleFake(req, this.opts);
     const lines = [`HTTP/1.1 ${res.status} ${STATUS_TEXT[res.status] ?? 'Status'}`];
     for (const [name, value] of Object.entries(res.headers)) lines.push(`${name}: ${value}`);

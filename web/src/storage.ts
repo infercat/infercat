@@ -25,6 +25,20 @@ export interface Message {
   status?: MessageStatus;
   /** One short line under the message explaining a status that is not `complete`. */
   note?: string;
+  /** The host's own diagnostic. Never primary copy: it lives behind a Details disclosure. */
+  details?: string;
+  /** Nothing has come back yet and it has been long enough to say so (assistant, mid-stream). */
+  waiting?: boolean;
+  /** The reply stopped at the invite's output cap, not because it had finished (promise 14). */
+  capped?: boolean;
+  /** The answer this one replaced, kept rather than thrown away when a turn is edited (promise 16). */
+  previous?: string;
+  /**
+   * The pending turn (014 promise 1): a user message that was sent and never answered. It stays in
+   * the thread, marked, with a Try again — so a host that was asleep costs the reader their wait,
+   * never their words.
+   */
+  pending?: boolean;
 }
 
 export interface Conversation {
@@ -46,15 +60,39 @@ export const DEFAULT_SETTINGS: Settings = { model: null, systemPrompt: '', tempe
 export const KEYS = {
   invite: 'bn.invite',
   privateKey: 'bn.privateKey',
+  /** What the connect screen can say about the last host before it has reconnected to it. */
+  lastHost: 'bn.lastHost',
   // Never read directly: conversations and settings belong to one host, so they live under
   // `<key>.<scope>` (see hostScope). The bare names are the pre-scope layout, cleared once.
   conversations: 'bn.conversations',
   settings: 'bn.settings',
 } as const;
 
-/** Where one host's conversations and settings live. `scope` comes from hostScope(). */
-export function scopedKeys(scope: string): { conversations: string; settings: string } {
-  return { conversations: `${KEYS.conversations}.${scope}`, settings: `${KEYS.settings}.${scope}` };
+/**
+ * Where one host's conversations and settings live. `scope` comes from hostScope().
+ *
+ * One conversation is one key (014 promise 4). The old single-array layout meant every write
+ * rewrote the whole history, so two tabs open on the same host silently overwrote each other's
+ * last exchange: whoever saved second won with a list that never had the other's turn in it. With
+ * a key per conversation a second tab can only ever clobber the *same* conversation, and the
+ * `storage` event (chatsChanged) lets it re-read before it writes.
+ */
+export function scopedKeys(scope: string): {
+  index: string;
+  settings: string;
+  conv: (id: string) => string;
+} {
+  return {
+    index: `${KEYS.conversations}.${scope}`,
+    settings: `${KEYS.settings}.${scope}`,
+    conv: (id: string) => `${KEYS.conversations}.${scope}.${id}`,
+  };
+}
+
+/** What the connect screen remembers about the host this browser last used. Never the secret. */
+export interface LastHost {
+  name: string;
+  scope: string;
 }
 
 /**
@@ -116,16 +154,121 @@ export function newId(): string {
 
 export function newConversation(): Conversation {
   const now = Date.now();
-  return { id: newId(), title: 'New chat', createdAt: now, updatedAt: now, messages: [] };
+  // Not "New chat": that is the button that makes one, and a list where every row is named after
+  // the button is a list that says nothing (014 promise 17).
+  return { id: newId(), title: 'Untitled chat', createdAt: now, updatedAt: now, messages: [] };
 }
 
 /** The first user message becomes the sidebar title. */
 export function titleFrom(text: string): string {
   const line = text.trim().split('\n')[0] ?? '';
-  return line.length > 40 ? `${line.slice(0, 40).trimEnd()}…` : line || 'New chat';
+  return line.length > 40 ? `${line.slice(0, 40).trimEnd()}…` : line || 'Untitled chat';
 }
 
 /** Drops empty conversations and caps history so localStorage never becomes the bottleneck. */
 export function prune(convs: Conversation[], keep = 50): Conversation[] {
   return convs.filter((c) => c.messages.length > 0).slice(0, keep);
+}
+
+// ---- one conversation, one key (014 promise 4) ------------------------------------------------
+
+/**
+ * Reads this host's conversations, newest first. The index holds the order and nothing else that
+ * matters, so a conversation another tab wrote after our index was read is still found (it is in
+ * the index the moment it exists) and one another tab deleted simply is not there.
+ */
+export function loadChats(scope: string): Conversation[] {
+  const keys = scopedKeys(scope);
+  migrateChats(scope);
+  const out: Conversation[] = [];
+  for (const id of load<string[]>(keys.index, [])) {
+    const c = load<Conversation | null>(keys.conv(id), null);
+    if (c && Array.isArray(c.messages)) out.push(reopen(c));
+  }
+  return out;
+}
+
+/**
+ * Writes one conversation and makes sure the index names it. The index is re-read here rather than
+ * held in memory: another tab may have added a chat since this tab loaded, and an index written
+ * from a stale copy is exactly how the last exchange used to disappear.
+ */
+export function saveChat(scope: string, conv: Conversation): void {
+  const keys = scopedKeys(scope);
+  if (conv.messages.length === 0) return; // an empty draft is not history
+  save(keys.conv(conv.id), conv);
+  const ids = load<string[]>(keys.index, []).filter((id) => id !== conv.id);
+  ids.unshift(conv.id);
+  const kept = ids.slice(0, 50);
+  save(keys.index, kept);
+  for (const id of ids.slice(50)) forget(keys.conv(id));
+}
+
+export function deleteChat(scope: string, id: string): void {
+  const keys = scopedKeys(scope);
+  save(keys.index, load<string[]>(keys.index, []).filter((x) => x !== id));
+  forget(keys.conv(id));
+}
+
+/** How many chats this browser holds for a host — for the welcome-back screen (014 promise 9). */
+export function countChats(scope: string): number {
+  return load<string[]>(scopedKeys(scope).index, []).length;
+}
+
+/**
+ * Merges what is on disk into what this tab has in memory, per conversation, newest write wins.
+ * Called when another tab fires a `storage` event for this host, so this tab re-reads before its
+ * next write instead of overwriting a turn it never saw.
+ */
+export function mergeChats(scope: string, mine: Conversation[]): Conversation[] {
+  const stored = loadChats(scope);
+  const byId = new Map(mine.map((c) => [c.id, c]));
+  const out: Conversation[] = [];
+  for (const theirs of stored) {
+    const ours = byId.get(theirs.id);
+    out.push(ours && ours.updatedAt >= theirs.updatedAt ? ours : theirs);
+    byId.delete(theirs.id);
+  }
+  // Anything only this tab has (a chat being written right now) keeps its place at the front.
+  return [...byId.values(), ...out];
+}
+
+/** True when a `storage` event was about this host's chats. */
+export function chatsChanged(scope: string, key: string | null): boolean {
+  return key !== null && key.startsWith(`${KEYS.conversations}.${scope}`);
+}
+
+/**
+ * A reply still marked `streaming` in storage was cut off by the page going away, not by the host
+ * (folded in from 013). It keeps every token it had and says what happened; it never comes back as
+ * a reply that looks finished, and it is not sent as context.
+ */
+function reopen(c: Conversation): Conversation {
+  if (!c.messages.some(unfinished)) return c;
+  return {
+    ...c,
+    messages: c.messages.map((m) =>
+      unfinished(m)
+        ? {
+            ...m,
+            waiting: false,
+            status: 'interrupted' as const,
+            note: 'This reply was still arriving when the page was reloaded — what is above is only part of it.',
+          }
+        : m,
+    ),
+  };
+}
+
+function unfinished(m: Message): boolean {
+  return m.role === 'assistant' && m.status === undefined;
+}
+
+/** The pre-014 layout kept one host's whole history in a single key. Split it once, then drop it. */
+function migrateChats(scope: string): void {
+  const keys = scopedKeys(scope);
+  const old = load<Conversation[] | null>(keys.index, null);
+  if (!Array.isArray(old) || old.length === 0 || typeof old[0] === 'string') return;
+  save(keys.index, []); // the index is ids from here on; saveChat must not read the old shape
+  for (const c of [...old].reverse()) if (c?.id) saveChat(scope, c);
 }

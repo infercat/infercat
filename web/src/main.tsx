@@ -17,6 +17,11 @@ async function boot(): Promise<void> {
       // three ways a stream can end badly.
       ...(q.has('logPrompts') ? { logPrompts: true } : {}),
       ...(q.has('upstreamDown') ? { upstreamDown: true } : {}),
+      // 014's three surfaces: a host that went away, an invite the host paused, and a /me that
+      // stops answering so the meters have to say "unknown" instead of "zero".
+      ...(q.has('hostAsleep') ? { hostAsleep: true } : {}),
+      ...(q.has('keyPaused') ? { keyPaused: true } : {}),
+      ...(q.has('meFailsAfter') ? { meFailsAfter: Number(q.get('meFailsAfter')) } : {}),
       ...(q.has('pingFails') ? { pingFails: true } : {}),
       ...(q.has('pingFailsAfter') ? { pingFailsAfter: Number(q.get('pingFailsAfter')) } : {}),
       ...(q.has('models') ? { models: (q.get('models') ?? '').split(',').filter((m) => m !== '') } : {}),

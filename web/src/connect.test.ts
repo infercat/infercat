@@ -5,7 +5,7 @@ import { afterEach, describe, expect, it } from 'vitest';
 import { installFakeTunnel, OFFLINE_ADDR_PREFIX } from '../dev/fake-bunny-tunnel.ts';
 import { chatEvents, getMe, getModels, logsPrompts, type StreamEvent } from './api';
 import { decodeInvite } from './invite';
-import { describePath, openTransport, TunnelTransport, type Transport } from './transport';
+import { TunnelTransport, cityFor, describePath, openTransport, type Transport } from './transport';
 import { NEW_REPLY, reduceReply } from './stream';
 
 const INVITE = `bn1.tcFAKEaddressFAKEaddressFAKEaddress.${'s'.repeat(43)}`;
@@ -48,7 +48,7 @@ describe('connect flow', () => {
     expect(transport).toBeInstanceOf(TunnelTransport);
     expect(path?.direct).toBe(false);
     expect(path?.via).toBe('DERP(sfo)');
-    expect(describePath(path)).toMatch(/^relayed via sfo · \d+ ms$/);
+    expect(describePath(path)).toMatch(/^relayed via San Francisco · \d+ ms$/);
     expect(privateKeyJSON).toBeTruthy();
     expect(logs.length).toBeGreaterThan(0);
     transport.close();
@@ -163,7 +163,7 @@ describe('connect flow', () => {
   it('leaves the path unmeasured, rather than guessed, when the ping fails', async () => {
     const { transport, path } = await connect({ pingFails: true });
     expect(path).toBeNull();
-    expect(describePath(path, 'sfo')).toBe('relayed via sfo');
+    expect(describePath(path, 'sfo')).toBe('relayed via San Francisco');
     transport.close();
   });
 
@@ -172,5 +172,19 @@ describe('connect flow', () => {
     const session = (transport as TunnelTransport).session;
     await expect(session.dial(81)).rejects.toThrow(/nothing is listening/);
     transport.close();
+  });
+});
+
+// 014 promise 11: a relay region is a place, and a place a stranger can picture.
+describe('cityFor', () => {
+  it('names the city, not the airport code', () => {
+    expect(cityFor('nyc')).toBe('New York');
+    expect(cityFor('SFO')).toBe('San Francisco');
+    expect(describePath({ rttMs: 84, via: 'DERP(nyc)', direct: false })).toBe('relayed via New York · 84 ms');
+  });
+
+  it('shows a region it does not know exactly as the relay named it', () => {
+    expect(cityFor('zzz')).toBe('zzz');
+    expect(cityFor('')).toBe('');
   });
 });
