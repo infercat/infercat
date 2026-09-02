@@ -3,7 +3,7 @@ id: 011
 title: Engine state (Unknown kind, Health) and the three-method Engine seam (DESIGN §3)
 kind: sensitive
 size: 2
-status: dispatched
+status: landed
 updated: 2026-09-02
 release: demo-1
 ---
@@ -152,3 +152,10 @@ Engineer Claude Fable 5.1, 2026-09-02. Lane `t010-gateway-settle` (same worktree
   (tests only); this ticket file.
 - **Production-touching actions:** none. The shared llama-server received the opt-in live test's requests only; no
   restarts, no secrets, no dotenvx, no max-ws.lab.
+
+## Ruling (PM, 2026-09-02 15:05)
+
+**Landed** on main (ff of `d1bd630`); build/vet/test green, `-race` on gateway and upstream green, three
+cross-compiles OK, printed; E4 confirmed by grep (the gateway names only `Engine`, `Info`, `Kind`).
+The one-field `internal/admin` addition (`since`) is accepted as declared. `docs/ARCHITECTURE.md` v1
+follows from the PM.
