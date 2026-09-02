@@ -535,3 +535,38 @@ func TestMeLogPromptsDisclosure(t *testing.T) {
 		}
 	}
 }
+
+// ---- the one exit ----
+
+// A panic in the middle of the pipeline (here inside tokenize, with the per-key slot and the body
+// held) still leaves through finish: net/http recovers the panic per connection, the deferred finish
+// releases everything and records the event, and the key is usable on the next request.
+func TestPanicLeavesThroughFinish(t *testing.T) {
+	h := newHarness(t, Config{}, nil)
+	h.setKey(func(k *keys.Key) { k.Limits.MaxConcurrent = 1; k.Limits.RPM = 5 })
+	h.up.mu.Lock()
+	h.up.countPanic = true
+	h.up.mu.Unlock()
+	req, _ := http.NewRequest(http.MethodPost, h.srv.URL+"/v1/chat/completions", strings.NewReader(chatBody("m1", 2, "")))
+	req.Header.Set("Authorization", "Bearer "+testSecret)
+	if res, err := h.srv.Client().Do(req); err == nil {
+		res.Body.Close()
+		t.Fatalf("a panicking handler must not produce a response: %d", res.StatusCode)
+	}
+	ev := h.rec.last(t)
+	if ev.KeyID != "k_alice1" || ev.Status != 0 || ev.Endpoint != "/v1/chat/completions" {
+		t.Fatalf("panic event: %+v", ev)
+	}
+	if c := h.gw.Counters("k_alice1"); c.InFlight != 0 || c.RPMUsed != 0 || c.TPMUsed != 0 {
+		t.Fatalf("panic leaked a slot or a reservation: %+v", c)
+	}
+	if h.gw.bodies.Load() != 0 {
+		t.Fatal("panic leaked the body buffer")
+	}
+	h.up.mu.Lock()
+	h.up.countPanic = false
+	h.up.mu.Unlock()
+	if r := h.post("/v1/chat/completions", chatBody("m1", 2, "")); r.status != 200 {
+		t.Fatalf("after the panic: %d %s", r.status, r.body)
+	}
+}

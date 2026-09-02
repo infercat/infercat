@@ -17,7 +17,8 @@ import (
 //     it is exact ("at most N requests in any 60 s"), needs no background ticker, gives an exact
 //     Retry-After (when the oldest admission leaves the window), and is the same number /me reports
 //     as rpm_used — the friend's usage bar and the limiter never disagree.
-//   - TPM = prompt+completion tokens charged in the last 60 s, from real usage reported by the upstream.
+//   - TPM = prompt+completion tokens charged in the last 60 s, from real usage reported by the upstream,
+//     plus the prompt estimates reserved by requests still in flight (settled to real usage on release).
 // Rejected requests are not logged (an admission that is rejected before it reaches the queue is
 // aborted, which un-counts it), so a friend retrying against a 4xx does not dig the hole deeper.
 // The log is pruned on every touch, bounding memory to one minute of traffic per key.
@@ -40,6 +41,7 @@ type keyState struct {
 	mu       sync.Mutex
 	log      []logEntry
 	inFlight int
+	reserved int       // prompt estimates of requests in flight, counted by TPM and daily until settled
 	day      time.Time // UTC midnight of the day `today` counts
 	today    int
 	lastSeen time.Time
@@ -141,17 +143,18 @@ func (l *limiter) admit(id string, lim keys.Limits) *gwError {
 	return nil
 }
 
-// checkTokens is the second half of admission, once the prompt is tokenized: TPM over the sliding
-// window and the daily budget, both including the pre-check prompt count so a request that alone
-// would exceed the remaining minute or day is refused with the numbers in the message. Read-only;
-// the caller aborts the admission on an error.
-func (l *limiter) checkTokens(id string, lim keys.Limits, promptTokens int) *gwError {
+// reserve is the second half of admission, once the prompt is tokenized: TPM over the sliding window
+// and the daily budget, both counting the prompt estimates of the key's other in-flight requests and
+// this one, so a request that alone would exceed the remaining minute or day is refused with the
+// numbers in the message. On success the estimate is reserved until release or abort.
+func (l *limiter) reserve(id string, lim keys.Limits, promptTokens int) *gwError {
 	st := l.state(id)
 	st.mu.Lock()
 	defer st.mu.Unlock()
 	now := l.now()
 	st.prune(now)
-	_, tokens := st.used()
+	_, charged := st.used()
+	tokens := charged + st.reserved
 	if lim.TPM > 0 && tokens+promptTokens > lim.TPM {
 		// Walk the log oldest-first until enough tokens have expired for this request to fit.
 		retry := 1
@@ -168,23 +171,37 @@ func (l *limiter) checkTokens(id string, lim keys.Limits, promptTokens int) *gwE
 		}
 		return errf(CodeRateLimited, retry, "token limit: %d tokens per minute; %d used, this request needs %d", lim.TPM, tokens, promptTokens)
 	}
-	if lim.DailyTokens > 0 && st.today+promptTokens > lim.DailyTokens {
+	if lim.DailyTokens > 0 && st.today+st.reserved+promptTokens > lim.DailyTokens {
 		midnight := st.day.Add(24 * time.Hour)
-		return errf(CodeBudgetExhausted, secondsUntil(midnight, now), "daily budget: %d tokens per day (UTC); %d used, this request needs %d", lim.DailyTokens, st.today, promptTokens)
+		return errf(CodeBudgetExhausted, secondsUntil(midnight, now), "daily budget: %d tokens per day (UTC); %d used, this request needs %d", lim.DailyTokens, st.today+st.reserved, promptTokens)
 	}
+	st.reserved += promptTokens
 	return nil
 }
 
-// abort ends an admission that never reached the queue: frees the in-flight slot and drops the newest
-// admission from the RPM log (with max_concurrent > 1 that may be a sibling's entry a few milliseconds
-// apart; the count is exact either way).
-func (l *limiter) abort(id string) {
+// release ends an admission that reached the queue: frees the in-flight slot, drops the reservation,
+// and charges the real token usage (0 when the engine never answered with a 2xx).
+func (l *limiter) release(id string, reserved, tokens int) {
 	st := l.state(id)
 	st.mu.Lock()
 	defer st.mu.Unlock()
-	if st.inFlight > 0 {
-		st.inFlight--
+	now := l.now()
+	st.prune(now)
+	st.unreserve(reserved)
+	if tokens > 0 {
+		st.log = append(st.log, logEntry{t: now, tokens: tokens})
+		st.today += tokens
 	}
+}
+
+// abort ends an admission that never reached the queue: frees the in-flight slot, drops the
+// reservation, and removes the newest admission from the RPM log (with max_concurrent > 1 that may
+// be a sibling's entry a few milliseconds apart; the count is exact either way).
+func (l *limiter) abort(id string, reserved int) {
+	st := l.state(id)
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	st.unreserve(reserved)
 	for i := len(st.log) - 1; i >= 0; i-- {
 		if st.log[i].req == 1 {
 			st.log = append(st.log[:i], st.log[i+1:]...)
@@ -193,20 +210,12 @@ func (l *limiter) abort(id string) {
 	}
 }
 
-// release frees the in-flight slot taken by admit and charges the real token usage.
-func (l *limiter) release(id string, tokens int) {
-	st := l.state(id)
-	st.mu.Lock()
-	defer st.mu.Unlock()
-	now := l.now()
-	st.prune(now)
+// unreserve gives back one in-flight slot and a reservation. Caller holds st.mu.
+func (st *keyState) unreserve(reserved int) {
 	if st.inFlight > 0 {
 		st.inFlight--
 	}
-	if tokens > 0 {
-		st.log = append(st.log, logEntry{t: now, tokens: tokens})
-		st.today += tokens
-	}
+	st.reserved = max(st.reserved-reserved, 0)
 }
 
 func (l *limiter) counters(id string) usage.KeyCounters {
@@ -220,7 +229,7 @@ func (l *limiter) counters(id string) usage.KeyCounters {
 	defer st.mu.Unlock()
 	st.prune(l.now())
 	reqs, tokens := st.used()
-	return usage.KeyCounters{InFlight: st.inFlight, RPMUsed: reqs, TPMUsed: tokens, TodayTokens: st.today, LastSeen: st.lastSeen}
+	return usage.KeyCounters{InFlight: st.inFlight, RPMUsed: reqs, TPMUsed: tokens + st.reserved, TodayTokens: st.today + st.reserved, LastSeen: st.lastSeen}
 }
 
 func (l *limiter) allCounters() map[string]usage.KeyCounters {
