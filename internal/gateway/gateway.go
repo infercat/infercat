@@ -40,6 +40,9 @@ const (
 	defaultQueueTimeout    = 30 * time.Second
 	defaultRequestTimeout  = 300 * time.Second
 	defaultMaxBody         = 4 << 20
+	defaultReadTimeout     = 30 * time.Second // whole request body, from handler entry (006 promise 4)
+	defaultWriteTimeout    = 60 * time.Second // any single write or flush to the friend (006 promise 3)
+	maxEndpointLen         = 64               // usage.Event.Endpoint is the request path: bounded (006 promise 7)
 )
 
 // Gateway serves the API on any number of listeners (the tunnel, and loopback in dev mode) and
@@ -52,10 +55,15 @@ type Gateway struct {
 	logf  func(string, ...any)
 	lim   *limiter
 
-	semMu    sync.Mutex    // guards sem, which SetSlots swaps
-	sem      chan struct{} // global slots; cap(sem) = slots
-	inFlight atomic.Int32  // holders of a global slot (on any generation of sem)
-	waiting  atomic.Int32  // goroutines blocked on sem
+	semMu      sync.Mutex    // guards sem, which SetSlots swaps
+	sem        chan struct{} // global slots; cap(sem) = slots
+	inFlight   atomic.Int32  // holders of a global slot (on any generation of sem)
+	waiting    atomic.Int32  // goroutines blocked on sem
+	maxWaiting atomic.Int32  // max(2, 2×slots) may wait at once (006 promise 10); follows SetSlots
+	bodies     atomic.Int32  // request bodies held in memory (per-key slots bound it; tests read it)
+
+	readTimeout  time.Duration // unexported: tests shorten them, hosts get the defaults
+	writeTimeout time.Duration
 
 	mu      sync.Mutex
 	servers []*http.Server
@@ -88,7 +96,7 @@ func New(cfg Config, up upstream.Upstream, store keys.Store, rec usage.Recorder,
 	if logf == nil {
 		logf = func(string, ...any) {}
 	}
-	return &Gateway{
+	g := &Gateway{
 		cfg:   cfg,
 		up:    up,
 		store: store,
@@ -96,8 +104,16 @@ func New(cfg Config, up upstream.Upstream, store keys.Store, rec usage.Recorder,
 		logf:  logf,
 		lim:   newLimiter(),
 		sem:   make(chan struct{}, cfg.Slots),
+
+		readTimeout:  defaultReadTimeout,
+		writeTimeout: defaultWriteTimeout,
 	}
+	g.maxWaiting.Store(waitCap(cfg.Slots))
+	return g
 }
+
+// waitCap is how many requests may wait for a global slot at once: max(2, 2×slots).
+func waitCap(slots int) int32 { return int32(max(2, 2*slots)) }
 
 // Handler is the routed API without CORS. Serve wraps it in an http.Server; use it directly only in tests.
 func (g *Gateway) Handler() http.Handler { return http.HandlerFunc(g.serveHTTP) }
@@ -196,9 +212,13 @@ func (g *Gateway) SetSlots(n int) {
 	}
 	g.cfg.Slots = n
 	g.sem = make(chan struct{}, n)
+	g.maxWaiting.Store(waitCap(n))
 }
 
-// acquire takes a global slot, waiting at most QueueTimeout. The returned func releases it.
+// acquire takes a global slot, waiting at most QueueTimeout. The returned func releases it. At most
+// maxWaiting requests wait at once (each holds a body, a goroutine, and a per-key slot); one more is
+// refused on the spot with the same 503 queue_timeout, so a burst degrades to fast 503s with
+// Retry-After instead of a growing set of parked bodies (Protection 4).
 func (g *Gateway) acquire(ctx context.Context) (func(), *gwError) {
 	g.semMu.Lock()
 	sem := g.sem
@@ -210,7 +230,10 @@ func (g *Gateway) acquire(ctx context.Context) (func(), *gwError) {
 		return release, nil
 	default:
 	}
-	g.waiting.Add(1)
+	if n := g.waiting.Add(1); n > g.maxWaiting.Load() {
+		g.waiting.Add(-1)
+		return nil, errf(CodeQueueTimeout, retryAfterQueueTimeout, "the host's engine is busy; %d requests already waiting", n-1)
+	}
 	defer g.waiting.Add(-1)
 	t := time.NewTimer(g.cfg.QueueTimeout)
 	defer t.Stop()
@@ -235,9 +258,17 @@ type call struct {
 	ev          usage.Event
 	wroteHeader bool
 	ttftSet     bool
+	noEvent     bool // unauthenticated: nothing to record (promise 7b)
+	stalled     bool // the body read deadline fired: r.Context is cancelled by net/http, the friend is still there
 }
 
 func (g *Gateway) serveHTTP(w http.ResponseWriter, r *http.Request) {
+	if r.ContentLength != 0 {
+		// A body is coming (declared, or -1 = chunked): bound how long it may take from this moment,
+		// valid key or not. This also bounds net/http's post-handler discard of a body that a rejected
+		// request never read. readBody clears it once the body is in hand.
+		_ = http.NewResponseController(w).SetReadDeadline(time.Now().Add(g.readTimeout))
+	}
 	if r.URL.Path == "/healthz" {
 		w.Header().Set("Content-Type", "application/json")
 		w.Header().Set("Content-Length", "11")
@@ -250,13 +281,16 @@ func (g *Gateway) serveHTTP(w http.ResponseWriter, r *http.Request) {
 	defer c.finish()
 
 	key, gerr := g.authenticate(r)
+	if key != nil { // active, paused, or revoked: the event names the key and last_seen moves (promise 7a)
+		c.key = key
+		c.ev.KeyID = key.ID
+		g.lim.touch(key.ID)
+	}
 	if gerr != nil {
+		c.noEvent = gerr.Code == CodeInvalidKey
 		c.fail(gerr)
 		return
 	}
-	c.key = key
-	c.ev.KeyID = key.ID
-	g.lim.touch(key.ID)
 
 	switch {
 	case r.Method == http.MethodGet && r.URL.Path == "/me":
@@ -273,7 +307,8 @@ func (g *Gateway) serveHTTP(w http.ResponseWriter, r *http.Request) {
 }
 
 // authenticate resolves the bearer secret through the store on every request (no caching: hot
-// reload is the store's job). The secret is never logged, never echoed, never put in an event.
+// reload is the store's job). The secret is never logged, never echoed, never put in an event. A
+// paused or revoked key is returned alongside its error so the rejection is recorded against it.
 func (g *Gateway) authenticate(r *http.Request) (*keys.Key, *gwError) {
 	secret, ok := bearer(r.Header.Get("Authorization"))
 	if !ok {
@@ -291,9 +326,9 @@ func (g *Gateway) authenticate(r *http.Request) (*keys.Key, *gwError) {
 	case keys.Active:
 		return k, nil
 	case keys.Revoked:
-		return nil, errf(CodeKeyRevoked, 0, "this key has been revoked by the host")
+		return k, errf(CodeKeyRevoked, 0, "this key has been revoked by the host")
 	default: // Paused, or anything unexpected: fail closed as paused
-		return nil, errf(CodeKeyPaused, 0, "this key is paused by the host")
+		return k, errf(CodeKeyPaused, 0, "this key is paused by the host")
 	}
 }
 
@@ -305,9 +340,17 @@ func bearer(h string) (string, bool) {
 	return parts[1], true
 }
 
-// finish records the usage event. It runs after every request, including rejected ones.
+// finish records the usage event. It runs after every request, including rejected ones — except
+// 401s: an unauthenticated request has no key to act on, and its path is attacker-chosen noise the
+// host cannot use (promise 7b). Endpoint is capped so a keyed friend's 404s cannot inflate the log.
 func (c *call) finish() {
+	if c.noEvent {
+		return
+	}
 	c.ev.TotalMS = time.Since(c.start).Milliseconds()
+	if len(c.ev.Endpoint) > maxEndpointLen {
+		c.ev.Endpoint = c.ev.Endpoint[:maxEndpointLen]
+	}
 	if c.g.rec != nil {
 		c.g.rec.Record(context.WithoutCancel(c.r.Context()), c.ev)
 	}
@@ -323,18 +366,28 @@ func (c *call) fail(e *gwError) {
 		}
 		return
 	}
-	if c.r.Context().Err() != nil || e.Code == CodeClientClosed {
+	if e.Code == CodeClientClosed || (c.r.Context().Err() != nil && !c.stalled) {
 		c.ev.Status, c.ev.Code = 499, string(CodeClientClosed)
 		return
 	}
 	c.ev.Status, c.ev.Code = e.Status(), string(e.Code)
+	c.armWrite()
 	writeError(c.w, e)
 }
 
 func (c *call) writeHeader(status int) {
 	c.wroteHeader = true
 	c.ev.Status = status
+	c.armWrite()
 	c.w.WriteHeader(status)
+}
+
+// armWrite gives the next write or flush to the friend writeTimeout to complete (promise 3). Called
+// before every response and re-armed per stream line, so a friend who stops reading fails the write
+// and frees the goroutine, the per-key slot, and the global slot; a friend who keeps reading is never
+// cut. net/http clears the deadline when the handler returns.
+func (c *call) armWrite() {
+	_ = http.NewResponseController(c.w).SetWriteDeadline(time.Now().Add(c.g.writeTimeout))
 }
 
 func (c *call) markTTFT() {
