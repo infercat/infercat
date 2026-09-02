@@ -30,6 +30,16 @@ bin/bunny-network serve --upstream http://127.0.0.1:18080
 
 Flags you pass to `serve` are remembered in `config.json`, so the next `serve` needs none.
 
+| `serve` flag | What it does |
+|---|---|
+| `--upstream URL` / `--upstream-key TOKEN` | your inference server (detected when absent; `--upstream auto` forgets a remembered one) |
+| `--name NAME` | the host name your friends see (default: this machine's hostname) |
+| `--web-url URL` | where friends open the web app; invites then print as a link |
+| `--slots N` | parallel requests the engine can serve (0 = ask the engine) |
+| `--region NAME` / `--derpmap-url URL` | preferred relay region / a self-hosted relay map |
+| `--dev-listen ADDR` | also serve on loopback with permissive CORS, for web development |
+| `--log-prompts`, `--ephemeral`, `--verbose` | per-run: log message content; throwaway host identity; tunnel log on the terminal |
+
 What friends can reach through the tunnel: exactly `/v1/models` and `/v1/chat/completions` on your
 upstream — nothing else on your machine, no other port, no files.
 
