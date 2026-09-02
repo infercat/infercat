@@ -6,6 +6,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"net/http/httptrace"
 	"os"
 	"sync/atomic"
 	"time"
@@ -346,10 +347,23 @@ func (q *request) callUpstream() *gwError {
 	}
 	ctx, cancel := context.WithCancel(q.r.Context())
 	q.cancelUpstream = cancel
+	// A friend who leaves before the engine was sent anything has no work to charge for: that is
+	// the QueueLost row — uncounted, charged 0 — not Cut (021 ruling). One who leaves while the
+	// engine is answering stays Cut, DESIGN §1.4's "the engine did the work". A cancelled Do reports
+	// the same error either way, so the trace is what tells them apart; it rides the context the
+	// engine seam already hands its transport, so §3.4 does not move. A write still in flight when
+	// Do returns reads as not-sent, which errs towards the friend.
+	var sent atomic.Bool
+	ctx = httptrace.WithClientTrace(ctx, &httptrace.ClientTrace{
+		WroteRequest: func(i httptrace.WroteRequestInfo) { sent.Store(i.Err == nil) },
+	})
 	resp, derr := q.g.up.Do(ctx, http.MethodPost, string(q.kind), payload, q.n.stream)
 	if derr != nil {
 		if q.r.Context().Err() != nil {
 			q.outcome = outcomeCut
+			if !sent.Load() {
+				q.outcome = outcomeQueueLost
+			}
 			return errf(CodeClientClosed, 0, "client went away")
 		}
 		q.outcome = outcomeEngineErr

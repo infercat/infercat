@@ -79,10 +79,6 @@ func TestQueueDepartureWinsTheHandover(t *testing.T) {
 // reservation left standing — and C gets the slot. (The interleaving here is the machine's; the
 // round-by-round proof is the fixture above.)
 func TestQueueDepartureIsNeverCharged(t *testing.T) {
-	t.Skip("021 contest: promise 1 does not reach this. The friend can leave in the instant after " +
-		"wait hands the slot over, and request.go:351-353 then settles a request the engine never " +
-		"saw as Cut — counted, and charged its whole reservation. Fails 1-4 in 25 under CPU load " +
-		"with the queue fix in place; delete this line when the seam is ruled on.")
 	h := newHarness(t, Config{}, nil)
 	h.gw.queueTimeout = time.Minute
 	h.up.set("sse", sseEvents(200, true)...)
@@ -91,7 +87,7 @@ func TestQueueDepartureIsNeverCharged(t *testing.T) {
 
 	ctxB, leaveB := context.WithCancel(context.Background())
 	bDone := make(chan struct{})
-	go func() { defer close(bDone); _, _ = h.streamReq(ctxB, chatBody("m1", 1, "")) }()
+	go func() { defer close(bDone); _, _ = h.streamReq(ctxB, chatBody("m1", 1, `"user":"B"`)) }()
 	waitUntil(t, 3*time.Second, "alice queued", func() bool { _, w := h.gw.Queue(); return w == 1 })
 
 	cDone := make(chan struct{})
@@ -122,6 +118,13 @@ func TestQueueDepartureIsNeverCharged(t *testing.T) {
 		return false
 	})
 	h.clean()
+	// The premise, asserted rather than assumed: B never reached the engine, so there is no work
+	// its key could honestly be charged for.
+	for _, tag := range h.up.order() {
+		if tag == "B" {
+			t.Fatalf("B reached the engine; this fixture is about a request that never did: %v", h.up.order())
+		}
+	}
 	if c := h.gw.Counters("k_alice1"); c.RPMUsed != 0 || c.TPMUsed != 0 || c.TodayTokens != 0 {
 		t.Fatalf("a friend who left while queued was billed: %+v (engine saw %v)", c, h.up.order())
 	}
