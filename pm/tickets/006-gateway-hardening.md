@@ -53,6 +53,14 @@ host's audit log. The demo launches publicly; strangers will hold invites. Each 
    `invalid_request` carrying the upstream message; keep 5xx as 502.
 9. **Evidence.** `go test -race ./internal/gateway/` printed; each promise has a named test; the existing
    28 tests still pass; a short note per promise in the Report with the file:line of the fix.
+10. **Bounded waiting queue** (added by the PM from the second-model review, 2026-09-02). gateway.go ~:187:
+   today an unlimited number of admitted requests can wait up to QueueTimeout for a global slot, each
+   holding its body and a goroutine. Cap the waiting set at max(2, 2×Slots); overflow gets an immediate
+   503 `queue_timeout` with Retry-After (reuse the code, add a distinct message "host is busy; N requests
+   already waiting"). Test: Slots=1, five concurrent → one running, two waiting, two rejected immediately.
+11. **`/me` discloses prompt logging** (added by the PM, 2026-09-02). `/me` gains `host.log_prompts: bool`
+   from `cfg.LogPrompts` (the PM updates the docs/ARCHITECTURE.md `/me` line). The web client (007) shows
+   a disclosure when it is true. Add the field and a test.
 
 **Size 3** (≤900 source lines; expect ~300). Concept budget 1: the alias denylist. **Sensitive**.
 
@@ -73,5 +81,9 @@ missing `prompt_tokens` in a nonconforming usage object charges zero · SSE sing
 - Shared llama-server at `127.0.0.1:18080` (requests only). Its `/tokenize` is what promise 2 protects.
 
 ## Log
+
+- 2026-09-02 12:05 ACK. Base 68e6469 (main), lane t006-gateway-hardening. Read BELIEFS, ARCHITECTURE, 006, 002 (report + review), gateway sources and tests. Baseline `go test -race ./internal/gateway/` ok. origin/main unchanged; local t005-integration has no gateway diff yet. No contest so far: all nine promises fit inside internal/gateway/** without seam changes.
+- 2026-09-02 12:40 PM added promises 10 (bounded waiting set, max(2, 2×Slots)) and 11 (`/me` host.log_prompts) mid-slice; budget unchanged. Both inside internal/gateway/**, no seam change: no contest. 10 is a counter check in `acquire` (Add-then-compare, exact under a race); 11 is one field in meResponse plus TestMeShape's key list.
+- 2026-09-02 12:20 Design. (1) Denylist from the live llama.cpp README (fetched; POST /completion options + OAI-compat extras) grouped as length aliases / multipliers (`n`, `n_cmpl`, `best_of`, `use_beam_search` — vLLM runs n sequences for one slot) / `n_probs` / slot-cache-context / `lora`, plus non-numeric `max_tokens`/`max_completion_tokens` (could shadow the clamp); `stream_options` left alone (include_usage already forced) and `cache_prompt` left per ticket. (2) Limiter split: `admit` (concurrency+RPM, takes the slot) → body → tokenize → `checkTokens` (TPM/daily) → global slot; new `abort` un-counts a pre-queue rejection so "rejections do not count" and the 002 tests survive the reorder. (3) Read deadline armed at handler entry for any request with a body — that also bounds net/http's post-handler discard for 401s — and cleared after a full read, because net/http's background read turns an expired read deadline into a context cancel mid-stream. (4) Write deadline via ResponseController, re-armed per line; overall bound stays RequestTimeout (absolute ctx) + one write deadline. Test-only knobs are unexported Gateway fields, not Config (concept budget).
 
 ## Report

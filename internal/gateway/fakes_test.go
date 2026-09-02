@@ -155,12 +155,13 @@ type fakeUpstream struct {
 	srv  *httptest.Server
 	base *url.URL
 
-	mu       sync.Mutex
-	info     upstream.Info
-	countErr error
-	mode     string   // sse | json | 500 | garbage | hang
-	events   []string // sse: data payloads; json: events[0] is the body
-	gap      time.Duration
+	mu        sync.Mutex
+	info      upstream.Info
+	countErr  error
+	countGate chan struct{} // when set, CountTokens blocks until it is closed
+	mode      string        // sse | json | 500 | garbage | hang | redirect | status:NNN
+	events    []string      // sse: data payloads; json and status:NNN: events[0] is the body
+	gap       time.Duration
 
 	// observations
 	started   chan struct{} // closed when the first request reaches the handler
@@ -171,6 +172,9 @@ type fakeUpstream struct {
 	lastPath  string
 	lastAuth  string
 	requests  atomic.Int32
+	landed    atomic.Int32 // requests that reached /landed, the redirect target
+	countNow  atomic.Int32 // CountTokens calls in progress
+	countMax  atomic.Int32 // the most at once
 	startOnce sync.Once
 	cancOnce  sync.Once
 }
@@ -204,7 +208,14 @@ func (f *fakeUpstream) handle(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(`{"object":"list","data":[{"id":"m1","object":"model"},{"id":"m2","object":"model"},{"id":"m3","object":"model"}]}`))
 		return
 	}
+	if r.URL.Path == "/landed" {
+		f.landed.Add(1)
+		_, _ = w.Write([]byte(`{"choices":[]}`))
+		return
+	}
 	switch mode {
+	case "redirect":
+		http.Redirect(w, r, "/landed", http.StatusFound)
 	case "500":
 		w.WriteHeader(500)
 		_, _ = w.Write([]byte(`{"error":{"message":"engine exploded"}}`))
@@ -214,6 +225,14 @@ func (f *fakeUpstream) handle(w http.ResponseWriter, r *http.Request) {
 	case "hang":
 		<-r.Context().Done()
 		f.cancOnce.Do(func() { close(f.cancelled) })
+	default: // status:NNN with events[0] as the body
+		var code int
+		if _, err := fmt.Sscanf(mode, "status:%d", &code); err != nil {
+			panic("fake upstream: unknown mode " + mode)
+		}
+		w.Header().Set("Content-Type", "application/json")
+		w.WriteHeader(code)
+		_, _ = w.Write([]byte(events[0]))
 	case "json":
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(events[0]))
@@ -261,14 +280,32 @@ func (f *fakeUpstream) set(mode string, events ...string) {
 }
 
 // CountTokens: one token per whitespace-separated word, exact — so tests can build a prompt of N tokens.
+// It tracks how many calls run at once and, with countGate set, parks callers until the gate closes.
 func (f *fakeUpstream) CountTokens(_ context.Context, text string) (int, bool, error) {
 	f.mu.Lock()
-	err := f.countErr
+	err, gate := f.countErr, f.countGate
 	f.mu.Unlock()
 	if err != nil {
 		return 0, false, err
 	}
+	n := f.countNow.Add(1)
+	defer f.countNow.Add(-1)
+	for m := f.countMax.Load(); n > m && !f.countMax.CompareAndSwap(m, n); m = f.countMax.Load() {
+	}
+	if gate != nil {
+		<-gate
+	}
 	return len(strings.Fields(text)), true, nil
+}
+
+// gateTokenize makes CountTokens block until the returned func is called.
+func (f *fakeUpstream) gateTokenize() (open func()) {
+	gate := make(chan struct{})
+	f.mu.Lock()
+	f.countGate = gate
+	f.mu.Unlock()
+	var once sync.Once
+	return func() { once.Do(func() { close(gate) }) }
 }
 
 func (f *fakeUpstream) body(t *testing.T) map[string]any {

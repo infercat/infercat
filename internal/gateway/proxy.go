@@ -8,6 +8,8 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"os"
+	"sort"
 	"strconv"
 	"strings"
 	"time"
@@ -33,12 +35,66 @@ func (c *call) readBody() ([]byte, *gwError) {
 	b, err := io.ReadAll(http.MaxBytesReader(c.w, c.r.Body, limit))
 	if err != nil {
 		var mbe *http.MaxBytesError
-		if errors.As(err, &mbe) {
+		switch {
+		case errors.As(err, &mbe):
 			return nil, errf(CodeBodyTooLarge, 0, "request body exceeds the limit of %d bytes", limit)
+		case errors.Is(err, os.ErrDeadlineExceeded): // the read deadline armed in serveHTTP (promise 4)
+			c.stalled = true
+			return nil, errf(CodeInvalidRequest, 0, "request body was not received within %s", c.g.readTimeout)
 		}
 		return nil, errf(CodeInvalidRequest, 0, "reading request body: %v", err)
 	}
+	// Body in hand: clear the read deadline. Left armed, net/http's background read (which starts at
+	// body EOF) would hit it during a long stream and cancel the request as a client disconnect.
+	_ = http.NewResponseController(c.w).SetReadDeadline(time.Time{})
 	return b, nil
+}
+
+// overrideKeys are removed from every proxied body (006 promise 1; the ticket's one new concept).
+// Source: llama.cpp tools/server/README.md (POST /completion options and the OAI-compat extras, read
+// 2026-09-02) plus vLLM's and Ollama's OpenAI layers. A key is here if it could raise output length
+// past the clamp, multiply it, pin or bypass a slot, or override what the host configured. Everything
+// that only shapes sampling or the response passes through: temperature, top_p, top_k, min_p, seed,
+// stop, presence/frequency/repeat penalties, dry_*, xtc_*, mirostat*, logit_bias, samplers, grammar,
+// json_schema, response_format, tools, logprobs, reasoning_*, chat_template_kwargs, cache_prompt,
+// t_max_predict_ms, timings_per_token, return_tokens. stream_options is not here either: the gateway
+// forces include_usage and no other member changes cost.
+var overrideKeys = []string{
+	// Output length. llama.cpp copies n_predict over max_tokens ("if n_predict is present, we overwrite
+	// the value specified earlier by max_tokens"); vLLM has min_tokens and ignore_eos; Ollama num_predict.
+	"n_predict", "max_new_tokens", "min_tokens", "num_predict", "ignore_eos",
+	// Output multipliers: n completions for one prompt are n times the tokens (and, in vLLM, n
+	// sequences) behind one global slot and one clamp.
+	"n", "n_cmpl", "best_of", "use_beam_search",
+	// Top-N probabilities for every generated token.
+	"n_probs",
+	// Slot, cache, context, and scheduling: pin a slot, retain or shift context, jump the queue.
+	"id_slot", "slot_id", "n_keep", "num_keep", "n_discard", "n_ctx", "num_ctx", "priority",
+	// The host's model configuration: per-request LoRA adapters.
+	"lora",
+}
+
+// stripOverrides deletes overrideKeys from body, plus any max_tokens / max_completion_tokens that is
+// not a number (a string there could shadow the clamp on an engine that prefers one over the other;
+// removed, the clamp sets the cap). Returns what was removed, sorted, for the host's log.
+func stripOverrides(body map[string]any) []string {
+	var removed []string
+	for _, k := range overrideKeys {
+		if _, ok := body[k]; ok {
+			delete(body, k)
+			removed = append(removed, k)
+		}
+	}
+	for _, f := range []string{"max_tokens", "max_completion_tokens"} {
+		if v, ok := body[f]; ok {
+			if _, isNum := v.(json.Number); !isNum {
+				delete(body, f)
+				removed = append(removed, f)
+			}
+		}
+	}
+	sort.Strings(removed)
+	return removed
 }
 
 // decodeObject keeps numbers as json.Number so unknown fields round-trip byte-exact in value.
@@ -214,7 +270,34 @@ func setIncludeUsage(body map[string]any) {
 
 // ---- routes ----
 
-func (c *call) chat() {
+func (c *call) chat()       { c.guarded("/v1/chat/completions", c.prepareChat) }
+func (c *call) embeddings() { c.guarded("/v1/embeddings", c.prepareEmbeddings) }
+
+// guarded runs a proxied POST in the admission order of 006 promise 2: engine health, then per-key
+// concurrency + RPM (cheap, in memory), and only under that per-key slot the body read, the override
+// strip, tokenize, clamps and context (prepare), the TPM/daily check, then the global slot and the
+// engine (proxy). A rejection before the queue aborts the admission (not counted); from the queue on
+// the request counts and is charged what the engine reports.
+func (c *call) guarded(path string, prepare func(map[string]any) (int, *gwError)) {
+	g, key := c.g, c.key
+	if !g.up.Info().Healthy {
+		c.fail(errf(CodeUpstreamDown, retryAfterUpstreamDown, "the host's engine is not reachable right now"))
+		return
+	}
+	if gerr := g.lim.admit(key.ID, key.Limits); gerr != nil {
+		c.fail(gerr)
+		return
+	}
+	charged, queued := 0, false
+	g.bodies.Add(1)
+	defer func() {
+		g.bodies.Add(-1)
+		if queued {
+			g.lim.release(key.ID, charged)
+		} else {
+			g.lim.abort(key.ID)
+		}
+	}()
 	raw, gerr := c.readBody()
 	if gerr != nil {
 		c.fail(gerr)
@@ -225,11 +308,30 @@ func (c *call) chat() {
 		c.fail(gerr)
 		return
 	}
-	c.ev.Stream, _ = body["stream"].(bool)
-	model, gerr := c.resolveModel(body)
+	if removed := stripOverrides(body); len(removed) > 0 {
+		g.logf("gateway: removed %v from a request by key %s", removed, key.ID)
+	}
+	prompt, gerr := prepare(body)
 	if gerr != nil {
 		c.fail(gerr)
 		return
+	}
+	c.ev.PromptTokens = prompt // provisional; replaced by the upstream's usage when present
+	if gerr := g.lim.checkTokens(key.ID, key.Limits, prompt); gerr != nil {
+		c.fail(gerr)
+		return
+	}
+	queued = true
+	charged = c.proxy(body, path)
+}
+
+// prepareChat resolves the model, tokenizes the prompt, clamps max_tokens, checks the context, and
+// injects include_usage for streams. Returns the pre-check prompt token count.
+func (c *call) prepareChat(body map[string]any) (int, *gwError) {
+	c.ev.Stream, _ = body["stream"].(bool)
+	model, gerr := c.resolveModel(body)
+	if gerr != nil {
+		return 0, gerr
 	}
 	c.ev.Model = model
 	text := messagesText(body["messages"])
@@ -239,41 +341,35 @@ func (c *call) chat() {
 	prompt := c.countTokens(text)
 	maxTok := clampMaxTokens(body, c.key.Limits)
 	if gerr := c.fitContext(body, prompt, maxTok); gerr != nil {
-		c.fail(gerr)
-		return
+		return 0, gerr
 	}
 	if c.ev.Stream {
 		setIncludeUsage(body)
 	}
-	c.proxy(body, "/v1/chat/completions", prompt)
+	return prompt, nil
 }
 
-func (c *call) embeddings() {
-	raw, gerr := c.readBody()
-	if gerr != nil {
-		c.fail(gerr)
-		return
-	}
-	body, gerr := decodeObject(raw)
-	if gerr != nil {
-		c.fail(gerr)
-		return
-	}
+func (c *call) prepareEmbeddings(body map[string]any) (int, *gwError) {
 	model, gerr := c.resolveModel(body)
 	if gerr != nil {
-		c.fail(gerr)
-		return
+		return 0, gerr
 	}
 	c.ev.Model = model
 	text := inputText(body["input"])
 	if c.g.cfg.LogPrompts {
 		c.ev.Prompt = text
 	}
-	c.proxy(body, "/v1/embeddings", c.countTokens(text))
+	return c.countTokens(text), nil
 }
 
-// models proxies GET /v1/models and keeps only the ids the key allows.
+// models proxies GET /v1/models under per-key concurrency and RPM (006 promise 5; no global slot:
+// it is a list, not a generation) and keeps only the ids the key allows.
 func (c *call) models() {
+	if gerr := c.g.lim.admit(c.key.ID, c.key.Limits); gerr != nil {
+		c.fail(gerr)
+		return
+	}
+	defer c.g.lim.release(c.key.ID, 0)
 	ctx, cancel := context.WithTimeout(c.r.Context(), countTimeout)
 	defer cancel()
 	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, c.upstreamURL("/v1/models"), nil)
@@ -283,8 +379,8 @@ func (c *call) models() {
 		return
 	}
 	defer resp.Body.Close()
-	if resp.StatusCode/100 != 2 {
-		c.fail(errf(CodeUpstreamError, 0, "upstream returned HTTP %d for /v1/models: %s", resp.StatusCode, snippet(resp.Body)))
+	if resp.StatusCode/100 != 2 { // a GET carries nothing of the friend's: any failure is the host's
+		c.fail(errf(CodeUpstreamError, 0, "upstream returned HTTP %d for /v1/models: %s", resp.StatusCode, upstreamMessage(resp.Body)))
 		return
 	}
 	var list struct {
@@ -329,6 +425,7 @@ type meResponse struct {
 		Relay  struct {
 			Region string `json:"region"`
 		} `json:"relay"`
+		LogPrompts bool `json:"log_prompts"` // the host records prompt text (Protection 3 disclosure; 006 promise 11)
 	} `json:"host"`
 }
 
@@ -340,6 +437,7 @@ func (c *call) me() {
 	m.Usage.RPMUsed, m.Usage.TPMUsed, m.Usage.TodayTokens, m.Usage.InFlight = cnt.RPMUsed, cnt.TPMUsed, cnt.TodayTokens, cnt.InFlight
 	info := c.g.up.Info()
 	m.Host.Name = c.g.cfg.HostName
+	m.Host.LogPrompts = c.g.cfg.LogPrompts
 	m.Host.Upstream.Kind, m.Host.Upstream.Healthy, m.Host.Upstream.ModelContext = info.Kind, info.Healthy, info.ModelContext
 	m.Host.Models = []string{}
 	for _, id := range info.Models {
@@ -370,8 +468,15 @@ func (c *call) upstreamURL(path string) string {
 	return u.String()
 }
 
+// doUpstream never follows a redirect (006 promise 6): the engine's transport stamps the host's
+// upstream API key on every request it sends, so a 3xx would replay that key to wherever Location
+// points. The 3xx surfaces as a non-2xx status instead.
 func (c *call) doUpstream(req *http.Request) (*http.Response, error) {
-	return (&http.Client{Transport: c.g.up.Transport()}).Do(req)
+	client := &http.Client{
+		Transport:     c.g.up.Transport(),
+		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+	}
+	return client.Do(req)
 }
 
 // upstreamErr maps a transport error. The friend never sees the engine's address (Protection 1);
@@ -393,35 +498,57 @@ func snippet(r io.Reader) string {
 	return strings.TrimSpace(string(b))
 }
 
-// proxy runs the guarded upstream call: health, per-key admission, global slot, the request, then
-// the stream or body pipe. Tokens are charged to the key only for a 2xx (full or partial) response.
-func (c *call) proxy(body map[string]any, path string, prompt int) {
-	g, key := c.g, c.key
-	c.ev.PromptTokens = prompt // provisional; replaced by the upstream's usage when present
-	if !g.up.Info().Healthy {
-		c.fail(errf(CodeUpstreamDown, retryAfterUpstreamDown, "the host's engine is not reachable right now"))
-		return
+// upstreamMessage is the engine's own sentence when its error body has one (llama.cpp:
+// {"error":{"message":…}}; vLLM: {"message":…}), else the raw snippet.
+func upstreamMessage(r io.Reader) string {
+	s := snippet(r)
+	var e struct {
+		Message string `json:"message"`
+		Error   struct {
+			Message string `json:"message"`
+		} `json:"error"`
 	}
-	if gerr := g.lim.admit(key.ID, key.Limits, prompt); gerr != nil {
-		c.fail(gerr)
-		return
+	if json.Unmarshal([]byte(s), &e) == nil {
+		if e.Error.Message != "" {
+			return e.Error.Message
+		}
+		if e.Message != "" {
+			return e.Message
+		}
 	}
-	charged := 0
-	defer func() { g.lim.release(key.ID, charged) }()
+	return s
+}
 
+// upstreamStatusErr maps a non-2xx status from a proxied POST (006 promise 8). 400 and 422 are about
+// the friend's own request (a schema the model cannot follow, an image it cannot take, a field it
+// rejects): 400 invalid_request carrying the engine's sentence, so their client does not retry
+// against a "broken host". Everything else — 5xx, a redirect the gateway refused to follow, 401/404
+// from a misconfigured upstream — is the host's problem: 502 upstream_error.
+func upstreamStatusErr(resp *http.Response) *gwError {
+	msg := upstreamMessage(resp.Body)
+	if resp.StatusCode == http.StatusBadRequest || resp.StatusCode == http.StatusUnprocessableEntity {
+		return errf(CodeInvalidRequest, 0, "the host's engine rejected this request (HTTP %d): %s", resp.StatusCode, msg)
+	}
+	return errf(CodeUpstreamError, 0, "upstream returned HTTP %d: %s", resp.StatusCode, msg)
+}
+
+// proxy takes a global slot (bounded wait), calls the engine, and pipes the stream or body. Returns
+// the tokens to charge the key: prompt+completion for a 2xx (full or partial) response, else 0.
+func (c *call) proxy(body map[string]any, path string) int {
+	g := c.g
 	qstart := time.Now()
 	releaseSlot, gerr := g.acquire(c.r.Context())
 	c.ev.QueuedMS = time.Since(qstart).Milliseconds()
 	if gerr != nil {
 		c.fail(gerr)
-		return
+		return 0
 	}
 	defer releaseSlot()
 
 	payload, err := json.Marshal(body)
 	if err != nil {
 		c.fail(errf(CodeInvalidRequest, 0, "request body could not be re-encoded: %v", err))
-		return
+		return 0
 	}
 	ctx, cancel := context.WithTimeout(c.r.Context(), g.cfg.RequestTimeout)
 	defer cancel()
@@ -433,19 +560,19 @@ func (c *call) proxy(body map[string]any, path string, prompt int) {
 	resp, err := c.doUpstream(req)
 	if err != nil {
 		c.fail(c.upstreamErr(err))
-		return
+		return 0
 	}
 	defer resp.Body.Close()
 	if resp.StatusCode/100 != 2 {
-		c.fail(errf(CodeUpstreamError, 0, "upstream returned HTTP %d: %s", resp.StatusCode, snippet(resp.Body)))
-		return
+		c.fail(upstreamStatusErr(resp))
+		return 0
 	}
 	if c.ev.Stream {
 		c.pipeStream(resp, cancel)
 	} else if !c.pipeBody(resp) {
-		return
+		return 0
 	}
-	charged = c.ev.PromptTokens + c.ev.CompletionTokens
+	return c.ev.PromptTokens + c.ev.CompletionTokens
 }
 
 type usageT struct {
@@ -511,7 +638,9 @@ type sseChunk struct {
 // reading each data: payload for usage. When the stream ends without a usage chunk (the friend hit
 // stop, or the engine omitted it) completion tokens are estimated as the number of delta chunks seen
 // (llama.cpp and vLLM emit one token per chunk) so an aborted stream is not free; prompt tokens fall
-// back to the pre-check count. A write error means the friend is gone: the upstream is cancelled.
+// back to the pre-check count. A write or flush error means the friend is gone or has stopped reading
+// (the per-line write deadline fired): the upstream is cancelled and every slot is freed. The whole
+// pipe is also bounded by RequestTimeout through resp's context.
 func (c *call) pipeStream(resp *http.Response, cancelUpstream context.CancelFunc) {
 	h := c.w.Header()
 	h.Set("Content-Type", "text/event-stream")
@@ -526,6 +655,7 @@ func (c *call) pipeStream(resp *http.Response, cancelUpstream context.CancelFunc
 	for {
 		line, err := br.ReadBytes('\n')
 		if len(line) > 0 {
+			c.armWrite()
 			if _, werr := c.w.Write(line); werr != nil {
 				cancelUpstream()
 				break
@@ -533,7 +663,10 @@ func (c *call) pipeStream(resp *http.Response, cancelUpstream context.CancelFunc
 			c.markTTFT()
 			trimmed := bytes.TrimRight(line, "\r\n")
 			if len(trimmed) == 0 {
-				_ = rc.Flush()
+				if ferr := rc.Flush(); ferr != nil {
+					cancelUpstream()
+					break
+				}
 			} else if data, ok := bytes.CutPrefix(trimmed, []byte("data:")); ok {
 				data = bytes.TrimSpace(data)
 				var ch sseChunk
@@ -554,6 +687,7 @@ func (c *call) pipeStream(resp *http.Response, cancelUpstream context.CancelFunc
 			}
 		}
 		if err != nil {
+			c.armWrite()
 			_ = rc.Flush()
 			if !errors.Is(err, io.EOF) {
 				c.fail(c.upstreamErr(err))

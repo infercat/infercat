@@ -74,9 +74,16 @@ func TestAuthCodes(t *testing.T) {
 	h.setKey(func(k *keys.Key) { k.Status = keys.Revoked })
 	h.expectErr(h.get("/me"), CodeKeyRevoked)
 
-	evs := h.rec.waitFor(t, 9)
-	if evs[0].Status != 401 || evs[0].Code != "invalid_key" || evs[0].KeyID != "" {
-		t.Fatalf("rejected requests record an event: %+v", evs[0])
+	// 7 of the 11 requests record an event: the four 401s record nothing (006 promise 7b); paused and
+	// revoked rejections name the key (7a). TestAuditTruth covers the details.
+	evs := h.rec.waitFor(t, 7)
+	for _, ev := range evs {
+		if ev.Status == 401 {
+			t.Fatalf("a 401 recorded a usage event: %+v", ev)
+		}
+		if ev.Status == 403 && ev.KeyID != "k_alice1" {
+			t.Fatalf("a paused/revoked rejection must name the key: %+v", ev)
+		}
 	}
 }
 
@@ -110,7 +117,7 @@ func TestMeShape(t *testing.T) {
 		"":         {"key", "limits", "usage", "host"},
 		"key":      {"id", "name", "status"},
 		"usage":    {"rpm_used", "tpm_used", "today_tokens", "in_flight"},
-		"host":     {"name", "upstream", "models", "relay"},
+		"host":     {"name", "upstream", "models", "relay", "log_prompts"},
 		"upstream": {"kind", "healthy", "model_context"},
 		"relay":    {"region"},
 	}
@@ -375,10 +382,11 @@ func TestRPM(t *testing.T) {
 	if m.Usage.RPMUsed != 2 {
 		t.Fatalf("rpm_used: %d", m.Usage.RPMUsed)
 	}
-	// /me and /v1/models are not rate limited.
-	if r := h.get("/v1/models"); r.status != 200 {
-		t.Fatalf("models under rpm: %d", r.status)
+	// /me is not rate limited; /v1/models is (006 promise 5).
+	if r := h.get("/me"); r.status != 200 {
+		t.Fatalf("/me under rpm: %d", r.status)
 	}
+	h.expectErr(h.get("/v1/models"), CodeRateLimited)
 }
 
 func TestTPMAndDailyAfterRealUsage(t *testing.T) {
@@ -902,6 +910,19 @@ func TestServeDevRefusesNonLoopback(t *testing.T) {
 
 // ---- limiter unit tests with a fake clock ----
 
+// admitAll is 002's one-shot admission (concurrency, RPM, TPM, daily) composed from 006's split:
+// admit, then checkTokens with the prompt count, aborting the admission when the tokens do not fit.
+func (l *limiter) admitAll(id string, lim keys.Limits, prompt int) *gwError {
+	if e := l.admit(id, lim); e != nil {
+		return e
+	}
+	if e := l.checkTokens(id, lim, prompt); e != nil {
+		l.abort(id)
+		return e
+	}
+	return nil
+}
+
 func TestLimiterWindowsWithFakeClock(t *testing.T) {
 	l := newLimiter()
 	now := time.Date(2026, 9, 2, 12, 0, 0, 0, time.UTC)
@@ -914,13 +935,13 @@ func TestLimiterWindowsWithFakeClock(t *testing.T) {
 			t.Fatalf("unexpected: %v", e)
 		}
 	}
-	must(l.admit("k", lim, 10))
+	must(l.admitAll("k", lim, 10))
 	l.release("k", 60)
 	now = now.Add(10 * time.Second)
-	must(l.admit("k", lim, 10))
+	must(l.admitAll("k", lim, 10))
 	l.release("k", 30)
 	// RPM full: Retry-After = when the first admission leaves the window (50 s).
-	e := l.admit("k", lim, 10)
+	e := l.admitAll("k", lim, 10)
 	if e == nil || e.Code != CodeRateLimited || e.RetryAfter != 50 {
 		t.Fatalf("rpm: %+v", e)
 	}
@@ -930,19 +951,19 @@ func TestLimiterWindowsWithFakeClock(t *testing.T) {
 		t.Fatalf("after expiry: %+v", c)
 	}
 	// TPM: 30 used + 80 requested > 100; retry when the 30-token charge (t=10) expires at t=70 → 10 s.
-	e = l.admit("k", lim, 80)
+	e = l.admitAll("k", lim, 80)
 	if e == nil || e.RetryAfter != 10 || !strings.Contains(e.Message, "token limit") {
 		t.Fatalf("tpm: %+v", e)
 	}
 	// A request bigger than the whole TPM can never fit: Retry-After is the full window.
-	if e = l.admit("k", lim, 101); e == nil || e.RetryAfter != 60 {
+	if e = l.admitAll("k", lim, 101); e == nil || e.RetryAfter != 60 {
 		t.Fatalf("oversize: %+v", e)
 	}
 	// Daily: 90 used today. Jump to one second before UTC midnight (same day, window empty).
 	now = time.Date(2026, 9, 2, 23, 59, 59, 0, time.UTC)
-	must(l.admit("k", lim, 1))
+	must(l.admitAll("k", lim, 1))
 	l.release("k", 59) // 149 today
-	e = l.admit("k", lim, 2)
+	e = l.admitAll("k", lim, 2)
 	if e == nil || e.Code != CodeBudgetExhausted || e.RetryAfter != 1 {
 		t.Fatalf("daily: %+v", e)
 	}
@@ -951,18 +972,18 @@ func TestLimiterWindowsWithFakeClock(t *testing.T) {
 	if c := l.counters("k"); c.TodayTokens != 0 {
 		t.Fatalf("day did not roll: %+v", c)
 	}
-	must(l.admit("k", keys.Limits{DailyTokens: 150}, 100))
+	must(l.admitAll("k", keys.Limits{DailyTokens: 150}, 100))
 	// Concurrency and release bookkeeping.
 	l2 := newLimiter()
-	must(l2.admit("k", keys.Limits{MaxConcurrent: 2}, 0))
-	must(l2.admit("k", keys.Limits{MaxConcurrent: 2}, 0))
-	if e := l2.admit("k", keys.Limits{MaxConcurrent: 2}, 0); e == nil || e.Code != CodeConcurrencyLimited || e.RetryAfter != 1 {
+	must(l2.admitAll("k", keys.Limits{MaxConcurrent: 2}, 0))
+	must(l2.admitAll("k", keys.Limits{MaxConcurrent: 2}, 0))
+	if e := l2.admitAll("k", keys.Limits{MaxConcurrent: 2}, 0); e == nil || e.Code != CodeConcurrencyLimited || e.RetryAfter != 1 {
 		t.Fatalf("concurrency: %+v", e)
 	}
 	l2.release("k", 0)
-	must(l2.admit("k", keys.Limits{MaxConcurrent: 2}, 0))
+	must(l2.admitAll("k", keys.Limits{MaxConcurrent: 2}, 0))
 	// Zero limits mean unlimited.
 	for i := 0; i < 50; i++ {
-		must(l2.admit("z", keys.Limits{}, 1000))
+		must(l2.admitAll("z", keys.Limits{}, 1000))
 	}
 }

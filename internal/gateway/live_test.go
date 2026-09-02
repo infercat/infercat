@@ -171,6 +171,16 @@ func TestLiveLlamaCPP(t *testing.T) {
 		t.Fatalf("live non-stream failed")
 	}
 
+	// 006 promise 1 against the real engine: llama.cpp lets n_predict win over max_tokens (proven by the
+	// review); through the gateway the alias is stripped and the key's cap holds.
+	h.setKey(func(k *keys.Key) { k.Limits = keys.DefaultLimits(); k.Limits.MaxOutputTokens = 8 })
+	r = h.post("/v1/chat/completions", `{"messages":[{"role":"user","content":"Count from one to one hundred, slowly."}],"max_tokens":8,"n_predict":40,"ignore_eos":true}`)
+	ev = h.rec.waitFor(t, 5)[4]
+	t.Logf("max_tokens 8 + n_predict 40 + ignore_eos through the gateway: %d, completion_tokens %d", r.status, ev.CompletionTokens)
+	if r.status != 200 || ev.CompletionTokens > 8 {
+		t.Fatalf("alias bypass: completion_tokens %d", ev.CompletionTokens)
+	}
+
 	// Limits against real counts: context too long, then rpm.
 	h.setKey(func(k *keys.Key) { k.Limits.MaxContext = 64; k.Limits.MaxOutputTokens = 32 })
 	long := strings.Repeat("The quick brown fox jumps over the lazy dog. ", 20)
