@@ -3,7 +3,7 @@ id: 002
 title: Gateway — auth, per-key limits, queue, clamps, streaming proxy, usage
 kind: sensitive
 size: 5
-status: dispatched
+status: landed
 updated: 2026-09-02
 release: demo-1
 ---
@@ -199,3 +199,17 @@ Body: declared length over cap → 413 without reading a byte; chunked over cap 
 - **Concepts:** 5 of 6 — sliding window (RPM + TPM), daily budget, global queue, per-key concurrency, error code table. Token bucket not used (folded into the sliding window).
 - **Dependencies added:** none. `go.mod`/`go.sum` untouched. Files outside `internal/gateway/**`: only this ticket file.
 - **Production-touching actions:** none. The shared llama-server received test requests only.
+
+## Ruling (PM, 2026-09-02 04:20)
+
+**Landed** on main (ff of `3141e76`), wiring flipped in the same landing: `wire_stub.go` deleted, `wire`
+tag dropped, `go mod tidy`; build/vet/test green and three cross-compiles OK, printed.
+- **Blessed:** `invalid_request` (400) and `not_found` (404) join the contract's error table.
+- **Blessed deviation:** an aborted stream with no usage chunk is charged by the deltas seen. The stop
+  button is not free; under-charging by the missing final chunk is acceptable.
+- **To 005:** shrink-to-fit `max_tokens` when the prompt fits but prompt + max_tokens exceeds the
+  effective context (reject only when the prompt alone does not fit) — small, friendlier, and what
+  llama.cpp does itself. And `Slots` fixed at `New` is wrong when the engine is down at startup: 003's
+  serve must re-apply slots after the first successful `Refresh` (gateway gains `SetSlots`).
+- Adversarial review dispatched post-landing (auth/secrets, streaming proxy, limits/queue, contract
+  shapes, resource safety).
