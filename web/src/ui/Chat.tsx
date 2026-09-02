@@ -9,6 +9,7 @@ import {
   type ChatMessage,
   type FriendlyError,
 } from '../api';
+import { VERSION } from '../product';
 import {
   ago,
   degradedLine,
@@ -604,6 +605,8 @@ function SettingsSheet({
             : ''}
           {live.pathOk ? '' : ` The path last measured ${ago(Date.now() - live.pathAt)}.`}
         </p>
+        {/* The app's half of a bug report; the host's half is `bunny-network version`. */}
+        <p className="dim small-print">App version {VERSION}</p>
         <button className="primary small" onClick={onClose}>
           Done
         </button>

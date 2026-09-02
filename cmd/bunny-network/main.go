@@ -125,7 +125,8 @@ func run(ctx context.Context, args []string, out, errw io.Writer, in io.Reader, 
 	case "usage":
 		err = e.cmdUsage(ctx, dataDir, cargs)
 	case "version":
-		fmt.Fprintf(out, "%s %s\n", product.Name, product.Version)
+		// Both halves of a bug report start here: which build, from which commit, built when.
+		fmt.Fprintf(out, "%s %s (%s, %s)\n", product.Name, product.Version, product.Commit, product.Date)
 	case "help", "-h", "--help":
 		fmt.Fprint(out, rootHelp)
 	default:
