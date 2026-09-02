@@ -50,4 +50,32 @@ legal*; it publishes nothing (founder gates distribution, license, and the name 
 
 ## Log
 
+- **2026-09-02 15:36 EDT** — ACK. Base `81bc23f`, lane `t017-release`. Read the ticket, BELIEFS,
+  LAUNCH, README, Makefile, product.go, main.go, vite.config.ts, product.ts, go.mod. Tooling
+  installed: `goreleaser 2.18.0` (brew), `go-licenses` (`go install …@latest`, 2026-09-02). Local Go
+  is 1.26.6, so `GOTOOLCHAIN=auto` pulls go1.27.0 for the `go 1.27.0` line in go.mod.
+- **2026-09-02 15:40 EDT** — Decision: the Makefile reads `CLIName` and `Version` out of
+  `internal/product/product.go` with sed and exports them as `CLI_NAME` / `PRODUCT_VERSION` /
+  `VITE_APP_VERSION`, so `.goreleaser.yaml` and the web bundle hold no second copy of the name or
+  the version (BELIEFS: "product name lives in one constant"). Same trick `web/vite.config.ts`
+  already uses on `src/product.ts`. Consequence: goreleaser runs through `make release-dry`, never
+  bare — a bare run fails on the missing env, which is the intended nudge. `web/vite.config.ts`
+  therefore needed no edit: Vite already inlines `VITE_*` from the environment.
+- **2026-09-02 15:44 EDT** — `hack/notices.sh`: `go-licenses report` (own module ignored) +
+  `pnpm licenses list --json --prod`, one allowlist gate over both trees, verbatim BSD-3 text for
+  `tailscale.com` and `github.com/tailscale/tailcat` read from their `LicensePath`. `check` mode
+  regenerates and diffs, so a stale file fails too; the generator prints no date, which is what
+  makes that diff meaningful.
+- **2026-09-02 15:46 EDT** — Local snapshot green: 5 binaries, 6 archives, checksums. The web zip
+  holds the bundle at its root. Proved `VITE_APP_VERSION` reaches the bundle by building with a
+  probe value (`9.9.9-stamp-probe` lands in the chunk) rather than trusting a default that happens
+  to match.
+- **2026-09-02 15:48 EDT** — **Outside the scope contract's file list, declared:** promise 3 wants
+  the version *shown*, but nothing rendered `VERSION` before this ticket (it was a dead export;
+  `web/src/product.ts:5` was its only mention in the tree). Showing it needs a component. Held to
+  the smallest possible edit in 014's territory: one import and one inserted `<p>` in
+  `web/src/ui/Chat.tsx`'s Settings sheet (the About surface), reusing the existing
+  `dim small-print` classes — no new CSS, no line of 014's own copy touched. Flagged for 014's
+  rebase and for the PM's ruling.
+
 ## Report

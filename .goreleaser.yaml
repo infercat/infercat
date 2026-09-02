@@ -1,0 +1,67 @@
+# Release engineering for the host binary (ticket 017). This file PUBLISHES NOTHING: there is no
+# `release:`, `brews:`, or any other publisher section, and `make release-dry` runs goreleaser with
+# --snapshot --skip=publish. The founder gates distribution and licence (pm/LAUNCH.md F4/F5); a
+# later ticket adds a publisher once those are decided.
+#
+# Run it through `make release-dry`, never bare: the Makefile is what reads CLI_NAME and
+# PRODUCT_VERSION out of internal/product/product.go, because the product name and version live in
+# one constant (pm/BELIEFS.md) and this file must not become a second copy of them.
+version: 2
+
+snapshot:
+  # An untagged tree still builds a named, versioned set of artifacts: the version the source says.
+  version_template: "{{ .Env.PRODUCT_VERSION }}"
+
+builds:
+  - id: cli
+    main: ./cmd/bunny-network
+    binary: "{{ .Env.CLI_NAME }}"
+    env:
+      - CGO_ENABLED=0
+    # -trimpath drops build paths, -s -w drop the symbol and DWARF tables: same input, same bytes,
+    # and nothing in the binary says where it was built.
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w
+      - -X github.com/2185Lab/bunny-network/internal/product.Version={{ .Version }}
+      - -X github.com/2185Lab/bunny-network/internal/product.Commit={{ .FullCommit }}
+      - -X github.com/2185Lab/bunny-network/internal/product.Date={{ .CommitDate }}
+    goos: [darwin, linux, windows]
+    goarch: [amd64, arm64]
+    ignore:
+      # Windows on arm64 is not a host we have ever run; add it when someone asks.
+      - goos: windows
+        goarch: arm64
+
+archives:
+  - id: cli
+    ids: [cli]
+    name_template: "{{ .Env.CLI_NAME }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    # What a host needs beside the binary: how to run it, and who else's work is inside it.
+    files:
+      - README.md
+      - THIRD_PARTY_NOTICES.md
+
+  - id: web
+    # A meta archive carries no binary: this is the static web app, zipped on its own so a host can
+    # self-serve it (`web-<version>.zip`, unzip and point any static server at it). `make web`
+    # builds web/dist first; `make release-dry` depends on it.
+    meta: true
+    name_template: "web-{{ .Version }}"
+    formats: [zip]
+    files:
+      - src: web/dist
+        dst: .
+      - README.md
+      - THIRD_PARTY_NOTICES.md
+
+checksum:
+  name_template: "{{ .Env.CLI_NAME }}_{{ .Version }}_checksums.txt"
+  algorithm: sha256
+
+report_sizes: true
