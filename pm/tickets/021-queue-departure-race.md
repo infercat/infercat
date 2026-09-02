@@ -45,7 +45,17 @@ not counted, 0 charged. Reproduced 5/30 under CPU load.
 - **2026-09-02 17:29 EDT** — Instrumented `callUpstream` (reverted). Cause pinned, evidence in
   `## Contest`. Backed the tightening out — it moved no assertion and is not worth the code — and
   parked the integration fixture behind `t.Skip` naming the contest.
-- **2026-09-02 17:35 EDT** — Froze on `002e67a`.
+- **2026-09-02 17:35 EDT** — Froze on `002e67a` with the contest.
+- **2026-09-02 17:40 EDT** — **PM ruling: contest accepted**, scope extended to `request.go`'s
+  `callUpstream`. Applied, un-skipped the fixture — and it still failed **2/25** under the hogs. The
+  ruling's own words are why: "gone *before `callUpstream` sends anything*". A context check taken
+  before `Do` does not answer that question, because the cancellation lands *inside* `Do`, after the
+  check and before the bytes reach the engine (`engine saw: [C]` while B was billed).
+- **2026-09-02 17:45 EDT** — Implemented the ruling as written, with the one thing it needed and did
+  not name: a way to know whether anything was sent. `httptrace.WroteRequest` on the context the
+  engine seam already hands its transport. **25/25 green under four CPU hogs.**
+- **2026-09-02 17:55 EDT** — Settle table's other rows re-proved untouched under the same load;
+  `-race -count=10` green; full checks green. Re-froze on `002e67a`.
 
 ## Report
 
@@ -91,11 +101,79 @@ ok      github.com/2185Lab/bunny-network/internal/gateway        15.344s
 **246 passed / 0 failed / 3 skipped**. The third skip is new and is the contest below
 (`TestQueueDepartureIsNeverCharged`); the other two are the pre-existing opt-in live tests.
 
-**Declared loudly.** One promise is not met and I did not paper over it: promise 2's *charged = 0*
-clause does not hold through the pipeline, because the remaining hole is not in the queue. The
-fixture that proves it is in the tree, `t.Skip`-ped with the reason, one line from being live.
+### The ruling, applied (second freeze)
+
+The contest below was **accepted**: scope extended to `callUpstream`. Applying it as a context check
+taken before `Do` was not enough — measured, not guessed: **2/25 under the hogs**, with
+`engine saw: [C]` while B was billed 2049. The cancellation lands *inside* `Do`, after any check the
+caller can take and before the bytes reach the engine.
+
+So the ruling is implemented by the fact it names — whether anything was **sent** — read from
+`httptrace.WroteRequest` on the context the engine seam already hands its transport. `Do` reports
+the identical `context canceled` error whether or not the request left the building; the trace is
+the only thing that separates the two. `upstream.Engine` does not move (DESIGN §3.4 intact): both
+the real client (`upstream/client.go:108`) and the test fake build their request with
+`http.NewRequestWithContext` from the context we pass, so the trace rides through unchanged.
+
+```go
+	var sent atomic.Bool
+	ctx = httptrace.WithClientTrace(ctx, &httptrace.ClientTrace{
+		WroteRequest: func(i httptrace.WroteRequestInfo) { sent.Store(i.Err == nil) },
+	})
+	resp, derr := q.g.up.Do(ctx, http.MethodPost, string(q.kind), payload, q.n.stream)
+	if derr != nil {
+		if q.r.Context().Err() != nil {
+			q.outcome = outcomeCut
+			if !sent.Load() {
+				q.outcome = outcomeQueueLost
+			}
+```
+
+**The other settle rows are untouched, and that is the point of the split.** I6's
+`Cut: non-stream, client gone before the headers` sends the engine a complete request and then the
+friend leaves while it is thinking: `WroteRequest` fired clean, so it stays Cut and is still charged
+its reservation — §1.4's "the engine did the work" still means what it said. Only the case where
+nothing was ever written changes. Re-proved under four CPU hogs: `TestI6SettleTable` ×25 green,
+I1/I5/I7/I8 ×10 green.
+
+A write still in flight when `Do` returns reads as not-sent. That errs towards the friend, which is
+the right direction for a billing decision, and `-race -count=10` is green over the atomic.
+
+**Fixture, un-skipped and strengthened.** `TestQueueDepartureIsNeverCharged` now tags B's body and
+asserts the engine never saw B *before* asserting the bill — so its premise is checked rather than
+assumed, and a run where B did reach the engine reports that instead of a confusing overcharge.
+**25/25 green under four CPU hogs**, where the same fixture was 1-4/25 red before the ruling.
+
+**Second freeze, evidence printed.**
+
+```
+$ for i in 1 2 3 4; do yes > /dev/null & done          # hogs killed after; pgrep -x yes = 0
+$ go test -count=25 -run TestQueueDeparture ./internal/gateway/
+ok      github.com/2185Lab/bunny-network/internal/gateway        18.256s
+$ go test -count=25 -run TestI6SettleTable ./internal/gateway/
+ok      github.com/2185Lab/bunny-network/internal/gateway        36.868s
+$ go test -count=10 -run 'TestI1|TestI5|TestI7|TestI8' ./internal/gateway/
+ok      github.com/2185Lab/bunny-network/internal/gateway        55.563s
+
+$ go test -race -count=10 ./internal/gateway/
+ok      github.com/2185Lab/bunny-network/internal/gateway        192.889s
+```
+
+`go build ./... && go vet ./... && go test ./...` — every package ok:
+**247 passed / 0 failed / 2 skipped**. The skip that was the contest is gone; the two remaining are
+the pre-existing opt-in live tests.
+
+**Declared loudly — the line budget.** 164 added / 3 removed against a stated **150**: **14 over**.
+The ruling added a second file after the budget was set; `request.go` is 14 of the added lines, and
+the fixture's new premise assertion is 3. I trimmed what I could (the trace callback to one line)
+rather than trim the fixture's reasons. Not silent, and yours to rule on.
 
 ## Contest
+
+> **Resolved 2026-09-02 17:40 EDT — accepted by the PM.** Scope extended to `callUpstream`; applied
+> and proved above. Kept verbatim as the record of what was contested and on what evidence. One
+> correction the implementation forced: the "smallest seam I propose" below is *not* sufficient on
+> its own — see the ruling section for why, and what replaced it.
 
 **Promise 2 cannot be met inside the scope contract.** The ticket scopes the fix to
 `internal/gateway/queue.go`. Promise 1 closes the select race; it does not close the *departure*
@@ -137,8 +215,9 @@ I also tried the only tightening available inside `queue.go` — a second `ctx.E
 when the friend leaves while the engine is answering, false here: `up.Do` returned before a byte was
 sent, so no work exists to charge for.
 
-**Smallest seam I propose.** One line, no new concept: at `request.go:352` set
-`q.outcome = outcomeQueueLost` instead of `outcomeCut`. The friend left before the engine was ever
+**Smallest seam I propose.** *(Superseded — this was one line short of correct; the sent/not-sent
+fact has to be read from the transport, not from a context check. See the ruling section.)* At
+`request.go:352` set `q.outcome = outcomeQueueLost` instead of `outcomeCut`. The friend left before the engine was ever
 called, which is exactly the QueueLost row; `settleRow`'s existing
 `return q.ev.Code == string(CodeQueueTimeout), 0` then yields uncounted / charged 0, and
 `fail` already stamps the event 499 `client_closed`. Nothing else moves — `finish` still releases
@@ -152,6 +231,7 @@ meaning "bytes were exchanged", which is what makes charging it honest.
 `TestQueueDepartureIsNeverCharged` (`queue_test.go`) turns the fixture on; it already asserts
 counted 0, charged 0, no reservation standing, alice's event 499/`client_closed`, and that the slot
 reached C. Estimated cost: 1 source line, 1 test line, ~10 minutes.
+*(Actual: 14 source lines and 3 test lines — the estimate was wrong for the reason above.)*
 
 ## Freeze
 
@@ -159,11 +239,12 @@ reached C. Estimated cost: 1 source line, 1 test line, ~10 minutes.
 |---|---|
 | base | `002e67a` (origin/main; dispatched at `c0e1733`, rebased) |
 | lane | `t021-queue-race` (PM's WIP commit squashed into one) |
-| patch SHA-256 | `0a282ab098610c8ee8f779454542cf8a32c2fbad87f555e1b8c1e0a6d06b5eba` (`git diff 002e67a -- internal/ \| shasum -a 256`) |
-| source lines | `queue.go` 11 added / 3 removed (6 of the 11 are comment) |
-| test lines | `queue_test.go` 137 added / 0 removed |
-| total | **148 of the 150-line budget** |
-| concepts | **0 of 0** — no new outcome, error code, flag, config key or state file |
-| contests | **1, above** — promise 2's *charged = 0* needs one line in `request.go:352` |
+| patch SHA-256 | `0b1bf9aaecd249ae5ec95cb8f73d74abfb9b1bfcc42324d7c678d96f9079cc7b` (`git diff 002e67a -- internal/ \| shasum -a 256`) — second freeze, supersedes `0a282ab…` |
+| source lines | `queue.go` 11 added / 3 removed (6 of the 11 are comment); `request.go` 14 added / 0 removed (6 comment, 1 import) |
+| test lines | `queue_test.go` 140 added / 0 removed |
+| total | 164 added / 3 removed — **14 over the 150-line budget, declared** (the ruling added `request.go` after the budget was set: 14 of the 14) |
+| concepts | **0 of 0** — no new outcome, error code, flag, config key or state file; `httptrace` is stdlib, no dependency added |
+| contests | **1, resolved** — raised, accepted, applied in this same lane |
 | bought beyond the ticket | nothing |
-| production-touching actions | none. Four `yes > /dev/null` hogs started locally for the stress runs and killed after (`pgrep -x yes` = 0). max-ws.lab and the shared llama-server untouched. Temporary `logf` instrumentation in `request.go` was reverted; the diff touches no file outside the scope contract. |
+| production-touching actions | none. Four `yes > /dev/null` hogs started locally for the stress runs and killed after (`pgrep -x yes` = 0). max-ws.lab and the shared llama-server untouched. Temporary `logf` instrumentation in `request.go` was reverted; the diff touches only `queue.go`, `request.go` (`callUpstream`) and `queue_test.go`. |
+| a reviewer might mistake for a bug | `outcomeCut` still charges the full reservation for a non-stream request whose friend left — that is DESIGN §1.4 and is deliberate. What changed is only which requests are Cut at all. |
