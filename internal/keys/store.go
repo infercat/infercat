@@ -67,6 +67,15 @@ func NewFileStore(dataDir string) (*FileStore, error) {
 // Path is the file this store reads and writes.
 func (s *FileStore) Path() string { return s.path }
 
+// Reload re-reads keys.json now, past the once-per-second throttle. The CLI pokes a running host
+// through the admin socket after every key write so a pause, resume, revoke, or rotate is in
+// force before the command returns (ticket 009 promise 9).
+func (s *FileStore) Reload() error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.reload(true)
+}
+
 // reload re-reads keys.json if its stamp changed. Callers hold s.mu. Unless force is set the
 // stat is skipped when the last check was less than a second ago.
 func (s *FileStore) reload(force bool) error {
@@ -259,26 +268,38 @@ func (s *FileStore) Find(ctx context.Context, ref string) (*Key, error) {
 	return cloneKey(s.keys[i]), nil
 }
 
-// index locates a key by id, else by unique name. Callers hold s.mu.
+// index locates a key by id, else by name. A name belongs to whoever is still using it: a revoked
+// key keeps its id but stops answering to its name, so `keys add bob` after revoking bob leaves
+// `keys pause bob` unambiguous (ticket 009 promise 3, which lets a revoked name be reused).
+// A name that only a revoked key holds still resolves, so a mistake can be inspected. Callers
+// hold s.mu.
 func (s *FileStore) index(ref string) (int, error) {
 	for i, k := range s.keys {
 		if k.ID == ref {
 			return i, nil
 		}
 	}
-	found, n := -1, 0
+	live, all, nLive, nAll := -1, -1, 0, 0
 	for i, k := range s.keys {
-		if k.Name == ref {
-			found, n = i, n+1
+		if k.Name != ref {
+			continue
+		}
+		all, nAll = i, nAll+1
+		if k.Status != Revoked {
+			live, nLive = i, nLive+1
 		}
 	}
-	if n > 1 {
-		return -1, fmt.Errorf("%q names %d keys; use the key id instead", ref, n)
+	switch {
+	case nLive == 1:
+		return live, nil
+	case nLive > 1:
+		return -1, fmt.Errorf("%q names %d keys; use the key id instead", ref, nLive)
+	case nAll == 1:
+		return all, nil
+	case nAll > 1:
+		return -1, fmt.Errorf("%q names %d revoked keys; use the key id instead", ref, nAll)
 	}
-	if found < 0 {
-		return -1, fmt.Errorf("%w: %q", ErrNotFound, ref)
-	}
-	return found, nil
+	return -1, fmt.Errorf("%w: %q", ErrNotFound, ref)
 }
 
 // mutate applies f to one key and persists the result, rolling back if the write fails.

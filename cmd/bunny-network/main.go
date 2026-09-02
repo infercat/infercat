@@ -86,17 +86,28 @@ var (
 type env struct {
 	out  io.Writer
 	errw io.Writer
+	in   io.Reader // nil means "nothing to read": a confirmation prompt then answers no
 	plat platform
+	// tty is whether out is a terminal. Only decoration depends on it: the QR code is drawn for a
+	// person and would be noise in a pipe (ticket 009 promise 11).
+	tty bool
 }
 
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	os.Exit(run(ctx, os.Args[1:], os.Stdout, os.Stderr, newPlatform()))
+	os.Exit(run(ctx, os.Args[1:], os.Stdout, os.Stderr, os.Stdin, isTerminal(os.Stdout), newPlatform()))
 }
 
-func run(ctx context.Context, args []string, out, errw io.Writer, plat platform) int {
-	e := &env{out: out, errw: errw, plat: plat}
+// isTerminal reports whether f is a character device, which is what "someone is watching" means
+// here. A redirected or piped stdout is not.
+func isTerminal(f *os.File) bool {
+	fi, err := f.Stat()
+	return err == nil && fi.Mode()&os.ModeCharDevice != 0
+}
+
+func run(ctx context.Context, args []string, out, errw io.Writer, in io.Reader, tty bool, plat platform) int {
+	e := &env{out: out, errw: errw, in: in, plat: plat, tty: tty}
 	dataDir, rest, err := splitGlobal(args)
 	if err != nil {
 		fmt.Fprintf(errw, "%s: %v\n\n", product.CLIName, err)

@@ -27,10 +27,26 @@ func (f Filter) match(e *Event) bool {
 	return true
 }
 
+// ModelCall reports whether e is a call that asks the engine to generate — the thing a friend
+// actually did. Everything else a connected app sends (`/me` for the usage bar, `/v1/models` on
+// connect) is a poll, and counting the two together is what made `usage` read as 58 requests for
+// one conversation and put a 3 ms poll in the latency percentiles (ticket 009 promise 6).
+func ModelCall(e *Event) bool {
+	switch e.Endpoint {
+	case "/v1/chat/completions", "/v1/embeddings":
+		return true
+	}
+	return false
+}
+
 // Stats are the numbers `usage` prints, for one key or for the whole file.
 type Stats struct {
-	KeyID            string         `json:"key_id,omitempty"`
+	KeyID string `json:"key_id,omitempty"`
+	// Requests is every recorded call; ModelCalls and AppPolls split it into what the friend did
+	// and what their app did. Requests == ModelCalls + AppPolls.
 	Requests         int            `json:"requests"`
+	ModelCalls       int            `json:"model_calls"`
+	AppPolls         int            `json:"app_polls"`
 	Errors           int            `json:"errors"`
 	ErrorsByCode     map[string]int `json:"errors_by_code,omitempty"`
 	PromptTokens     int            `json:"prompt_tokens"`
@@ -41,6 +57,9 @@ type Stats struct {
 	TotalP95MS       int64          `json:"total_p95_ms"`
 	FirstSeen        time.Time      `json:"first_seen,omitempty"`
 	LastSeen         time.Time      `json:"last_seen,omitempty"`
+	// LastCall is the last model call, which is what "last seen" means to a host: a browser tab
+	// left open polls /me every 30 s and would otherwise read as activity forever.
+	LastCall time.Time `json:"last_call,omitempty"`
 
 	ttfts  []int64
 	totals []int64
@@ -48,6 +67,12 @@ type Stats struct {
 
 func (s *Stats) add(e *Event) {
 	s.Requests++
+	call := ModelCall(e)
+	if call {
+		s.ModelCalls++
+	} else {
+		s.AppPolls++
+	}
 	if e.Status >= 400 {
 		s.Errors++
 		code := e.Code
@@ -61,17 +86,24 @@ func (s *Stats) add(e *Event) {
 	}
 	s.PromptTokens += e.PromptTokens
 	s.CompletionTokens += e.CompletionTokens
-	if e.TTFTMS > 0 {
-		s.ttfts = append(s.ttfts, e.TTFTMS)
-	}
-	if e.TotalMS > 0 {
-		s.totals = append(s.totals, e.TotalMS)
+	// Percentiles are over successful model calls only: a rejected request and a 3 ms /me poll
+	// say nothing about how fast the engine answers (ticket 009 promise 6).
+	if call && e.Status < 400 {
+		if e.TTFTMS > 0 {
+			s.ttfts = append(s.ttfts, e.TTFTMS)
+		}
+		if e.TotalMS > 0 {
+			s.totals = append(s.totals, e.TotalMS)
+		}
 	}
 	if s.FirstSeen.IsZero() || e.TS.Before(s.FirstSeen) {
 		s.FirstSeen = e.TS
 	}
 	if e.TS.After(s.LastSeen) {
 		s.LastSeen = e.TS
+	}
+	if call && e.TS.After(s.LastCall) {
+		s.LastCall = e.TS
 	}
 }
 
@@ -206,11 +238,12 @@ func AggregateFile(dataDir string, f Filter) (*Report, error) {
 	return Aggregate(fh, f)
 }
 
-// LastSeen maps key id to the timestamp of its most recent event.
+// LastSeen maps key id to the timestamp of its most recent model call — `keys list` shows when a
+// friend last used the engine, not when their open tab last polled (ticket 009 promise 12).
 func (r *Report) LastSeen() map[string]time.Time {
 	m := make(map[string]time.Time, len(r.Keys))
 	for _, s := range r.Keys {
-		m[s.KeyID] = s.LastSeen
+		m[s.KeyID] = s.LastCall
 	}
 	return m
 }

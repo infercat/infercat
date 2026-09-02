@@ -350,3 +350,39 @@ func mustRead(t *testing.T, p string) []byte {
 	}
 	return b
 }
+
+// Ticket 009 promise 3: a name belongs to whoever still uses it. Revoking bob frees the name, and
+// the new bob answers to it; the revoked one is still reachable by id, and by name once it is the
+// only holder.
+func TestNameResolvesToTheLiveKey(t *testing.T) {
+	ctx := context.Background()
+	s, _ := newStore(t)
+	old, _, err := s.Add(ctx, "bob", Limits{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetStatus(ctx, old.ID, Revoked); err != nil {
+		t.Fatal(err)
+	}
+	if k, err := s.Find(ctx, "bob"); err != nil || k.ID != old.ID {
+		t.Fatalf("a lone revoked namesake must still resolve: %v %v", k, err)
+	}
+	fresh, _, err := s.Add(ctx, "bob", Limits{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	k, err := s.Find(ctx, "bob")
+	if err != nil || k.ID != fresh.ID {
+		t.Fatalf("Find(bob) = %v, %v; want the live key %s", k, err, fresh.ID)
+	}
+	if k, err := s.Find(ctx, old.ID); err != nil || k.Status != Revoked {
+		t.Fatalf("the revoked key must stay reachable by id: %v %v", k, err)
+	}
+	// Two live namesakes are still ambiguous: that rule did not change.
+	if _, _, err := s.Add(ctx, "bob", Limits{}); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.Find(ctx, "bob"); err == nil || !strings.Contains(err.Error(), "use the key id") {
+		t.Fatalf("two live namesakes = %v; want the ambiguity error", err)
+	}
+}

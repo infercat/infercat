@@ -52,6 +52,7 @@ func writeStatus(w io.Writer, st admin.Status) {
 		fmt.Fprintf(tw, "%s\t%s\t%s\t%d\t%d\t%d\t%s\n", k.ID, k.Name, k.Status, k.InFlight, k.RPMUsed, k.TodayTokens, ago(k.LastSeen))
 	}
 	tw.Flush()
+	fmt.Fprintf(w, "\n%s\n", countsLine)
 }
 
 func healthWord(ok bool) string {

@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -290,7 +291,7 @@ func TestAddrShortForm(t *testing.T) {
 	}
 
 	dir := t.TempDir()
-	if err := writeKey(filepath.Join(dir, KeyFile), pk); err != nil {
+	if _, err := saveKey(filepath.Join(dir, KeyFile), pk); err != nil {
 		t.Fatal(err)
 	}
 	if got, err := SavedAddr(dir); err != nil || got != addr {
@@ -299,32 +300,138 @@ func TestAddrShortForm(t *testing.T) {
 }
 
 // Ticket 005 fix 10f: the temp file is a fresh O_EXCL name, so a planted host.key.json.tmp is
-// neither followed nor overwritten, the key lands at 0600, and nothing is left behind.
-func TestWriteKeyUsesAFreshTempFile(t *testing.T) {
+// neither followed nor overwritten, the key lands at 0600, and nothing is left behind. Ticket 009
+// promise 1: the identity is created once — a second saveKey never replaces it and hands back the
+// identity that is actually on disk, so the caller can adopt it.
+func TestSaveKeyIsCreateOnce(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, KeyFile)
 	decoy := path + ".tmp"
 	if err := os.WriteFile(decoy, []byte("decoy"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	pk := tailcat.NewPrivateKey()
-	pk.Public.RegionID = 302
-	for round := 0; round < 2; round++ { // second round overwrites an existing key
-		if err := writeKey(path, pk); err != nil {
+	first := tailcat.NewPrivateKey()
+	first.Public.RegionID = 302
+	for round := 0; round < 2; round++ {
+		// Round 1 creates the identity; round 2 is a second host arriving with a different key.
+		pk := first
+		if round == 1 {
+			pk = tailcat.NewPrivateKey()
+			pk.Public.RegionID = 303
+		}
+		saved, err := saveKey(path, pk)
+		if err != nil {
 			t.Fatal(err)
 		}
+		if addrFor(saved) != addrFor(first) {
+			t.Fatalf("round %d: saveKey returned %s; want the first identity %s", round, addrFor(saved), addrFor(first))
+		}
 		if b, _ := os.ReadFile(decoy); string(b) != "decoy" {
-			t.Fatalf("writeKey wrote through the fixed .tmp name: %q", b)
+			t.Fatalf("saveKey wrote through the fixed .tmp name: %q", b)
 		}
 		fi, err := os.Stat(path)
 		if err != nil || fi.Mode().Perm() != 0o600 {
 			t.Fatalf("host key: %v, mode %v; want 0600", err, fi.Mode())
 		}
-		if got, err := SavedAddr(dir); err != nil || got != addrFor(pk) {
-			t.Fatalf("SavedAddr = %q, %v; want %q", got, err, addrFor(pk))
+		if got, err := SavedAddr(dir); err != nil || got != addrFor(first) {
+			t.Fatalf("SavedAddr = %q, %v; want %q", got, err, addrFor(first))
 		}
 		if ents, _ := os.ReadDir(dir); len(ents) != 2 {
 			t.Fatalf("round %d: data dir has %v; want only the key and the decoy", round, ents)
+		}
+	}
+
+	// Concurrent claims on one fresh dir: every caller comes away with the same identity, which
+	// is the one on disk. This is the shape that broke the stranger's first session.
+	race := t.TempDir()
+	rpath := filepath.Join(race, KeyFile)
+	const n = 8
+	got := make([]string, n)
+	var wg sync.WaitGroup
+	for i := range n {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			pk := tailcat.NewPrivateKey()
+			pk.Public.RegionID = 301
+			saved, err := saveKey(rpath, pk)
+			if err != nil {
+				t.Error(err)
+				return
+			}
+			got[i] = addrFor(saved)
+		}()
+	}
+	wg.Wait()
+	want, err := SavedAddr(race)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, g := range got {
+		if g != want {
+			t.Fatalf("racer %d came away with %s; the saved identity is %s", i, g, want)
+		}
+	}
+	if ents, _ := os.ReadDir(race); len(ents) != 1 {
+		t.Fatalf("racing saveKey left %v behind; want only the host key", ents)
+	}
+}
+
+// TestStartAgreesWithSavedAddr is ticket 009 promise 1: on a fresh data dir the address the first
+// Start prints is the address SavedAddr derives and the address every later Start prints — even
+// when a second host is starting on the same dir at the same moment, which is how the first-run
+// address used to diverge.
+func TestStartAgreesWithSavedAddr(t *testing.T) {
+	mapURL := localDERP(t)
+	o := func(dir string) Options {
+		return Options{DataDir: dir, DERPMapURL: mapURL, Region: "1", Logf: mkLogf(t, "server")}
+	}
+
+	dir := t.TempDir()
+	s1 := startOK(t, o(dir))
+	addr := s1.Addr()
+	saved, err := SavedAddr(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if addr != saved {
+		t.Fatalf("the first Start printed %s but saved %s", addr, saved)
+	}
+	s1.Close()
+	s2 := startOK(t, o(dir))
+	if s2.Addr() != saved {
+		t.Fatalf("restart printed %s; the saved identity is %s", s2.Addr(), saved)
+	}
+	s2.Close()
+
+	// Two hosts starting together on a fresh dir: both serve the identity that is on disk, so
+	// invites minted against either one connect.
+	race := t.TempDir()
+	var wg sync.WaitGroup
+	addrs := make([]string, 2)
+	for i := range addrs {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+			s, err := Start(ctx, o(race))
+			if err != nil {
+				t.Error(err)
+				return
+			}
+			addrs[i] = s.Addr()
+			s.Close()
+		}()
+	}
+	wg.Wait()
+	want, err := SavedAddr(race)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i, a := range addrs {
+		if a != want {
+			t.Fatalf("host %d advertised %s but the saved identity is %s", i, a, want)
 		}
 	}
 }

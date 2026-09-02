@@ -21,6 +21,7 @@ import (
 
 	qrcode "github.com/skip2/go-qrcode"
 
+	"github.com/2185Lab/bunny-network/internal/admin"
 	"github.com/2185Lab/bunny-network/internal/keys"
 	"github.com/2185Lab/bunny-network/internal/product"
 	"github.com/2185Lab/bunny-network/internal/upstream"
@@ -55,8 +56,15 @@ type result struct {
 
 func exec(t *testing.T, plat platform, args ...string) result {
 	t.Helper()
+	return execIn(t, plat, "", args...)
+}
+
+// execIn runs the command with stdin, and with tty on, so the tests see the QR and can answer a
+// confirmation prompt the way a person at a terminal would.
+func execIn(t *testing.T, plat platform, stdin string, args ...string) result {
+	t.Helper()
 	var out, errw bytes.Buffer
-	code := run(context.Background(), args, &out, &errw, plat)
+	code := run(context.Background(), args, &out, &errw, strings.NewReader(stdin), true, plat)
 	return result{code, out.String(), errw.String()}
 }
 
@@ -127,7 +135,7 @@ func TestKeysLifecycle(t *testing.T) {
 	for _, tc := range []struct{ args, want string }{
 		{"keys pause alice", "paused"},
 		{"keys resume alice", "active"},
-		{"keys revoke alice", "revoked"},
+		{"keys revoke alice --yes", "revoked"},
 	} {
 		r := exec(t, plat, append(strings.Fields(tc.args), "--data-dir", dir)...)
 		if r.code != 0 || !strings.Contains(r.out, tc.want) {
@@ -340,22 +348,24 @@ func TestUsageAggregatesFromTheLog(t *testing.T) {
 		t.Fatal(err)
 	}
 	now := time.Now().UTC()
-	rec.Record(context.Background(), usage.Event{TS: now, KeyID: id, Status: 200, PromptTokens: 100, CompletionTokens: 20, TTFTMS: 120, TotalMS: 3100})
-	rec.Record(context.Background(), usage.Event{TS: now, KeyID: id, Status: 429, Code: "rate_limited"})
-	rec.Record(context.Background(), usage.Event{TS: now.Add(-72 * time.Hour), KeyID: id, Status: 200, PromptTokens: 999})
+	chat := "/v1/chat/completions"
+	rec.Record(context.Background(), usage.Event{TS: now, KeyID: id, Endpoint: chat, Status: 200, PromptTokens: 100, CompletionTokens: 20, TTFTMS: 120, TotalMS: 3100})
+	rec.Record(context.Background(), usage.Event{TS: now, KeyID: id, Endpoint: chat, Status: 429, Code: "rate_limited"})
+	rec.Record(context.Background(), usage.Event{TS: now, KeyID: id, Endpoint: "/me", Status: 200, TTFTMS: 2, TotalMS: 2})
+	rec.Record(context.Background(), usage.Event{TS: now.Add(-72 * time.Hour), KeyID: id, Endpoint: chat, Status: 200, PromptTokens: 999})
 	rec.Close()
 
 	r := exec(t, plat, "usage", "--data-dir", dir)
 	if r.code != 0 {
 		t.Fatal(r.err)
 	}
-	for _, want := range []string{"requests  2", "rate_limited 1", "100 prompt", "120 ms", "3.1 s", "alice"} {
+	for _, want := range []string{"requests  2 model calls (+1 app polls)", "rate_limited 1", "100 prompt", "120 ms", "3.1 s", "alice"} {
 		if !strings.Contains(r.out, want) {
 			t.Errorf("usage output missing %q:\n%s", want, r.out)
 		}
 	}
 	// The 72-hour-old event is outside the default window but inside --since all.
-	if all := exec(t, plat, "usage", "--since", "all", "--data-dir", dir); !strings.Contains(all.out, "requests  3") {
+	if all := exec(t, plat, "usage", "--since", "all", "--data-dir", dir); !strings.Contains(all.out, "requests  3 model calls") {
 		t.Errorf("--since all:\n%s", all.out)
 	}
 	// keys list picks up "last seen" from the same log.
@@ -518,7 +528,7 @@ func TestServeRoutesTunnelLogAndFollowsSlots(t *testing.T) {
 		ctx, cancel := context.WithCancel(context.Background())
 		var out, errw bytes.Buffer
 		code := make(chan int, 1)
-		go func() { code <- run(ctx, args, &out, &errw, plat) }()
+		go func() { code <- run(ctx, args, &out, &errw, nil, false, plat) }()
 		select {
 		case <-gw.serving:
 		case <-time.After(10 * time.Second):
@@ -577,4 +587,342 @@ func readFile(t *testing.T, p string) []byte {
 		t.Fatal(err)
 	}
 	return b
+}
+
+// ---- ticket 009 ----
+
+// serveOnce runs the real serve command against a fake engine, tunnel, and gateway, waits until
+// the gateway is serving, then stops it — so the startup banner can be read as a host reads it.
+func serveOnce(t *testing.T, dir string, args ...string) result {
+	t.Helper()
+	gw := newFakeGateway()
+	plat := testPlatform(fakeAddr, nil)
+	plat.startTunnel = func(ctx context.Context, o tunnelOptions) (tunnelServer, error) { return fakeTunnel{}, nil }
+	plat.newGateway = func(gatewayOptions, upstream.Upstream, keys.Store, usage.Recorder, func(string, ...any)) (gatewayServer, error) {
+		return gw, nil
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	var out, errw bytes.Buffer
+	code := make(chan int, 1)
+	go func() {
+		code <- run(ctx, append([]string{"serve", "--data-dir", dir}, args...), &out, &errw, nil, false, plat)
+	}()
+	select {
+	case <-gw.serving:
+	case c := <-code:
+		return result{c, out.String(), errw.String()}
+	case <-time.After(10 * time.Second):
+		t.Fatalf("serve never reached the gateway:\n%s%s", out.String(), errw.String())
+	}
+	cancel()
+	select {
+	case c := <-code:
+		return result{c, out.String(), errw.String()}
+	case <-time.After(10 * time.Second):
+		t.Fatal("serve did not stop")
+	}
+	return result{}
+}
+
+// fakeEngine is a llama.cpp-shaped upstream: enough for detection, health, and a model list.
+func fakeEngine(t *testing.T) string {
+	t.Helper()
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/props":
+			io.WriteString(w, `{"total_slots":2,"default_generation_settings":{"n_ctx":4096}}`)
+		case "/v1/models":
+			io.WriteString(w, `{"data":[{"id":"m"}]}`)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	t.Cleanup(srv.Close)
+	return srv.URL
+}
+
+// The banner must answer what the strangers had to go looking for: the name friends see, exactly
+// what they can reach, where the host's own files are, and — once — what host.key.json is
+// (ticket 009 promises 4, 7, 8, 12).
+func TestServeBannerTellsTheTruth(t *testing.T) {
+	dir, err := os.MkdirTemp("", "bn009-") // short: the admin socket path has a length limit
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(dir)
+	engine := fakeEngine(t)
+
+	first := serveOnce(t, dir, "--upstream", engine, "--name", "Max's laptop", "--web-url", "https://app.example")
+	for _, want := range []string{
+		"name      Max's laptop  (shown to your friends)",
+		"access    friends reach only /v1/models, /v1/chat/completions and /v1/embeddings on " + engine,
+		"nothing else on this machine",
+		"data      " + dir,
+		"web       https://app.example",
+		"wrote " + "host.key.json" + " — this is your host identity",
+		"Mint a friend:",
+	} {
+		if !strings.Contains(first.out, want) {
+			t.Errorf("first banner missing %q:\n%s", want, first.out)
+		}
+	}
+
+	// The identity note is for the run that creates the file, and never again. (The fake tunnel
+	// writes no key, so plant one the way a real first run would have.)
+	if err := os.WriteFile(filepath.Join(dir, "host.key.json"), []byte("{}"), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	second := serveOnce(t, dir)
+	if strings.Contains(second.out, "this is your host identity") {
+		t.Errorf("the identity note was printed again:\n%s", second.out)
+	}
+	if !strings.Contains(second.out, "web       https://app.example") || !strings.Contains(second.out, "data      "+dir) {
+		t.Errorf("remembered web url or data dir missing on the second run:\n%s", second.out)
+	}
+
+	// One key is "1 key", not "1 keys"; when none of them is active the line says what to do.
+	plat := testPlatform(fakeAddr, nil)
+	if r := exec(t, plat, "keys", "add", "alice", "--data-dir", dir); r.code != 0 {
+		t.Fatal(r.err)
+	}
+	if r := serveOnce(t, dir); !strings.Contains(r.out, "\n1 key active\n") {
+		t.Errorf("want \"1 key active\":\n%s", r.out)
+	}
+	if r := exec(t, plat, "keys", "revoke", "alice", "--yes", "--data-dir", dir); r.code != 0 {
+		t.Fatal(r.err)
+	}
+	if r := serveOnce(t, dir); !strings.Contains(r.out, "1 key, none active — all paused or revoked") {
+		t.Errorf("want the actionable zero-active line:\n%s", r.out)
+	}
+}
+
+// A remembered upstream that never answers must name the file it is remembered in and the way
+// out; `--upstream auto` is that way out (ticket 009 promise 10).
+func TestDownUpstreamNamesTheWayOut(t *testing.T) {
+	dir, err := os.MkdirTemp("", "bn009-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(dir)
+	dead, err := net.Listen("tcp", "127.0.0.1:0") // a port nothing is behind
+	if err != nil {
+		t.Fatal(err)
+	}
+	url := "http://" + dead.Addr().String()
+	dead.Close()
+
+	r := serveOnce(t, dir, "--upstream", url)
+	for _, want := range []string{"is not answering", configPath(dir), "--upstream auto"} {
+		if !strings.Contains(r.err, want) {
+			t.Errorf("warning missing %q:\n%s", want, r.err)
+		}
+	}
+	if got := forgetIfAuto("auto"); got != "" {
+		t.Errorf("forgetIfAuto(auto) = %q; want the remembered URL forgotten", got)
+	}
+	if got := forgetIfAuto("  AUTO "); got != "" {
+		t.Errorf("forgetIfAuto is case- and space-sensitive: %q", got)
+	}
+	if got := forgetIfAuto("http://x:1"); got != "http://x:1" {
+		t.Errorf("forgetIfAuto ate a real URL: %q", got)
+	}
+}
+
+func TestHostDisplayName(t *testing.T) {
+	if got := hostDisplayName("  Max's laptop "); got != "Max's laptop" {
+		t.Errorf("hostDisplayName trimmed wrong: %q", got)
+	}
+	h, err := os.Hostname()
+	if err != nil {
+		t.Skip("no hostname on this system")
+	}
+	want := strings.TrimSuffix(strings.TrimSpace(h), ".local")
+	if got := hostDisplayName(""); got != want {
+		t.Errorf("hostDisplayName(\"\") = %q; want this machine's hostname %q", got, want)
+	}
+}
+
+// `keys add alice` twice is what a host does after losing the invite in scrollback. It used to
+// mint a second alice and break every later `keys pause alice` as ambiguous (promise 3).
+func TestDuplicateNameIsRefused(t *testing.T) {
+	dir := t.TempDir()
+	plat := testPlatform(fakeAddr, nil)
+	if r := exec(t, plat, "keys", "add", "alice", "--data-dir", dir); r.code != 0 {
+		t.Fatal(r.err)
+	}
+	r := exec(t, plat, "keys", "add", "alice", "--data-dir", dir)
+	if r.code == 0 {
+		t.Fatalf("a second alice was minted:\n%s", r.out)
+	}
+	for _, want := range []string{"alice already has an active key", "keys rotate alice", "keys add alice-laptop", "--force"} {
+		if !strings.Contains(r.err, want) {
+			t.Errorf("refusal missing %q:\n%s", want, r.err)
+		}
+	}
+	if r := exec(t, plat, "keys", "add", "alice", "--force", "--data-dir", dir); r.code != 0 {
+		t.Fatalf("--force did not mint: %s", r.err)
+	}
+	// A revoked namesake is not in the way: the name is free again.
+	dir2 := t.TempDir()
+	if r := exec(t, plat, "keys", "add", "bob", "--data-dir", dir2); r.code != 0 {
+		t.Fatal(r.err)
+	}
+	if r := exec(t, plat, "keys", "revoke", "bob", "--yes", "--data-dir", dir2); r.code != 0 {
+		t.Fatal(r.err)
+	}
+	if r := exec(t, plat, "keys", "add", "bob", "--data-dir", dir2); r.code != 0 {
+		t.Fatalf("a revoked namesake blocked the name:\n%s", r.err)
+	}
+	// A paused one is: pausing is temporary, so the person still holds a live invite.
+	if r := exec(t, plat, "keys", "pause", "bob", "--data-dir", dir2); r.code != 0 {
+		t.Fatal(r.err)
+	}
+	if r := exec(t, plat, "keys", "add", "bob", "--data-dir", dir2); r.code == 0 {
+		t.Errorf("a paused namesake did not block the name:\n%s", r.out)
+	}
+}
+
+// The invite must say where it goes: a link when the host has a web app, the honest alternative
+// when nobody has hosted one (promise 2), and a machine-readable form for scripts (promise 11).
+func TestInviteNamesItsDestination(t *testing.T) {
+	dir := t.TempDir()
+	plat := testPlatform(fakeAddr, nil)
+
+	r := exec(t, plat, "keys", "add", "alice", "--data-dir", dir)
+	if !strings.Contains(r.out, "alice pastes this code into the web app (serve web/dist yourself for now — see README).") {
+		t.Errorf("no destination sentence when there is no web app:\n%s", r.out)
+	}
+
+	if err := saveConfig(dir, config{WebURL: "https://app.example"}); err != nil {
+		t.Fatal(err)
+	}
+	r = exec(t, plat, "keys", "add", "bob", "--data-dir", dir)
+	link := "https://app.example#" + product.InvitePrefix + "." + fakeAddr + "."
+	if !strings.Contains(r.out, "Send bob this link:") || !strings.Contains(r.out, link) {
+		t.Errorf("no link when a web app is known:\n%s", r.out)
+	}
+
+	// --json is exactly the four fields, and nothing human.
+	r = exec(t, plat, "keys", "add", "carol", "--json", "--data-dir", dir)
+	var got map[string]any
+	if err := json.Unmarshal([]byte(r.out), &got); err != nil {
+		t.Fatalf("--json did not print an object: %v\n%s", err, r.out)
+	}
+	if len(got) != 4 || got["name"] != "carol" || got["key_id"] == "" {
+		t.Errorf("--json fields = %v", got)
+	}
+	inv, _ := got["invite"].(string)
+	if !strings.HasPrefix(inv, product.InvitePrefix+".") || got["link"] != "https://app.example#"+inv {
+		t.Errorf("--json invite/link = %v", got)
+	}
+	if strings.Contains(r.out, "shown once") || strings.Contains(r.out, "\x1b[") {
+		t.Errorf("--json printed human output too:\n%s", r.out)
+	}
+
+	// rotate speaks the same way.
+	if r := exec(t, plat, "keys", "rotate", "bob", "--data-dir", dir); !strings.Contains(r.out, "Send bob this link:") {
+		t.Errorf("rotate did not name the destination:\n%s", r.out)
+	}
+}
+
+// The QR is decoration for a person: not in a pipe, and not when the host says no (promise 11).
+func TestQRIsForTerminalsOnly(t *testing.T) {
+	dir := t.TempDir()
+	plat := testPlatform(fakeAddr, nil)
+	if r := execIn(t, plat, "", "keys", "add", "alice", "--data-dir", dir); !strings.Contains(r.out, "\x1b[30;47m") {
+		t.Errorf("no QR on a terminal:\n%s", r.out)
+	}
+	var out, errw bytes.Buffer
+	if code := run(context.Background(), []string{"keys", "add", "bob", "--data-dir", dir}, &out, &errw, nil, false, plat); code != 0 {
+		t.Fatal(errw.String())
+	}
+	if strings.Contains(out.String(), "\x1b[30;47m") {
+		t.Errorf("QR drawn into a pipe:\n%s", out.String())
+	}
+	if r := execIn(t, plat, "", "keys", "add", "carol", "--no-qr", "--data-dir", dir); strings.Contains(r.out, "\x1b[30;47m") {
+		t.Errorf("--no-qr still drew one:\n%s", r.out)
+	}
+}
+
+// Revoke is permanent, so it asks, names the reversible alternative, and does nothing on anything
+// but yes (promise 9).
+func TestRevokeAsksFirst(t *testing.T) {
+	dir := t.TempDir()
+	plat := testPlatform(fakeAddr, nil)
+	if r := exec(t, plat, "keys", "add", "alice", "--data-dir", dir); r.code != 0 {
+		t.Fatal(r.err)
+	}
+	no := execIn(t, plat, "n\n", "keys", "revoke", "alice", "--data-dir", dir)
+	for _, want := range []string{"Revoking is permanent", "keys pause alice", "[y/N]", "nothing changed"} {
+		if !strings.Contains(no.out, want) {
+			t.Errorf("prompt missing %q:\n%s", want, no.out)
+		}
+	}
+	store, _ := keys.NewFileStore(dir)
+	if k, _ := store.Find(context.Background(), "alice"); k.Status != keys.Active {
+		t.Fatalf("answering no revoked anyway: %s", k.Status)
+	}
+	if r := execIn(t, plat, "y\n", "keys", "revoke", "alice", "--data-dir", dir); r.code != 0 {
+		t.Fatal(r.err)
+	}
+	store2, _ := keys.NewFileStore(dir)
+	if k, _ := store2.Find(context.Background(), "alice"); k.Status != keys.Revoked {
+		t.Fatalf("answering yes did not revoke: %s", k.Status)
+	}
+}
+
+// A key change must be in force before the command returns, not within the store's once-per-second
+// re-read: a host who tests revoke the obvious way concluded revocation was broken (promise 9).
+func TestKeyWritesPokeTheRunningHost(t *testing.T) {
+	dir, err := os.MkdirTemp("", "bn009-") // short: the admin socket path has a length limit
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(dir)
+	plat := testPlatform(fakeAddr, nil)
+
+	r := exec(t, plat, "keys", "add", "alice", "--json", "--data-dir", dir)
+	if r.code != 0 {
+		t.Fatal(r.err)
+	}
+	var minted struct{ Invite string }
+	if err := json.Unmarshal([]byte(r.out), &minted); err != nil {
+		t.Fatal(err)
+	}
+	secret := minted.Invite[strings.LastIndex(minted.Invite, ".")+1:]
+
+	// The host the gateway would be reading through, with its admin socket up.
+	store, err := keys.NewFileStore(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	adm, err := admin.Serve(dir, func() admin.Status { return admin.Status{} }, store.Reload)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer adm.Close()
+
+	ctx := context.Background()
+	if k, ok, err := store.Lookup(ctx, secret); err != nil || !ok || k.Status != keys.Active {
+		t.Fatalf("alice should be active: %v %v %v", k, ok, err)
+	} // this Lookup arms the once-per-second throttle, which is the window the host complained about
+
+	if r := exec(t, plat, "keys", "revoke", "alice", "--yes", "--data-dir", dir); r.code != 0 {
+		t.Fatal(r.err)
+	}
+	k, ok, err := store.Lookup(ctx, secret)
+	if err != nil || !ok {
+		t.Fatalf("lookup after revoke: %v %v", ok, err)
+	}
+	if k.Status != keys.Revoked {
+		t.Fatalf("the running host still says %s straight after revoke; the reload poke did not land", k.Status)
+	}
+	// pause and resume travel the same way.
+	if r := exec(t, plat, "keys", "resume", "alice", "--data-dir", dir); r.code != 0 {
+		t.Fatal(r.err)
+	}
+	if k, _, _ := store.Lookup(ctx, secret); k.Status != keys.Active {
+		t.Fatalf("resume did not reach the running host: %s", k.Status)
+	}
 }
