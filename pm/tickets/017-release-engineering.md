@@ -79,3 +79,118 @@ legal*; it publishes nothing (founder gates distribution, license, and the name 
   rebase and for the PM's ruling.
 
 ## Report
+
+`make release-dry` builds the whole release from a fresh clone and publishes nothing. Everything
+below is from that clone (`/Users/yuanpingsong/.claude/jobs/12b4a99c/tmp/rel-clone`, cloned at
+`97749bb`), not from the working tree.
+
+### The core, shown working
+
+**One command, all five platforms, nothing published.** `make release-dry` → `notices-check` → wasm
+→ pnpm build → `goreleaser release --snapshot --clean --skip=publish`. `dist/` after it:
+
+```
+bunny-network_0.0.1-dev_checksums.txt        bunny-network_0.0.1-dev_linux_arm64.tar.gz
+bunny-network_0.0.1-dev_darwin_amd64.tar.gz  bunny-network_0.0.1-dev_windows_amd64.zip
+bunny-network_0.0.1-dev_darwin_arm64.tar.gz  web-0.0.1-dev.zip
+bunny-network_0.0.1-dev_linux_amd64.tar.gz   (+ cli_<os>_<arch>/ build dirs, artifacts/metadata json)
+```
+
+All six archives are in the checksums file (sha256). Each CLI archive holds exactly
+`README.md`, `THIRD_PARTY_NOTICES.md`, `bunny-network`. `web-0.0.1-dev.zip` holds the bundle at its
+root (`index.html`, `assets/…`, `bunny.wasm`, `wasm_exec.js`, `favicon.svg`) plus the README and the
+notices — unzip it, point any static server at the folder, done.
+
+**The binary says which build it is.** From the darwin/arm64 artifact of that run:
+
+```
+$ ./dist/cli_darwin_arm64_v8.0/bunny-network version
+Bunny Network 0.0.1-dev (97749bb2b40e2870a88e18578b7378bf0c268f1e, 2026-09-02T19:49:14Z)
+```
+
+Commit and date come from goreleaser's `.FullCommit` / `.CommitDate`, so two builds of the same
+commit stamp the same string — with `-trimpath -s -w`, that is the reproducibility claim.
+
+**The app says the same thing.** The Settings sheet's last line is `App version 0.0.1-dev`, fed by
+`VITE_APP_VERSION`, which the Makefile exports from the same `product.Version` literal the ldflags
+use. Proved by build, not by inspection: a build with `VITE_APP_VERSION=9.9.9-stamp-probe` puts
+`="9.9.9-stamp-probe"` in the chunk (the default and the real value are both `0.0.1-dev`, so a
+matching string would have proved nothing).
+
+**Notices, and a gate that can fail.** `THIRD_PARTY_NOTICES.md` — 40 Go modules, 110 npm production
+packages, 2 verbatim licence texts:
+
+```
+Go   22 BSD-3-Clause · 10 MIT · 6 Apache-2.0 · 1 ISC · 1 BSD-2-Clause
+npm  108 MIT · 1 ISC · 1 BSD-3-Clause
+$ make notices-check
+notices: OK — 40 Go + 110 npm dependencies, licences all in ALLOWED, verbatim texts present
+```
+
+Both halves of the gate were shown failing, not just passing. With `ALLOWED` narrowed to `MIT ISC`
+it exits 1 and names all 30 offending dependencies. With one row deleted from the committed file it
+prints the diff and exits 1 (`THIRD_PARTY_NOTICES.md is stale — run 'make notices'`) — the generator
+emits no timestamp, which is what makes regenerate-and-diff a real staleness test rather than noise.
+
+### Edges
+
+Handled: windows/arm64 excluded by `ignore` (never a host we run); `go-licenses` reports our own
+packages as `Unknown`, so the module path from `go list -m` is passed to `--ignore` rather than
+allowlisting `Unknown`; the npm scan is `--prod` only, since devDependencies ship nothing;
+`web/node_modules` absent → the script installs before scanning, so a fresh clone works; both
+licence lists are `LC_ALL=C sort`ed and version-joined so the file is byte-stable across machines;
+`web/dist` is emptied by `vite build`, so a stale chunk cannot leak into the zip.
+
+### Verified
+
+- `go build ./... && go vet ./... && go test ./...` → clean; **238 passed / 0 failed / 2 skipped**.
+  Both skips are the pre-existing live-environment tests (`TestLiveLlamaCPP`, `TestSavedAddrLive`),
+  unrelated to this slice.
+- `cd web && pnpm typecheck && pnpm test && pnpm lint` → clean; **132 passed / 0 failed / 0 skipped**
+  in 8 files; eslint silent.
+- `make release-dry` from the fresh clone: succeeded, 4 s for goreleaser after the web build.
+- `goreleaser check` on `.goreleaser.yaml`: 1 configuration file validated.
+
+### Declared
+
+- **No `goreleaser release` was ever run without `--snapshot --skip=publish`.** No git tag was
+  created; nothing was pushed anywhere but `t017-release`; no LICENSE file added; no publisher
+  section exists in `.goreleaser.yaml` (F4/F5 stay the founder's).
+- **Outside the scope contract's file list:** 3 lines in `web/src/ui/Chat.tsx` (1 import,
+  1 comment, 1 `<p>`). Promise 3 asks for the version to be *shown*, and nothing rendered `VERSION`
+  before this ticket — it was a dead export. Smallest edit that keeps the promise; conflict surface
+  for 014 is one import line and one insertion between two existing elements.
+- **`web/vite.config.ts` was not edited** (the contract permits it). Vite already inlines `VITE_*`
+  from the environment, so a `define` entry would have been a second place for the version to live.
+- **Not a bug:** `goreleaser` run bare (outside `make`) fails on the missing `CLI_NAME` /
+  `PRODUCT_VERSION`. That is the design — the Makefile is what reads them out of `product.go`, and a
+  hardcoded fallback in the YAML would be the second copy of the name that BELIEFS forbids.
+- **Not a bug:** the `serve` startup banner still prints `Name Version` without commit/date. The
+  contract scoped this ticket to the `version` command's output.
+
+### Adjacent, not fixed (candidates)
+
+- The notices file carries full licence text only for the two BSD-3 modules the ticket named; every
+  other MIT/BSD/ISC dependency gets a URL. Strict compliance wants every text bundled — one flag on
+  `go-licenses save` plus an archive entry, when the founder's licence call (F5) lands.
+- `README.md`'s "Building" list does not mention `make release-dry` / `make notices`; README was not
+  in the scope contract.
+
+### Freeze block
+
+- Base: `81bc23f` (= `origin/main` at freeze; `git fetch && git rebase origin/main` was a no-op).
+- Lane: `t017-release`. Not merged.
+- Patch SHA-256 (product diff, `git diff origin/main -- . ':!pm'`): recorded in the freeze commit
+  message; the full-diff hash before this Report was appended was
+  `ea8e0b9afd13ebf913cb717e2c1b17e6a981f0c468dfb527a8c0f99d8bc1bc60`.
+- Accounting vs **size 2 (≤400 lines incl. YAML)** — hand-written, added lines:
+  `.goreleaser.yaml` 67 · `hack/notices.sh` 127 · `Makefile` 25 · Go 13 (`product.go` 11,
+  `main.go` 2) · web 7 (`product.ts` 4, `Chat.tsx` 3) = **239 / 400**. Deletions: 4.
+  Not counted as hand-written source, declared separately: `THIRD_PARTY_NOTICES.md` 171 lines
+  (generated artifact, reproducible by `make notices`) and this record 100 lines.
+- Concepts vs budget **0**: **0**. No new CLI verb, flag, error code, config key, or state file.
+  The three make targets and `hack/notices.sh` are named by the scope contract; `product.Commit` /
+  `product.Date` are named by promise 1; `CLI_NAME` / `PRODUCT_VERSION` / `VITE_APP_VERSION` are
+  build-time environment names, `VITE_APP_VERSION` named by promise 3.
+- Tools, for the record: `goreleaser 2.18.0` (Homebrew), `go-licenses` at `@latest` on 2026-09-02,
+  `pnpm 11.13.0`, Go toolchain `go1.27.0` via `GOTOOLCHAIN=auto`.
