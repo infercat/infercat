@@ -58,3 +58,99 @@ the artifact.
   keep. A great product gets simpler after release.
 
 ## Report
+
+Engineer Claude Fable 5.1, 2026-09-02. Lane `t008-architecture`, fast-forwarded mid-slice from `6fbc63b` to
+`5456e59` (origin/main; `ed3033f` = 006 landed) on the PM's word so §1 critiques the landed pipeline, not the
+branch. Artifact: `docs/DESIGN.md` (commit `36564be`, 818 lines). No product code touched.
+
+### Core
+
+The founder's four-cause ruling holds under the code; the document names the missing structure per cause and
+anchors every claim to `file:line` at `5456e59` (spot-checked 24 anchors by printing the lines). Seven sections
+as bound. The load-bearing findings:
+
+1. **Gateway (§1).** 006 delivered the record + one exit; what is still implicit is (a) the charge/count rule,
+   split across `request.go:253, 316-318`, `proxy.go:441-444, 544-546` — proposed: an `outcome` on the record
+   and one settle table (which closes both 006 backlog rows as rows, not patches); (b) the "queue" is a
+   channel semaphore with three side counters (`gateway.go:58-63, 204-249`): not FIFO, over-admits on
+   `SetSlots`, `status` numbers kept beside it — proposed: a FIFO slot queue reading `Info().Slots` and
+   `SetSlots` deleted end to end; (c) `RequestTimeout` is still an absolute cap on a stream (`request.go:271`)
+   — proposed: engine first-byte + idle deadlines, the flag/config key deleted. Invariant table I1–I10 says
+   which tests exist (`hardening_test.go`) and which are missing (I5 ceiling, I6 outcome rows, I7 FIFO, I8 idle).
+2. **Web (§2).** Four session states (the ruling's three loading states are one `connecting.step`), an event
+   and transition table, one effect that closes any transport a transition drops, the message reducer over
+   007's event source, storage keys, W1–W7 as vitests. With 007 on everything it has written; two asks recorded.
+3. **Engine (§3).** `Unknown` kind replaces the `sniffed` flag; `Health{OK,Since,Err}`; readers not observers;
+   a three-method `Engine` seam (`Info`, `CountTokens`, `Do`) so the engine URL never crosses into the gateway.
+4. **Debt (§4)** 21 items with keep/redesign/delete and before/after; **concepts (§5)** every state, flag,
+   config key, code, route argued (−3 flags, −3 config keys, −1 method, −2 seam methods, −4 mirror types,
+   +1 kind, +1 internal enum); **tickets (§6)** six, priced 3/2/1/1/1 + a PM doc task; **not to change (§7)**.
+
+Where the Background opinion is wrong (§0.3): "one exit" is a settle table not a return; a reducer cannot own
+I/O (007's split is right) and three of the seven ruled states are one; "observers" should be readers and the
+one push (`SetSlots`) deleted; `reorder()` goes, the replacement is stdlib `flag` in a loop.
+
+### Read
+
+BELIEFS (incl. the 006-landing changes), ARCHITECTURE, tickets 001–008 in full (bindings, logs, reports,
+contests, rulings, review summaries), DECLINED, HANDOFF, MEASURE, README, the second-model JSON (39 findings,
+all four lenses), 006's landed code and report/ruling on main, 007's working tree (`api.ts`, `storage.ts`,
+`transport/index.ts`, ticket log + design ruling), and every file in `internal/{gateway,upstream,keys,usage,
+tunnel,invite,admin,product}`, `cmd/bunny-network`, `web/wasm/main_js.go`, `web/src/**`, plus `web/dev`
+heads, `vite.config.ts`, `Makefile`, `go.mod`. Test-name inventory across Go and vitest.
+
+### Verified by running (printed)
+
+- On `6fbc63b`: `go build ./...` exit 0 · `go vet ./...` exit 0 · `go test ./...` 11 packages ok, top-level
+  **101 passed / 0 failed / 2 skipped** (the two opt-in live tests) · `-race` on gateway/keys/usage ok.
+- On `5456e59` after the fast-forward: build 0 · vet 0 · **113 passed / 0 failed / 2 skipped** · gateway
+  `-race` ok (9.5 s).
+- Web, in a copy under `~/.claude/jobs/12b4a99c/tmp/t008-web` (no `node_modules` in the worktree):
+  `pnpm install --frozen-lockfile --offline` 0 · `pnpm typecheck` 0 · `pnpm test` **5 files / 78 passed /
+  0 failed / 0 skipped**.
+- 24 cited anchors printed and matched (e.g. `request.go:253 q.queued = true`, `gateway.go:233 waiting cap`,
+  `store.go:74 throttle`, `main.go:198 reorder`).
+
+### Could not verify
+
+- The workflow journals (`subagents/workflows/*/journal.jsonl`): a grep for verdict fields and "reserv"
+  hit ugrep's complexity limit; I relied on the PM summaries appended to 001–003 and 006's binding instead.
+- 007's branch has no commits; its direction is read from an uncommitted tree that may have moved since.
+- No live engine or relay run: nothing here needed one, and the shared llama-server was not touched.
+- The FIFO queue and the shrink-to-fit reservation are designs, not code; their invariants (I5, I7) are
+  stated for a test, not yet proven by one.
+
+Edge awareness, one line: 006's rebase conflict sat exactly in `acquire`/`SetSlots`, which §1.5 removes; the
+"10-token TPM key" objection to reserving the worst case is answered by shrinking the reservation to fit
+(floor 16) rather than rejecting; `/v1/models` is the one route that bypasses the stage list; `countTimeout`
+is dead for tokenize but live for the model list; `--ephemeral` is what keeps `hostAddr`'s admin lookup alive.
+
+### The three decisions I most want ruled
+
+1. **Deadline ownership (§1.6).** Delete the absolute `RequestTimeout` (300 s over a whole stream; cuts a
+   slow public host mid-answer) in favour of an engine first-byte bound (120 s) and an engine idle bound
+   (60 s), keeping 006's read/write deadlines; delete `--request-timeout`/`--queue-timeout`/`--max-body` as
+   flags and config keys (constants). Contract change to ARCHITECTURE §Concurrency & queue.
+2. **Reservation = worst case, shrunk to fit (§1.4).** Reserve `prompt + max_tokens` against TPM and daily,
+   shrinking `max_tokens` to what the window allows (floor 16) the way context already shrinks; settle to
+   actual in `finish`. Makes the limits ceilings for tokens, not prompts; overrides 006 judgment 7. The
+   settle table also decides that a waiting-set overflow does not count against RPM (006 counts it).
+3. **FIFO slot queue with a live cap, `SetSlots` deleted (§1.5, §3.3).** Replaces the channel semaphore +
+   three atomics + generation swap; the queue reads `Info().Slots` at acquire/release; `gatewayServer`
+   loses a method and `refreshLoop` its slot plumbing (005 fix 10d becomes structural). Exact `status`
+   numbers, FIFO fairness, no over-admission on resize.
+
+Already ruled, one ask only: if 007 lands `degraded` as a state, keep it and add no more (§2.2).
+
+### Freeze
+
+- **Base:** `5456e59` (origin/main; fast-forwarded from the dispatched `6fbc63b`). **Lane:** `t008-architecture`.
+  Artifact commit `36564be` (docs/DESIGN.md only); this report is a docs-only commit on top.
+- **Patch SHA-256** (`git diff 5456e59..36564be -- docs/DESIGN.md | shasum -a 256`):
+  `885e3336908b6fd1ce542997532c6c4b10d8b840c538a45287716416e4f03589`
+- **Accounting:** product source 0 lines; tests 0; `docs/DESIGN.md` +818 lines (the deliverable); this ticket
+  file (report). Files outside the scope contract: 0. Concepts added to the product: 0 (the document proposes
+  net removals; nothing is implemented). Dependencies: none. Size 3 as priced.
+- **Checks at freeze:** printed above (Go 113/0/2 on the base; web 78/0/0 in the tmp copy).
+- **Production-touching actions:** none. No secrets, no dotenvx, no max-ws.lab, no engine restarts; the only
+  writes outside the worktree were the web copy under the job tmp dir.
