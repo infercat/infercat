@@ -80,9 +80,29 @@ missing `prompt_tokens` in a nonconforming usage object charges zero · SSE sing
   refuters reproduced every confirmed item with scratch modules under the job tmp dir.
 - Shared llama-server at `127.0.0.1:18080` (requests only). Its `/tokenize` is what promise 2 protects.
 
+## Ruling (design) — PM, founder ruling "fix classes, not instances" (2026-09-02, mid-slice)
+
+Do NOT satisfy promises 1–11 as eleven local patches. Restructure request handling in internal/gateway as
+ONE explicit pipeline with a request record that owns every resource and has exactly one exit:
+- `type request struct` created at authenticate(): key, per-key slot, global slot, deadlines, usage event,
+  reserved tokens, upstream response. One deferred `finish()` releases everything and records usage — the
+  only path out, on success, error, panic, abort, and timeout.
+- Stage order fixed in one function, top to bottom: authenticate → admitKey (RPM + per-key concurrency) →
+  readBody (read deadline) → normalize (ONE function: strip engine-override aliases via a documented
+  denylist, fill model, clamp max_tokens including 005's shrink-to-fit, inject stream_options) → count →
+  checkBudgets (TPM/daily/context — RESERVE the estimate here, settle the actual in finish) → acquireSlot
+  (bounded wait) → upstream call (no redirects) → relay (write deadline renewed per event) → finish.
+- Rewrite proxy.go if the current shape fights this; delete code the pipeline makes redundant. Size budget
+  rises to 5 (≤2000 source lines net) if needed — say so in the report with the accounting.
+- The nine-plus-two promises remain the acceptance criteria and each still gets its named test; they should
+  fall out of the structure. Keep 005's landed shrink-to-fit and SetSlots semantics intact inside
+  normalize/acquireSlot.
+
 ## Log
 
 - 2026-09-02 12:05 ACK. Base 68e6469 (main), lane t006-gateway-hardening. Read BELIEFS, ARCHITECTURE, 006, 002 (report + review), gateway sources and tests. Baseline `go test -race ./internal/gateway/` ok. origin/main unchanged; local t005-integration has no gateway diff yet. No contest so far: all nine promises fit inside internal/gateway/** without seam changes.
+- 2026-09-02 13:05 005 landed (aa68524). Rebased mid-slice on the PM's word: two textual conflicts (Gateway struct fields; prepareChat's context call → 005's `fitContext`). Kept SetSlots and shrink-to-fit intact; the promise-10 waiting cap became an atomic that SetSlots updates. `go test -race`: 40 passed / 0 failed / 1 skipped.
+- 2026-09-02 13:10 Design ruling received (pipeline + request record, one exit). Restructuring on top of the green rebased commit rather than in place, so the fallback stays coherent. Judgment: shrink-to-fit needs the token count, and count comes after normalize in the ruled order, so `fitContext` (005's code, unchanged) runs as the context step of checkBudgets; normalize does strip / model / key clamp / stream_options. Reservation = the prompt estimate (prompt + max_tokens would reject a 10-token TPM key's first request and contradict 002's "TPM is a ceiling for prompts"); settled to the engine's actual in finish.
 - 2026-09-02 12:40 PM added promises 10 (bounded waiting set, max(2, 2×Slots)) and 11 (`/me` host.log_prompts) mid-slice; budget unchanged. Both inside internal/gateway/**, no seam change: no contest. 10 is a counter check in `acquire` (Add-then-compare, exact under a race); 11 is one field in meResponse plus TestMeShape's key list.
 - 2026-09-02 12:20 Design. (1) Denylist from the live llama.cpp README (fetched; POST /completion options + OAI-compat extras) grouped as length aliases / multipliers (`n`, `n_cmpl`, `best_of`, `use_beam_search` — vLLM runs n sequences for one slot) / `n_probs` / slot-cache-context / `lora`, plus non-numeric `max_tokens`/`max_completion_tokens` (could shadow the clamp); `stream_options` left alone (include_usage already forced) and `cache_prompt` left per ticket. (2) Limiter split: `admit` (concurrency+RPM, takes the slot) → body → tokenize → `checkTokens` (TPM/daily) → global slot; new `abort` un-counts a pre-queue rejection so "rejections do not count" and the 002 tests survive the reorder. (3) Read deadline armed at handler entry for any request with a body — that also bounds net/http's post-handler discard for 401s — and cleared after a full read, because net/http's background read turns an expired read deadline into a context cancel mid-stream. (4) Write deadline via ResponseController, re-armed per line; overall bound stays RequestTimeout (absolute ctx) + one write deadline. Test-only knobs are unexported Gateway fields, not Config (concept budget).
 

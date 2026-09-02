@@ -1,5 +1,8 @@
 package gateway
 
+// The engine-facing half of a request: body shaping (what normalize and checkBudgets call), the two
+// read-only routes, the upstream client, and the two relays. The pipeline itself is in request.go.
+
 import (
 	"bufio"
 	"bytes"
@@ -8,7 +11,6 @@ import (
 	"errors"
 	"io"
 	"net/http"
-	"os"
 	"sort"
 	"strconv"
 	"strings"
@@ -23,31 +25,20 @@ const (
 	countTimeout    = 10 * time.Second // CountTokens / models list
 )
 
-// ---- request body ----
+// ---- body shaping ----
 
-// readBody enforces MaxBody: a declared Content-Length over the cap is refused before reading a
-// byte; an undeclared one is cut off by MaxBytesReader.
-func (c *call) readBody() ([]byte, *gwError) {
-	limit := c.g.cfg.MaxBody
-	if c.r.ContentLength > limit {
-		return nil, errf(CodeBodyTooLarge, 0, "request body is %d bytes; the limit is %d", c.r.ContentLength, limit)
+// decodeObject keeps numbers as json.Number so unknown fields round-trip byte-exact in value.
+func decodeObject(b []byte) (map[string]any, error) {
+	dec := json.NewDecoder(bytes.NewReader(b))
+	dec.UseNumber()
+	var m map[string]any
+	if err := dec.Decode(&m); err != nil {
+		return nil, err
 	}
-	b, err := io.ReadAll(http.MaxBytesReader(c.w, c.r.Body, limit))
-	if err != nil {
-		var mbe *http.MaxBytesError
-		switch {
-		case errors.As(err, &mbe):
-			return nil, errf(CodeBodyTooLarge, 0, "request body exceeds the limit of %d bytes", limit)
-		case errors.Is(err, os.ErrDeadlineExceeded): // the read deadline armed in serveHTTP (promise 4)
-			c.stalled = true
-			return nil, errf(CodeInvalidRequest, 0, "request body was not received within %s", c.g.readTimeout)
-		}
-		return nil, errf(CodeInvalidRequest, 0, "reading request body: %v", err)
+	if m == nil {
+		return nil, errors.New("not an object")
 	}
-	// Body in hand: clear the read deadline. Left armed, net/http's background read (which starts at
-	// body EOF) would hit it during a long stream and cancel the request as a client disconnect.
-	_ = http.NewResponseController(c.w).SetReadDeadline(time.Time{})
-	return b, nil
+	return m, nil
 }
 
 // overrideKeys are removed from every proxied body (006 promise 1; the ticket's one new concept).
@@ -97,17 +88,6 @@ func stripOverrides(body map[string]any) []string {
 	return removed
 }
 
-// decodeObject keeps numbers as json.Number so unknown fields round-trip byte-exact in value.
-func decodeObject(b []byte) (map[string]any, *gwError) {
-	dec := json.NewDecoder(bytes.NewReader(b))
-	dec.UseNumber()
-	var m map[string]any
-	if err := dec.Decode(&m); err != nil || m == nil {
-		return nil, errf(CodeInvalidRequest, 0, "request body must be a JSON object")
-	}
-	return m, nil
-}
-
 // messagesText concatenates the text of every message (string content, or text parts; image parts
 // count as nothing) for the token pre-check and, with LogPrompts, the event's Prompt.
 func messagesText(v any) string {
@@ -152,15 +132,15 @@ func inputText(v any) string {
 	return ""
 }
 
-func (c *call) countTokens(text string) int {
+func (q *request) countTokens(text string) int {
 	if text == "" {
 		return 0
 	}
-	ctx, cancel := context.WithTimeout(c.r.Context(), countTimeout)
+	ctx, cancel := context.WithTimeout(q.r.Context(), countTimeout)
 	defer cancel()
-	n, _, err := c.g.up.CountTokens(ctx, text)
+	n, _, err := q.g.up.CountTokens(ctx, text)
 	if err != nil {
-		c.g.logf("gateway: count tokens failed, estimating: %v", err)
+		q.g.logf("gateway: count tokens failed, estimating: %v", err)
 		return (len(text) + 3) / 4
 	}
 	return n
@@ -168,23 +148,24 @@ func (c *call) countTokens(text string) int {
 
 // resolveModel fills a missing model (first upstream model the key allows, else the key's first
 // allowed model) and enforces the allowlist.
-func (c *call) resolveModel(body map[string]any) (string, *gwError) {
+func (q *request) resolveModel() (string, *gwError) {
+	body := q.body
 	m, _ := body["model"].(string)
 	if m == "" {
-		for _, id := range c.g.up.Info().Models {
-			if c.key.AllowsModel(id) {
+		for _, id := range q.g.up.Info().Models {
+			if q.key.AllowsModel(id) {
 				m = id
 				break
 			}
 		}
-		if m == "" && len(c.key.Limits.Models) > 0 {
-			m = c.key.Limits.Models[0]
+		if m == "" && len(q.key.Limits.Models) > 0 {
+			m = q.key.Limits.Models[0]
 		}
 		if m != "" {
 			body["model"] = m
 		}
 	}
-	if m != "" && !c.key.AllowsModel(m) {
+	if m != "" && !q.key.AllowsModel(m) {
 		return "", errf(CodeModelNotAllowed, 0, "model %q is not allowed for this key", m)
 	}
 	return m, nil
@@ -226,20 +207,20 @@ const minOutputTokens = 16
 // fitContext: effective context = min(key.MaxContext, upstream model context), ignoring zeros.
 // The prompt alone must fit (422 otherwise). When prompt + max_tokens would overshoot, max_tokens
 // shrinks to what remains (floor minOutputTokens), as llama.cpp does itself, instead of a
-// rejection (ticket 005 fix 10c).
-func (c *call) fitContext(body map[string]any, prompt, maxTok int) *gwError {
-	eff := c.g.up.Info().ModelContext
-	if k := c.key.Limits.MaxContext; k > 0 && (eff == 0 || k < eff) {
+// rejection (ticket 005 fix 10c). Embeddings carry no cap: only the first rule applies.
+func (q *request) fitContext() *gwError {
+	eff := q.g.up.Info().ModelContext
+	if k := q.key.Limits.MaxContext; k > 0 && (eff == 0 || k < eff) {
 		eff = k
 	}
 	if eff == 0 {
 		return nil
 	}
-	if prompt > eff {
-		return errf(CodeContextTooLong, 0, "prompt is %d tokens but the context is %d", prompt, eff)
+	if q.prompt > eff {
+		return errf(CodeContextTooLong, 0, "prompt is %d tokens but the context is %d", q.prompt, eff)
 	}
-	if maxTok > 0 && prompt+maxTok > eff {
-		setMaxTokens(body, max(eff-prompt, minOutputTokens))
+	if q.maxTok > 0 && q.prompt+q.maxTok > eff {
+		setMaxTokens(q.body, max(eff-q.prompt, minOutputTokens))
 	}
 	return nil
 }
@@ -268,119 +249,27 @@ func setIncludeUsage(body map[string]any) {
 	body["stream_options"] = so
 }
 
-// ---- routes ----
-
-func (c *call) chat()       { c.guarded("/v1/chat/completions", c.prepareChat) }
-func (c *call) embeddings() { c.guarded("/v1/embeddings", c.prepareEmbeddings) }
-
-// guarded runs a proxied POST in the admission order of 006 promise 2: engine health, then per-key
-// concurrency + RPM (cheap, in memory), and only under that per-key slot the body read, the override
-// strip, tokenize, clamps and context (prepare), the TPM/daily check, then the global slot and the
-// engine (proxy). A rejection before the queue aborts the admission (not counted); from the queue on
-// the request counts and is charged what the engine reports.
-func (c *call) guarded(path string, prepare func(map[string]any) (int, *gwError)) {
-	g, key := c.g, c.key
-	if !g.up.Info().Healthy {
-		c.fail(errf(CodeUpstreamDown, retryAfterUpstreamDown, "the host's engine is not reachable right now"))
-		return
-	}
-	if gerr := g.lim.admit(key.ID, key.Limits); gerr != nil {
-		c.fail(gerr)
-		return
-	}
-	charged, queued := 0, false
-	g.bodies.Add(1)
-	defer func() {
-		g.bodies.Add(-1)
-		if queued {
-			g.lim.release(key.ID, charged)
-		} else {
-			g.lim.abort(key.ID)
-		}
-	}()
-	raw, gerr := c.readBody()
-	if gerr != nil {
-		c.fail(gerr)
-		return
-	}
-	body, gerr := decodeObject(raw)
-	if gerr != nil {
-		c.fail(gerr)
-		return
-	}
-	if removed := stripOverrides(body); len(removed) > 0 {
-		g.logf("gateway: removed %v from a request by key %s", removed, key.ID)
-	}
-	prompt, gerr := prepare(body)
-	if gerr != nil {
-		c.fail(gerr)
-		return
-	}
-	c.ev.PromptTokens = prompt // provisional; replaced by the upstream's usage when present
-	if gerr := g.lim.checkTokens(key.ID, key.Limits, prompt); gerr != nil {
-		c.fail(gerr)
-		return
-	}
-	queued = true
-	charged = c.proxy(body, path)
-}
-
-// prepareChat resolves the model, tokenizes the prompt, clamps max_tokens, checks the context, and
-// injects include_usage for streams. Returns the pre-check prompt token count.
-func (c *call) prepareChat(body map[string]any) (int, *gwError) {
-	c.ev.Stream, _ = body["stream"].(bool)
-	model, gerr := c.resolveModel(body)
-	if gerr != nil {
-		return 0, gerr
-	}
-	c.ev.Model = model
-	text := messagesText(body["messages"])
-	if c.g.cfg.LogPrompts {
-		c.ev.Prompt = text
-	}
-	prompt := c.countTokens(text)
-	maxTok := clampMaxTokens(body, c.key.Limits)
-	if gerr := c.fitContext(body, prompt, maxTok); gerr != nil {
-		return 0, gerr
-	}
-	if c.ev.Stream {
-		setIncludeUsage(body)
-	}
-	return prompt, nil
-}
-
-func (c *call) prepareEmbeddings(body map[string]any) (int, *gwError) {
-	model, gerr := c.resolveModel(body)
-	if gerr != nil {
-		return 0, gerr
-	}
-	c.ev.Model = model
-	text := inputText(body["input"])
-	if c.g.cfg.LogPrompts {
-		c.ev.Prompt = text
-	}
-	return c.countTokens(text), nil
-}
+// ---- read-only routes ----
 
 // models proxies GET /v1/models under per-key concurrency and RPM (006 promise 5; no global slot:
 // it is a list, not a generation) and keeps only the ids the key allows.
-func (c *call) models() {
-	if gerr := c.g.lim.admit(c.key.ID, c.key.Limits); gerr != nil {
-		c.fail(gerr)
+func (q *request) models() {
+	if err := q.admitKey(); err != nil {
+		q.fail(err)
 		return
 	}
-	defer c.g.lim.release(c.key.ID, 0)
-	ctx, cancel := context.WithTimeout(c.r.Context(), countTimeout)
-	defer cancel()
-	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, c.upstreamURL("/v1/models"), nil)
-	resp, err := c.doUpstream(req)
+	q.queued = true // a list call counts as a request whatever the engine answers
+	ctx, cancel := context.WithTimeout(q.r.Context(), countTimeout)
+	q.cancelUpstream = cancel
+	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, q.upstreamURL("/v1/models"), nil)
+	resp, err := q.doUpstream(req)
 	if err != nil {
-		c.fail(c.upstreamErr(err))
+		q.fail(q.upstreamErr(err))
 		return
 	}
-	defer resp.Body.Close()
+	q.resp = resp
 	if resp.StatusCode/100 != 2 { // a GET carries nothing of the friend's: any failure is the host's
-		c.fail(errf(CodeUpstreamError, 0, "upstream returned HTTP %d for /v1/models: %s", resp.StatusCode, upstreamMessage(resp.Body)))
+		q.fail(errf(CodeUpstreamError, 0, "upstream returned HTTP %d for /v1/models: %s", resp.StatusCode, upstreamMessage(resp.Body)))
 		return
 	}
 	var list struct {
@@ -389,16 +278,16 @@ func (c *call) models() {
 	dec := json.NewDecoder(io.LimitReader(resp.Body, maxUpstreamBody))
 	dec.UseNumber()
 	if err := dec.Decode(&list); err != nil {
-		c.fail(errf(CodeUpstreamError, 0, "upstream returned an unparseable model list"))
+		q.fail(errf(CodeUpstreamError, 0, "upstream returned an unparseable model list"))
 		return
 	}
 	out := make([]map[string]any, 0, len(list.Data))
 	for _, m := range list.Data {
-		if id, _ := m["id"].(string); c.key.AllowsModel(id) {
+		if id, _ := m["id"].(string); q.key.AllowsModel(id) {
 			out = append(out, m)
 		}
 	}
-	c.writeJSON(map[string]any{"object": "list", "data": out})
+	q.writeJSON(map[string]any{"object": "list", "data": out})
 }
 
 type meResponse struct {
@@ -429,40 +318,40 @@ type meResponse struct {
 	} `json:"host"`
 }
 
-func (c *call) me() {
+func (q *request) me() {
 	var m meResponse
-	m.Key.ID, m.Key.Name, m.Key.Status = c.key.ID, c.key.Name, c.key.Status
-	m.Limits = c.key.Limits
-	cnt := c.g.lim.counters(c.key.ID)
+	m.Key.ID, m.Key.Name, m.Key.Status = q.key.ID, q.key.Name, q.key.Status
+	m.Limits = q.key.Limits
+	cnt := q.g.lim.counters(q.key.ID)
 	m.Usage.RPMUsed, m.Usage.TPMUsed, m.Usage.TodayTokens, m.Usage.InFlight = cnt.RPMUsed, cnt.TPMUsed, cnt.TodayTokens, cnt.InFlight
-	info := c.g.up.Info()
-	m.Host.Name = c.g.cfg.HostName
-	m.Host.LogPrompts = c.g.cfg.LogPrompts
+	info := q.g.up.Info()
+	m.Host.Name = q.g.cfg.HostName
+	m.Host.LogPrompts = q.g.cfg.LogPrompts
 	m.Host.Upstream.Kind, m.Host.Upstream.Healthy, m.Host.Upstream.ModelContext = info.Kind, info.Healthy, info.ModelContext
 	m.Host.Models = []string{}
 	for _, id := range info.Models {
-		if c.key.AllowsModel(id) {
+		if q.key.AllowsModel(id) {
 			m.Host.Models = append(m.Host.Models, id)
 		}
 	}
-	if c.g.cfg.RelayRegion != nil {
-		m.Host.Relay.Region = c.g.cfg.RelayRegion()
+	if q.g.cfg.RelayRegion != nil {
+		m.Host.Relay.Region = q.g.cfg.RelayRegion()
 	}
-	c.writeJSON(m)
+	q.writeJSON(m)
 }
 
-func (c *call) writeJSON(v any) {
+func (q *request) writeJSON(v any) {
 	b, _ := json.Marshal(v)
-	c.w.Header().Set("Content-Type", "application/json")
-	c.w.Header().Set("Content-Length", strconv.Itoa(len(b)))
-	c.writeHeader(http.StatusOK)
-	_, _ = c.w.Write(b)
+	q.w.Header().Set("Content-Type", "application/json")
+	q.w.Header().Set("Content-Length", strconv.Itoa(len(b)))
+	q.writeHeader(http.StatusOK)
+	_, _ = q.w.Write(b)
 }
 
 // ---- upstream ----
 
-func (c *call) upstreamURL(path string) string {
-	u := *c.g.up.BaseURL()
+func (q *request) upstreamURL(path string) string {
+	u := *q.g.up.BaseURL()
 	u.Path = strings.TrimSuffix(u.Path, "/") + path
 	u.RawPath, u.RawQuery, u.Fragment = "", "", ""
 	return u.String()
@@ -471,9 +360,9 @@ func (c *call) upstreamURL(path string) string {
 // doUpstream never follows a redirect (006 promise 6): the engine's transport stamps the host's
 // upstream API key on every request it sends, so a 3xx would replay that key to wherever Location
 // points. The 3xx surfaces as a non-2xx status instead.
-func (c *call) doUpstream(req *http.Request) (*http.Response, error) {
+func (q *request) doUpstream(req *http.Request) (*http.Response, error) {
 	client := &http.Client{
-		Transport:     c.g.up.Transport(),
+		Transport:     q.g.up.Transport(),
 		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
 	}
 	return client.Do(req)
@@ -481,15 +370,15 @@ func (c *call) doUpstream(req *http.Request) (*http.Response, error) {
 
 // upstreamErr maps a transport error. The friend never sees the engine's address (Protection 1);
 // the host sees it in the log.
-func (c *call) upstreamErr(err error) *gwError {
-	if c.r.Context().Err() != nil {
+func (q *request) upstreamErr(err error) *gwError {
+	if q.r.Context().Err() != nil {
 		return errf(CodeClientClosed, 0, "client went away")
 	}
 	if errors.Is(err, context.DeadlineExceeded) {
-		c.g.logf("gateway: upstream timed out after %s", c.g.cfg.RequestTimeout)
-		return errf(CodeUpstreamError, 0, "the host's engine did not answer within %s", c.g.cfg.RequestTimeout)
+		q.g.logf("gateway: upstream timed out after %s", q.g.cfg.RequestTimeout)
+		return errf(CodeUpstreamError, 0, "the host's engine did not answer within %s", q.g.cfg.RequestTimeout)
 	}
-	c.g.logf("gateway: upstream unreachable: %v", err)
+	q.g.logf("gateway: upstream unreachable: %v", err)
 	return errf(CodeUpstreamDown, retryAfterUpstreamDown, "the host's engine is not reachable right now")
 }
 
@@ -532,68 +421,26 @@ func upstreamStatusErr(resp *http.Response) *gwError {
 	return errf(CodeUpstreamError, 0, "upstream returned HTTP %d: %s", resp.StatusCode, msg)
 }
 
-// proxy takes a global slot (bounded wait), calls the engine, and pipes the stream or body. Returns
-// the tokens to charge the key: prompt+completion for a 2xx (full or partial) response, else 0.
-func (c *call) proxy(body map[string]any, path string) int {
-	g := c.g
-	qstart := time.Now()
-	releaseSlot, gerr := g.acquire(c.r.Context())
-	c.ev.QueuedMS = time.Since(qstart).Milliseconds()
-	if gerr != nil {
-		c.fail(gerr)
-		return 0
-	}
-	defer releaseSlot()
-
-	payload, err := json.Marshal(body)
-	if err != nil {
-		c.fail(errf(CodeInvalidRequest, 0, "request body could not be re-encoded: %v", err))
-		return 0
-	}
-	ctx, cancel := context.WithTimeout(c.r.Context(), g.cfg.RequestTimeout)
-	defer cancel()
-	req, _ := http.NewRequestWithContext(ctx, http.MethodPost, c.upstreamURL(path), bytes.NewReader(payload))
-	req.Header.Set("Content-Type", "application/json")
-	if c.ev.Stream {
-		req.Header.Set("Accept", "text/event-stream")
-	}
-	resp, err := c.doUpstream(req)
-	if err != nil {
-		c.fail(c.upstreamErr(err))
-		return 0
-	}
-	defer resp.Body.Close()
-	if resp.StatusCode/100 != 2 {
-		c.fail(upstreamStatusErr(resp))
-		return 0
-	}
-	if c.ev.Stream {
-		c.pipeStream(resp, cancel)
-	} else if !c.pipeBody(resp) {
-		return 0
-	}
-	return c.ev.PromptTokens + c.ev.CompletionTokens
-}
+// ---- relays ----
 
 type usageT struct {
 	PromptTokens     int `json:"prompt_tokens"`
 	CompletionTokens int `json:"completion_tokens"`
 }
 
-func (c *call) applyUsage(u *usageT) {
+func (q *request) applyUsage(u *usageT) {
 	if u == nil {
 		return
 	}
-	c.ev.PromptTokens, c.ev.CompletionTokens = u.PromptTokens, u.CompletionTokens
+	q.ev.PromptTokens, q.ev.CompletionTokens = u.PromptTokens, u.CompletionTokens
 }
 
-// pipeBody passes a non-stream response through verbatim after parsing its usage. Reports whether
-// anything was written (false = an error response was written instead).
-func (c *call) pipeBody(resp *http.Response) bool {
+// pipeBody passes a non-stream response through verbatim after parsing its usage.
+func (q *request) pipeBody() *gwError {
+	resp := q.resp
 	b, err := io.ReadAll(io.LimitReader(resp.Body, maxUpstreamBody))
 	if err != nil {
-		c.fail(c.upstreamErr(err))
-		return false
+		return q.upstreamErr(err)
 	}
 	var parsed struct {
 		Usage   *usageT `json:"usage"`
@@ -604,24 +451,23 @@ func (c *call) pipeBody(resp *http.Response) bool {
 		} `json:"choices"`
 	}
 	if err := json.Unmarshal(b, &parsed); err != nil {
-		c.g.logf("gateway: upstream response is not JSON: %v", err)
-		c.fail(errf(CodeUpstreamError, 0, "upstream returned an unparseable response"))
-		return false
+		q.g.logf("gateway: upstream response is not JSON: %v", err)
+		return errf(CodeUpstreamError, 0, "upstream returned an unparseable response")
 	}
-	c.applyUsage(parsed.Usage)
-	if c.g.cfg.LogPrompts && len(parsed.Choices) > 0 {
-		c.ev.Completion = parsed.Choices[0].Message.Content
+	q.applyUsage(parsed.Usage)
+	if q.g.cfg.LogPrompts && len(parsed.Choices) > 0 {
+		q.ev.Completion = parsed.Choices[0].Message.Content
 	}
 	ct := resp.Header.Get("Content-Type")
 	if ct == "" {
 		ct = "application/json"
 	}
-	c.w.Header().Set("Content-Type", ct)
-	c.w.Header().Set("Content-Length", strconv.Itoa(len(b)))
-	c.writeHeader(http.StatusOK)
-	c.markTTFT()
-	_, _ = c.w.Write(b)
-	return true
+	q.w.Header().Set("Content-Type", ct)
+	q.w.Header().Set("Content-Length", strconv.Itoa(len(b)))
+	q.writeHeader(http.StatusOK)
+	q.markTTFT()
+	_, _ = q.w.Write(b)
+	return nil
 }
 
 type sseChunk struct {
@@ -638,33 +484,33 @@ type sseChunk struct {
 // reading each data: payload for usage. When the stream ends without a usage chunk (the friend hit
 // stop, or the engine omitted it) completion tokens are estimated as the number of delta chunks seen
 // (llama.cpp and vLLM emit one token per chunk) so an aborted stream is not free; prompt tokens fall
-// back to the pre-check count. A write or flush error means the friend is gone or has stopped reading
-// (the per-line write deadline fired): the upstream is cancelled and every slot is freed. The whole
-// pipe is also bounded by RequestTimeout through resp's context.
-func (c *call) pipeStream(resp *http.Response, cancelUpstream context.CancelFunc) {
-	h := c.w.Header()
+// back to the pre-check count. A write or flush error means the friend is gone or has stopped
+// reading (the per-line write deadline fired): the stream ends as client_closed. The whole pipe is
+// also bounded by RequestTimeout through the upstream context.
+func (q *request) pipeStream() *gwError {
+	h := q.w.Header()
 	h.Set("Content-Type", "text/event-stream")
 	h.Set("Cache-Control", "no-cache")
 	h.Set("X-Accel-Buffering", "no")
-	c.writeHeader(http.StatusOK)
-	rc := http.NewResponseController(c.w)
+	q.writeHeader(http.StatusOK)
 
-	br := bufio.NewReaderSize(resp.Body, 64<<10)
+	br := bufio.NewReaderSize(q.resp.Body, 64<<10)
 	chunks, sawUsage := 0, false
 	var completion strings.Builder
-	for {
+	var result *gwError
+	for result == nil {
 		line, err := br.ReadBytes('\n')
 		if len(line) > 0 {
-			c.armWrite()
-			if _, werr := c.w.Write(line); werr != nil {
-				cancelUpstream()
+			q.armWrite()
+			if _, werr := q.w.Write(line); werr != nil {
+				result = errf(CodeClientClosed, 0, "client stopped reading")
 				break
 			}
-			c.markTTFT()
+			q.markTTFT()
 			trimmed := bytes.TrimRight(line, "\r\n")
 			if len(trimmed) == 0 {
-				if ferr := rc.Flush(); ferr != nil {
-					cancelUpstream()
+				if ferr := q.rc.Flush(); ferr != nil {
+					result = errf(CodeClientClosed, 0, "client stopped reading")
 					break
 				}
 			} else if data, ok := bytes.CutPrefix(trimmed, []byte("data:")); ok {
@@ -673,12 +519,12 @@ func (c *call) pipeStream(resp *http.Response, cancelUpstream context.CancelFunc
 				if !bytes.Equal(data, []byte("[DONE]")) && json.Unmarshal(data, &ch) == nil {
 					if ch.Usage != nil {
 						sawUsage = true
-						c.applyUsage(ch.Usage)
+						q.applyUsage(ch.Usage)
 					}
 					for _, choice := range ch.Choices {
 						if choice.Delta.Content != "" || choice.Delta.ReasoningContent != "" {
 							chunks++
-							if c.g.cfg.LogPrompts {
+							if q.g.cfg.LogPrompts {
 								completion.WriteString(choice.Delta.Content)
 							}
 						}
@@ -687,18 +533,19 @@ func (c *call) pipeStream(resp *http.Response, cancelUpstream context.CancelFunc
 			}
 		}
 		if err != nil {
-			c.armWrite()
-			_ = rc.Flush()
+			q.armWrite()
+			_ = q.rc.Flush()
 			if !errors.Is(err, io.EOF) {
-				c.fail(c.upstreamErr(err))
+				result = q.upstreamErr(err)
 			}
 			break
 		}
 	}
 	if !sawUsage {
-		c.ev.CompletionTokens = chunks
+		q.ev.CompletionTokens = chunks
 	}
-	if c.g.cfg.LogPrompts {
-		c.ev.Completion = completion.String()
+	if q.g.cfg.LogPrompts {
+		q.ev.Completion = completion.String()
 	}
+	return result
 }

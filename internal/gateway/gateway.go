@@ -248,25 +248,11 @@ func (g *Gateway) acquire(ctx context.Context) (func(), *gwError) {
 	}
 }
 
-// call is one request's state: the writer, the key, and the usage event being assembled.
-type call struct {
-	g           *Gateway
-	w           http.ResponseWriter
-	r           *http.Request
-	start       time.Time
-	key         *keys.Key
-	ev          usage.Event
-	wroteHeader bool
-	ttftSet     bool
-	noEvent     bool // unauthenticated: nothing to record (promise 7b)
-	stalled     bool // the body read deadline fired: r.Context is cancelled by net/http, the friend is still there
-}
-
 func (g *Gateway) serveHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.ContentLength != 0 {
 		// A body is coming (declared, or -1 = chunked): bound how long it may take from this moment,
-		// valid key or not. This also bounds net/http's post-handler discard of a body that a rejected
-		// request never read. readBody clears it once the body is in hand.
+		// valid key or not (promise 4). This also bounds net/http's post-handler discard of a body that
+		// a rejected request never read. readBody clears it once the body is in hand.
 		_ = http.NewResponseController(w).SetReadDeadline(time.Now().Add(g.readTimeout))
 	}
 	if r.URL.Path == "/healthz" {
@@ -275,61 +261,9 @@ func (g *Gateway) serveHTTP(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(`{"ok":true}`))
 		return
 	}
-	c := &call{g: g, w: w, r: r, start: time.Now()}
-	c.ev.TS = c.start
-	c.ev.Endpoint = r.URL.Path
-	defer c.finish()
-
-	key, gerr := g.authenticate(r)
-	if key != nil { // active, paused, or revoked: the event names the key and last_seen moves (promise 7a)
-		c.key = key
-		c.ev.KeyID = key.ID
-		g.lim.touch(key.ID)
-	}
-	if gerr != nil {
-		c.noEvent = gerr.Code == CodeInvalidKey
-		c.fail(gerr)
-		return
-	}
-
-	switch {
-	case r.Method == http.MethodGet && r.URL.Path == "/me":
-		c.me()
-	case r.Method == http.MethodGet && r.URL.Path == "/v1/models":
-		c.models()
-	case r.Method == http.MethodPost && r.URL.Path == "/v1/chat/completions":
-		c.chat()
-	case r.Method == http.MethodPost && r.URL.Path == "/v1/embeddings":
-		c.embeddings()
-	default:
-		c.fail(errf(CodeNotFound, 0, "no route for %s %s", r.Method, r.URL.Path))
-	}
-}
-
-// authenticate resolves the bearer secret through the store on every request (no caching: hot
-// reload is the store's job). The secret is never logged, never echoed, never put in an event. A
-// paused or revoked key is returned alongside its error so the rejection is recorded against it.
-func (g *Gateway) authenticate(r *http.Request) (*keys.Key, *gwError) {
-	secret, ok := bearer(r.Header.Get("Authorization"))
-	if !ok {
-		return nil, errf(CodeInvalidKey, 0, "missing or malformed Authorization header; expected: Bearer <invite secret>")
-	}
-	k, found, err := g.store.Lookup(r.Context(), secret)
-	if err != nil {
-		g.logf("gateway: key store lookup failed: %v", err)
-		return nil, errf(CodeUpstreamDown, 1, "the host's key store is unavailable; try again")
-	}
-	if !found {
-		return nil, errf(CodeInvalidKey, 0, "unknown key; check the invite")
-	}
-	switch k.Status {
-	case keys.Active:
-		return k, nil
-	case keys.Revoked:
-		return k, errf(CodeKeyRevoked, 0, "this key has been revoked by the host")
-	default: // Paused, or anything unexpected: fail closed as paused
-		return k, errf(CodeKeyPaused, 0, "this key is paused by the host")
-	}
+	q := g.newRequest(w, r)
+	defer q.finish() // the one exit: releases whatever the request took, records the event
+	q.serve()
 }
 
 func bearer(h string) (string, bool) {
@@ -338,63 +272,6 @@ func bearer(h string) (string, bool) {
 		return "", false
 	}
 	return parts[1], true
-}
-
-// finish records the usage event. It runs after every request, including rejected ones — except
-// 401s: an unauthenticated request has no key to act on, and its path is attacker-chosen noise the
-// host cannot use (promise 7b). Endpoint is capped so a keyed friend's 404s cannot inflate the log.
-func (c *call) finish() {
-	if c.noEvent {
-		return
-	}
-	c.ev.TotalMS = time.Since(c.start).Milliseconds()
-	if len(c.ev.Endpoint) > maxEndpointLen {
-		c.ev.Endpoint = c.ev.Endpoint[:maxEndpointLen]
-	}
-	if c.g.rec != nil {
-		c.g.rec.Record(context.WithoutCancel(c.r.Context()), c.ev)
-	}
-}
-
-// fail writes e as the response: a full error response if nothing was written yet, an SSE error
-// event if a stream is under way, or nothing if the friend has already gone (recorded as 499).
-func (c *call) fail(e *gwError) {
-	if c.wroteHeader {
-		c.ev.Code = string(e.Code)
-		if c.r.Context().Err() == nil {
-			writeStreamError(c.w, e)
-		}
-		return
-	}
-	if e.Code == CodeClientClosed || (c.r.Context().Err() != nil && !c.stalled) {
-		c.ev.Status, c.ev.Code = 499, string(CodeClientClosed)
-		return
-	}
-	c.ev.Status, c.ev.Code = e.Status(), string(e.Code)
-	c.armWrite()
-	writeError(c.w, e)
-}
-
-func (c *call) writeHeader(status int) {
-	c.wroteHeader = true
-	c.ev.Status = status
-	c.armWrite()
-	c.w.WriteHeader(status)
-}
-
-// armWrite gives the next write or flush to the friend writeTimeout to complete (promise 3). Called
-// before every response and re-armed per stream line, so a friend who stops reading fails the write
-// and frees the goroutine, the per-key slot, and the global slot; a friend who keeps reading is never
-// cut. net/http clears the deadline when the handler returns.
-func (c *call) armWrite() {
-	_ = http.NewResponseController(c.w).SetWriteDeadline(time.Now().Add(c.g.writeTimeout))
-}
-
-func (c *call) markTTFT() {
-	if !c.ttftSet {
-		c.ttftSet = true
-		c.ev.TTFTMS = time.Since(c.start).Milliseconds()
-	}
 }
 
 // cors wraps h for dev mode: any origin, the two headers the web app sends, preflight answered

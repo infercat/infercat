@@ -155,13 +155,14 @@ type fakeUpstream struct {
 	srv  *httptest.Server
 	base *url.URL
 
-	mu        sync.Mutex
-	info      upstream.Info
-	countErr  error
-	countGate chan struct{} // when set, CountTokens blocks until it is closed
-	mode      string        // sse | json | 500 | garbage | hang | redirect | status:NNN
-	events    []string      // sse: data payloads; json and status:NNN: events[0] is the body
-	gap       time.Duration
+	mu         sync.Mutex
+	info       upstream.Info
+	countErr   error
+	countGate  chan struct{} // when set, CountTokens blocks until it is closed
+	countPanic bool          // when set, CountTokens panics (the handler's panic path)
+	mode       string        // sse | json | 500 | garbage | hang | redirect | status:NNN
+	events     []string      // sse: data payloads; json and status:NNN: events[0] is the body
+	gap        time.Duration
 
 	// observations
 	started   chan struct{} // closed when the first request reaches the handler
@@ -283,10 +284,13 @@ func (f *fakeUpstream) set(mode string, events ...string) {
 // It tracks how many calls run at once and, with countGate set, parks callers until the gate closes.
 func (f *fakeUpstream) CountTokens(_ context.Context, text string) (int, bool, error) {
 	f.mu.Lock()
-	err, gate := f.countErr, f.countGate
+	err, gate, boom := f.countErr, f.countGate, f.countPanic
 	f.mu.Unlock()
 	if err != nil {
 		return 0, false, err
+	}
+	if boom {
+		panic("fake upstream: tokenize exploded")
 	}
 	n := f.countNow.Add(1)
 	defer f.countNow.Add(-1)
