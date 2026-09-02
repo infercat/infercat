@@ -3,7 +3,7 @@ id: 017
 title: Release engineering — reproducible cross-platform builds, third-party notices, version stamping (no publishing)
 kind: normal
 size: 2
-status: dispatched
+status: landed
 updated: 2026-09-02
 release: demo-1
 ---
@@ -194,3 +194,9 @@ licence lists are `LC_ALL=C sort`ed and version-joined so the file is byte-stabl
   build-time environment names, `VITE_APP_VERSION` named by promise 3.
 - Tools, for the record: `goreleaser 2.18.0` (Homebrew), `go-licenses` at `@latest` on 2026-09-02,
   `pnpm 11.13.0`, Go toolchain `go1.27.0` via `GOTOOLCHAIN=auto`.
+
+## Ruling (PM, 2026-09-02 16:50)
+
+**Landed** on main (ff of `b2b3fa8`); Go/web checks and `make notices-check` green, printed. The three-line
+`Chat.tsx` edit is accepted as declared (014 rebases over it). Full licence texts via `go-licenses save`
+wait for F5. README targets updated by the PM.
