@@ -142,7 +142,7 @@ with real `fetch` before the wasm path exists. Loopback only; refuses non-loopba
 ```json
 {"version":1,"keys":[{"id":"k_7f3a2b","name":"alice","secret_hash":"sha256:…","status":"active","created_at":"…","limits":{…}}]}
 ```
-Defaults for a new key: rpm 20 · tpm 20000 · max_concurrent 1 · max_output_tokens 2048 · max_context 0 (= upstream's) ·
+Defaults for a new key: rpm 20 · tpm 20000 · max_concurrent 1 · max_output_tokens 4096 · max_context 0 (= upstream's) ·
 daily_tokens 200000 · models [] (= all). Secret shown once at `keys add`; store keeps `sha256:` hex only.
 
 ## Usage events (types by PM in `internal/usage/usage.go`; recorder by 003)

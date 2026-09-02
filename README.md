@@ -45,7 +45,7 @@ upstream — nothing else on your machine, no other port, no files.
 
 Manage friends: `keys list` · `keys pause alice` (she gets 403 until `keys resume`) · `keys revoke alice`
 (permanent; she needs a new invite) · `keys rotate alice` (new invite, old one stops) ·
-`keys limits alice --rpm 30 --daily-tokens 500000`. Watch: `status` (live) and `usage` (history).
+`keys limits alice --rpm 30 --daily-tokens 500000 --max-output-tokens 8192`. Watch: `status` (live) and `usage` (history).
 
 ## Quickstart (friend)
 
