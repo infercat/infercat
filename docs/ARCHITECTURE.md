@@ -126,9 +126,9 @@ Auth: `Authorization: Bearer <secret>` on every route except `/healthz`.
 
 Error format (OpenAI-shaped, MUST):
 ```json
-{"error":{"message":"human sentence","type":"invalid_request_error|authentication_error|permission_error|rate_limit_error|upstream_error","code":"invalid_key|key_paused|key_revoked|model_not_allowed|body_too_large|context_too_long|rate_limited|concurrency_limited|budget_exhausted|queue_timeout|upstream_down|upstream_error"}}
+{"error":{"message":"human sentence","type":"invalid_request_error|authentication_error|permission_error|rate_limit_error|upstream_error","code":"invalid_request|invalid_key|key_paused|key_revoked|model_not_allowed|not_found|body_too_large|context_too_long|rate_limited|concurrency_limited|budget_exhausted|queue_timeout|upstream_down|upstream_error"}}
 ```
-Statuses: 401 invalid_key · 403 key_paused/key_revoked/model_not_allowed · 413 body_too_large · 422 context_too_long · 429 rate_limited/concurrency_limited/budget_exhausted (+ `Retry-After` seconds) · 503 queue_timeout/upstream_down (+ `Retry-After`) · 502 upstream_error.
+Statuses: 400 invalid_request (malformed JSON/body) · 404 not_found · 401 invalid_key · 403 key_paused/key_revoked/model_not_allowed · 413 body_too_large · 422 context_too_long · 429 rate_limited/concurrency_limited/budget_exhausted (+ `Retry-After` seconds) · 503 queue_timeout/upstream_down (+ `Retry-After`) · 502 upstream_error.
 
 Dev mode: `serve --dev-listen 127.0.0.1:9090` additionally serves the gateway on loopback with permissive CORS
 (`Access-Control-Allow-Origin: *`, headers `authorization, content-type`) so the web app can be developed

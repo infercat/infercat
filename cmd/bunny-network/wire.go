@@ -1,9 +1,4 @@
-//go:build wire
-
-// This is the real wiring to ticket 001's tunnel/invite and ticket 002's gateway, written
-// against the signatures in docs/ARCHITECTURE.md and ticket 002 promise 1. It is behind the
-// `wire` build tag only because those two tickets land in parallel with this one; the PM drops
-// the tag (and wire_stub.go) once they are on main. Nothing else in this command imports them.
+// Real wiring of ticket 001's tunnel/invite and ticket 002's gateway into the CLI.
 
 package main
 
