@@ -1,6 +1,6 @@
 # HANDOFF — state of the work (succession document)
 
-Updated: 2026-09-02 19:40 EDT (machine clock; earlier stamps in this file were written from mixed clocks). MILESTONE 13:30: founder ran the demo end to end and declared the concept proven; next theme polish. PM seat: Claude Fable, session on Max's laptop.
+Updated: 2026-09-02 17:25 EDT (machine clock; some earlier stamps in this file are +2 h) (machine clock; earlier stamps in this file were written from mixed clocks). MILESTONE 13:30: founder ran the demo end to end and declared the concept proven; next theme polish. PM seat: Claude Fable, session on Max's laptop.
 
 ## What this is
 
@@ -29,7 +29,8 @@ a public social-media launch soon after, likely serving DeepSeek v4 flash from t
 - **Reviews done:** Claude adversarial workflows on 001 (36 agents), 002 (55), 003 (46); second-model
   review (gpt-5.6-sol via ultracodex, 4 lenses, 39 findings) on integrated main. Summaries and rulings
   are appended to each ticket; confirmed defects became tickets 005 (10a–10n), 006, 007.
-- **Running:** 020 web truth round 2 (Fable; from the second pass) · 019 settle-table test flake (Opus). Second pass verdict recorded in pm/LAUNCH.md.
+- **Running:** 020 web truth round 2 (Fable) and 021 queue departure race (Opus) — both killed once by the third session rate limit (resets 19:30 EDT); their working trees were committed by the PM as WIP on their branches (`2bdd257`, `5b7ecd7`) and the engineers resumed. 019 landed (`c0e1733`). Default `max_output_tokens` raised to 4096 (`dce971d`) after the founder's nitpick ruling.
+- **Protocol when a rate limit kills an engineer:** commit its worktree as WIP on its branch, push, then resume the same agent with a pointer to the commit.
 - **Engineering gates (pm/LAUNCH.md):** 014 ✓ · 017 ✓ · 018 ✓ · second pass: pending · relay/web URL/live proof: wait on founder decisions F1–F6. (Opus; from the phone persona's report — host-asleep and paused handling, honest meters, multi-tab storage, messages-not-requests, touch, copy) · the desktop persona + synthesis of the experience workflow (re-run after the rate limit).
 - **Incident 2 (14:2x):** a second session rate limit (resets 15:30 EDT) killed the 010/011 engineer mid-rebase (after its push) and two workflow agents. Resumed at 14:34 on the founder's "please continue". Drafted: 012 concept trim + cleanup (after launch), 013 web follow-through. Done earlier today: truthful stream ends, session leaks, degraded
   states, host-scoped storage, revoked mid-session, abort-during-dial, IME, two tabs, log-prompts copy.
