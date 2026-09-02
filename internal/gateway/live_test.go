@@ -2,8 +2,8 @@ package gateway
 
 // Opt-in check against a real llama.cpp server, e.g.
 //   BN_LIVE_UPSTREAM=http://127.0.0.1:18080 go test -run Live -v ./internal/gateway/
-// It sends requests only. The minimal Upstream here is not ticket 003's adapter; it exists so the
-// gateway can be exercised end-to-end before 003 lands.
+// It sends requests only. The minimal Engine here is not ticket 003's adapter; it exists so the
+// gateway can be exercised end-to-end with the seam in the test's hands.
 
 import (
 	"bufio"
@@ -28,9 +28,25 @@ type liveLlama struct {
 	info upstream.Info
 }
 
-func (l *liveLlama) BaseURL() *url.URL            { return l.base }
-func (l *liveLlama) Transport() http.RoundTripper { return http.DefaultTransport }
-func (l *liveLlama) Info() upstream.Info          { return l.info }
+func (l *liveLlama) Info() upstream.Info { return l.info }
+
+func (l *liveLlama) Do(ctx context.Context, method, path string, body []byte, stream bool) (*http.Response, error) {
+	var rdr io.Reader
+	if body != nil {
+		rdr = bytes.NewReader(body)
+	}
+	req, err := http.NewRequestWithContext(ctx, method, l.base.String()+path, rdr)
+	if err != nil {
+		return nil, err
+	}
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
+	if stream {
+		req.Header.Set("Accept", "text/event-stream")
+	}
+	return noRedirectClient(0).Do(req)
+}
 
 func (l *liveLlama) Refresh(ctx context.Context) error {
 	var props struct {
@@ -48,7 +64,7 @@ func (l *liveLlama) Refresh(ctx context.Context) error {
 	if err := getJSON(ctx, l.base.String()+"/v1/models", &models); err != nil {
 		return err
 	}
-	l.info = upstream.Info{Kind: upstream.LlamaCPP, URL: l.base.String(), Healthy: true, ModelContext: props.Defaults.NCtx, Slots: props.TotalSlots}
+	l.info = upstream.Info{Kind: upstream.LlamaCPP, URL: l.base.String(), Health: upstream.Health{OK: true}, ModelContext: props.Defaults.NCtx, Slots: props.TotalSlots}
 	for _, m := range models.Data {
 		l.info.Models = append(l.info.Models, m.ID)
 	}

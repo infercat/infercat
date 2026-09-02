@@ -43,11 +43,12 @@ type Tunnel struct {
 }
 
 type Upstream struct {
-	Kind         string `json:"kind"`
-	URL          string `json:"url"`
-	Healthy      bool   `json:"healthy"`
-	ModelContext int    `json:"model_context"`
-	Slots        int    `json:"slots"`
+	Kind         string    `json:"kind"`
+	URL          string    `json:"url"`
+	Healthy      bool      `json:"healthy"`
+	Since        time.Time `json:"since"` // when healthy last changed (ticket 011: "NOT ANSWERING for Ns")
+	ModelContext int       `json:"model_context"`
+	Slots        int       `json:"slots"`
 }
 
 type Queue struct {

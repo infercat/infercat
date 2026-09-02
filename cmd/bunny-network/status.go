@@ -11,6 +11,7 @@ import (
 
 	"github.com/2185Lab/bunny-network/internal/admin"
 	"github.com/2185Lab/bunny-network/internal/product"
+	"github.com/2185Lab/bunny-network/internal/upstream"
 )
 
 func (e *env) cmdStatus(ctx context.Context, pre string, args []string) error {
@@ -37,7 +38,7 @@ func (e *env) cmdStatus(ctx context.Context, pre string, args []string) error {
 func writeStatus(w io.Writer, st admin.Status) {
 	fmt.Fprintf(w, "%s %s — up %s\n", st.Product, st.Version, shortDur(time.Duration(st.UptimeS)*time.Second))
 	fmt.Fprintf(w, "upstream  %s  %s  %s  context %s  slots %d\n",
-		st.Upstream.Kind, st.Upstream.URL, healthWord(st.Upstream.Healthy),
+		kindWord(st.Upstream.Kind), st.Upstream.URL, healthWord(st.Upstream.Healthy, st.Upstream.Since),
 		contextStr(st.Upstream.ModelContext), st.Upstream.Slots)
 	fmt.Fprintf(w, "tunnel    %s  relay %s  %s\n", orDash(st.Tunnel.Addr), orDash(st.Tunnel.Region), plural(st.Tunnel.Clients, "client"))
 	fmt.Fprintf(w, "queue     %d in flight, %d waiting\n", st.Queue.InFlight, st.Queue.Waiting)
@@ -55,11 +56,24 @@ func writeStatus(w io.Writer, st admin.Status) {
 	fmt.Fprintf(w, "\n%s\n", countsLine)
 }
 
-func healthWord(ok bool) string {
+// healthWord and kindWord are the engine state as the host reads it, on the banner and in
+// `status` (DESIGN §3.2): an engine nobody has met is not called by a guessed name, and one that
+// stopped answering says since when.
+func healthWord(ok bool, since time.Time) string {
 	if ok {
 		return "healthy"
 	}
-	return "NOT ANSWERING"
+	if since.IsZero() {
+		return "NOT ANSWERING"
+	}
+	return "NOT ANSWERING for " + shortDur(time.Since(since))
+}
+
+func kindWord(kind string) string {
+	if kind == string(upstream.Unknown) {
+		return "(not identified yet)"
+	}
+	return kind
 }
 
 func plural(n int, word string) string {

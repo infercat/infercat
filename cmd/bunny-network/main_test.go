@@ -724,6 +724,13 @@ func TestDownUpstreamNamesTheWayOut(t *testing.T) {
 			t.Errorf("warning missing %q:\n%s", want, r.err)
 		}
 	}
+	// The banner does not name an engine nobody has met (ticket 011, DESIGN §3.2).
+	if want := "upstream  (not identified yet)  " + url + "  NOT ANSWERING for "; !strings.Contains(r.out, want) {
+		t.Errorf("banner missing %q:\n%s", want, r.out)
+	}
+	if strings.Contains(r.out, "openai-compatible") {
+		t.Errorf("banner guessed a kind for an engine that never answered:\n%s", r.out)
+	}
 	if got := forgetIfAuto("auto"); got != "" {
 		t.Errorf("forgetIfAuto(auto) = %q; want the remembered URL forgotten", got)
 	}
@@ -930,5 +937,20 @@ func TestKeyWritesPokeTheRunningHost(t *testing.T) {
 	}
 	if k, _, _ := store.Lookup(ctx, secret); k.Status != keys.Active {
 		t.Fatalf("resume did not reach the running host: %s", k.Status)
+	}
+}
+
+// `status` reads the same words off the admin API: an engine nobody has met and one that stopped
+// answering, with since when (ticket 011).
+func TestStatusWordsForTheEngineState(t *testing.T) {
+	var out bytes.Buffer
+	writeStatus(&out, admin.Status{Upstream: admin.Upstream{Kind: "unknown", URL: "http://127.0.0.1:1", Since: time.Now().Add(-12 * time.Second)}})
+	if s := out.String(); !strings.Contains(s, "upstream  (not identified yet)  http://127.0.0.1:1  NOT ANSWERING for 12s") {
+		t.Errorf("status for an unknown engine:\n%s", s)
+	}
+	out.Reset()
+	writeStatus(&out, admin.Status{Upstream: admin.Upstream{Kind: "llama.cpp", URL: "http://127.0.0.1:8080", Healthy: true, Slots: 2}})
+	if s := out.String(); !strings.Contains(s, "upstream  llama.cpp  http://127.0.0.1:8080  healthy") {
+		t.Errorf("status for a healthy engine:\n%s", s)
 	}
 }

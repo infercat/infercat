@@ -542,7 +542,7 @@ func TestQueueFollowsEngineSlots(t *testing.T) {
 
 func TestUpstreamFailures(t *testing.T) {
 	h := newHarness(t, Config{}, nil)
-	h.gw.firstByteTimeout = 200 * time.Millisecond
+	h.up.firstByte(200 * time.Millisecond)
 	h.up.set("500")
 	r := h.post("/v1/chat/completions", chatBody("m1", 1, ""))
 	h.expectErr(r, CodeUpstreamError)
@@ -555,7 +555,7 @@ func TestUpstreamFailures(t *testing.T) {
 	start := time.Now()
 	r = h.post("/v1/chat/completions", chatBody("m1", 1, ""))
 	h.expectErr(r, CodeUpstreamError)
-	if d := time.Since(start); d < 200*time.Millisecond || d > 3*time.Second || !strings.Contains(r.message, "did not answer within") {
+	if d := time.Since(start); d < 200*time.Millisecond || d > 3*time.Second || !strings.Contains(r.message, "did not answer in time") {
 		t.Fatalf("first-byte timeout took %s: %s", d, r.message)
 	}
 	select {
@@ -568,7 +568,7 @@ func TestUpstreamFailures(t *testing.T) {
 	}
 	// Reported unhealthy: refused before admission, no RPM consumed.
 	h.up.set("json")
-	h.up.setInfo(func(i *upstream.Info) { i.Healthy = false })
+	h.up.setInfo(func(i *upstream.Info) { i.Health.OK = false })
 	rpmBefore := h.gw.Counters("k_alice1").RPMUsed
 	r = h.post("/v1/chat/completions", chatBody("m1", 1, ""))
 	h.expectErr(r, CodeUpstreamDown)

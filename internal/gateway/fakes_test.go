@@ -150,11 +150,16 @@ func (r *fakeRecorder) last(t *testing.T) usage.Event {
 	return ev[len(ev)-1]
 }
 
-// ---- upstream.Upstream backed by an httptest engine ----
+// ---- upstream.Engine backed by an httptest engine ----
+
+// E4 (DESIGN §3.5), at compile time: the gateway is built against Engine alone — this fake has
+// Info, CountTokens and Do and nothing else, and every gateway test compiles against it.
+var _ upstream.Engine = (*fakeUpstream)(nil)
 
 type fakeUpstream struct {
 	srv  *httptest.Server
-	base *url.URL
+	base *url.URL     // where Do sends requests; setBase changes it (a dead engine, an engine back)
+	hc   *http.Client // no redirects; firstByte swaps in a transport with a header deadline
 
 	mu         sync.Mutex
 	info       upstream.Info
@@ -186,7 +191,8 @@ type fakeUpstream struct {
 
 func newFakeUpstream() *fakeUpstream {
 	f := &fakeUpstream{
-		info:       upstream.Info{Kind: upstream.LlamaCPP, Healthy: true, Slots: 1, Models: []string{"m1", "m2", "m3"}},
+		info:       upstream.Info{Kind: upstream.LlamaCPP, Health: upstream.Health{OK: true}, Slots: 1, Models: []string{"m1", "m2", "m3"}},
+		hc:         noRedirectClient(0),
 		mode:       "json",
 		stallAfter: -1,
 		events:     []string{`{"id":"x","object":"chat.completion","choices":[{"index":0,"message":{"role":"assistant","content":"hi there"}}],"usage":{"prompt_tokens":4,"completion_tokens":4}}`},
@@ -296,10 +302,51 @@ func (f *fakeUpstream) handle(w http.ResponseWriter, r *http.Request) {
 	}
 }
 
-func (f *fakeUpstream) BaseURL() *url.URL             { return f.base }
-func (f *fakeUpstream) Transport() http.RoundTripper  { return &http.Transport{} }
-func (f *fakeUpstream) Refresh(context.Context) error { return nil }
-func (f *fakeUpstream) Info() upstream.Info           { f.mu.Lock(); defer f.mu.Unlock(); return f.info }
+func (f *fakeUpstream) Info() upstream.Info { f.mu.Lock(); defer f.mu.Unlock(); return f.info }
+
+// Do mirrors the real engine's (upstream/client.go): the request is built from method, path and
+// body alone — the friend's headers cannot reach it — sent by a client that never follows a
+// redirect, with a first-byte deadline when firstByte set one.
+func (f *fakeUpstream) Do(ctx context.Context, method, path string, body []byte, stream bool) (*http.Response, error) {
+	f.mu.Lock()
+	hc, base := f.hc, f.base
+	f.mu.Unlock()
+	var rdr io.Reader
+	if body != nil {
+		rdr = bytes.NewReader(body)
+	}
+	req, err := http.NewRequestWithContext(ctx, method, base.String()+path, rdr)
+	if err != nil {
+		return nil, err
+	}
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
+	if stream {
+		req.Header.Set("Accept", "text/event-stream")
+	}
+	return hc.Do(req)
+}
+
+func noRedirectClient(firstByte time.Duration) *http.Client {
+	return &http.Client{
+		Transport:     &http.Transport{ResponseHeaderTimeout: firstByte},
+		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+	}
+}
+
+// firstByte is the engine's first-byte deadline (upstream.FirstByteTimeout), shortened for a test.
+func (f *fakeUpstream) firstByte(d time.Duration) {
+	f.mu.Lock()
+	f.hc = noRedirectClient(d)
+	f.mu.Unlock()
+}
+
+func (f *fakeUpstream) setBase(rawURL string) {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	f.base, _ = url.Parse(rawURL)
+}
 func (f *fakeUpstream) setInfo(fn func(*upstream.Info)) {
 	f.mu.Lock()
 	defer f.mu.Unlock()
@@ -398,7 +445,7 @@ func defaultKey() *keys.Key {
 	return &keys.Key{ID: "k_alice1", Name: "alice", Status: keys.Active, CreatedAt: time.Now(), Limits: keys.Limits{MaxOutputTokens: 2048}}
 }
 
-func newHarness(t *testing.T, cfg Config, up upstream.Upstream) *harness {
+func newHarness(t *testing.T, cfg Config, up upstream.Engine) *harness {
 	t.Helper()
 	h := &harness{t: t, store: &fakeStore{keys: map[string]*keys.Key{}}, rec: &fakeRecorder{}}
 	switch u := up.(type) {

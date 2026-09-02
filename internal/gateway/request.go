@@ -1,7 +1,6 @@
 package gateway
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -178,7 +177,7 @@ func (q *request) authenticate() *gwError {
 }
 
 func (q *request) checkHealth() *gwError {
-	if !q.g.up.Info().Healthy {
+	if !q.g.up.Info().Health.OK {
 		return errf(CodeUpstreamDown, retryAfterUpstreamDown, "the host's engine is not reachable right now")
 	}
 	return nil
@@ -294,12 +293,10 @@ func (q *request) acquireSlot() *gwError {
 	return nil
 }
 
-// callUpstream sends the normalized body to the engine, never following a redirect (promise 6),
-// under the engine first-byte deadline (DESIGN §1.6): a timer on the upstream context that fires
-// only if no headers have arrived, so a slow-but-live stream is never touched by it (011 moves this
-// bound onto the engine's transport as ResponseHeaderTimeout). A 2xx puts the response on the
-// record; anything else is the engine's outcome — unless the friend left while the engine was
-// working for them, which is Cut.
+// callUpstream sends the normalized body through the engine seam (DESIGN §3.4: the engine adds
+// its bearer, refuses redirects — promise 6 — and bounds its own first byte, §1.6). A 2xx puts the
+// response on the record; anything else is the engine's outcome — unless the friend left while
+// the engine was working for them, which is Cut.
 func (q *request) callUpstream() *gwError {
 	payload, err := json.Marshal(q.n.body)
 	if err != nil {
@@ -307,34 +304,13 @@ func (q *request) callUpstream() *gwError {
 	}
 	ctx, cancel := context.WithCancel(q.r.Context())
 	q.cancelUpstream = cancel
-	req, _ := http.NewRequestWithContext(ctx, http.MethodPost, q.upstreamURL(string(q.kind)), bytes.NewReader(payload))
-	req.Header.Set("Content-Type", "application/json")
-	if q.n.stream {
-		req.Header.Set("Accept", "text/event-stream")
-	}
-	var decided atomic.Bool // whoever flips it first — the headers or the timer — wins
-	first := time.AfterFunc(q.g.firstByteTimeout, func() {
-		if decided.CompareAndSwap(false, true) {
-			cancel()
-		}
-	})
-	resp, derr := q.doUpstream(req)
-	timedOut := !decided.CompareAndSwap(false, true)
-	first.Stop()
-	if derr == nil && timedOut { // headers arrived as the timer fired: the context went with them
-		resp.Body.Close()
-		derr = context.Canceled
-	}
+	resp, derr := q.g.up.Do(ctx, http.MethodPost, string(q.kind), payload, q.n.stream)
 	if derr != nil {
 		if q.r.Context().Err() != nil {
 			q.outcome = outcomeCut
 			return errf(CodeClientClosed, 0, "client went away")
 		}
 		q.outcome = outcomeEngineErr
-		if timedOut {
-			q.g.logf("gateway: upstream did not answer within %s", q.g.firstByteTimeout)
-			return errf(CodeUpstreamError, 0, "the host's engine did not answer within %s", q.g.firstByteTimeout)
-		}
 		return q.upstreamErr(derr)
 	}
 	q.resp = resp

@@ -13,7 +13,6 @@ import (
 	"io"
 	"math/rand"
 	"net/http"
-	"net/url"
 	"reflect"
 	"strings"
 	"sync"
@@ -204,15 +203,15 @@ func TestI1ExactlyOnceRelease(t *testing.T) {
 		}},
 		{"503 upstream_down (unhealthy)", func(t *testing.T) *harness {
 			h := newHarness(t, Config{}, nil)
-			h.up.setInfo(func(i *upstream.Info) { i.Healthy = false })
+			h.up.setInfo(func(i *upstream.Info) { i.Health.OK = false })
 			h.expectErr(h.post("/v1/chat/completions", chatBody("m1", 1, "")), CodeUpstreamDown)
-			h.up.setInfo(func(i *upstream.Info) { i.Healthy = true })
+			h.up.setInfo(func(i *upstream.Info) { i.Health.OK = true })
 			return h
 		}},
 		{"503 upstream_down (unreachable)", func(t *testing.T) *harness {
 			h := newHarness(t, Config{}, newDeadUpstream(t))
 			h.expectErr(h.post("/v1/chat/completions", chatBody("m1", 1, "")), CodeUpstreamDown)
-			h.up.base, _ = url.Parse(h.up.srv.URL) // the engine comes back for the next request
+			h.up.setBase(h.up.srv.URL) // the engine comes back for the next request
 			return h
 		}},
 		{"503 upstream_down (key store)", func(t *testing.T) *harness {
@@ -242,7 +241,7 @@ func TestI1ExactlyOnceRelease(t *testing.T) {
 		}},
 		{"502 upstream_error (first byte)", func(t *testing.T) *harness {
 			h := newHarness(t, Config{}, nil)
-			h.gw.firstByteTimeout = 100 * time.Millisecond
+			h.up.firstByte(100 * time.Millisecond)
 			h.up.set("hang")
 			h.expectErr(h.post("/v1/chat/completions", chatBody("m1", 1, "")), CodeUpstreamError)
 			h.up.set("json")
@@ -617,7 +616,7 @@ func TestI6SettleTable(t *testing.T) {
 			h.expectErr(h.post("/v1/chat/completions", chatBody("m1", 1, "")), CodeUpstreamError)
 		}, 1, exactly(0)},
 		{"EngineErr: first byte", func(t *testing.T, h *harness) {
-			h.gw.firstByteTimeout = 100 * time.Millisecond
+			h.up.firstByte(100 * time.Millisecond)
 			h.up.set("hang")
 			h.expectErr(h.post("/v1/chat/completions", chatBody("m1", 1, "")), CodeUpstreamError)
 		}, 1, exactly(0)},
@@ -853,12 +852,12 @@ func TestI8Deadlines(t *testing.T) {
 	})
 	t.Run("no headers: first-byte deadline", func(t *testing.T) {
 		h := newHarness(t, Config{}, nil)
-		h.gw.firstByteTimeout = 200 * time.Millisecond
+		h.up.firstByte(200 * time.Millisecond)
 		h.up.set("hang")
 		start := time.Now()
 		r := h.post("/v1/chat/completions", chatBody("m1", 1, `"stream":true`))
 		h.expectErr(r, CodeUpstreamError)
-		if d := time.Since(start); d < 200*time.Millisecond || d > 2*time.Second || !strings.Contains(r.message, "did not answer within") {
+		if d := time.Since(start); d < 200*time.Millisecond || d > 2*time.Second || !strings.Contains(r.message, "did not answer in time") {
 			t.Fatalf("first byte: %s after %s", r.message, d)
 		}
 		select {
@@ -872,7 +871,8 @@ func TestI8Deadlines(t *testing.T) {
 		// Every engine- and client-side deadline is 250 ms; the engine sends one event every 120 ms
 		// for 3 s (the §1.8 fixture "one byte every 10 s for 10 minutes", scaled).
 		h := newHarness(t, Config{}, nil)
-		h.gw.firstByteTimeout, h.gw.idleTimeout, h.gw.writeTimeout, h.gw.readTimeout = 250*time.Millisecond, 250*time.Millisecond, 250*time.Millisecond, 250*time.Millisecond
+		h.up.firstByte(250 * time.Millisecond)
+		h.gw.idleTimeout, h.gw.writeTimeout, h.gw.readTimeout = 250*time.Millisecond, 250*time.Millisecond, 250*time.Millisecond
 		h.up.set("sse", sseEvents(25, true)...)
 		h.up.mu.Lock()
 		h.up.gap = 120 * time.Millisecond

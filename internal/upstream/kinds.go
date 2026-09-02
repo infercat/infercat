@@ -3,6 +3,7 @@ package upstream
 import (
 	"context"
 	"strings"
+	"time"
 )
 
 // modelsResponse is the OpenAI /v1/models shape plus the fields the engines add: vLLM carries
@@ -36,74 +37,88 @@ type tagsResponse struct {
 
 // sniff decides which engine answers at c.base. Order matters: llama.cpp is the only one with
 // /props, vLLM is the only one of the four with /version, Ollama is the only one with /api/tags,
-// and anything else that speaks /v1/models is LM Studio (by shape) or Generic.
-func sniff(ctx context.Context, c *client) (Kind, bool) {
+// and anything else that speaks /v1/models is LM Studio (by shape) or Generic. Nothing answering
+// is Unknown with the last probe's error.
+func sniff(ctx context.Context, c *client) (Kind, error) {
 	var props propsResponse
 	if err := c.getJSON(ctx, "/props", &props); err == nil && (props.TotalSlots > 0 || props.ModelPath != "" || props.DefaultGenerationSettings.NCtx > 0) {
-		return LlamaCPP, true
+		return LlamaCPP, nil
 	}
 	var ver struct {
 		Version string `json:"version"`
 	}
 	if err := c.getJSON(ctx, "/version", &ver); err == nil && ver.Version != "" {
-		return VLLM, true
+		return VLLM, nil
 	}
 	var tags tagsResponse
 	if err := c.getJSON(ctx, "/api/tags", &tags); err == nil && tags.Models != nil {
-		return Ollama, true
+		return Ollama, nil
 	}
 	var models modelsResponse
 	if err := c.getJSON(ctx, "/v1/models", &models); err != nil {
-		return Generic, false
+		return Unknown, err
 	}
 	for _, m := range models.Data {
 		switch {
 		case strings.EqualFold(m.OwnedBy, "vllm") || m.MaxModelLen > 0:
-			return VLLM, true
+			return VLLM, nil
 		case m.Publisher != "" || m.Quantization != "" || m.LoadedContextLength > 0 ||
 			strings.EqualFold(m.OwnedBy, "organization_owner"):
-			return LMStudio, true
+			return LMStudio, nil
 		case strings.EqualFold(m.OwnedBy, "llamacpp"):
-			return LlamaCPP, true
+			return LlamaCPP, nil
 		}
 	}
-	return Generic, true
+	return Generic, nil
 }
 
-// Refresh probes the engine and replaces Info. An error leaves the previous models and context
-// in place but marks the upstream unhealthy, so /me keeps telling the truth about what it knew.
+// Refresh is the one probe, and every transition goes through it (DESIGN §3.2): Unknown and an
+// engine answers a signature → identified, OK, fields filled; Unknown and nothing answers → still
+// Unknown, not OK (Err updated, Since kept); identified and the refresh succeeds → fields replaced;
+// identified and it fails → fields kept, not OK — /me keeps telling the truth about what it knew.
+// Slots are the engine's own where it reports them (llama.cpp), else the host's --slots, else
+// vLLM's documented 2, else 1.
 func (c *client) Refresh(ctx context.Context) error {
 	c.mu.RLock()
-	kind, override, sniffed := c.info.Kind, c.setSlots, c.sniffed
+	kind, override := c.info.Kind, c.setSlots
 	c.mu.RUnlock()
-	if !sniffed { // the engine was down when we guessed: adopt the real kind once it answers (005 fix 10g)
-		if k, ok := sniff(ctx, c); ok {
-			kind = k
-			c.mu.Lock()
-			c.sniffed = true
-			c.mu.Unlock()
+	var err error
+	if kind == Unknown {
+		kind, err = sniff(ctx, c)
+	}
+	next := Info{URL: c.base.String(), Kind: kind, Slots: 1}
+	if err == nil {
+		switch kind {
+		case LlamaCPP:
+			err = c.refreshLlamaCPP(ctx, &next)
+		case Ollama:
+			err = c.refreshOllama(ctx, &next)
+		default: // vLLM, LM Studio, Generic all answer /v1/models
+			err = c.refreshOpenAI(ctx, &next)
 		}
 	}
-
-	next := Info{Kind: kind, URL: c.base.String(), Healthy: true, Slots: defaultSlots(kind)}
-	var err error
-	switch kind {
-	case LlamaCPP:
-		err = c.refreshLlamaCPP(ctx, &next)
-	case Ollama:
-		err = c.refreshOllama(ctx, &next)
-	default: // vLLM, LM Studio, Generic all answer /v1/models
-		err = c.refreshOpenAI(ctx, &next)
+	if override == 0 && kind == VLLM {
+		override = 2 // docs/ARCHITECTURE.md: vLLM does not report slots; --slots overrides, default 2
 	}
 	if override > 0 {
 		next.Slots = override
 	}
+	now := time.Now()
 	c.mu.Lock()
 	defer c.mu.Unlock()
+	c.info.ProbedAt = now
 	if err != nil {
-		c.info.Healthy = false
+		if c.info.Health.OK {
+			c.info.Health.Since = now
+		}
+		c.info.Health.OK, c.info.Health.Err = false, err.Error()
 		return err
 	}
+	next.Health = Health{OK: true, Since: c.info.Health.Since}
+	if !c.info.Health.OK {
+		next.Health.Since = now
+	}
+	next.ProbedAt = now
 	c.info = next
 	return nil
 }
