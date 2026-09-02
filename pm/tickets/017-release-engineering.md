@@ -197,6 +197,8 @@ licence lists are `LC_ALL=C sort`ed and version-joined so the file is byte-stabl
 
 ## Ruling (PM, 2026-09-02 16:50)
 
-**Landed** on main (ff of `b2b3fa8`); Go/web checks and `make notices-check` green, printed. The three-line
+**Landed** on main (ff of `b2b3fa8`); Go/web checks green, printed. **Correction:** `make notices-check` failed on
+the PM's first run because `go-licenses` lives in `$GOPATH/bin`, which was not on the PM's PATH; the script now
+prepends `$(go env GOPATH)/bin` and the check prints `notices: OK — 40 Go + 110 npm dependencies` (PM, printed). The three-line
 `Chat.tsx` edit is accepted as declared (014 rebases over it). Full licence texts via `go-licenses save`
 wait for F5. README targets updated by the PM.
