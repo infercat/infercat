@@ -6,10 +6,16 @@ import (
 	"encoding/json"
 	"errors"
 	"flag"
+	"fmt"
+	"io"
 	"net"
+	"net/http"
+	"net/http/httptest"
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
+	"sync/atomic"
 	"testing"
 	"time"
 
@@ -209,7 +215,11 @@ func TestFlagsAfterPositionals(t *testing.T) {
 	n := fs.Int("n", 0, "")
 	b := fs.Bool("b", false, "")
 	s := fs.String("s", "", "")
-	if err := fs.Parse(reorder(fs, []string{"name", "-n", "5", "-b", "-s=x", "extra"})); err != nil {
+	ordered, err := reorder(fs, []string{"name", "-n", "5", "-b", "-s=x", "extra"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := fs.Parse(ordered); err != nil {
 		t.Fatal(err)
 	}
 	if *n != 5 || !*b || *s != "x" {
@@ -221,11 +231,40 @@ func TestFlagsAfterPositionals(t *testing.T) {
 	// Everything after -- stays positional.
 	fs2 := flag.NewFlagSet("t2", flag.ContinueOnError)
 	fs2.Int("n", 0, "")
-	if err := fs2.Parse(reorder(fs2, []string{"--", "-n", "5"})); err != nil {
+	ordered2, err := reorder(fs2, []string{"--", "-n", "5"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := fs2.Parse(ordered2); err != nil {
 		t.Fatal(err)
 	}
 	if got := fs2.Args(); len(got) != 2 {
 		t.Errorf("after --: %v", got)
+	}
+}
+
+// 005 fix 10h: a value flag as the last word must not swallow the "--" terminator as its value.
+func TestDanglingValueFlagIsAnError(t *testing.T) {
+	fs := flag.NewFlagSet("t", flag.ContinueOnError)
+	fs.String("models", "", "")
+	fs.Bool("b", false, "")
+	if _, err := reorder(fs, []string{"zed", "--models"}); err == nil || !strings.Contains(err.Error(), "needs an argument") {
+		t.Fatalf("dangling --models: err = %v", err)
+	}
+	if _, err := reorder(fs, []string{"zed", "--b"}); err != nil { // a bool flag may end the line
+		t.Fatalf("trailing bool flag: %v", err)
+	}
+	if got, err := reorder(fs, []string{"zed", "--models=a"}); err != nil || strings.Join(got, " ") != "--models=a -- zed" {
+		t.Fatalf("--flag=value: %v %v", got, err)
+	}
+	// Through the real command: exit 2, nothing minted.
+	dir := t.TempDir()
+	r := exec(t, testPlatform(fakeAddr, nil), "keys", "add", "zed", "--data-dir", dir, "--models")
+	if r.code != 2 || !strings.Contains(r.err, "flag needs an argument: --models") {
+		t.Fatalf("exit %d, stderr %q; want 2 and the flag error", r.code, r.err)
+	}
+	if list := exec(t, testPlatform(fakeAddr, nil), "keys", "list", "--data-dir", dir); strings.Contains(list.out, "zed") {
+		t.Fatalf("a key was minted by a malformed command:\n%s", list.out)
 	}
 }
 
@@ -404,14 +443,132 @@ func TestResolveDataDirDefaultsUnderTheUserConfigDir(t *testing.T) {
 // A gateway server must satisfy the interface this command wires ticket 002 through.
 var _ gatewayServer = (*fakeGateway)(nil)
 
-type fakeGateway struct{}
+type fakeGateway struct {
+	serving chan struct{} // closed when Serve is first called
+	done    chan struct{} // closed by Shutdown; Serve blocks until then
+	once    sync.Once
+	slots   atomic.Int32 // last SetSlots value
+}
 
-func (fakeGateway) Serve(net.Listener) error                  { return nil }
-func (fakeGateway) ServeDev(string) error                     { return nil }
-func (fakeGateway) Shutdown(context.Context) error            { return nil }
-func (fakeGateway) Counters(string) usage.KeyCounters         { return usage.KeyCounters{} }
-func (fakeGateway) AllCounters() map[string]usage.KeyCounters { return nil }
-func (fakeGateway) Queue() (int, int)                         { return 0, 0 }
+func newFakeGateway() *fakeGateway {
+	return &fakeGateway{serving: make(chan struct{}), done: make(chan struct{})}
+}
+
+func (g *fakeGateway) Serve(net.Listener) error {
+	g.once.Do(func() { close(g.serving) })
+	<-g.done
+	return nil
+}
+func (g *fakeGateway) ServeDev(string) error                     { return nil }
+func (g *fakeGateway) Shutdown(context.Context) error            { close(g.done); return nil }
+func (g *fakeGateway) Counters(string) usage.KeyCounters         { return usage.KeyCounters{} }
+func (g *fakeGateway) AllCounters() map[string]usage.KeyCounters { return nil }
+func (g *fakeGateway) Queue() (int, int)                         { return 0, 0 }
+func (g *fakeGateway) SetSlots(n int)                            { g.slots.Store(int32(n)) }
+
+type fakeTunnel struct{}
+
+func (fakeTunnel) Listener() net.Listener { return nil }
+func (fakeTunnel) Addr() string           { return fakeAddr }
+func (fakeTunnel) Status() tunnelStatus   { return tunnelStatus{Addr: fakeAddr, Region: "Testville"} }
+func (fakeTunnel) Close() error           { return nil }
+
+// Ticket 005 fixes 10b and 10d through the real serve command: the tunnel engine's log lands
+// in <data-dir>/tunnel.log and never on the terminal (--verbose flips that), and the gateway
+// follows the engine's slot count once a refresh sees the real number.
+func TestServeRoutesTunnelLogAndFollowsSlots(t *testing.T) {
+	dir, err := os.MkdirTemp("", "bn005-") // short: the admin socket path has a length limit
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(dir)
+	var engineSlots atomic.Int32
+	engineSlots.Store(1)
+	engine := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/props":
+			fmt.Fprintf(w, `{"total_slots":%d,"default_generation_settings":{"n_ctx":4096}}`, engineSlots.Load())
+		case "/v1/models":
+			io.WriteString(w, `{"data":[{"id":"m"}]}`)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer engine.Close()
+	prev := refreshEvery
+	refreshEvery = 20 * time.Millisecond
+	defer func() { refreshEvery = prev }()
+
+	serve := func(verbose bool) (*fakeGateway, result) {
+		engineSlots.Store(1) // the engine "changes" to 3 only once serve is up
+		gw := newFakeGateway()
+		plat := testPlatform(fakeAddr, nil)
+		plat.startTunnel = func(ctx context.Context, o tunnelOptions) (tunnelServer, error) {
+			o.Logf("magicsock: disco key = d:test")
+			o.Logf("NetworkMap: {\"SelfNode\":1}")
+			return fakeTunnel{}, nil
+		}
+		plat.newGateway = func(gatewayOptions, upstream.Upstream, keys.Store, usage.Recorder, func(string, ...any)) (gatewayServer, error) {
+			return gw, nil
+		}
+		args := []string{"serve", "--data-dir", dir, "--upstream", engine.URL}
+		if verbose {
+			args = append(args, "--verbose")
+		}
+		ctx, cancel := context.WithCancel(context.Background())
+		var out, errw bytes.Buffer
+		code := make(chan int, 1)
+		go func() { code <- run(ctx, args, &out, &errw, plat) }()
+		select {
+		case <-gw.serving:
+		case <-time.After(10 * time.Second):
+			t.Fatalf("serve never reached the gateway:\n%s%s", out.String(), errw.String())
+		}
+		engineSlots.Store(3)
+		for deadline := time.Now().Add(5 * time.Second); gw.slots.Load() != 3; {
+			if time.Now().After(deadline) {
+				t.Fatalf("gateway never followed the engine to 3 slots (got %d):\n%s%s", gw.slots.Load(), out.String(), errw.String())
+			}
+			time.Sleep(10 * time.Millisecond)
+		}
+		cancel()
+		select {
+		case c := <-code:
+			return gw, result{c, out.String(), errw.String()}
+		case <-time.After(15 * time.Second):
+			t.Fatal("serve did not stop after Ctrl-C")
+		}
+		return nil, result{}
+	}
+
+	_, r := serve(false)
+	if r.code != 0 {
+		t.Fatalf("exit %d\n%s%s", r.code, r.out, r.err)
+	}
+	for _, want := range []string{product.Name, "upstream  llama.cpp", "slots 1", "tunnel    " + fakeAddr, "relay     Testville"} {
+		if !strings.Contains(r.out, want) {
+			t.Errorf("startup output lacks %q:\n%s", want, r.out)
+		}
+	}
+	if strings.Contains(r.err, "magicsock") || strings.Contains(r.err, "NetworkMap") {
+		t.Errorf("engine log reached the terminal:\n%s", r.err)
+	}
+	if !strings.Contains(r.err, "engine slots: 3 (was 1)") {
+		t.Errorf("slot change not reported:\n%s", r.err)
+	}
+	logPath := filepath.Join(dir, tunnelLogName)
+	if fi, err := os.Stat(logPath); err != nil || fi.Mode().Perm() != 0o600 {
+		t.Fatalf("tunnel.log: %v, mode %v; want 0600", err, fi.Mode())
+	}
+	if tl := string(readFile(t, logPath)); !strings.Contains(tl, "magicsock: disco key") {
+		t.Errorf("tunnel.log lacks the engine line:\n%s", tl)
+	}
+
+	_, r = serve(true)
+	if r.code != 0 || !strings.Contains(r.err, "magicsock: disco key") {
+		t.Errorf("--verbose must put the engine log on the terminal (exit %d):\n%s", r.code, r.err)
+	}
+}
 
 func readFile(t *testing.T, p string) []byte {
 	t.Helper()

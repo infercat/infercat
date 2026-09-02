@@ -164,9 +164,14 @@ func clampMaxTokens(body map[string]any, lim keys.Limits) int {
 	return inForce
 }
 
-// checkContext: effective context = min(key.MaxContext, upstream model context), ignoring zeros;
-// the prompt must fit in effective minus the max_tokens in force.
-func (c *call) checkContext(prompt, maxTok int) *gwError {
+// minOutputTokens is the floor when max_tokens is shrunk to fit the context.
+const minOutputTokens = 16
+
+// fitContext: effective context = min(key.MaxContext, upstream model context), ignoring zeros.
+// The prompt alone must fit (422 otherwise). When prompt + max_tokens would overshoot, max_tokens
+// shrinks to what remains (floor minOutputTokens), as llama.cpp does itself, instead of a
+// rejection (ticket 005 fix 10c).
+func (c *call) fitContext(body map[string]any, prompt, maxTok int) *gwError {
 	eff := c.g.up.Info().ModelContext
 	if k := c.key.Limits.MaxContext; k > 0 && (eff == 0 || k < eff) {
 		eff = k
@@ -174,11 +179,28 @@ func (c *call) checkContext(prompt, maxTok int) *gwError {
 	if eff == 0 {
 		return nil
 	}
-	room := eff - maxTok
-	if prompt > room {
-		return errf(CodeContextTooLong, 0, "prompt is %d tokens but only %d fit: context %d minus max_tokens %d", prompt, room, eff, maxTok)
+	if prompt > eff {
+		return errf(CodeContextTooLong, 0, "prompt is %d tokens but the context is %d", prompt, eff)
+	}
+	if maxTok > 0 && prompt+maxTok > eff {
+		setMaxTokens(body, max(eff-prompt, minOutputTokens))
 	}
 	return nil
+}
+
+// setMaxTokens rewrites whichever cap field(s) the request carries; max_tokens when neither is present.
+func setMaxTokens(body map[string]any, n int) {
+	v := json.Number(strconv.Itoa(n))
+	set := false
+	for _, f := range []string{"max_tokens", "max_completion_tokens"} {
+		if _, ok := body[f]; ok {
+			body[f] = v
+			set = true
+		}
+	}
+	if !set {
+		body["max_tokens"] = v
+	}
 }
 
 func setIncludeUsage(body map[string]any) {
@@ -216,7 +238,7 @@ func (c *call) chat() {
 	}
 	prompt := c.countTokens(text)
 	maxTok := clampMaxTokens(body, c.key.Limits)
-	if gerr := c.checkContext(prompt, maxTok); gerr != nil {
+	if gerr := c.fitContext(body, prompt, maxTok); gerr != nil {
 		c.fail(gerr)
 		return
 	}

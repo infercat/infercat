@@ -298,6 +298,51 @@ func TestAddrShortForm(t *testing.T) {
 	}
 }
 
+// Ticket 005 fix 10f: the temp file is a fresh O_EXCL name, so a planted host.key.json.tmp is
+// neither followed nor overwritten, the key lands at 0600, and nothing is left behind.
+func TestWriteKeyUsesAFreshTempFile(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, KeyFile)
+	decoy := path + ".tmp"
+	if err := os.WriteFile(decoy, []byte("decoy"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	pk := tailcat.NewPrivateKey()
+	pk.Public.RegionID = 302
+	for round := 0; round < 2; round++ { // second round overwrites an existing key
+		if err := writeKey(path, pk); err != nil {
+			t.Fatal(err)
+		}
+		if b, _ := os.ReadFile(decoy); string(b) != "decoy" {
+			t.Fatalf("writeKey wrote through the fixed .tmp name: %q", b)
+		}
+		fi, err := os.Stat(path)
+		if err != nil || fi.Mode().Perm() != 0o600 {
+			t.Fatalf("host key: %v, mode %v; want 0600", err, fi.Mode())
+		}
+		if got, err := SavedAddr(dir); err != nil || got != addrFor(pk) {
+			t.Fatalf("SavedAddr = %q, %v; want %q", got, err, addrFor(pk))
+		}
+		if ents, _ := os.ReadDir(dir); len(ents) != 2 {
+			t.Fatalf("round %d: data dir has %v; want only the key and the decoy", round, ents)
+		}
+	}
+}
+
+// Ticket 005 fix 10b (001's half): the engine's NetworkMap dump never reaches the host's Logf;
+// every other line does, arguments intact.
+func TestQuietDropsOnlyTheNetworkMapDump(t *testing.T) {
+	var got []string
+	logf := quiet(func(format string, args ...any) { got = append(got, fmt.Sprintf(format, args...)) })
+	logf("NetworkMap: %v", `{"SelfNode":{"ID":1}}`)
+	logf("magicsock: disco key = %s", "d:abc")
+	logf("[v1] netstack: registered IP %s", "::/0")
+	want := []string{"magicsock: disco key = d:abc", "[v1] netstack: registered IP ::/0"}
+	if strings.Join(got, "\n") != strings.Join(want, "\n") {
+		t.Fatalf("quiet passed %q; want %q", got, want)
+	}
+}
+
 func TestSavedAddrErrors(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, KeyFile)

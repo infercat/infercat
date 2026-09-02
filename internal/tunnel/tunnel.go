@@ -73,7 +73,7 @@ func Start(ctx context.Context, o Options) (*Server, error) {
 	}
 	logf := logger.Discard
 	if o.Logf != nil {
-		logf = o.Logf
+		logf = quiet(o.Logf)
 	}
 	pk, err := loadKey(o)
 	if err != nil {
@@ -107,6 +107,18 @@ func Start(ctx context.Context, o Options) (*Server, error) {
 	}
 	s.started = time.Now()
 	return s, nil
+}
+
+// quiet drops the NetworkMap dump tailcat logs at startup (one JSON line describing this very
+// node) from whatever the caller's Logf feeds: it is never useful to a host and never belongs on
+// a terminal (ticket 005 fix 10b). Everything else passes through untouched.
+func quiet(logf logger.Logf) logger.Logf {
+	return func(format string, args ...any) {
+		if strings.HasPrefix(format, "NetworkMap:") {
+			return
+		}
+		logf(format, args...)
+	}
 }
 
 // newTailcatServer is the whole tailcat configuration; a test pins what it must never set.
@@ -184,21 +196,30 @@ func readKey(path string) (*tailcat.PrivateKey, error) {
 	return pk, nil
 }
 
-// writeKey writes the key atomically, mode 0600, in a 0700 directory.
+// writeKey writes the key atomically, mode 0600, in a 0700 directory: a fresh O_EXCL temp file
+// beside the target (never a predictable name; ticket 005 fix 10f), then rename.
 func writeKey(path string, pk *tailcat.PrivateKey) error {
-	if err := os.MkdirAll(filepath.Dir(path), 0o700); err != nil {
+	dir := filepath.Dir(path)
+	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return fmt.Errorf("tunnel: creating data dir: %w", err)
 	}
 	b, err := json.MarshalIndent(pk, "", "\t")
 	if err != nil {
 		return err
 	}
-	tmp := path + ".tmp"
-	if err := os.WriteFile(tmp, b, 0o600); err != nil {
+	tmp, err := os.CreateTemp(dir, "."+filepath.Base(path)+"-*") // 0600, O_EXCL
+	if err != nil {
 		return fmt.Errorf("tunnel: writing host key: %w", err)
 	}
-	if err := os.Rename(tmp, path); err != nil {
-		os.Remove(tmp)
+	defer os.Remove(tmp.Name()) // no-op once the rename has happened
+	if _, err := tmp.Write(b); err != nil {
+		tmp.Close()
+		return fmt.Errorf("tunnel: writing host key: %w", err)
+	}
+	if err := tmp.Close(); err != nil {
+		return fmt.Errorf("tunnel: writing host key: %w", err)
+	}
+	if err := os.Rename(tmp.Name(), path); err != nil {
 		return fmt.Errorf("tunnel: writing host key: %w", err)
 	}
 	return nil

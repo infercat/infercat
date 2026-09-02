@@ -31,6 +31,9 @@ type FileRecorder struct {
 	warned   atomic.Int64 // unix seconds of the last drop warning
 	closeOne sync.Once
 	closeErr error
+
+	mu     sync.RWMutex // Record holds it shared while it sends; Close takes it exclusively
+	closed bool
 }
 
 // NewFileRecorder opens (creating) usage.jsonl under dataDir for appending.
@@ -63,14 +66,24 @@ func (r *FileRecorder) Record(ctx context.Context, e Event) {
 	if e.TS.IsZero() {
 		e.TS = time.Now().UTC()
 	}
+	r.mu.RLock()
+	defer r.mu.RUnlock()
+	if r.closed { // a late Record after Close is dropped and counted, never a panic (005 fix 10i)
+		r.drop("recorder is closed")
+		return
+	}
 	select {
 	case r.ch <- e:
 	default:
-		n := r.dropped.Add(1)
-		now := time.Now().Unix()
-		if last := r.warned.Load(); now-last >= 10 && r.warned.CompareAndSwap(last, now) {
-			r.logf("usage: buffer full, dropped %d event(s) so far; disk cannot keep up", n)
-		}
+		r.drop("disk cannot keep up")
+	}
+}
+
+func (r *FileRecorder) drop(why string) {
+	n := r.dropped.Add(1)
+	now := time.Now().Unix()
+	if last := r.warned.Load(); now-last >= 10 && r.warned.CompareAndSwap(last, now) {
+		r.logf("usage: dropped %d event(s) so far; %s", n, why)
 	}
 }
 
@@ -115,7 +128,10 @@ func (r *FileRecorder) write(e Event) {
 // Close drains the queue, flushes, and closes the file. It is safe to call twice.
 func (r *FileRecorder) Close() error {
 	r.closeOne.Do(func() {
+		r.mu.Lock()
+		r.closed = true
 		close(r.ch)
+		r.mu.Unlock()
 		<-r.done
 		r.closeErr = r.f.Close()
 	})

@@ -286,35 +286,58 @@ func TestMaxTokensClampAndPassthrough(t *testing.T) {
 	}
 }
 
+// Context handling (002 promise 4, shrink-to-fit per 005 fix 10c): the prompt alone must fit;
+// prompt + max_tokens overshooting shrinks max_tokens to what remains, floor 16, never a 422.
 func TestContextTooLongBoundary(t *testing.T) {
 	h := newHarness(t, Config{}, nil)
-	h.up.setInfo(func(i *upstream.Info) { i.ModelContext = 10 })
-	h.setKey(func(k *keys.Key) { k.Limits.MaxOutputTokens = 4 }) // room = 6
-	if r := h.post("/v1/chat/completions", chatBody("m1", 6, "")); r.status != 200 {
-		t.Fatalf("6 tokens must fit: %d %s", r.status, r.body)
+	h.up.setInfo(func(i *upstream.Info) { i.ModelContext = 100 })
+	h.setKey(func(k *keys.Key) { k.Limits.MaxOutputTokens = 40 })
+	post := func(words int, extra string) resp {
+		return h.post("/v1/chat/completions", chatBody("m1", words, extra))
 	}
-	r := h.post("/v1/chat/completions", chatBody("m1", 7, ""))
+	maxTok := func() string { return fmt.Sprint(h.up.body(t)["max_tokens"]) }
+	// 60 + 40 = 100: exactly fits, untouched.
+	if r := post(60, ""); r.status != 200 || maxTok() != "40" {
+		t.Fatalf("60 + 40 must fit untouched: %d %s max_tokens=%s", r.status, r.body, maxTok())
+	}
+	// 61 + 40 > 100: shrink to the 39 that remain.
+	if r := post(61, ""); r.status != 200 || maxTok() != "39" {
+		t.Fatalf("61 + 40 must shrink to 39: %d %s max_tokens=%s", r.status, r.body, maxTok())
+	}
+	// 100: the prompt fills the context; the floor still lets the engine answer.
+	if r := post(100, ""); r.status != 200 || maxTok() != "16" {
+		t.Fatalf("a prompt that fills the context gets the floor: %d %s max_tokens=%s", r.status, r.body, maxTok())
+	}
+	// 101: the prompt alone does not fit.
+	r := post(101, "")
 	h.expectErr(r, CodeContextTooLong)
-	if !strings.Contains(r.message, "7 tokens") || !strings.Contains(r.message, "only 6 fit") {
+	if !strings.Contains(r.message, "101 tokens") || !strings.Contains(r.message, "context is 100") {
 		t.Fatalf("message must carry the numbers: %s", r.message)
 	}
 	// Key's max_context lower than the upstream's wins.
-	h.setKey(func(k *keys.Key) { k.Limits.MaxContext = 8 }) // room = 4
-	if r := h.post("/v1/chat/completions", chatBody("m1", 4, "")); r.status != 200 {
-		t.Fatalf("4 tokens must fit: %d %s", r.status, r.body)
+	h.setKey(func(k *keys.Key) { k.Limits.MaxContext = 80 })
+	if r := post(80, ""); r.status != 200 || maxTok() != "16" {
+		t.Fatalf("80 must fit under the key's 80: %d %s max_tokens=%s", r.status, r.body, maxTok())
 	}
-	h.expectErr(h.post("/v1/chat/completions", chatBody("m1", 5, "")), CodeContextTooLong)
+	h.expectErr(post(81, ""), CodeContextTooLong)
 	// Key's max_context higher than the upstream's: upstream wins.
-	h.setKey(func(k *keys.Key) { k.Limits.MaxContext = 100 })
-	h.expectErr(h.post("/v1/chat/completions", chatBody("m1", 7, "")), CodeContextTooLong)
-	// Request's own smaller max_tokens widens the room.
-	if r := h.post("/v1/chat/completions", chatBody("m1", 8, `"max_tokens":2`)); r.status != 200 {
-		t.Fatalf("8 + 2 = 10 must fit: %d %s", r.status, r.body)
+	h.setKey(func(k *keys.Key) { k.Limits.MaxContext = 200 })
+	h.expectErr(post(101, ""), CodeContextTooLong)
+	// The request's own smaller cap already fits: untouched.
+	if r := post(95, `"max_tokens":2`); r.status != 200 || maxTok() != "2" {
+		t.Fatalf("95 + 2 must fit untouched: %d %s max_tokens=%s", r.status, r.body, maxTok())
+	}
+	// max_completion_tokens is rewritten in place; no max_tokens is invented beside it.
+	if r := post(95, `"max_completion_tokens":30`); r.status != 200 {
+		t.Fatalf("95 + 30 must shrink, not fail: %d %s", r.status, r.body)
+	}
+	if b := h.up.body(t); fmt.Sprint(b["max_completion_tokens"]) != "16" || b["max_tokens"] != nil {
+		t.Fatalf("max_completion_tokens shrink: %v", b)
 	}
 	// Unknown context everywhere: no check.
 	h.up.setInfo(func(i *upstream.Info) { i.ModelContext = 0 })
 	h.setKey(func(k *keys.Key) { k.Limits.MaxContext = 0 })
-	if r := h.post("/v1/chat/completions", chatBody("m1", 500, "")); r.status != 200 {
+	if r := post(500, ""); r.status != 200 {
 		t.Fatalf("no context known: %d %s", r.status, r.body)
 	}
 	// Tokenizer failure degrades to an estimate, never a rejection of the whole request.
@@ -322,7 +345,7 @@ func TestContextTooLongBoundary(t *testing.T) {
 	h.up.mu.Lock()
 	h.up.countErr = errors.New("tokenize down")
 	h.up.mu.Unlock()
-	if r := h.post("/v1/chat/completions", chatBody("m1", 2, "")); r.status != 200 { // "w w" = 3 chars → 1 token
+	if r := post(2, ""); r.status != 200 { // "w w" = 3 chars → 1 token
 		t.Fatalf("estimate path: %d %s", r.status, r.body)
 	}
 }
@@ -458,6 +481,47 @@ func TestGlobalQueueTimeout(t *testing.T) {
 		t.Fatalf("queued_ms recorded: %+v", evs[0])
 	}
 	cancel()
+}
+
+// Ticket 005 fix 10d: SetSlots widens the global queue for new arrivals (bob would otherwise get
+// 503 queue_timeout behind alice, as TestGlobalQueueTimeout shows), while alice, holding a slot
+// on the old size, finishes and releases cleanly.
+func TestSetSlotsResizesTheGlobalQueue(t *testing.T) {
+	h := newHarness(t, Config{Slots: 1, QueueTimeout: 150 * time.Millisecond}, nil)
+	h.up.set("sse", sseEvents(20, true)...)
+	h.store.set("second", &keys.Key{ID: "k_bob", Name: "bob", Status: keys.Active})
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	res, err := h.streamReq(ctx, chatBody("m1", 1, `"stream":true`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	<-h.up.started
+	if in, w := h.gw.Queue(); in != 1 || w != 0 {
+		t.Fatalf("Queue() = %d, %d; want alice in flight", in, w)
+	}
+	h.gw.SetSlots(2)
+	r := h.do(http.MethodPost, "/v1/chat/completions", "Bearer second", chatBody("m1", 1, `"stream":true`))
+	if r.status != 200 {
+		t.Fatalf("with 2 slots bob must run beside alice: %d %s", r.status, r.body)
+	}
+	cancel()
+	deadline := time.Now().Add(2 * time.Second)
+	for {
+		in, w := h.gw.Queue()
+		if in == 0 && w == 0 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatalf("Queue() = %d, %d after both finished; want 0, 0", in, w)
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	h.gw.SetSlots(0)
+	if h.gw.cfg.Slots != 1 || cap(h.gw.sem) != 1 {
+		t.Fatalf("SetSlots(0) must mean 1, got %d/%d", h.gw.cfg.Slots, cap(h.gw.sem))
+	}
 }
 
 func TestUpstreamFailures(t *testing.T) {

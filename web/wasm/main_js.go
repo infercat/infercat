@@ -17,7 +17,10 @@ import (
 	"io"
 	"log"
 	"net"
+	"runtime"
 	"strconv"
+	"sync"
+	"sync/atomic"
 	"syscall/js"
 	"time"
 
@@ -31,8 +34,47 @@ const (
 	dialTimeout    = 30 * time.Second
 )
 
+// liveFuncs counts js.FuncOf handles not yet Released: every per-call promise handler and every
+// method of a live Session or Conn. It exists so a harness can prove nothing leaks (005 fix 10l).
+var liveFuncs atomic.Int32
+
+// fn is js.FuncOf with the leak counter; release is the matching Release.
+func fn(f func(this js.Value, args []js.Value) any) js.Func {
+	liveFuncs.Add(1)
+	return js.FuncOf(f)
+}
+
+func release(funcs ...js.Func) {
+	for _, f := range funcs {
+		f.Release()
+		liveFuncs.Add(-1)
+	}
+}
+
+// Inert method stubs installed on a Conn/Session object when it closes, so a post-close call from
+// JS is a clean no-op instead of "call to released function" once the real handles are Released
+// (005 fix 10l). Created once, never released, never counted; a bounded fixed cost.
+var (
+	stubNull   = js.FuncOf(func(js.Value, []js.Value) any { return resolved(js.Null()) })        // read() → EOF
+	stubClosed = js.FuncOf(func(js.Value, []js.Value) any { return rejectedPromise(errClosed) }) // write/ping/dial
+	stubNoop   = js.FuncOf(func(js.Value, []js.Value) any { return js.Undefined() })             // close()
+)
+
+var errClosed = errors.New("the connection is closed")
+
+func resolved(v js.Value) js.Value { return js.Global().Get("Promise").Call("resolve", v) }
+
 func main() {
-	js.Global().Set("BunnyTunnel", map[string]any{"connect": js.FuncOf(connect)})
+	js.Global().Set("BunnyTunnel", map[string]any{
+		"connect": fn(connect),
+		// stats is a debug hook for leak checks: live js.Func handles and the Go heap after a GC.
+		"stats": fn(func(this js.Value, args []js.Value) any {
+			runtime.GC()
+			var m runtime.MemStats
+			runtime.ReadMemStats(&m)
+			return map[string]any{"liveFuncs": int(liveFuncs.Load()), "heapAllocBytes": int(m.HeapAlloc)}
+		}),
+	})
 	select {}
 }
 
@@ -115,37 +157,50 @@ func pingUntil(ctx context.Context, cl *tailcat.Client, say func(string, ...any)
 	}
 }
 
-// newSession is the Session object: addr, privateKeyJSON, dial(port?), ping(), close().
+// newSession is the Session object: addr, privateKeyJSON, dial(port?), ping(), close(). close()
+// also Releases the three method handles (once), so a session must be closed to be collected.
 func newSession(cl *tailcat.Client, relay, addr, keyJSON string) js.Value {
-	return js.ValueOf(map[string]any{
+	var funcs = make([]js.Func, 3)
+	var closeOnce sync.Once
+	funcs[0] = fn(func(this js.Value, args []js.Value) any {
+		port := 80
+		if len(args) > 0 && args[0].Type() == js.TypeNumber {
+			port = args[0].Int()
+		}
+		if port < 1 || port > 65535 {
+			return rejectedPromise(fmt.Errorf("invalid port %d", port))
+		}
+		return makePromise(func() (any, error) {
+			ctx, cancel := context.WithTimeout(context.Background(), dialTimeout)
+			defer cancel()
+			c, err := cl.DialTCPPort(ctx, uint16(port))
+			if err != nil {
+				return nil, fmt.Errorf("dial port %d: %w", port, err)
+			}
+			return makeJSConn(c), nil
+		})
+	})
+	funcs[1] = fn(func(this js.Value, args []js.Value) any {
+		return makePromise(func() (any, error) { return ping(cl, relay) })
+	})
+	obj := js.ValueOf(map[string]any{
 		"addr":           addr,
 		"privateKeyJSON": keyJSON,
-		"dial": js.FuncOf(func(this js.Value, args []js.Value) any {
-			port := 80
-			if len(args) > 0 && args[0].Type() == js.TypeNumber {
-				port = args[0].Int()
-			}
-			if port < 1 || port > 65535 {
-				return rejectedPromise(fmt.Errorf("invalid port %d", port))
-			}
-			return makePromise(func() (any, error) {
-				ctx, cancel := context.WithTimeout(context.Background(), dialTimeout)
-				defer cancel()
-				c, err := cl.DialTCPPort(ctx, uint16(port))
-				if err != nil {
-					return nil, fmt.Errorf("dial port %d: %w", port, err)
-				}
-				return makeJSConn(c), nil
-			})
-		}),
-		"ping": js.FuncOf(func(this js.Value, args []js.Value) any {
-			return makePromise(func() (any, error) { return ping(cl, relay) })
-		}),
-		"close": js.FuncOf(func(this js.Value, args []js.Value) any {
-			cl.Close()
-			return nil
-		}),
+		"dial":           funcs[0],
+		"ping":           funcs[1],
 	})
+	funcs[2] = fn(func(this js.Value, args []js.Value) any {
+		closeOnce.Do(func() {
+			obj.Set("dial", stubClosed)
+			obj.Set("ping", stubClosed)
+			obj.Set("close", stubNoop)
+			cl.Close()
+			release(funcs...)
+		})
+		return nil
+	})
+	obj.Set("close", funcs[2])
+	return obj
 }
 
 // ping reports {rttMs, via, direct}. rttMs is a TCP connect to the tunnel port through the
@@ -187,54 +242,76 @@ func relayName(ctx context.Context, ci tailcat.ConnInfo, derpMapURL string) stri
 
 // makeJSConn wraps a tunneled TCP connection as the Conn object: read() (null on EOF; no
 // concurrent reads), write(Uint8Array), closeWrite(), close(). read is pull-based, so a fast
-// sender stalls on TCP backpressure rather than filling browser memory.
+// sender stalls on TCP backpressure rather than filling browser memory. close() (once) also
+// Releases the four method handles and drops the read buffer, so every Conn must be closed —
+// the web client does so after EOF and on every error path (005 fix 10l).
 func makeJSConn(c net.Conn) js.Value {
 	buf := make([]byte, 64<<10)
-	return js.ValueOf(map[string]any{
-		"read": js.FuncOf(func(this js.Value, args []js.Value) any {
-			return makePromise(func() (any, error) {
-				n, err := c.Read(buf)
-				if n > 0 {
-					u8 := js.Global().Get("Uint8Array").New(n)
-					js.CopyBytesToJS(u8, buf[:n])
-					return u8, nil
-				}
-				if err == nil || errors.Is(err, io.EOF) {
-					return js.Null(), nil
-				}
-				return nil, err
-			})
-		}),
-		"write": js.FuncOf(func(this js.Value, args []js.Value) any {
-			if len(args) != 1 || args[0].Type() != js.TypeObject {
-				return rejectedPromise(errors.New("write requires a Uint8Array"))
+	var funcs = make([]js.Func, 4)
+	var closeOnce sync.Once
+	funcs[0] = fn(func(this js.Value, args []js.Value) any {
+		return makePromise(func() (any, error) {
+			if buf == nil {
+				return js.Null(), nil // closed: clean EOF
 			}
-			b := make([]byte, args[0].Get("length").Int())
-			js.CopyBytesToGo(b, args[0])
-			return makePromise(func() (any, error) {
-				if _, err := c.Write(b); err != nil {
-					return nil, err
-				}
-				return js.Undefined(), nil
-			})
-		}),
-		"closeWrite": js.FuncOf(func(this js.Value, args []js.Value) any {
-			return makePromise(func() (any, error) {
-				cw, ok := c.(interface{ CloseWrite() error })
-				if !ok {
-					return nil, errors.New("connection does not support half-close")
-				}
-				if err := cw.CloseWrite(); err != nil {
-					return nil, err
-				}
-				return js.Undefined(), nil
-			})
-		}),
-		"close": js.FuncOf(func(this js.Value, args []js.Value) any {
-			c.Close()
-			return nil
-		}),
+			n, err := c.Read(buf)
+			if n > 0 {
+				u8 := js.Global().Get("Uint8Array").New(n)
+				js.CopyBytesToJS(u8, buf[:n])
+				return u8, nil
+			}
+			if err == nil || errors.Is(err, io.EOF) {
+				return js.Null(), nil
+			}
+			return nil, err
+		})
 	})
+	funcs[1] = fn(func(this js.Value, args []js.Value) any {
+		// Anything but a Uint8Array (ArrayBuffer, DataView, {}, an array) would panic in
+		// CopyBytesToGo and take the whole program down (005 fix 10m).
+		if len(args) != 1 || !args[0].InstanceOf(js.Global().Get("Uint8Array")) {
+			return rejectedPromise(errors.New("write requires a Uint8Array"))
+		}
+		b := make([]byte, args[0].Get("length").Int())
+		js.CopyBytesToGo(b, args[0])
+		return makePromise(func() (any, error) {
+			if _, err := c.Write(b); err != nil {
+				return nil, err
+			}
+			return js.Undefined(), nil
+		})
+	})
+	funcs[2] = fn(func(this js.Value, args []js.Value) any {
+		return makePromise(func() (any, error) {
+			cw, ok := c.(interface{ CloseWrite() error })
+			if !ok {
+				return nil, errors.New("connection does not support half-close")
+			}
+			if err := cw.CloseWrite(); err != nil {
+				return nil, err
+			}
+			return js.Undefined(), nil
+		})
+	})
+	obj := js.ValueOf(map[string]any{
+		"read":       funcs[0],
+		"write":      funcs[1],
+		"closeWrite": funcs[2],
+	})
+	funcs[3] = fn(func(this js.Value, args []js.Value) any {
+		closeOnce.Do(func() {
+			obj.Set("read", stubNull) // a post-close read is a clean EOF; write/closeWrite reject
+			obj.Set("write", stubClosed)
+			obj.Set("closeWrite", stubClosed)
+			obj.Set("close", stubNoop)
+			c.Close()
+			release(funcs...)
+			buf = nil
+		})
+		return nil
+	})
+	obj.Set("close", funcs[3])
+	return obj
 }
 
 func optString(v js.Value, name string) string {
@@ -245,10 +322,13 @@ func optString(v js.Value, name string) string {
 }
 
 // makePromise runs f on a new goroutine and returns a Promise of its result (rejected on error).
+// The executor handle is Released once the promise has settled (005 fix 10l).
 func makePromise(f func() (any, error)) js.Value {
-	handler := js.FuncOf(func(this js.Value, args []js.Value) any {
+	var handler js.Func
+	handler = fn(func(this js.Value, args []js.Value) any {
 		resolve, reject := args[0], args[1]
 		go func() {
+			defer release(handler)
 			if res, err := f(); err == nil {
 				resolve.Invoke(res)
 			} else {

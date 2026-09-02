@@ -33,7 +33,8 @@ type client struct {
 
 	mu       sync.RWMutex
 	info     Info
-	setSlots int // host override from --slots; 0 = engine's own answer
+	setSlots int  // host override from --slots; 0 = engine's own answer
+	sniffed  bool // the kind came from an engine that answered, not a guess (005 fix 10g)
 }
 
 var _ Upstream = (*client)(nil)
@@ -104,8 +105,9 @@ func Open(ctx context.Context, rawURL, apiKey string) (Upstream, error) {
 		return nil, err
 	}
 	probe := newClient(base, Generic, apiKey)
-	kind, _ := sniff(ctx, probe)
+	kind, ok := sniff(ctx, probe)
 	c := newClient(base, kind, apiKey)
+	c.sniffed = ok // an engine that is down at serve start is re-sniffed by Refresh
 	_ = c.Refresh(ctx)
 	return c, nil
 }
@@ -125,19 +127,22 @@ var candidates = []struct {
 var ErrNoUpstream = errors.New("no local inference server found on 127.0.0.1 ports 8080 (llama.cpp), 11434 (Ollama), 1234 (LM Studio), 8000 (vLLM); pass --upstream URL")
 
 // Detect probes the known local engines in the contract's order and returns the first that
-// answers. The kind is sniffed from the server, not assumed from the port.
-func Detect(ctx context.Context) (Upstream, error) {
+// answers. The kind is sniffed from the server, not assumed from the port. apiKey, when set, is
+// sent on every probe so an engine behind a bearer token is found (005 fix 10n).
+func Detect(ctx context.Context, apiKey string) (Upstream, error) {
 	for _, cand := range candidates {
 		base, err := normalize(cand.url)
 		if err != nil {
 			continue
 		}
-		probe := newClient(base, cand.kind, "")
+		// The key rides on every probe (005 fix 10n): an engine behind a bearer token answers 401
+		// to an unauthenticated /props or /v1/models and would otherwise be reported as absent.
+		probe := newClient(base, cand.kind, apiKey)
 		kind, ok := sniff(ctx, probe)
 		if !ok {
 			continue
 		}
-		c := newClient(base, kind, "")
+		c := newClient(base, kind, apiKey)
 		if err := c.Refresh(ctx); err != nil {
 			continue
 		}

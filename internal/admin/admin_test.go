@@ -72,20 +72,14 @@ func TestSocketIsPrivate(t *testing.T) {
 	defer s.Close()
 
 	if runtime.GOOS == "windows" {
-		port, err := os.Stat(filepath.Join(dir, PortName))
-		if err != nil {
-			t.Fatalf("admin.port: %v", err)
+		// os.FileMode on Windows only reports 0666/0444 (read-only or not), so a 0600 assertion
+		// can never pass there; existence is what this test can check honestly (005 fix 10k).
+		for _, name := range []string{PortName, TokenName} {
+			if _, err := os.Stat(filepath.Join(dir, name)); err != nil {
+				t.Fatalf("%s: %v", name, err)
+			}
 		}
-		if port.Mode().Perm() != 0o600 {
-			t.Errorf("admin.port mode = %v, want 0600", port.Mode().Perm())
-		}
-		tok, err := os.Stat(filepath.Join(dir, TokenName))
-		if err != nil {
-			t.Fatalf("admin.token: %v", err)
-		}
-		if tok.Mode().Perm() != 0o600 {
-			t.Errorf("admin.token mode = %v, want 0600", tok.Mode().Perm())
-		}
+		t.Log("file modes are not checked on windows: os reports 0666/0444 only")
 		return
 	}
 	fi, err := os.Stat(filepath.Join(dir, SockName))

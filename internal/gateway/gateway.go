@@ -52,8 +52,10 @@ type Gateway struct {
 	logf  func(string, ...any)
 	lim   *limiter
 
-	sem     chan struct{} // global slots; len(sem) = in flight
-	waiting atomic.Int32  // goroutines blocked on sem
+	semMu    sync.Mutex    // guards sem, which SetSlots swaps
+	sem      chan struct{} // global slots; cap(sem) = slots
+	inFlight atomic.Int32  // holders of a global slot (on any generation of sem)
+	waiting  atomic.Int32  // goroutines blocked on sem
 
 	mu      sync.Mutex
 	servers []*http.Server
@@ -66,6 +68,7 @@ var _ interface {
 	Serve(l net.Listener) error
 	ServeDev(addr string) error
 	Shutdown(ctx context.Context) error
+	SetSlots(n int)
 } = (*Gateway)(nil)
 
 // New builds a gateway. logf may be nil. Nothing is listening until Serve or ServeDev is called.
@@ -175,13 +178,36 @@ func (g *Gateway) Counters(keyID string) usage.KeyCounters { return g.lim.counte
 func (g *Gateway) AllCounters() map[string]usage.KeyCounters { return g.lim.allCounters() }
 
 // Queue implements usage.Snapshot: holders of a global slot, and goroutines waiting for one.
-func (g *Gateway) Queue() (inFlight, waiting int) { return len(g.sem), int(g.waiting.Load()) }
+func (g *Gateway) Queue() (inFlight, waiting int) {
+	return int(g.inFlight.Load()), int(g.waiting.Load())
+}
+
+// SetSlots resizes the global queue to the engine's slot count (ticket 005 fix 10d: an engine
+// that is down at New reports its real count only after a later Refresh). New arrivals use the
+// new size at once; requests already holding a slot finish and release on the old one.
+func (g *Gateway) SetSlots(n int) {
+	if n <= 0 {
+		n = 1
+	}
+	g.semMu.Lock()
+	defer g.semMu.Unlock()
+	if n == cap(g.sem) {
+		return
+	}
+	g.cfg.Slots = n
+	g.sem = make(chan struct{}, n)
+}
 
 // acquire takes a global slot, waiting at most QueueTimeout. The returned func releases it.
 func (g *Gateway) acquire(ctx context.Context) (func(), *gwError) {
+	g.semMu.Lock()
+	sem := g.sem
+	g.semMu.Unlock()
+	release := func() { g.inFlight.Add(-1); <-sem }
 	select {
-	case g.sem <- struct{}{}:
-		return func() { <-g.sem }, nil
+	case sem <- struct{}{}:
+		g.inFlight.Add(1)
+		return release, nil
 	default:
 	}
 	g.waiting.Add(1)
@@ -189,8 +215,9 @@ func (g *Gateway) acquire(ctx context.Context) (func(), *gwError) {
 	t := time.NewTimer(g.cfg.QueueTimeout)
 	defer t.Stop()
 	select {
-	case g.sem <- struct{}{}:
-		return func() { <-g.sem }, nil
+	case sem <- struct{}{}:
+		g.inFlight.Add(1)
+		return release, nil
 	case <-t.C:
 		return nil, errf(CodeQueueTimeout, retryAfterQueueTimeout, "the host's engine is busy; waited %s for a free slot", g.cfg.QueueTimeout)
 	case <-ctx.Done():
