@@ -62,11 +62,20 @@ function watch(page, label) {
 
 let n = 0;
 async function shot(page, name) {
-  const file = join(shots, `${String(++n).padStart(2, '0')}-${name}.png`);
+  return write(page, `${String(++n).padStart(2, '0')}-${name}`);
+}
+
+/** Ticket 007's states get their own prefix so the 004 set stays numbered as it was. */
+async function shot7(page, name) {
+  return write(page, `07-${name}`);
+}
+
+async function write(page, base) {
+  const file = join(shots, `${base}.png`);
   await page.screenshot({ path: file });
   const kb = Math.round(statSync(file).size / 1024);
   console.log(`  ${file.replace(`${web}/`, '')}  ${kb} KB`);
-  if (kb > 500) throw new Error(`${name} is ${kb} KB, over the 500 KB budget`);
+  if (kb > 500) throw new Error(`${base} is ${kb} KB, over the 500 KB budget`);
 }
 
 async function connectViaTunnel(page, extra = '') {
@@ -198,6 +207,94 @@ async function main() {
   // No horizontal scrolling at 360 px, ever.
   const overflow = await m.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
   if (overflow > 0) problems.push(`mobile: page scrolls horizontally by ${overflow}px at 360px`);
+
+  // --- ticket 007: the states that used to lie ---------------------------------------------
+  const FAST = 'fake&connectMs=200&tokenDelay=25';
+
+  async function connected(query, label) {
+    const p = await desktop.newPage();
+    watch(p, label);
+    await p.goto(`${BASE}/?${FAST}&${query}&invite=${encodeURIComponent(INVITE)}&autoconnect`);
+    return p;
+  }
+
+  // These pages share the browser context above, so they open onto that host's remembered
+  // history — which is itself proof of promise 7. Start a clean thread for the shot.
+  async function chatting(query, label) {
+    const p = await connected(query, label);
+    await p.waitForSelector('.composer textarea', { timeout: 20_000 });
+    await p.getByRole('button', { name: 'New chat' }).click();
+    return p;
+  }
+
+  async function ask(p, text) {
+    await p.locator('.composer textarea').fill(text);
+    await p.getByRole('button', { name: 'Send' }).click();
+  }
+
+  // Promise 1: a stream that dies mid-answer keeps its text and says it was cut off.
+  const cut = await chatting('', '07-interrupted');
+  await ask(cut, '/cut Tell me how the tunnel works.');
+  await cut.waitForSelector('.row.assistant .ended', { timeout: 30_000 });
+  await shot7(cut, 'interrupted');
+
+  // Promise 2: a reply that was all thinking is not an empty bubble.
+  const think = await chatting('', '07-no-answer');
+  await ask(think, '/think What is on the other side of this tunnel?');
+  await think.waitForSelector('.thinking .ended', { timeout: 30_000 });
+  await shot7(think, 'no-answer');
+
+  // Promise 11 + 1: the host's own diagnostic shown *next to* our copy, not instead of it.
+  const mid = await chatting('', '07-mid-stream-error');
+  await ask(mid, '/mid Start answering and then fall over.');
+  await mid.waitForSelector('.row.assistant .ended', { timeout: 30_000 });
+  await shot7(mid, 'mid-stream-error');
+
+  // Promise 4: an engine that is not answering says so in the header, not in a settings sheet.
+  const sick = await chatting('upstreamDown', '07-engine-offline');
+  await shot7(sick, 'engine-offline');
+
+  // Promise 12: the disclosure a host running --log-prompts forces, before the first message.
+  const loud = await connected('logPrompts', '07-log-prompts');
+  await loud.waitForSelector('.failure', { timeout: 20_000 });
+  await shot7(loud, 'log-prompts-disclosure');
+  await loud.getByRole('button', { name: 'I understand — start chatting' }).click();
+  await loud.waitForSelector('.logging', { timeout: 20_000 });
+  await shot7(loud, 'log-prompts-chat');
+
+  // Promise 4: the path pill after a ping fails — the last good number, dated, never presented as
+  // current. This one waits out a real 30 s measurement tick; that is the thing being shown.
+  const stale = await chatting('pingFailsAfter=1', '07-degraded-path');
+  await stale.waitForSelector('.path', { timeout: 20_000 });
+  await stale.waitForFunction(
+    () => document.querySelector('.path')?.textContent?.includes('path unknown'),
+    { timeout: 45_000 },
+  );
+  await shot7(stale, 'degraded-path');
+
+  // Promise 14: the invite arrives as a link fragment. A clean context, so the only thing that
+  // could have filled the field is the fragment itself.
+  const linked = await browser.newContext({ viewport: { width: 1280, height: 860 }, colorScheme: 'light' });
+  const link = await linked.newPage();
+  watch(link, '07-invite-link');
+  await link.goto(`${BASE}/?${FAST}#${INVITE}`);
+  await link.waitForSelector('.connect-card h1');
+  const filled = await link.locator('.connect textarea').inputValue();
+  if (filled !== INVITE) problems.push(`invite link: field holds ${JSON.stringify(filled)}`);
+  const leftInBar = await link.evaluate(() => location.hash);
+  if (leftInBar !== '') problems.push(`invite link: the secret is still in the address bar (${leftInBar})`);
+  await shot7(link, 'invite-link');
+
+  // Promise 5 + 15: a revoked invite mid-chat returns to Connect saying so, in one register.
+  const revoked = await browser.newContext({ viewport: { width: 1280, height: 860 }, colorScheme: 'light' });
+  const rev = await revoked.newPage();
+  watch(rev, '07-revoked');
+  await rev.goto(`${BASE}/?${FAST}&invite=${encodeURIComponent(INVITE)}&autoconnect`);
+  await rev.waitForSelector('.composer textarea', { timeout: 20_000 });
+  await rev.locator('.composer textarea').fill('/403 revoke me');
+  await rev.getByRole('button', { name: 'Send' }).click();
+  await rev.waitForSelector('.failure', { timeout: 20_000 });
+  await shot7(rev, 'revoked-return');
 
   // --- the built bundle, served statically, with every request accounted for ---
   const previewPort = WEB_PORT + 1;

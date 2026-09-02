@@ -1,5 +1,19 @@
 import { beforeEach, describe, expect, it } from 'vitest';
-import { forget, load, prune, save, titleFrom, type Conversation } from './storage';
+import {
+  dropLegacyHistory,
+  forget,
+  hostScope,
+  isAnswer,
+  KEYS,
+  load,
+  modelFor,
+  prune,
+  save,
+  scopedKeys,
+  titleFrom,
+  type Conversation,
+  type Message,
+} from './storage';
 
 function stubStorage(impl: Partial<Storage> = {}): Map<string, string> {
   const map = new Map<string, string>();
@@ -77,5 +91,58 @@ describe('conversation helpers', () => {
     expect(kept).toHaveLength(50);
     expect(kept.map((c) => c.id)).not.toContain('b');
     expect(kept[0]?.id).toBe('a');
+  });
+});
+
+// Promise 7: two hosts, or two invites on one host, never see each other's history or settings.
+describe('host-scoped storage', () => {
+  const A = hostScope('tcHOSTA', 'k_1');
+  const B = hostScope('tcHOSTB', 'k_1');
+  const A2 = hostScope('tcHOSTA', 'k_2');
+
+  it('gives every host+invite pair its own namespace, stably', () => {
+    expect(A).not.toBe(B);
+    expect(A).not.toBe(A2);
+    expect(hostScope('tcHOSTA', 'k_1')).toBe(A);
+    expect(A).toMatch(/^[0-9a-z]+$/); // short and safe in a storage key
+  });
+
+  it('keeps the address out of the key while still keying on it', () => {
+    expect(scopedKeys(A).conversations).toBe(`${KEYS.conversations}.${A}`);
+    expect(scopedKeys(A).conversations).not.toContain('tcHOSTA');
+  });
+
+  it('connecting to a different host starts with that host\u2019s own empty list', () => {
+    save(scopedKeys(A).conversations, [{ id: 'c1', title: 'mine', createdAt: 0, updatedAt: 0, messages: [] }]);
+    expect(load<Conversation[]>(scopedKeys(A).conversations, [])).toHaveLength(1);
+    expect(load<Conversation[]>(scopedKeys(B).conversations, [])).toHaveLength(0);
+    expect(load<Conversation[]>(scopedKeys(A2).conversations, [])).toHaveLength(0);
+  });
+
+  it('drops the pre-scope history rather than handing it to whichever host connects first', () => {
+    save(KEYS.conversations, [{ id: 'old' }]);
+    save(KEYS.settings, { model: 'gone' });
+    dropLegacyHistory();
+    expect(load(KEYS.conversations, null)).toBeNull();
+    expect(load(KEYS.settings, null)).toBeNull();
+  });
+
+  it('resets a persisted model the new host does not share', () => {
+    expect(modelFor('gemma', ['gemma', 'qwen'])).toBe('gemma');
+    expect(modelFor('gemma', ['deepseek'])).toBeNull();
+    expect(modelFor(null, ['deepseek'])).toBeNull();
+    expect(modelFor('gemma', [])).toBeNull();
+  });
+});
+
+describe('what counts as context for the next message', () => {
+  const m = (over: Partial<Message>): Message => ({ id: 'x', role: 'assistant', content: 'hi', ...over });
+
+  it('keeps answers and stopped answers, drops the turns that never answered', () => {
+    expect(isAnswer(m({ status: 'complete' }))).toBe(true);
+    expect(isAnswer(m({ status: 'stopped' }))).toBe(true);
+    expect(isAnswer(m({ status: 'interrupted' }))).toBe(false);
+    expect(isAnswer(m({ status: 'no_answer' }))).toBe(false);
+    expect(isAnswer(m({ role: 'user', status: undefined }))).toBe(true);
   });
 });

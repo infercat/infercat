@@ -1,7 +1,7 @@
 // The two Transports and the connect flow that produces one.
-import { fetchOverConn } from './http1';
+import { abortError, fetchOverConn } from './http1';
 import { loadBunnyTunnel } from './wasm';
-import { tunnelGlobal, type PingResult, type Session, type Transport } from './types';
+import { tunnelGlobal, type Conn, type PingResult, type Session, type Transport } from './types';
 
 export type { Conn, PingResult, Session, Transport, BunnyTunnel } from './types';
 export { Http1Error, fetchOverConn, encodeRequest, parseResponseHead } from './http1';
@@ -39,7 +39,7 @@ export class TunnelTransport implements Transport {
     headers.set('host', 'bunny');
     headers.set('connection', 'close');
     if (body) headers.set('content-length', String(body.length));
-    const conn = await this.session.dial(this.port);
+    const conn = await dialOrAbort(this.session, this.port, init?.signal);
     return fetchOverConn(
       conn,
       { method: init?.method ?? 'GET', path: input, headers, ...(body ? { body } : {}) },
@@ -56,6 +56,58 @@ export class TunnelTransport implements Transport {
   }
 }
 
+/**
+ * Dialling is the one part of a request that cannot be interrupted from inside: `Session.dial` has
+ * no signal. So race it. Stop pressed while the dial is pending rejects now rather than when the
+ * relay gets round to it, and a conn that arrives after that is closed instead of leaked.
+ */
+export async function dialOrAbort(
+  session: Session,
+  port: number,
+  signal?: AbortSignal | null,
+): Promise<Conn> {
+  if (!signal) return session.dial(port);
+  if (signal.aborted) throw abortError();
+  const dialing = session.dial(port);
+  let onAbort = (): void => {};
+  const aborted = new Promise<never>((_resolve, reject) => {
+    onAbort = () => reject(abortError());
+    signal.addEventListener('abort', onAbort, { once: true });
+  });
+  try {
+    return await Promise.race([dialing, aborted]);
+  } catch (err) {
+    void dialing.then((c) => signal.aborted && c.close()).catch(() => {});
+    throw err;
+  } finally {
+    signal.removeEventListener('abort', onAbort);
+  }
+}
+
+const IDENTITY_LOCK = 'bn.tunnel-identity';
+
+/**
+ * Two tabs must not both connect as the stored tunnel identity: tailcat keys name a client, and two
+ * clients under one key make the host's usage ambiguous and the relay's routing worse. The first
+ * tab holds a Web Lock for as long as it lives and uses the stored key; a second tab connects with
+ * a fresh ephemeral identity and leaves the stored one untouched.
+ *
+ * Resolves true when this tab may use (and overwrite) the persisted identity.
+ */
+export function claimTunnelIdentity(): Promise<boolean> {
+  const locks = (globalThis.navigator as Navigator | undefined)?.locks;
+  if (!locks) return Promise.resolve(true); // no Web Locks here: behave as a single tab
+  return new Promise<boolean>((resolve) => {
+    void locks
+      .request(IDENTITY_LOCK, { ifAvailable: true }, (lock) => {
+        resolve(lock !== null);
+        // Holding it for the life of the page is the point; the browser releases it with the tab.
+        return lock === null ? undefined : new Promise<void>(() => {});
+      })
+      .catch(() => resolve(true));
+  });
+}
+
 function toBytes(body: BodyInit | null | undefined): Uint8Array | undefined {
   if (body === null || body === undefined) return undefined;
   if (typeof body === 'string') return new TextEncoder().encode(body);
@@ -64,21 +116,16 @@ function toBytes(body: BodyInit | null | undefined): Uint8Array | undefined {
   throw new TypeError('the tunnel transport only sends string or byte bodies');
 }
 
-/** Where the connect flow is right now; the connect screen renders these verbatim. */
-export type ConnectStage =
-  | { name: 'wasm'; pct: number | null }
-  | { name: 'relay' }
-  | { name: 'handshake'; path?: PingResult }
-  | { name: 'verify' }
-  | { name: 'connected' };
-
 export interface OpenOptions {
   mode: 'direct' | 'tunnel';
   directURL?: string;
   derpMapURL?: string;
   /** tailcat PrivateKey JSON kept from a previous visit, so the host sees one client identity. */
   privateKey?: string;
-  onStage?: (stage: ConnectStage) => void;
+  /** Bytes of the wasm module, as a percentage when the total is known. */
+  onWasmProgress?: (pct: number | null) => void;
+  /** The bridge is up; from here on we are talking to the relay. */
+  onWasmLoaded?: () => void;
   onLog?: (line: string) => void;
 }
 
@@ -101,10 +148,10 @@ export async function openTransport(addr: string, opts: OpenOptions): Promise<Op
     return { transport, path };
   }
 
-  opts.onStage?.({ name: 'wasm', pct: tunnelGlobal() ? 100 : null });
-  const bridge = await loadBunnyTunnel((p) => opts.onStage?.({ name: 'wasm', pct: p.pct }));
+  opts.onWasmProgress?.(tunnelGlobal() ? 100 : null);
+  const bridge = await loadBunnyTunnel((p) => opts.onWasmProgress?.(p.pct));
 
-  opts.onStage?.({ name: 'relay' });
+  opts.onWasmLoaded?.();
   const session = await bridge.connect({
     addr,
     ...(opts.derpMapURL ? { derpMapURL: opts.derpMapURL } : {}),
@@ -115,7 +162,6 @@ export async function openTransport(addr: string, opts: OpenOptions): Promise<Op
   // connect() already resolved after its first successful ping, so the handshake is up; this ping
   // is what turns that into a number the header can show.
   const path = await session.ping().catch(() => null);
-  opts.onStage?.({ name: 'handshake', ...(path ? { path } : {}) });
   return { transport: new TunnelTransport(session), path, privateKeyJSON: session.privateKeyJSON };
 }
 

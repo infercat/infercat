@@ -50,24 +50,31 @@ export default function MessageView({ message: m, live, busy, last, onRegenerate
     );
   }
 
+  const ended = m.status !== undefined && m.status !== 'complete';
+  // When the reply is all thinking and no answer, the explanation belongs inside the collapsed
+  // Thinking block — there is nothing else for it to sit under. Otherwise it goes under the text.
+  const inThinking = ended && m.content.trim() === '' && Boolean(m.reasoning);
   return (
     <div className="row assistant">
-      {m.reasoning && <Thinking text={m.reasoning} answering={m.content !== ''} />}
-      {m.error ? (
-        <p className="msg-error">{m.error}</p>
-      ) : (
-        <>
-          <Markdown text={live ? closeFences(m.content) : m.content} />
-          {live && m.content === '' && !m.reasoning && <p className="waiting">Waiting for the first token…</p>}
-        </>
+      {m.reasoning && (
+        <Thinking
+          text={m.reasoning}
+          answering={m.content !== '' || ended}
+          note={inThinking ? m.note : undefined}
+        />
       )}
+      <Markdown text={live ? closeFences(m.content) : m.content} />
+      {live && m.content === '' && !m.reasoning && <p className="waiting">Waiting for the first token…</p>}
+      {/* The reply did not simply stop: it says which way it stopped, under the text it kept. */}
+      {ended && !inThinking && <p className={`ended ${m.status}`}>{m.note}</p>}
       <div className="meta">
         <span className="meta-text">
           {m.model ?? ''}
           {m.tokens ? ` · ${m.tokens.in} in / ${m.tokens.out} out` : ''}
+          {m.status === 'interrupted' || m.status === 'no_answer' ? ' · not sent as context' : ''}
         </span>
         <span className="actions">
-          {last && !busy && !m.error && <CopyButton text={m.content} />}
+          {last && !busy && m.content !== '' && <CopyButton text={m.content} />}
           {last && !busy && (
             <button className="ghost tiny" onClick={onRegenerate}>
               Regenerate
@@ -96,7 +103,7 @@ function CopyButton({ text }: { text: string }) {
 }
 
 /** Collapses itself the moment the answer starts, unless the reader opened or closed it by hand. */
-function Thinking({ text, answering }: { text: string; answering: boolean }) {
+function Thinking({ text, answering, note }: { text: string; answering: boolean; note?: string }) {
   const [manual, setManual] = useState<boolean | null>(null);
   const open = manual ?? !answering;
   const body = useRef<HTMLDivElement>(null);
@@ -117,6 +124,8 @@ function Thinking({ text, answering }: { text: string; answering: boolean }) {
           {text}
         </div>
       </div>
+      {/* A reply that was all thinking and no answer explains itself here, not by being blank. */}
+      {note && <p className="ended">{note}</p>}
     </div>
   );
 }

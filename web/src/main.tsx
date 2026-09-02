@@ -12,6 +12,17 @@ async function boot(): Promise<void> {
     installFakeTunnel({
       ...(q.has('connectMs') ? { connectMs: Number(q.get('connectMs')) } : {}),
       ...(q.has('tokenDelay') ? { tokenDelayMs: Number(q.get('tokenDelay')) } : {}),
+      // Dev-only switches for the states ticket 007 has to show: a host that logs prompts, an
+      // engine that is down, a host with nothing loaded, a path that cannot be measured, and the
+      // three ways a stream can end badly.
+      ...(q.has('logPrompts') ? { logPrompts: true } : {}),
+      ...(q.has('upstreamDown') ? { upstreamDown: true } : {}),
+      ...(q.has('pingFails') ? { pingFails: true } : {}),
+      ...(q.has('pingFailsAfter') ? { pingFailsAfter: Number(q.get('pingFailsAfter')) } : {}),
+      ...(q.has('models') ? { models: (q.get('models') ?? '').split(',').filter((m) => m !== '') } : {}),
+      ...(q.has('streamMode')
+        ? { streamMode: q.get('streamMode') as 'error-mid-stream' | 'eof-no-done' | 'reasoning-only' }
+        : {}),
     });
   }
   const root = document.getElementById('root');

@@ -15,6 +15,7 @@ export default tseslint.config(
         console: 'readonly',
         document: 'readonly',
         fetch: 'readonly',
+        location: 'readonly',
         performance: 'readonly',
         TextDecoder: 'readonly',
         process: 'readonly',

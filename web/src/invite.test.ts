@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { decodeInvite, encodeInvite, InviteError, type InviteErrorCode } from './invite';
+import { decodeInvite, encodeInvite, inviteFromHash, InviteError, type InviteErrorCode } from './invite';
 
 // The error table below is internal/invite/invite_test.go's TestDecodeErrors, case for case, with
 // each Go error value mapped to this side's code. ADDR is a real tailcat ConnBlob shape (base64url
@@ -82,6 +82,26 @@ describe('invite', () => {
       const addr = `tc${pick(1 + Math.floor(Math.random() * 400))}`;
       const secret = pick(1 + Math.floor(Math.random() * 100));
       expect(decodeInvite(encodeInvite(addr, secret))).toEqual({ addr, secret });
+    }
+  });
+});
+
+// Promise 14: the host's CLI prints `<app>/#bn1.…`; the page fills the field from it.
+describe('inviteFromHash', () => {
+  const invite = `bn1.${ADDR}.${SECRET}`;
+
+  it('takes the invite out of a link fragment, with or without the #', () => {
+    expect(inviteFromHash(`#${invite}`)).toBe(invite);
+    expect(inviteFromHash(invite)).toBe(invite);
+  });
+
+  it('accepts a percent-encoded fragment and trims it', () => {
+    expect(inviteFromHash(`#%20${encodeURIComponent(invite)}%20`)).toBe(invite);
+  });
+
+  it('ignores a fragment that is not an invite, and never throws', () => {
+    for (const hash of ['', '#', '#section-2', '#bn2.something', '#%E0%A4%A', '#nope']) {
+      expect(inviteFromHash(hash), hash).toBe('');
     }
   });
 });

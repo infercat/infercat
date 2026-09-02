@@ -15,6 +15,14 @@ const HOST = process.env.FAKE_GATEWAY_HOST ?? '127.0.0.1';
 
 const options: FakeOptions = {};
 if (process.env.FAKE_TOKEN_DELAY_MS) options.tokenDelayMs = Number(process.env.FAKE_TOKEN_DELAY_MS);
+// The gateway does not emit host.log_prompts until ticket 006 lands; this is how the web client's
+// disclosure (007 promise 12) is exercised meanwhile. FAKE_MODELS= (empty) fakes "nothing loaded".
+if (process.env.FAKE_LOG_PROMPTS === '1') options.logPrompts = true;
+if (process.env.FAKE_UPSTREAM_DOWN === '1') options.upstreamDown = true;
+if (process.env.FAKE_MODELS !== undefined) {
+  options.models = process.env.FAKE_MODELS.split(',').filter((m) => m !== '');
+}
+if (process.env.FAKE_STREAM_MODE) options.streamMode = process.env.FAKE_STREAM_MODE as FakeOptions['streamMode'];
 
 const CORS = {
   'access-control-allow-origin': '*',
