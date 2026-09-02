@@ -401,7 +401,7 @@ func TestConfigRoundTripAndDefaults(t *testing.T) {
 	if c, err := loadConfig(dir); err != nil || c.Upstream != "" {
 		t.Fatalf("missing config = %+v %v, want the zero value", c, err)
 	}
-	want := config{Upstream: "http://127.0.0.1:8000", Slots: 4, QueueTimeout: "45s", MaxBody: 1024, Name: "max"}
+	want := config{Upstream: "http://127.0.0.1:8000", Slots: 4, Name: "max"}
 	if err := saveConfig(dir, want); err != nil {
 		t.Fatal(err)
 	}
@@ -426,8 +426,13 @@ func TestConfigRoundTripAndDefaults(t *testing.T) {
 			t.Errorf("config.json persists %q; it must be typed each run", k)
 		}
 	}
-	if durOr("", time.Second) != time.Second || durOr("nonsense", time.Second) != time.Second || durOr("2m", time.Second) != 2*time.Minute {
-		t.Error("durOr")
+	// A config.json from before ticket 010 still loads: its retired keys are ignored.
+	old := `{"upstream":"http://127.0.0.1:8000","slots":4,"queue_timeout":"45s","request_timeout":"5m0s","max_body":1024,"name":"max"}`
+	if err := os.WriteFile(filepath.Join(dir, configName), []byte(old), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	if got, err := loadConfig(dir); err != nil || got != want {
+		t.Errorf("old config with retired keys = %+v %v, want %+v", got, err, want)
 	}
 }
 
@@ -457,7 +462,6 @@ type fakeGateway struct {
 	serving chan struct{} // closed when Serve is first called
 	done    chan struct{} // closed by Shutdown; Serve blocks until then
 	once    sync.Once
-	slots   atomic.Int32 // last SetSlots value
 }
 
 func newFakeGateway() *fakeGateway {
@@ -474,7 +478,6 @@ func (g *fakeGateway) Shutdown(context.Context) error            { close(g.done)
 func (g *fakeGateway) Counters(string) usage.KeyCounters         { return usage.KeyCounters{} }
 func (g *fakeGateway) AllCounters() map[string]usage.KeyCounters { return nil }
 func (g *fakeGateway) Queue() (int, int)                         { return 0, 0 }
-func (g *fakeGateway) SetSlots(n int)                            { g.slots.Store(int32(n)) }
 
 type fakeTunnel struct{}
 
@@ -484,8 +487,9 @@ func (fakeTunnel) Status() tunnelStatus   { return tunnelStatus{Addr: fakeAddr, 
 func (fakeTunnel) Close() error           { return nil }
 
 // Ticket 005 fixes 10b and 10d through the real serve command: the tunnel engine's log lands
-// in <data-dir>/tunnel.log and never on the terminal (--verbose flips that), and the gateway
-// follows the engine's slot count once a refresh sees the real number.
+// in <data-dir>/tunnel.log and never on the terminal (--verbose flips that), and the engine's
+// slot count is re-read by the refresh loop and reported — the gateway's queue reads it live
+// (ticket 010, DESIGN §1.5), nothing is pushed.
 func TestServeRoutesTunnelLogAndFollowsSlots(t *testing.T) {
 	dir, err := os.MkdirTemp("", "bn005-") // short: the admin socket path has a length limit
 	if err != nil {
@@ -512,13 +516,15 @@ func TestServeRoutesTunnelLogAndFollowsSlots(t *testing.T) {
 	serve := func(verbose bool) (*fakeGateway, result) {
 		engineSlots.Store(1) // the engine "changes" to 3 only once serve is up
 		gw := newFakeGateway()
+		var engineSeen atomic.Pointer[upstream.Upstream]
 		plat := testPlatform(fakeAddr, nil)
 		plat.startTunnel = func(ctx context.Context, o tunnelOptions) (tunnelServer, error) {
 			o.Logf("magicsock: disco key = d:test")
 			o.Logf("NetworkMap: {\"SelfNode\":1}")
 			return fakeTunnel{}, nil
 		}
-		plat.newGateway = func(gatewayOptions, upstream.Upstream, keys.Store, usage.Recorder, func(string, ...any)) (gatewayServer, error) {
+		plat.newGateway = func(_ gatewayOptions, up upstream.Upstream, _ keys.Store, _ usage.Recorder, _ func(string, ...any)) (gatewayServer, error) {
+			engineSeen.Store(&up)
 			return gw, nil
 		}
 		args := []string{"serve", "--data-dir", dir, "--upstream", engine.URL}
@@ -535,9 +541,9 @@ func TestServeRoutesTunnelLogAndFollowsSlots(t *testing.T) {
 			t.Fatalf("serve never reached the gateway:\n%s%s", out.String(), errw.String())
 		}
 		engineSlots.Store(3)
-		for deadline := time.Now().Add(5 * time.Second); gw.slots.Load() != 3; {
+		for deadline := time.Now().Add(5 * time.Second); (*engineSeen.Load()).Info().Slots != 3; {
 			if time.Now().After(deadline) {
-				t.Fatalf("gateway never followed the engine to 3 slots (got %d):\n%s%s", gw.slots.Load(), out.String(), errw.String())
+				t.Fatalf("the engine state never followed the engine to 3 slots (got %d)", (*engineSeen.Load()).Info().Slots)
 			}
 			time.Sleep(10 * time.Millisecond)
 		}

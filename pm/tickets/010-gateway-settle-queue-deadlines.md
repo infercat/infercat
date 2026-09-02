@@ -53,4 +53,6 @@ lines that changed in the report; do not edit). Ticket 009 is concurrently editi
 
 ## Log
 
+- 2026-09-02 11:30 ACK. Base fe9a139 (origin/main), lane t010-gateway-settle. Read BELIEFS, DESIGN §0/§1/§3/§4/§6, tickets 006/008/011, internal/gateway/** and the cmd seam. Baseline `go build/vet/test ./...` 11 packages ok. No contest: §1.4–1.7 fit inside internal/gateway/** plus the cmd deletions. Two things the design leaves to the implementer, decided up front: (1) the engine first-byte bound cannot be `ResponseHeaderTimeout` on the engine transport in this ticket (client.go is 011's file), so it is a timer on the upstream context owned by `callUpstream`, for 011 to replace; (2) `Config.Slots` goes with `SetSlots` (the queue reads `Info().Slots`), so `QueueTimeout`/`MaxBody`/`Slots` leave `gateway.Config` and tests set the fake engine's Slots and unexported knobs (006 judgment 9).
+
 ## Report

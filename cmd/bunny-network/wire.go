@@ -33,13 +33,9 @@ func newPlatform() platform {
 		encodeInvite: invite.Encode,
 		newGateway: func(o gatewayOptions, up upstream.Upstream, store keys.Store, rec usage.Recorder, logf func(string, ...any)) (gatewayServer, error) {
 			return gateway.New(gateway.Config{
-				Slots:          o.Slots,
-				QueueTimeout:   o.QueueTimeout,
-				RequestTimeout: o.RequestTimeout,
-				MaxBody:        o.MaxBody,
-				LogPrompts:     o.LogPrompts,
-				HostName:       o.HostName,
-				RelayRegion:    o.RelayRegion,
+				LogPrompts:  o.LogPrompts,
+				HostName:    o.HostName,
+				RelayRegion: o.RelayRegion,
 			}, up, store, rec, logf), nil
 		},
 	}

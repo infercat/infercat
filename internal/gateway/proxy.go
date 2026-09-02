@@ -88,6 +88,31 @@ func stripOverrides(body map[string]any) []string {
 	return removed
 }
 
+// normalize is the one place the body is shaped before the engine sees it: engine-override aliases
+// are stripped (promise 1, overrideKeys), a missing model is filled and the allowlist enforced, the
+// output cap is clamped to the key's, and streams get include_usage. Everything else in body passes
+// through byte-identical. It returns what the later stages read (DESIGN §1.7).
+func normalize(kind endpoint, body map[string]any, k *keys.Key, engineModels []string) (normalized, *gwError) {
+	n := normalized{body: body, stripped: stripOverrides(body)}
+	model, err := resolveModel(body, k, engineModels)
+	if err != nil {
+		return n, err
+	}
+	n.model = model
+	switch kind {
+	case chatEndpoint:
+		n.stream, _ = body["stream"].(bool)
+		n.text = messagesText(body["messages"])
+		n.maxTok = clampMaxTokens(body, k.Limits)
+		if n.stream {
+			setIncludeUsage(body)
+		}
+	case embeddingsEndpoint:
+		n.text = inputText(body["input"])
+	}
+	return n, nil
+}
+
 // messagesText concatenates the text of every message (string content, or text parts; image parts
 // count as nothing) for the token pre-check and, with LogPrompts, the event's Prompt.
 func messagesText(v any) string {
@@ -146,26 +171,25 @@ func (q *request) countTokens(text string) int {
 	return n
 }
 
-// resolveModel fills a missing model (first upstream model the key allows, else the key's first
+// resolveModel fills a missing model (first engine model the key allows, else the key's first
 // allowed model) and enforces the allowlist.
-func (q *request) resolveModel() (string, *gwError) {
-	body := q.body
+func resolveModel(body map[string]any, k *keys.Key, engineModels []string) (string, *gwError) {
 	m, _ := body["model"].(string)
 	if m == "" {
-		for _, id := range q.g.up.Info().Models {
-			if q.key.AllowsModel(id) {
+		for _, id := range engineModels {
+			if k.AllowsModel(id) {
 				m = id
 				break
 			}
 		}
-		if m == "" && len(q.key.Limits.Models) > 0 {
-			m = q.key.Limits.Models[0]
+		if m == "" && len(k.Limits.Models) > 0 {
+			m = k.Limits.Models[0]
 		}
 		if m != "" {
 			body["model"] = m
 		}
 	}
-	if m != "" && !q.key.AllowsModel(m) {
+	if m != "" && !k.AllowsModel(m) {
 		return "", errf(CodeModelNotAllowed, 0, "model %q is not allowed for this key", m)
 	}
 	return m, nil
@@ -201,9 +225,6 @@ func clampMaxTokens(body map[string]any, lim keys.Limits) int {
 	return inForce
 }
 
-// minOutputTokens is the floor when max_tokens is shrunk to fit the context.
-const minOutputTokens = 16
-
 // fitContext: effective context = min(key.MaxContext, upstream model context), ignoring zeros.
 // The prompt alone must fit (422 otherwise). When prompt + max_tokens would overshoot, max_tokens
 // shrinks to what remains (floor minOutputTokens), as llama.cpp does itself, instead of a
@@ -219,25 +240,27 @@ func (q *request) fitContext() *gwError {
 	if q.prompt > eff {
 		return errf(CodeContextTooLong, 0, "prompt is %d tokens but the context is %d", q.prompt, eff)
 	}
-	if q.maxTok > 0 && q.prompt+q.maxTok > eff {
-		setMaxTokens(q.body, max(eff-q.prompt, minOutputTokens))
+	if q.n.maxTok > 0 && q.prompt+q.n.maxTok > eff {
+		q.setMaxTok(max(eff-q.prompt, minOutputTokens))
 	}
 	return nil
 }
 
-// setMaxTokens rewrites whichever cap field(s) the request carries; max_tokens when neither is present.
-func setMaxTokens(body map[string]any, n int) {
+// setMaxTok rewrites the cap in force: whichever cap field(s) the request carries, max_tokens when
+// neither is present, and the record's copy.
+func (q *request) setMaxTok(n int) {
 	v := json.Number(strconv.Itoa(n))
 	set := false
 	for _, f := range []string{"max_tokens", "max_completion_tokens"} {
-		if _, ok := body[f]; ok {
-			body[f] = v
+		if _, ok := q.n.body[f]; ok {
+			q.n.body[f] = v
 			set = true
 		}
 	}
 	if !set {
-		body["max_tokens"] = v
+		q.n.body["max_tokens"] = v
 	}
+	q.n.maxTok = n
 }
 
 func setIncludeUsage(body map[string]any) {
@@ -252,13 +275,14 @@ func setIncludeUsage(body map[string]any) {
 // ---- read-only routes ----
 
 // models proxies GET /v1/models under per-key concurrency and RPM (006 promise 5; no global slot:
-// it is a list, not a generation) and keeps only the ids the key allows.
+// it is a list, not a generation) and keeps only the ids the key allows. A list call counts as a
+// request whatever the engine answers (EngineErr or Served).
 func (q *request) models() {
 	if err := q.admitKey(); err != nil {
 		q.fail(err)
 		return
 	}
-	q.queued = true // a list call counts as a request whatever the engine answers
+	q.outcome = outcomeEngineErr
 	ctx, cancel := context.WithTimeout(q.r.Context(), countTimeout)
 	q.cancelUpstream = cancel
 	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, q.upstreamURL("/v1/models"), nil)
@@ -287,6 +311,7 @@ func (q *request) models() {
 			out = append(out, m)
 		}
 	}
+	q.outcome = outcomeServed
 	q.writeJSON(map[string]any{"object": "list", "data": out})
 }
 
@@ -368,15 +393,16 @@ func (q *request) doUpstream(req *http.Request) (*http.Response, error) {
 	return client.Do(req)
 }
 
-// upstreamErr maps a transport error. The friend never sees the engine's address (Protection 1);
+// upstreamErr maps a failed engine read: the friend left, the engine stalled past the idle
+// deadline, or the engine is not there. The friend never sees the engine's address (Protection 1);
 // the host sees it in the log.
 func (q *request) upstreamErr(err error) *gwError {
 	if q.r.Context().Err() != nil {
 		return errf(CodeClientClosed, 0, "client went away")
 	}
-	if errors.Is(err, context.DeadlineExceeded) {
-		q.g.logf("gateway: upstream timed out after %s", q.g.cfg.RequestTimeout)
-		return errf(CodeUpstreamError, 0, "the host's engine did not answer within %s", q.g.cfg.RequestTimeout)
+	if q.engineIdle.Load() {
+		q.g.logf("gateway: upstream sent nothing for %s", q.g.idleTimeout)
+		return errf(CodeUpstreamError, 0, "the host's engine stopped answering for %s", q.g.idleTimeout)
 	}
 	q.g.logf("gateway: upstream unreachable: %v", err)
 	return errf(CodeUpstreamDown, retryAfterUpstreamDown, "the host's engine is not reachable right now")
@@ -423,6 +449,20 @@ func upstreamStatusErr(resp *http.Response) *gwError {
 
 // ---- relays ----
 
+// idleReader re-arms the engine idle deadline on every read: a live engine, however slow, is never
+// cut; one that sends nothing for the idle duration is cancelled (DESIGN §1.6).
+type idleReader struct {
+	r io.Reader
+	t *time.Timer
+	d time.Duration
+}
+
+func (x idleReader) Read(p []byte) (int, error) {
+	n, err := x.r.Read(p)
+	x.t.Reset(x.d)
+	return n, err
+}
+
 type usageT struct {
 	PromptTokens     int `json:"prompt_tokens"`
 	CompletionTokens int `json:"completion_tokens"`
@@ -435,11 +475,18 @@ func (q *request) applyUsage(u *usageT) {
 	q.ev.PromptTokens, q.ev.CompletionTokens = u.PromptTokens, u.CompletionTokens
 }
 
-// pipeBody passes a non-stream response through verbatim after parsing its usage.
-func (q *request) pipeBody() *gwError {
+// pipeBody passes a non-stream response through verbatim after parsing its usage. A body that
+// cannot be read is Cut when the friend left (the engine did the work) and the engine's failure
+// otherwise.
+func (q *request) pipeBody(body io.Reader) *gwError {
 	resp := q.resp
-	b, err := io.ReadAll(io.LimitReader(resp.Body, maxUpstreamBody))
+	b, err := io.ReadAll(io.LimitReader(body, maxUpstreamBody))
 	if err != nil {
+		if q.r.Context().Err() != nil {
+			q.outcome = outcomeCut
+		} else {
+			q.outcome = outcomeEngineErr
+		}
 		return q.upstreamErr(err)
 	}
 	var parsed struct {
@@ -451,6 +498,7 @@ func (q *request) pipeBody() *gwError {
 		} `json:"choices"`
 	}
 	if err := json.Unmarshal(b, &parsed); err != nil {
+		q.outcome = outcomeEngineErr
 		q.g.logf("gateway: upstream response is not JSON: %v", err)
 		return errf(CodeUpstreamError, 0, "upstream returned an unparseable response")
 	}
@@ -485,16 +533,16 @@ type sseChunk struct {
 // stop, or the engine omitted it) completion tokens are estimated as the number of delta chunks seen
 // (llama.cpp and vLLM emit one token per chunk) so an aborted stream is not free; prompt tokens fall
 // back to the pre-check count. A write or flush error means the friend is gone or has stopped
-// reading (the per-line write deadline fired): the stream ends as client_closed. The whole pipe is
-// also bounded by RequestTimeout through the upstream context.
-func (q *request) pipeStream() *gwError {
+// reading (the per-line write deadline fired); a read error means the friend left, the engine went
+// idle, or it died: all Cut. EOF is the end.
+func (q *request) pipeStream(body io.Reader) *gwError {
 	h := q.w.Header()
 	h.Set("Content-Type", "text/event-stream")
 	h.Set("Cache-Control", "no-cache")
 	h.Set("X-Accel-Buffering", "no")
 	q.writeHeader(http.StatusOK)
 
-	br := bufio.NewReaderSize(q.resp.Body, 64<<10)
+	br := bufio.NewReaderSize(body, 64<<10)
 	chunks, sawUsage := 0, false
 	var completion strings.Builder
 	var result *gwError
@@ -540,6 +588,9 @@ func (q *request) pipeStream() *gwError {
 			}
 			break
 		}
+	}
+	if result != nil {
+		q.outcome = outcomeCut
 	}
 	if !sawUsage {
 		q.ev.CompletionTokens = chunks

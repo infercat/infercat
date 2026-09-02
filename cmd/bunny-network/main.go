@@ -53,17 +53,12 @@ type gatewayServer interface {
 	Serve(l net.Listener) error
 	ServeDev(addr string) error
 	Shutdown(ctx context.Context) error
-	SetSlots(n int) // follow the engine's slot count once a refresh sees it (005 fix 10d)
 }
 
 type gatewayOptions struct {
-	Slots          int
-	QueueTimeout   time.Duration
-	RequestTimeout time.Duration
-	MaxBody        int64
-	LogPrompts     bool
-	HostName       string
-	RelayRegion    func() string
+	LogPrompts  bool
+	HostName    string
+	RelayRegion func() string
 }
 
 // platform is everything this command cannot build for itself.

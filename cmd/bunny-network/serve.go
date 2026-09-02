@@ -47,9 +47,6 @@ func (e *env) cmdServe(ctx context.Context, pre string, args []string) error {
 	upURL := fs.String("upstream", cfg.Upstream, "inference server URL; detected when empty")
 	upKey := fs.String("upstream-key", cfg.UpstreamKey, "bearer token for the inference server")
 	slots := fs.Int("slots", cfg.Slots, "parallel requests the engine can serve; 0 asks the engine")
-	queueTimeout := fs.Duration("queue-timeout", durOr(cfg.QueueTimeout, 30*time.Second), "how long a request may wait for a slot")
-	requestTimeout := fs.Duration("request-timeout", durOr(cfg.RequestTimeout, 300*time.Second), "how long one request may take")
-	maxBody := fs.Int64("max-body", int64Or(cfg.MaxBody, 4<<20), "largest request body in bytes")
 	logPrompts := fs.Bool("log-prompts", false, "record prompts and completions in usage.jsonl (off by default; not remembered)")
 	devListen := fs.String("dev-listen", cfg.DevListen, "also serve the gateway on this loopback address, with permissive CORS")
 	ephemeral := fs.Bool("ephemeral", false, "do not touch disk for the host key; a new address every run (not remembered)")
@@ -65,8 +62,7 @@ func (e *env) cmdServe(ctx context.Context, pre string, args []string) error {
 	*upURL = forgetIfAuto(*upURL)
 	if err := saveConfig(dataDir, config{
 		Upstream: *upURL, UpstreamKey: *upKey, Slots: *slots,
-		QueueTimeout: queueTimeout.String(), RequestTimeout: requestTimeout.String(),
-		MaxBody: *maxBody, DevListen: *devListen, DERPMapURL: *derpMapURL,
+		DevListen: *devListen, DERPMapURL: *derpMapURL,
 		Region: *region, Name: *name, WebURL: *webURLFlag,
 	}); err != nil {
 		return err
@@ -112,13 +108,9 @@ func (e *env) cmdServe(ctx context.Context, pre string, args []string) error {
 	defer tun.Close()
 
 	gw, err := e.plat.newGateway(gatewayOptions{
-		Slots:          up.Info().Slots,
-		QueueTimeout:   *queueTimeout,
-		RequestTimeout: *requestTimeout,
-		MaxBody:        *maxBody,
-		LogPrompts:     *logPrompts,
-		HostName:       hostName,
-		RelayRegion:    func() string { return tun.Status().Region },
+		LogPrompts:  *logPrompts,
+		HostName:    hostName,
+		RelayRegion: func() string { return tun.Status().Region },
 	}, up, store, rec, e.logf)
 	if err != nil {
 		return fmt.Errorf("gateway: %w", err)
@@ -138,7 +130,7 @@ func (e *env) cmdServe(ctx context.Context, pre string, args []string) error {
 		hostName: hostName, webURL: webURL(config{WebURL: *webURLFlag}), newIdentity: newIdentity,
 	})
 
-	go refreshLoop(ctx, up, gw, e.logf)
+	go refreshLoop(ctx, up, e.logf)
 
 	errc := make(chan error, 2)
 	go func() { errc <- gw.Serve(tun.Listener()) }()
@@ -231,10 +223,10 @@ func tunnelLogf(dataDir string, verbose bool, terminal func(string, ...any)) (fu
 	return log.New(f, "", log.LstdFlags|log.Lmicroseconds).Printf, func() { f.Close() }, nil
 }
 
-// refreshLoop re-probes the engine; when it comes or goes that is logged once, and when a
-// successful probe reports a different slot count the gateway follows it (005 fix 10d: an
-// engine down at startup must not pin the gateway at one slot forever).
-func refreshLoop(ctx context.Context, up upstream.Upstream, gw gatewayServer, logf func(string, ...any)) {
+// refreshLoop re-probes the engine; when it comes or goes, or reports a different slot count,
+// that is logged once. Nothing is pushed anywhere: the gateway's queue reads the engine's slot
+// count at every decision (ticket 010, DESIGN §1.5), so an engine down at startup cannot pin it.
+func refreshLoop(ctx context.Context, up upstream.Upstream, logf func(string, ...any)) {
 	t := time.NewTicker(refreshEvery)
 	defer t.Stop()
 	was := up.Info().Healthy
@@ -255,7 +247,6 @@ func refreshLoop(ctx context.Context, up upstream.Upstream, gw gatewayServer, lo
 				was = info.Healthy
 			}
 			if err == nil && info.Slots > 0 && info.Slots != slots {
-				gw.SetSlots(info.Slots)
 				logf("engine slots: %d (was %d)", info.Slots, slots)
 				slots = info.Slots
 			}
@@ -399,9 +390,6 @@ Flags:
                           --upstream auto forgets a remembered URL and detects again
   --upstream-key TOKEN    bearer token for the inference server
   --slots N               parallel requests the engine can serve (0 = ask the engine)
-  --queue-timeout D       how long a request may wait for a slot   (default 30s)
-  --request-timeout D     how long one request may take            (default 5m0s)
-  --max-body BYTES        largest request body                     (default 4194304)
   --dev-listen ADDR       also serve on this loopback address, permissive CORS
   --derpmap-url URL       relay map URL
   --region NAME           preferred relay region

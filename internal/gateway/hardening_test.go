@@ -87,7 +87,8 @@ func TestOverrideKeysStripped(t *testing.T) {
 // ---- 2. admission before body ----
 
 func TestAdmissionBeforeBody(t *testing.T) {
-	h := newHarness(t, Config{Slots: 4, MaxBody: 4 << 20}, nil)
+	h := newHarness(t, Config{}, nil)
+	h.slots(4)
 	h.setKey(func(k *keys.Key) { k.Limits.MaxConcurrent = 2 })
 	open := h.up.gateTokenize()
 	defer open()
@@ -161,7 +162,8 @@ func TestAdmissionBeforeBody(t *testing.T) {
 // is un-counted: RPM does not move and the per-key slot is back. A queue timeout, after the queue
 // was joined, counts.
 func TestPreQueueRejectionIsUncounted(t *testing.T) {
-	h := newHarness(t, Config{Slots: 1, QueueTimeout: 100 * time.Millisecond}, nil)
+	h := newHarness(t, Config{}, nil)
+	h.gw.queueTimeout = 100 * time.Millisecond
 	h.up.setInfo(func(i *upstream.Info) { i.ModelContext = 10 })
 	h.setKey(func(k *keys.Key) { k.Limits.MaxOutputTokens = 4; k.Limits.RPM = 5 })
 	h.expectErr(h.post("/v1/chat/completions", chatBody("m1", 50, "")), CodeContextTooLong)
@@ -190,7 +192,7 @@ func TestPreQueueRejectionIsUncounted(t *testing.T) {
 // ---- 3. write deadline ----
 
 func TestStalledReaderFreesSlots(t *testing.T) {
-	h := newHarness(t, Config{Slots: 1}, nil)
+	h := newHarness(t, Config{}, nil)
 	h.gw.writeTimeout = 300 * time.Millisecond
 	// 64 events of 256 KiB, no gap: more than any loopback socket buffer once the client stops reading.
 	big := strings.Repeat("y", 256<<10)
@@ -314,7 +316,8 @@ func TestBodyReadDeadline(t *testing.T) {
 // ---- 5. /v1/models metered ----
 
 func TestModelsMetered(t *testing.T) {
-	h := newHarness(t, Config{Slots: 1, QueueTimeout: 2 * time.Second}, nil)
+	h := newHarness(t, Config{}, nil)
+	h.gw.queueTimeout = 2 * time.Second
 	h.up.set("sse", sseEvents(40, true)...) // 2 s if left alone
 	h.store.set("second", &keys.Key{ID: "k_bob", Name: "bob", Status: keys.Active})
 	ctx, cancel := context.WithCancel(context.Background())
@@ -458,7 +461,8 @@ func TestUpstream4xxIsTheFriends(t *testing.T) {
 // ---- 10. bounded waiting queue ----
 
 func TestWaitingQueueBounded(t *testing.T) {
-	h := newHarness(t, Config{Slots: 1, QueueTimeout: 5 * time.Second}, nil)
+	h := newHarness(t, Config{}, nil)
+	h.gw.queueTimeout = 5 * time.Second
 	h.up.set("sse", sseEvents(6, true)...) // 300 ms per stream
 	ctx1, cancel1 := context.WithCancel(context.Background())
 	defer cancel1()
@@ -511,8 +515,9 @@ func TestWaitingQueueBounded(t *testing.T) {
 	if inF, w := h.gw.Queue(); inF != 0 || w != 0 {
 		t.Fatalf("queue after: %d running, %d waiting", inF, w)
 	}
-	if c := h.gw.Counters("k_alice1"); c.InFlight != 0 {
-		t.Fatalf("per-key slot leaked by a refused waiter: %+v", c)
+	// The two refused on the spot never held a place: they do not count against RPM (DESIGN §1.4).
+	if c := h.gw.Counters("k_alice1"); c.InFlight != 0 || c.RPMUsed != 3 {
+		t.Fatalf("per-key slot leaked, or a refused waiter counted: %+v", c)
 	}
 }
 

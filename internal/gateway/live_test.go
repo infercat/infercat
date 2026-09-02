@@ -98,7 +98,7 @@ func TestLiveLlamaCPP(t *testing.T) {
 	}
 	t.Logf("upstream: %+v", up.info)
 
-	h := newHarness(t, Config{Slots: up.info.Slots, HostName: "live-laptop", RelayRegion: func() string { return "loopback" }}, up)
+	h := newHarness(t, Config{HostName: "live-laptop", RelayRegion: func() string { return "loopback" }}, up)
 	h.setKey(func(k *keys.Key) { k.Limits = keys.DefaultLimits() })
 
 	r := h.get("/me")
