@@ -858,6 +858,56 @@ func TestQRIsForTerminalsOnly(t *testing.T) {
 	}
 }
 
+// A QR is ~30 rows tall, so on a short terminal it scrolls the invite out of sight — a host
+// persona lost one that way. The line to copy is printed again underneath the QR, and only there:
+// --no-qr, a pipe and --json are untouched (ticket 016 promise 2).
+func TestInviteIsRepeatedUnderTheQR(t *testing.T) {
+	dir := t.TempDir()
+	plat := testPlatform(fakeAddr, nil)
+	qrEnd := func(out string) int { return strings.LastIndex(out, "\x1b[0m") }
+
+	r := exec(t, plat, "keys", "add", "alice", "--data-dir", dir)
+	inv := strings.Fields(r.out[strings.Index(r.out, product.InvitePrefix+"."):])[0]
+	if n := strings.Count(r.out, inv); n != 2 {
+		t.Fatalf("the invite appears %d time(s); want once above the QR and once under it:\n%s", n, r.out)
+	}
+	if strings.LastIndex(r.out, inv) < qrEnd(r.out) {
+		t.Errorf("the repeat is not under the QR:\n%s", r.out)
+	}
+	t.Logf("keys add alice — everything after the QR:\n%s", r.out[qrEnd(r.out)+len("\x1b[0m"):])
+
+	// With a web app the QR carries the link, so the link is what comes back under it.
+	if err := saveConfig(dir, config{WebURL: "https://app.example"}); err != nil {
+		t.Fatal(err)
+	}
+	r = exec(t, plat, "keys", "add", "bob", "--data-dir", dir)
+	link := strings.Fields(r.out[strings.Index(r.out, "https://app.example#"):])[0]
+	if n := strings.Count(r.out, link); n != 2 || strings.LastIndex(r.out, link) < qrEnd(r.out) {
+		t.Errorf("the link appears %d time(s), last one under the QR: %v\n%s", n, strings.LastIndex(r.out, link) > qrEnd(r.out), r.out)
+	}
+	// rotate speaks the same way, and there the repeat is the last line of the command.
+	rot := exec(t, plat, "keys", "rotate", "bob", "--data-dir", dir)
+	rotLink := strings.Fields(rot.out[strings.Index(rot.out, "https://app.example#"):])[0]
+	if lines := strings.Fields(strings.TrimSpace(rot.out)); lines[len(lines)-1] != rotLink {
+		t.Errorf("rotate does not end with the link to copy:\n%s", rot.out)
+	}
+
+	// No QR, nothing repeated: --no-qr, and a pipe.
+	r = exec(t, plat, "keys", "add", "carol", "--no-qr", "--data-dir", dir)
+	carol := strings.Fields(r.out[strings.Index(r.out, "https://app.example#"):])[0]
+	if n := strings.Count(r.out, carol); n != 1 {
+		t.Errorf("--no-qr repeated the link %d time(s):\n%s", n, r.out)
+	}
+	var out, errw bytes.Buffer
+	if code := run(context.Background(), []string{"keys", "add", "dave", "--data-dir", dir}, &out, &errw, nil, false, plat); code != 0 {
+		t.Fatal(errw.String())
+	}
+	dave := strings.Fields(out.String()[strings.Index(out.String(), "https://app.example#"):])[0]
+	if n := strings.Count(out.String(), dave); n != 1 {
+		t.Errorf("a pipe got the link %d time(s):\n%s", n, out.String())
+	}
+}
+
 // Revoke is permanent, so it asks, names the reversible alternative, and does nothing on anything
 // but yes (promise 9).
 func TestRevokeAsksFirst(t *testing.T) {

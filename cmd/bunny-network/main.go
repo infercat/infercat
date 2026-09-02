@@ -59,6 +59,7 @@ type gatewayOptions struct {
 	LogPrompts  bool
 	HostName    string
 	RelayRegion func() string
+	DataDir     string // usage.jsonl, for the daily counters the gateway seeds at start
 }
 
 // platform is everything this command cannot build for itself.

@@ -9,8 +9,10 @@ import (
 	"github.com/2185Lab/bunny-network/internal/usage"
 )
 
-// Per-key limits live entirely in memory and reset on restart (known v1 limitation: the daily budget
-// therefore also resets on restart; docs/ARCHITECTURE.md gives counters no persistence).
+// Per-key limits live entirely in memory. The sliding minute is genuinely empty after a restart —
+// RPM and TPM are questions about right now — but the day is not: `today` and `lastSeen` are seeded
+// from usage.jsonl at start (seedToday, DESIGN §4 item 5), so a restart no longer hands every friend
+// a fresh daily budget or snaps their usage meter to zero mid-conversation.
 //
 // RPM and TPM share one mechanism: a sliding 60 s log of admissions and token charges per key.
 //   - RPM = number of admissions in the last 60 s. Chosen over a token bucket or fixed window because
@@ -70,6 +72,23 @@ type limiter struct {
 
 func newLimiter() *limiter {
 	return &limiter{keys: map[string]*keyState{}, now: time.Now}
+}
+
+// seedToday restores each key's day from history at start: `today` is what that key was charged
+// since UTC midnight (prompt+completion, the same sum settle charges) and `lastSeen` is its last
+// recorded request. day must be the UTC midnight the report was filtered from, so prune keeps the
+// seeded totals until the day actually rolls. Nothing else is restored: reservations and the
+// sliding minute belong to requests that died with the old process.
+func (l *limiter) seedToday(rep *usage.Report, day time.Time) {
+	for _, s := range rep.Keys {
+		if s.KeyID == "" { // an unauthenticated request is not anyone's day
+			continue
+		}
+		st := l.state(s.KeyID)
+		st.mu.Lock()
+		st.day, st.today, st.lastSeen = day, s.PromptTokens+s.CompletionTokens, s.LastSeen
+		st.mu.Unlock()
+	}
 }
 
 func (l *limiter) state(id string) *keyState {

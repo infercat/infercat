@@ -9,6 +9,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"net/http/httptest"
 	"reflect"
 	"strings"
 	"testing"
@@ -438,6 +439,77 @@ func TestTPMAndDailyAfterRealUsage(t *testing.T) {
 	if ev.Status != 429 || ev.Code != "budget_exhausted" || ev.PromptTokens != 2 {
 		t.Fatalf("rejected event: %+v", ev)
 	}
+}
+
+// Both friend personas watched their usage meter snap to zero when the host restarted ("I'd used
+// 5.8k tokens a minute earlier"), and the daily budget went with it. A gateway started over the
+// same usage.jsonl now begins the day where the last one left it (DESIGN §4 item 5). The sliding
+// minute deliberately does not come back: rpm/tpm are questions about right now.
+func TestRestartKeepsTodaysCountersAndLastSeen(t *testing.T) {
+	dir := t.TempDir()
+	h := newHarness(t, Config{DataDir: dir}, nil)
+	for i := 0; i < 2; i++ {
+		if r := h.post("/v1/chat/completions", chatBody("m1", 2, "")); r.status != 200 {
+			t.Fatalf("request %d: %d %s", i, r.status, r.body)
+		}
+		h.rec.waitFor(t, i+1)
+	}
+	before, beforeMe := h.gw.Counters("k_alice1"), meUsage(t, h.get("/me").body)
+	if beforeMe.TodayTokens == 0 {
+		t.Fatal("nothing was charged before the restart; the test proves nothing")
+	}
+
+	// The host stops: the server goes away and usage.jsonl is flushed and closed.
+	h.srv.Close()
+	if err := h.file.Close(); err != nil {
+		t.Fatal(err)
+	}
+	h.gw = New(Config{DataDir: dir, HostName: "max-laptop"}, h.up, h.store, h.rec, globalLogs.logf)
+	h.srv = httptest.NewServer(h.gw.Handler())
+	defer h.srv.Close()
+
+	// Read the seeded state before any request touches it.
+	seeded := h.gw.Counters("k_alice1")
+	if seeded.TodayTokens != before.TodayTokens {
+		t.Fatalf("today_tokens after restart: %d, want the %d charged before", seeded.TodayTokens, before.TodayTokens)
+	}
+	if d := seeded.LastSeen.Sub(before.LastSeen); seeded.LastSeen.IsZero() || d > time.Minute || d < -time.Minute {
+		t.Fatalf("last_seen after restart: %v, want ~%v", seeded.LastSeen, before.LastSeen)
+	}
+	if seeded.RPMUsed != 0 || seeded.InFlight != 0 {
+		t.Fatalf("the sliding minute must start empty: %+v", seeded)
+	}
+	if got := meUsage(t, h.get("/me").body); got.TodayTokens != beforeMe.TodayTokens {
+		t.Fatalf("/me today_tokens after restart: %d, want %d", got.TodayTokens, beforeMe.TodayTokens)
+	}
+
+	// A key with no history today, and a data dir with no usage.jsonl at all, both seed nothing.
+	if c := h.gw.Counters("k_nobody"); c.TodayTokens != 0 || !c.LastSeen.IsZero() {
+		t.Fatalf("a key absent from history: %+v", c)
+	}
+	if c := New(Config{DataDir: t.TempDir()}, h.up, h.store, h.rec, globalLogs.logf).Counters("k_alice1"); c.TodayTokens != 0 {
+		t.Fatalf("empty data dir seeded %d tokens", c.TodayTokens)
+	}
+}
+
+// meUsage is the usage block of /me, the numbers the friend's meter shows.
+func meUsage(t *testing.T, body []byte) struct {
+	RPMUsed     int `json:"rpm_used"`
+	TPMUsed     int `json:"tpm_used"`
+	TodayTokens int `json:"today_tokens"`
+} {
+	t.Helper()
+	var m struct {
+		Usage struct {
+			RPMUsed     int `json:"rpm_used"`
+			TPMUsed     int `json:"tpm_used"`
+			TodayTokens int `json:"today_tokens"`
+		} `json:"usage"`
+	}
+	if err := json.Unmarshal(body, &m); err != nil {
+		t.Fatalf("/me: %v\n%s", err, body)
+	}
+	return m.Usage
 }
 
 func TestPerKeyConcurrency(t *testing.T) {
