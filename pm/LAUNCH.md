@@ -16,8 +16,7 @@ gates the public ones (BELIEFS: Authority). Nothing ships while a line in **Foun
 
 ## Engineering gates
 
-- [ ] 014 web polish landed; second experiential pass (both personas) reports launch-ready or the
-      remaining items are explicitly accepted by the founder.
+- [ ] 014 landed ✓. Second experiential pass (19:30): **not launch-ready this week; close** — happy path praised, four false statements in failure paths, two 014 regressions → ticket 020 (per-turn state, stream idle end, reply-end classification, one health source, tab leader). Third pass after 020 is the gate.
 - [x] 017 release engineering: reproducible builds for the three platforms, notices file, version
       stamping, `make release-dry` from a fresh clone (law 4). Landed `f5e6081`.
 - [ ] Relay: host key regenerated against the founder's derper (F2); `docs/MEASURE.md` re-run through
