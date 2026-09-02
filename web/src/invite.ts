@@ -109,3 +109,14 @@ export function inviteFromHash(hash: string): string {
   raw = raw.trim();
   return raw.startsWith('bn1.') ? raw : '';
 }
+
+/**
+ * A remembered invite is still a secret sitting in a text box on a screen somebody may be sharing.
+ * It is shown as `bn1.tco2…N96as` — enough for the reader to recognise as theirs, not enough for
+ * anyone to use — until they ask for the rest (014 promise 9).
+ */
+export function maskInvite(invite: string): string {
+  const parts = invite.trim().split('.');
+  if (parts.length < 3) return invite.trim();
+  return `${parts[0] ?? ''}.${(parts[1] ?? '').slice(0, 4)}…${(parts[2] ?? '').slice(-5)}`;
+}

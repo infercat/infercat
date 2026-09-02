@@ -132,6 +132,20 @@ textarea:focus-visible, input[type='text']:focus-visible, select:focus-visible {
 .failure strong { display: block; }
 .failure p { color: var(--muted); font-size: 14px; margin: 4px 0 10px; }
 
+/* A raw transport string is evidence, not an explanation: it opens only when it is asked for. */
+.host-said { margin: 6px 0 10px; font-size: 12.5px; color: var(--faint); }
+.host-said summary { cursor: pointer; color: var(--muted); }
+.host-said p { margin: 6px 0 0; font-family: var(--mono); font-size: 12px; overflow-wrap: anywhere; }
+
+/* A remembered invite is still a secret sitting on a screen: shown as itself, opened on request. */
+.masked {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  background: var(--raised); border: 1px solid var(--line); border-radius: 10px; padding: 8px 8px 8px 12px;
+}
+.masked code { font-family: var(--mono); font-size: 13px; color: var(--muted); }
+.field-hint { display: block; color: var(--faint); font-size: 12px; margin-top: 6px; }
+input[type='range'] { accent-color: var(--accent); padding: 0; }
+
 /* ---------- chat shell ---------- */
 .app { display: grid; grid-template-columns: 264px 1fr; height: 100dvh; }
 .sidebar {
@@ -151,8 +165,15 @@ textarea:focus-visible, input[type='text']:focus-visible, select:focus-visible {
   flex: 1; min-width: 0; text-align: left; padding: 8px 10px; font-size: 14px;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
-.conv-del { color: var(--faint); padding: 4px 10px; opacity: 0; font-size: 16px; }
+/* 44 px, and set apart from the open target: deleting is next to opening, and a thumb is wide. */
+.conv-del {
+  color: var(--faint); font-size: 16px; opacity: 0;
+  width: 44px; height: 44px; margin-left: 4px;
+  display: grid; place-items: center; border-radius: 9px;
+}
 .conv:hover .conv-del, .conv.current .conv-del { opacity: 1; }
+.conv-del:hover { background: var(--panel); color: var(--danger); }
+@media (pointer: coarse) { .conv-del { opacity: 1; } }
 
 .main { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
 
@@ -165,12 +186,18 @@ textarea:focus-visible, input[type='text']:focus-visible, select:focus-visible {
 .who .dim { font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .truth { margin-left: auto; display: flex; align-items: center; gap: 16px; font-size: 12.5px; color: var(--muted); }
 .path { font-variant-numeric: tabular-nums; white-space: nowrap; }
-.meters { display: flex; gap: 14px; }
+.meters { display: flex; gap: 14px; padding: 2px 4px; border-radius: 8px; text-align: left; }
+.meters:hover { background: var(--panel); }
 .meter { display: grid; gap: 3px; }
 .meter-label { color: var(--faint); font-size: 11.5px; white-space: nowrap; font-variant-numeric: tabular-nums; }
 .meter-track { display: block; width: 96px; height: 3px; background: var(--line); border-radius: 2px; }
+/* An unknown number gets a dashed rail, never a bar at zero: an empty bar is a claim (promise 3). */
+.meter-track.unknown { background: none; border-top: 1px dashed var(--line); height: 0; margin-top: 1px; }
 .meter-fill { display: block; height: 100%; background: var(--accent); border-radius: 2px; transition: width 0.3s; }
 .hamburger { display: none; font-size: 18px; padding: 2px 6px; }
+
+/* Nothing on screen outlives its measurement: while /me is stale the truths above it recede. */
+.main.stale .truth, .main.stale .who .dim { opacity: 0.55; }
 
 /* flex-1 with min-height:0 rather than a fixed grid row count: the header can grow a truthful
    line (a degraded engine, a host that logs prompts) without stealing the thread's height. */
@@ -213,7 +240,20 @@ textarea:focus-visible, input[type='text']:focus-visible, select:focus-visible {
   border-bottom: 1px solid var(--line);
 }
 .degraded { color: var(--danger); background: var(--panel); }
+/* A paused invite is not a fault: it is a thing the host can undo, said in the host's colour. */
+.degraded.key { color: var(--text); background: var(--accent-soft); }
 .logging { color: var(--text); background: var(--accent-soft); }
+
+/* The pending turn: the reader's words, still theirs, marked as not delivered (promise 1). */
+.bubble.pending { border: 1px dashed var(--danger); background: var(--bg); }
+.pending-mark { color: var(--danger); font-size: 12px; }
+
+/* Deleting is undoable, so the answer to "are you sure?" is six seconds instead of a dialog. */
+.toast {
+  display: flex; gap: 12px; align-items: center; justify-content: space-between;
+  margin: 0 auto; max-width: 46rem; width: 100%;
+  padding: 8px 20px; border-top: 1px solid var(--line); background: var(--panel); font-size: 13.5px;
+}
 
 .thinking { border-left: 2px solid var(--line); padding-left: 12px; margin-bottom: 12px; }
 .thinking-toggle { display: flex; gap: 8px; align-items: baseline; color: var(--muted); font-size: 13px; padding: 2px 0; }
@@ -222,8 +262,17 @@ textarea:focus-visible, input[type='text']:focus-visible, select:focus-visible {
 .thinking.open .thinking-clip { grid-template-rows: 1fr; }
 .thinking-body {
   overflow: hidden auto; max-height: 8.5em; min-height: 0;
-  color: var(--muted); font-size: 13.5px; white-space: pre-wrap;
+  color: var(--muted); font-size: 13.5px;
 }
+.thinking-body .md p { margin: 0 0 8px; }
+
+/* The answer a regenerate replaced. Kept, and out of the way until it is wanted (promise 16). */
+.previous { margin: 0 0 10px; font-size: 13px; color: var(--muted); }
+.previous summary { cursor: pointer; }
+.previous .md { margin-top: 8px; padding-left: 12px; border-left: 2px solid var(--line); }
+
+/* Running out of allowance is not finishing: it reads as an ending, with the one useful action. */
+.ended.capped { display: flex; gap: 6px; align-items: baseline; flex-wrap: wrap; }
 
 .empty { padding: 12vh 0 0; text-align: center; }
 .empty h2 { font-size: 22px; font-weight: 600; margin: 0 0 6px; letter-spacing: -0.01em; }
@@ -255,6 +304,8 @@ textarea:focus-visible, input[type='text']:focus-visible, select:focus-visible {
 .sheet-wrap { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.35); display: grid; place-items: center; padding: 20px; z-index: 30; }
 .sheet { background: var(--bg); border: 1px solid var(--line); border-radius: var(--radius); padding: 22px; width: min(28rem, 100%); max-height: 86dvh; overflow-y: auto; }
 .sheet h3 { margin: 0 0 18px; font-size: 17px; font-weight: 600; }
+.sheet p { margin: 0 0 14px; }
+.sheet-actions { display: flex; gap: 8px; align-items: center; justify-content: flex-end; margin-top: 18px; }
 .small-print { font-size: 12.5px; line-height: 1.6; margin: 18px 0; }
 .small-print code { font-family: var(--mono); font-size: 12px; }
 
@@ -263,7 +314,10 @@ textarea:focus-visible, input[type='text']:focus-visible, select:focus-visible {
 /* ---------- markdown ---------- */
 .md > :first-child { margin-top: 0; }
 .md > :last-child { margin-bottom: 0; }
-.md p, .md ul, .md ol, .md blockquote { margin: 0 0 14px; overflow-wrap: anywhere; }
+/* A model writing a list or a stanza uses single newlines; markdown would fold them into one
+   paragraph, so the reader gets a wall of text where the model wrote lines (014 promise 17). */
+.md p { margin: 0 0 14px; overflow-wrap: anywhere; white-space: pre-wrap; }
+.md ul, .md ol, .md blockquote { margin: 0 0 14px; overflow-wrap: anywhere; }
 .md h1, .md h2, .md h3, .md h4 { margin: 22px 0 10px; font-weight: 600; line-height: 1.3; }
 .md h1 { font-size: 21px; } .md h2 { font-size: 18px; } .md h3 { font-size: 16px; }
 .md ul, .md ol { padding-left: 22px; }

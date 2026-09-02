@@ -1,20 +1,38 @@
 import { useEffect, useRef, useState } from 'react';
 import type { Message } from '../storage';
+import type { ThreadAction } from './Chat';
 import Markdown from './Markdown';
 
 interface Props {
   message: Message;
+  /** The host's display name: waiting and failure copy name the machine, never "the endpoint". */
+  host: string;
   /** True while this message is the one being streamed. */
   live: boolean;
   /** True while any reply is streaming: actions that would start a second one stay hidden. */
   busy: boolean;
   /** Actions only appear on the last exchange, the way ChatGPT does it. */
   last: boolean;
-  onRegenerate: () => void;
+  /** The one action this exchange offers, named for what it will do (Regenerate / Try again /
+   *  Reconnect). Composed by Chat, which is the only place that knows which of those is true. */
+  action: ThreadAction;
+  /** The invite's per-reply token cap, for the ending a capped reply gets (014 promise 14). */
+  capTokens: number;
+  onContinue: () => void;
   onResend: (text: string) => void;
 }
 
-export default function MessageView({ message: m, live, busy, last, onRegenerate, onResend }: Props) {
+export default function MessageView({
+  message: m,
+  host,
+  live,
+  busy,
+  last,
+  action,
+  capTokens,
+  onContinue,
+  onResend,
+}: Props) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(m.content);
 
@@ -28,18 +46,22 @@ export default function MessageView({ message: m, live, busy, last, onRegenerate
               <button className="ghost" onClick={() => { setEditing(false); setDraft(m.content); }}>
                 Cancel
               </button>
+              {/* It replaces the answer below it, so it says so before it is pressed (promise 16). */}
               <button className="primary small" onClick={() => { setEditing(false); onResend(draft); }} disabled={draft.trim() === ''}>
-                Send again
+                Replace answer
               </button>
             </div>
           </div>
         </div>
       );
     }
+    const pending = m.pending === true && !busy;
     return (
       <div className="row user">
-        <div className="bubble">{m.content}</div>
+        <div className={`bubble ${pending ? 'pending' : ''}`}>{m.content}</div>
         <div className="actions">
+          {/* The pending turn (014 promise 1): the reader's words are still here and still theirs. */}
+          {pending && <span className="pending-mark">Not delivered</span>}
           {last && !busy && (
             <button className="ghost tiny" onClick={() => { setDraft(m.content); setEditing(true); }}>
               Edit
@@ -56,6 +78,12 @@ export default function MessageView({ message: m, live, busy, last, onRegenerate
   const inThinking = ended && m.content.trim() === '' && Boolean(m.reasoning);
   return (
     <div className="row assistant">
+      {m.previous !== undefined && m.previous !== '' && (
+        <details className="previous">
+          <summary>Previous answer</summary>
+          <Markdown text={m.previous} />
+        </details>
+      )}
       {m.reasoning && (
         <Thinking
           text={m.reasoning}
@@ -64,25 +92,55 @@ export default function MessageView({ message: m, live, busy, last, onRegenerate
         />
       )}
       <Markdown text={live ? closeFences(m.content) : m.content} />
-      {live && m.content === '' && !m.reasoning && <p className="waiting">Waiting for the first token…</p>}
+      {live && m.content === '' && !m.reasoning && (
+        <p className="waiting">
+          {m.waiting === true
+            ? `Still waiting for ${host || 'the host'}…`
+            : 'Waiting for the first token…'}
+        </p>
+      )}
       {/* The reply did not simply stop: it says which way it stopped, under the text it kept. */}
       {ended && !inThinking && <p className={`ended ${m.status}`}>{m.note}</p>}
+      {/* Running out of allowance is not finishing (014 promise 14): the reader is told where it
+          stopped and offered the only thing that helps — more of the same reply. */}
+      {!live && m.capped === true && m.status === 'complete' && (
+        <p className="ended capped">
+          This stopped at your invite’s {capTokens}-token reply limit.{' '}
+          <button className="ghost tiny" onClick={onContinue}>
+            Continue
+          </button>
+        </p>
+      )}
+      {/* The host's raw sentence is evidence, never what a stranger has to read first. */}
+      {ended && m.details !== undefined && m.details !== '' && <Details text={m.details} />}
       <div className="meta">
         <span className="meta-text">
           {m.model ?? ''}
-          {m.tokens ? ` · ${m.tokens.in} in / ${m.tokens.out} out` : ''}
-          {m.status === 'interrupted' || m.status === 'no_answer' ? ' · not sent as context' : ''}
+          {m.tokens ? ` · ${m.tokens.in} tokens in · ${m.tokens.out} out` : ''}
+          {m.status === 'interrupted' || m.status === 'no_answer'
+            ? ' · not part of the next question'
+            : ''}
         </span>
         <span className="actions">
           {last && !busy && m.content !== '' && <CopyButton text={m.content} />}
           {last && !busy && (
-            <button className="ghost tiny" onClick={onRegenerate}>
-              Regenerate
+            <button className="ghost tiny" onClick={action.run}>
+              {action.label}
             </button>
           )}
         </span>
       </div>
     </div>
+  );
+}
+
+/** A raw transport string helps exactly one reader in a hundred; it waits until it is asked for. */
+function Details({ text }: { text: string }) {
+  return (
+    <details className="host-said">
+      <summary>Details</summary>
+      <p>{text}</p>
+    </details>
   );
 }
 
@@ -120,8 +178,10 @@ function Thinking({ text, answering, note }: { text: string; answering: boolean;
         <span className="thinking-hint">{open ? 'hide' : `${words(text)} words`}</span>
       </button>
       <div className="thinking-clip">
+        {/* Thinking is model output like any other: it arrives as markdown and reads as raw
+            asterisks if it is not rendered as markdown (014 promise 17). */}
         <div className="thinking-body" ref={body}>
-          {text}
+          <Markdown text={text} />
         </div>
       </div>
       {/* A reply that was all thinking and no answer explains itself here, not by being blank. */}

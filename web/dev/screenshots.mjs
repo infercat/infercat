@@ -147,12 +147,18 @@ async function main() {
   await shot(offline, 'host-offline');
 
   // --- format error, before anything is dialled ---
-  const bad = await desktop.newPage();
+  // A clean context: this browser has a remembered invite by now, which (014 promise 9) opens onto
+  // the welcome-back face with the code masked, and a stranger's first paste is what is being shot.
+  const fresh = await browser.newContext({ viewport: { width: 1280, height: 860 }, colorScheme: 'light' });
+  const bad = await fresh.newPage();
   watch(bad, 'bad-invite');
   await bad.goto(BASE);
   await bad.locator('.connect textarea').fill('bn9.tcSomething.abc');
-  await bad.getByRole('button', { name: 'Connect' }).click();
+  // 014 promise 10: the reason arrives as they paste, and it is what disables Connect.
   await bad.waitForSelector('.inline-error');
+  if (await bad.getByRole('button', { name: 'Connect' }).isEnabled()) {
+    problems.push('bad invite: Connect is still enabled with a malformed code');
+  }
   await shot(bad, 'bad-invite');
 
   // --- Direct mode: real fetch, real CORS, real SSE against the Node fake gateway ---
@@ -267,7 +273,7 @@ async function main() {
   const stale = await chatting('pingFailsAfter=1', '07-degraded-path');
   await stale.waitForSelector('.path', { timeout: 20_000 });
   await stale.waitForFunction(
-    () => document.querySelector('.path')?.textContent?.includes('path unknown'),
+    () => document.querySelector('.path')?.textContent?.includes('not answering'),
     { timeout: 45_000 },
   );
   await shot7(stale, 'degraded-path');
@@ -295,6 +301,154 @@ async function main() {
   await rev.getByRole('button', { name: 'Send' }).click();
   await rev.waitForSelector('.failure', { timeout: 20_000 });
   await shot7(rev, 'revoked-return');
+
+
+  // --- ticket 014: the two failures a friend will hit, and the honest meters ------------------
+  async function shot14(page, name) {
+    return write(page, `14-${name}`);
+  }
+
+  // Promise 1 (blocker). The host went to sleep after we connected. This shot waits out the real
+  // 5 s and the real ~15 s: the timings are the thing being shown, so they are not shortened.
+  const gone = await chatting('hostAsleep', '14-host-asleep');
+  await ask(gone, 'Are you still there?');
+  await gone.waitForSelector('.waiting:has-text("Still waiting")', { timeout: 20_000 });
+  await shot14(gone, 'host-asleep-waiting');
+  await gone.waitForSelector('.row.assistant .ended', { timeout: 40_000 });
+  const asleepCopy = await gone.locator('.row.assistant .ended').innerText();
+  for (const raw of ['context deadline', 'dial port', 'closed inside the response']) {
+    if (asleepCopy.includes(raw)) problems.push(`host-asleep: raw transport string in primary copy (${raw})`);
+  }
+  if (!asleepCopy.includes('asleep or offline')) problems.push(`host-asleep: copy is ${asleepCopy}`);
+  // The reader's words are still in the thread, marked, with something to press. For this failure
+  // the useful thing is a new connection, not another 30 s over the dead one (014 promise 13
+  // supersedes promise 1's "Try again" label for exactly this case).
+  await gone.waitForSelector('.bubble.pending', { timeout: 10_000 });
+  await gone.waitForSelector('button:has-text("Reconnect")', { timeout: 10_000 });
+  await shot14(gone, 'host-asleep-failed');
+
+  // Promise 2 (blocker). A paused invite keeps the chat, keeps the words, and says who to ask.
+  const paused = await chatting('keyPaused', '14-paused');
+  if (await paused.locator('.degraded.key').count()) problems.push('paused: degraded before the pause');
+  await ask(paused, 'Is my invite still good?');
+  await paused.waitForSelector('.degraded.key', { timeout: 20_000 });
+  await sleep(300);
+  const kept = await paused.locator('.composer textarea').inputValue();
+  if (kept !== 'Is my invite still good?') problems.push(`paused: composer lost the text (${JSON.stringify(kept)})`);
+  if (await paused.locator('.connect-card').count()) problems.push('paused: ejected to the connect screen');
+  await shot14(paused, 'paused-banner');
+
+  // Promise 3. A /me that stopped answering renders "—", never a zero nobody measured.
+  const unknown = await chatting('meFailsAfter=1', '14-unknown');
+  await ask(unknown, 'Count something for me.');
+  await unknown.waitForSelector('.meter-label:has-text("—")', { timeout: 60_000 });
+  const meterText = await unknown.locator('.meters').innerText();
+  if (/\b0\b/.test(meterText.split('\n')[0])) problems.push(`unknown meters: ${meterText}`);
+  await shot14(unknown, 'unknown-meters');
+
+  // Promise 10. Said once: four words under the message, the explanation and countdown in one toast.
+  const fast429 = await chatting('', '14-rate-limit');
+  await ask(fast429, '/429 one too many');
+  await fast429.waitForSelector('.banner', { timeout: 20_000 });
+  const inline = await fast429.locator('.row.assistant .ended').innerText();
+  if (inline !== 'Too fast — not sent.') problems.push(`rate limit: inline copy is ${JSON.stringify(inline)}`);
+  const toast = await fast429.locator('.banner').innerText();
+  if (!/Try again in \d+s/.test(toast)) problems.push(`rate limit: no countdown in the toast (${toast})`);
+  await shot14(fast429, 'rate-limit-once');
+
+  // Promise 8. Deleting is six seconds of Undo, not a dialog.
+  const del = await chatting('', '14-delete');
+  await ask(del, 'A chat worth deleting.');
+  await del.waitForSelector('.meta-text:has-text("out")', { timeout: 60_000 });
+  await del.locator('.conv.current .conv-del').click();
+  await del.waitForSelector('.toast:has-text("Undo")', { timeout: 10_000 });
+  await shot14(del, 'delete-undo');
+
+  // Promise 9. A returning reader, in the same browser, with their chats still here and their code
+  // masked. No invite in the URL: the only thing that can fill the field is what was remembered.
+  const back = await desktop.newPage();
+  watch(back, '14-welcome-back');
+  await back.goto(`${BASE}/?${FAST}`);
+  await back.waitForSelector('.connect-card h1');
+  await back.waitForSelector('.masked code', { timeout: 10_000 });
+  const shown = await back.locator('.masked code').innerText();
+  if (shown.includes(INVITE.split('.')[2])) problems.push(`welcome back: the secret is on screen (${shown})`);
+  if (!(await back.locator('.pitch:has-text("Welcome back")').count())) problems.push('welcome back: no welcome');
+  if (!(await back.getByRole('button', { name: 'Reconnect' }).count())) problems.push('welcome back: no Reconnect');
+  await shot14(back, 'welcome-back');
+
+  // Promise 6. A touch keyboard: Return makes a line, Send sends, and the hint does not lie.
+  const phone = await browser.newContext({
+    viewport: { width: 390, height: 844 },
+    deviceScaleFactor: 2,
+    isMobile: true,
+    hasTouch: true,
+  });
+  const ph = await phone.newPage();
+  watch(ph, '14-touch');
+  await ph.goto(`${BASE}/?${FAST}&invite=${encodeURIComponent(INVITE)}&autoconnect`);
+  await ph.waitForSelector('.composer textarea', { timeout: 20_000 });
+  await ph.locator('.composer textarea').fill('One line');
+  await ph.locator('.composer textarea').press('Enter');
+  const afterEnter = await ph.locator('.composer textarea').inputValue();
+  if (afterEnter !== 'One line\n') problems.push(`touch: Enter did not make a newline (${JSON.stringify(afterEnter)})`);
+  if (await ph.locator('.hint:has-text("Enter sends")').count()) problems.push('touch: the "Enter sends" hint is shown');
+  const del44 = await ph.evaluate(() => {
+    const el = document.querySelector('.conv-del');
+    const r = el?.getBoundingClientRect();
+    return r ? Math.min(r.width, r.height) : 0;
+  });
+  if (del44 > 0 && del44 < 44) problems.push(`touch: the delete target is ${del44}px, under 44`);
+  await shot14(ph, 'touch-composer');
+  const phoneOverflow = await ph.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+  if (phoneOverflow > 0) problems.push(`touch: page scrolls horizontally by ${phoneOverflow}px at 390px`);
+
+
+  // Promise 13 (blocker). A session that broke must be replaced, not retried: the action on the
+  // dead exchange is Reconnect, and pressing it puts a live session back without a reload.
+  await gone.getByRole('button', { name: 'Reconnect' }).click();
+  await gone.waitForSelector('.composer textarea', { timeout: 60_000 });
+  if (await gone.locator('.connect-card .failure').count()) problems.push('reconnect: ended on the connect screen');
+  await shot14(gone, 'reconnected');
+
+  // Promise 14 (blocker). A reply that stopped at the invite's cap says so, and offers the only
+  // thing that helps.
+  const capped = await chatting('', '14-reply-cap');
+  await ask(capped, '/cap Write me something long.');
+  await capped.waitForSelector('.ended.capped', { timeout: 30_000 });
+  const capCopy = await capped.locator('.ended.capped').innerText();
+  if (!/token reply limit/.test(capCopy)) problems.push(`reply cap: copy is ${capCopy}`);
+  if (!(await capped.getByRole('button', { name: 'Continue' }).count())) problems.push('reply cap: no Continue');
+  await shot14(capped, 'reply-cap');
+
+  // Promise 16. Editing replaces the answer — and says so — but does not throw the old one away.
+  const edited = await chatting('', '14-previous-answer');
+  await ask(edited, 'First question, which becomes the title.');
+  await edited.waitForSelector('.meta-text:has-text("out")', { timeout: 60_000 });
+  await edited.getByRole('button', { name: 'Edit' }).click();
+  await edited.locator('.bubble.editing textarea').fill('Second question, which retitles the chat.');
+  if (!(await edited.getByRole('button', { name: 'Replace answer' }).count())) {
+    problems.push('edit: the button does not say what it does');
+  }
+  await edited.getByRole('button', { name: 'Replace answer' }).click();
+  await edited.waitForSelector('.meta-text:has-text("out")', { timeout: 60_000 });
+  await edited.waitForSelector('.previous summary', { timeout: 10_000 });
+  const title = await edited.locator('.conv.current .conv-open').innerText();
+  if (!title.startsWith('Second question')) problems.push(`edit: the sidebar title is stale (${title})`);
+  await edited.locator('.previous summary').click();
+  await sleep(200);
+  await shot14(edited, 'previous-answer');
+
+  // Promise 17. Reasoning is model output: it renders as markdown, not as raw asterisks.
+  const marked = await chatting('', '14-reasoning-markdown');
+  await ask(marked, '/think Show me your working.');
+  await marked.waitForSelector('.thinking .ended', { timeout: 30_000 });
+  // The block collapses when the reply ends; open it, which is what a curious reader does.
+  await marked.locator('.thinking-toggle').click();
+  await marked.waitForSelector('.thinking.open .thinking-body .md strong', { timeout: 10_000 });
+  const rawStars = await marked.locator('.thinking-body').innerText();
+  if (rawStars.includes('**')) problems.push('reasoning: raw asterisks on screen');
+  await shot14(marked, 'reasoning-markdown');
 
   // --- the built bundle, served statically, with every request accounted for ---
   const previewPort = WEB_PORT + 1;

@@ -3,10 +3,19 @@
 // state of its own — it dispatches into the session machine (src/session.ts) and renders it.
 import { useEffect, useRef, useState } from 'react';
 import { describeError, getMe, hostName, logsPrompts, type FriendlyError, type Me } from '../api';
-import { decodeInvite, inviteFromHash, InviteError } from '../invite';
-import { PRODUCT_NAME } from '../product';
+import { decodeInvite, inviteFromHash, InviteError, maskInvite } from '../invite';
+import { PRODUCT_NAME, privacyLine } from '../product';
 import type { Live, SessionEvent, SessionState } from '../session';
-import { dropLegacyHistory, forget, KEYS, load, save } from '../storage';
+import {
+  countChats,
+  dropLegacyHistory,
+  forget,
+  hostScope,
+  KEYS,
+  load,
+  save,
+  type LastHost,
+} from '../storage';
 import { claimTunnelIdentity, openTransport, type Transport } from '../transport';
 import { composing } from './composing';
 
@@ -33,6 +42,9 @@ function takeHashInvite(): string {
   } catch {
     /* no history access (sandboxed frame): the field is still filled in */
   }
+  // Kept the moment it is read (014 promise 10): the link is gone from the address bar by design,
+  // so a reader who reloads before pressing Connect must not lose the invite with it.
+  save(KEYS.invite, found);
   return found;
 }
 
@@ -61,8 +73,12 @@ export default function Connect({ state, dispatch }: Props) {
     () => HASH_INVITE || (dev ? (params.get('invite') ?? '') : '') || remembered,
   );
   const [direct, setDirect] = useState(() => dev && params.has('direct'));
-  const [formatError, setFormatError] = useState<string | null>(null);
   const [disclosure, setDisclosure] = useState<Disclosure | null>(null);
+  // A returning reader is not a stranger: this is what we already know about their last host.
+  const [lastHost] = useState<LastHost | null>(() => load<LastHost | null>(KEYS.lastHost, null));
+  const [chats] = useState(() => (lastHost ? countChats(lastHost.scope) : 0));
+  const [showCode, setShowCode] = useState(false);
+  const [pasting, setPasting] = useState(false);
   const attempt = useRef(0);
   const field = useRef<HTMLTextAreaElement>(null);
 
@@ -81,12 +97,12 @@ export default function Connect({ state, dispatch }: Props) {
     let secret: string;
     try {
       ({ addr, secret } = decodeInvite(raw));
-    } catch (err) {
-      setFormatError(err instanceof InviteError ? err.message : String(err));
+    } catch {
+      // The inline check below already says what is wrong and has disabled the button; this is
+      // only the keyboard path arriving at the same wall.
       field.current?.focus();
       return;
     }
-    setFormatError(null);
     setDisclosure(null);
     const mine = ++attempt.current;
     const mode: 'direct' | 'tunnel' = direct ? 'direct' : 'tunnel';
@@ -117,6 +133,9 @@ export default function Connect({ state, dispatch }: Props) {
       dispatch({ t: 'sessionUp', transport });
       const me = await getMe(transport, secret);
       save(KEYS.invite, raw);
+      // What the connect screen may say next time before it has reconnected: a name and a scope,
+      // both public. Never the secret (014 promise 9).
+      save(KEYS.lastHost, { name: hostName(me), scope: hostScope(addr, me.key.id) } as LastHost);
       if (exclusive && opened.privateKeyJSON) save(KEYS.privateKey, opened.privateKeyJSON);
       setRemembered(raw);
       dropLegacyHistory();
@@ -129,6 +148,8 @@ export default function Connect({ state, dispatch }: Props) {
         path: opened.path,
         pathAt: Date.now(),
         pathOk: opened.path !== null,
+        meOk: true,
+        paused: me.key.status === 'paused',
         ephemeral: !exclusive,
       };
       // Promise 12: the privacy sentence on this page is only true when the host is not logging.
@@ -140,26 +161,45 @@ export default function Connect({ state, dispatch }: Props) {
       dispatch({ t: 'verified', live });
     } catch (err) {
       if (mine !== attempt.current) return; // superseded; the machine already closed our transport
+      const who = lastHost?.name ?? '';
       dispatch(
         transport
-          ? { t: 'meError', error: describeError(err) }
-          : { t: 'abort', error: describeConnectError(err, reached) },
+          ? { t: 'meError', error: describeError(err, who) }
+          : { t: 'abort', error: describeConnectError(err, reached, who) },
       );
     }
   }
 
   function forgetInvite(): void {
-    forget(KEYS.invite, KEYS.privateKey);
+    forget(KEYS.invite, KEYS.privateKey, KEYS.lastHost);
     setRemembered('');
     setText('');
+    setPasting(true);
     dispatch({ t: 'abort', error: null });
     field.current?.focus();
+  }
+
+  /** Typing is the reader answering the last failure; the old one stops being the current news. */
+  function edit(next: string): void {
+    setText(next);
+    if (state.name === 'disconnected' && state.reason !== null) dispatch({ t: 'abort', error: null });
   }
 
   const busy = state.name === 'loadingWasm' || state.name === 'connecting' || state.name === 'verifying';
   const steps = direct ? STEPS.filter((s) => s.at === 'verifying') : STEPS;
   const at = steps.findIndex((s) => s.at === state.name);
   const failure = state.name === 'disconnected' ? state.reason : null;
+  // 014 promise 10: the check runs as they paste, so Connect is never a dead button with no
+  // reason next to it — the reason is what disables it.
+  const formatError = text.trim() === '' ? null : inviteProblem(text);
+  const malformed = formatError !== null;
+  // A returning reader with history on this device gets their own face (014 promise 9). A code
+  // that arrived by link is new news and takes precedence over "welcome back".
+  const returning =
+    !busy && !pasting && HASH_INVITE === '' && remembered !== '' && text === remembered && chats > 0;
+  const who = lastHost?.name?.trim() ?? '';
+  // A revoked or unrecognised invite cannot be retried; the only move is a new code from the host.
+  const needsNewCode = failure?.fatal === true;
 
   if (disclosure) return <LogPromptsGate me={disclosure.me} onAccept={disclosure.accept} />;
 
@@ -167,41 +207,69 @@ export default function Connect({ state, dispatch }: Props) {
     <main className="connect">
       <div className="connect-card">
         <h1>{PRODUCT_NAME}</h1>
-        <p className="pitch">
-          Chat with a friend’s GPU. They send you one code; you paste it here. No account, no
-          install, nothing to set up.
-        </p>
+        {returning ? (
+          <p className="pitch">
+            <strong>Welcome back.</strong> Your {chats} {chats === 1 ? 'chat' : 'chats'} with{' '}
+            {who || 'your host'} are still on this device.
+          </p>
+        ) : (
+          <p className="pitch">
+            Chat with a friend’s GPU. They send you one code; you paste it here. No account, no
+            install, nothing to set up.
+          </p>
+        )}
 
-        <label className="field">
-          <span className="field-label">Invite code</span>
-          <textarea
-            ref={field}
-            value={text}
-            spellCheck={false}
-            autoCapitalize="off"
-            autoCorrect="off"
-            rows={3}
-            placeholder="bn1.…"
-            disabled={busy}
-            onChange={(e) => {
-              setText(e.target.value);
-              setFormatError(null);
-              void import('./Chat'); // warm the chat chunk while they are still typing
-            }}
-            onKeyDown={(e) => {
-              // An IME's Enter commits a candidate; it is not a submit (promise 9).
-              if (e.key === 'Enter' && !e.shiftKey && !composing(e)) {
-                e.preventDefault();
-                void connect();
-              }
-            }}
-          />
-        </label>
+        {HASH_INVITE !== '' && text === HASH_INVITE && !busy && (
+          <p className="notice">Invite from your link is ready.</p>
+        )}
+
+        {/* A remembered code is a secret sitting in a text box on a screen somebody may be sharing;
+            it is shown as what it is, and in full only when the reader asks (014 promise 9). */}
+        {returning && !showCode ? (
+          <div className="field">
+            <span className="field-label">Invite code</span>
+            <div className="masked">
+              <code>{maskInvite(text)}</code>
+              <button className="ghost tiny" onClick={() => setShowCode(true)}>
+                Show
+              </button>
+            </div>
+          </div>
+        ) : (
+          <label className="field">
+            <span className="field-label">Invite code</span>
+            <textarea
+              ref={field}
+              value={text}
+              spellCheck={false}
+              autoCapitalize="off"
+              autoCorrect="off"
+              rows={3}
+              placeholder="bn1.…"
+              disabled={busy}
+              onChange={(e) => {
+                edit(e.target.value);
+                void import('./Chat'); // warm the chat chunk while they are still typing
+              }}
+              onKeyDown={(e) => {
+                // An IME's Enter commits a candidate; it is not a submit (promise 9).
+                if (e.key === 'Enter' && !e.shiftKey && !composing(e)) {
+                  e.preventDefault();
+                  void connect();
+                }
+              }}
+            />
+          </label>
+        )}
         {formatError && <p className="inline-error">{formatError}</p>}
 
         <div className="connect-actions">
-          <button className="primary" onClick={() => void connect()} disabled={busy || text.trim() === ''}>
-            {busy ? 'Connecting…' : 'Connect'}
+          <button
+            className="primary"
+            onClick={() => void connect()}
+            disabled={busy || text.trim() === '' || malformed}
+          >
+            {busy ? 'Connecting…' : returning ? 'Reconnect' : 'Connect'}
           </button>
           {/* While a failure is showing, the same action lives inside it, next to the reason. */}
           {remembered !== '' && !busy && !failure && (
@@ -226,18 +294,23 @@ export default function Connect({ state, dispatch }: Props) {
           <div className="failure" role="alert">
             <strong>{failure.title}</strong>
             <p>{failure.detail}</p>
-            {failure.hostSaid && <p className="dim">The host said: “{failure.hostSaid}”</p>}
-            {failure.fatal && remembered !== '' && (
-              <p className="dim">
-                This browser is still holding the invite you pasted last time. If your host rotated
-                it, forget it and paste the new one.
-              </p>
+            {failure.hostSaid && (
+              <details className="host-said">
+                <summary>Details</summary>
+                <p>{failure.hostSaid}</p>
+              </details>
             )}
             <div className="connect-actions">
-              <button className="ghost" onClick={() => void connect()}>
-                Try again
-              </button>
-              {remembered !== '' && (
+              {needsNewCode ? (
+                <button className="primary" onClick={forgetInvite}>
+                  Paste a new code
+                </button>
+              ) : (
+                <button className="ghost" onClick={() => void connect()}>
+                  Try again
+                </button>
+              )}
+              {remembered !== '' && !needsNewCode && (
                 <button className="ghost" onClick={forgetInvite}>
                   Forget this invite
                 </button>
@@ -246,10 +319,7 @@ export default function Connect({ state, dispatch }: Props) {
           </div>
         )}
 
-        <p className="privacy">
-          Your messages travel end-to-end encrypted to your host’s machine. The host sees counts —
-          how many requests and tokens you used — never what you wrote.
-        </p>
+        <p className="privacy">{privacyLine(who, false)}</p>
 
         {dev && (
           <label className="devmode">
@@ -302,23 +372,32 @@ function stepDetail(state: SessionState, i: number, at: number): string {
   return '…';
 }
 
+/** What is wrong with what is in the field, or null when nothing is. Cheap; runs on every key. */
+function inviteProblem(text: string): string | null {
+  try {
+    decodeInvite(text.trim());
+    return null;
+  } catch (err) {
+    return err instanceof InviteError ? err.message : String(err);
+  }
+}
+
 /** The same failure means different things depending on how far we got; say the useful thing. */
-function describeConnectError(err: unknown, at: SessionState['name']): FriendlyError {
+function describeConnectError(err: unknown, at: SessionState['name'], host: string): FriendlyError {
   if (at === 'loadingWasm') {
     return {
       title: 'Could not load the tunnel',
-      detail:
-        err instanceof Error
-          ? `${err.message}. Reload the page; if it keeps failing, this copy of the app was published without its tunnel module.`
-          : 'Reload the page and try again.',
+      detail: 'Reload the page; if it keeps failing, this copy of the app was published without its tunnel module.',
+      ...(err instanceof Error && err.message.trim() !== '' ? { hostSaid: err.message.trim() } : {}),
     };
   }
   if (at === 'connecting') {
     return {
-      title: 'The host did not answer',
+      title: `${host.trim() || 'The host'} didn’t answer`,
       detail:
-        'The invite looks well-formed, so either the host’s machine is asleep or offline, or the relay could not be reached from this network. Ask them to check that the host is running.',
+        'The invite looks well-formed, so either their machine is asleep or offline, or the relay could not be reached from this network. Ask them to check that the host is running.',
+      ...(err instanceof Error && err.message.trim() !== '' ? { hostSaid: err.message.trim() } : {}),
     };
   }
-  return describeError(err);
+  return describeError(err, host);
 }

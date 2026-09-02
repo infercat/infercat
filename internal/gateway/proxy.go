@@ -272,10 +272,12 @@ func setIncludeUsage(body map[string]any) {
 
 // ---- read-only routes ----
 
-// models proxies GET /v1/models under per-key concurrency and RPM (006 promise 5; no global slot:
-// it is a list, not a generation) and keeps only the ids the key allows. A list call counts as a
-// request whatever the engine answers (EngineErr or Served).
+// models proxies GET /v1/models under per-key concurrency (006 promise 5; no global slot: it is a
+// list, not a generation) and keeps only the ids the key allows. It is admitted like any request,
+// so per-key concurrency still bounds it, but the settle table does not count it against RPM
+// (014 promise 5): a list is not one of the friend's messages.
 func (q *request) models() {
+	q.kind = modelsEndpoint
 	if err := q.admitKey(); err != nil {
 		q.fail(err)
 		return

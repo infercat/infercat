@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { encodeRequest, fetchOverConn, Http1Error } from './http1';
+import { Http1Error, encodeRequest, fetchOverConn } from './http1';
 import type { Conn } from './types';
 
 const enc = (s: string) => new TextEncoder().encode(s);
@@ -185,5 +185,60 @@ describe('fetchOverConn', () => {
   it('rejects a bad Content-Length', async () => {
     const conn = new ScriptedConn(['HTTP/1.1 200 OK\r\ncontent-length: eight\r\n\r\n']);
     await expect(fetchOverConn(conn, GET)).rejects.toThrow(/bad Content-Length/);
+  });
+});
+
+// 014 promise 1: the deadline above this reader is only as good as the reader's own abort. A
+// tunnel conn whose close() does not settle a pending read used to hold the request open until the
+// relay gave up — which is how a 15 s deadline landed at 47 s against a real, killed host.
+describe('aborting a read that never settles', () => {
+  /** A conn that answers the head and then goes quiet for ever, however hard it is closed. */
+  function silentAfterHead(): Conn {
+    let served = false;
+    return {
+      write: () => Promise.resolve(),
+      closeWrite: () => Promise.resolve(),
+      close: () => {},
+      read: () => {
+        if (served) return new Promise<Uint8Array | null>(() => {});
+        served = true;
+        return Promise.resolve(
+          new TextEncoder().encode(
+            'HTTP/1.1 200 OK\r\ncontent-type: text/event-stream\r\ntransfer-encoding: chunked\r\n\r\n',
+          ),
+        );
+      },
+    };
+  }
+
+  /** A conn to a peer that has gone away: it takes the write and never settles it. */
+  function silentFromTheStart(): Conn {
+    return {
+      write: () => new Promise<void>(() => {}),
+      closeWrite: () => Promise.resolve(),
+      close: () => {},
+      read: () => new Promise<Uint8Array | null>(() => {}),
+    };
+  }
+
+  it('rejects a request whose write never settles, at the signal, not at the relay timeout', async () => {
+    const ac = new AbortController();
+    setTimeout(() => ac.abort(), 10);
+    const started = Date.now();
+    await expect(
+      fetchOverConn(silentFromTheStart(), { method: 'GET', path: '/x', headers: new Headers() }, ac.signal),
+    ).rejects.toMatchObject({ name: 'AbortError' });
+    expect(Date.now() - started).toBeLessThan(1000);
+  });
+
+  it('rejects as soon as the signal fires, not when the conn eventually gives up', async () => {
+    const ac = new AbortController();
+    const res = await fetchOverConn(silentAfterHead(), { method: 'GET', path: '/x', headers: new Headers() }, ac.signal);
+    const reader = (res.body as ReadableStream<Uint8Array>).getReader();
+    const read = reader.read();
+    setTimeout(() => ac.abort(), 10);
+    const started = Date.now();
+    await expect(read).rejects.toMatchObject({ name: 'AbortError' });
+    expect(Date.now() - started).toBeLessThan(1000);
   });
 });

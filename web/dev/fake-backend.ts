@@ -32,6 +32,16 @@ export interface FakeOptions {
   upstreamDown?: boolean;
   /** How a streamed reply ends. The last three are the endings 007 promise 1 is about. */
   streamMode?: StreamMode;
+  /**
+   * The host went away: a chat request is accepted by the tunnel and simply never answered, and
+   * ping() fails with it. This is the blocker 014 promise 1 is about, so it is a mode, not a code.
+   * Handled by the conn (fake-bunny-tunnel), which never writes a response.
+   */
+  hostAsleep?: boolean;
+  /** The host paused this invite mid-session: chat is 403 key_paused, /me still answers. */
+  keyPaused?: boolean;
+  /** /me answers this many times and then fails: the "unknown, not zero" surface (promise 3). */
+  meFailsAfter?: number;
 }
 
 /**
@@ -39,10 +49,15 @@ export interface FakeOptions {
  * and then sends an OpenAI-shaped error member · `eof-no-done` streams part of an answer and the
  * connection simply ends · `reasoning-only` thinks and never answers.
  */
-export type StreamMode = 'normal' | 'error-mid-stream' | 'eof-no-done' | 'reasoning-only';
+export type StreamMode = 'normal' | 'error-mid-stream' | 'eof-no-done' | 'reasoning-only' | 'capped';
 
 /** Counters so the usage bar in the header actually moves while you use the demo. */
 const counters = { rpm_used: 0, tpm_used: 0, today_tokens: 0, in_flight: 0 };
+
+/** How many times /me has been asked, for the mode where it stops answering. */
+let meCalls = 0;
+/** A pause is something the host does *while* you are chatting: /me only reports it once it bites. */
+let pauseBit = false;
 
 const LIMITS = {
   rpm: 20,
@@ -98,8 +113,11 @@ export function handleFake(req: FakeRequest, opts: FakeOptions = {}): FakeRespon
   }
 
   if (path === '/me') {
+    if (opts.meFailsAfter !== undefined && meCalls++ >= opts.meFailsAfter) {
+      return error(503, 'upstream_error', 'upstream_down', 'The host is not answering right now.');
+    }
     return json(200, {
-      key: { id: 'k_7f3a2b', name: 'alice', status: 'active' },
+      key: { id: 'k_7f3a2b', name: 'alice', status: opts.keyPaused && pauseBit ? 'paused' : 'active' },
       limits: LIMITS,
       usage: { ...counters },
       host: {
@@ -120,6 +138,11 @@ export function handleFake(req: FakeRequest, opts: FakeOptions = {}): FakeRespon
   }
 
   if (path === '/v1/chat/completions' && req.method === 'POST') {
+    // 014 promise 2: paused is something the host did, and something they can undo.
+    if (opts.keyPaused) {
+      pauseBit = true;
+      return error(403, 'permission_error', 'key_paused', 'This invite is paused by the host.');
+    }
     const parsed = JSON.parse(req.body || '{}') as {
       model?: string;
       messages?: { role: string; content: string }[];
@@ -128,7 +151,8 @@ export function handleFake(req: FakeRequest, opts: FakeOptions = {}): FakeRespon
     const text = (last?.content ?? '').trim();
     const word = text.split(/\s/)[0] ?? '';
     const mode: StreamMode =
-      word === '/cut' ? 'eof-no-done'
+      word === '/cap' ? 'capped'
+      : word === '/cut' ? 'eof-no-done'
       : word === '/mid' ? 'error-mid-stream'
       : word === '/think' ? 'reasoning-only'
       : (opts.streamMode ?? 'normal');
@@ -166,8 +190,10 @@ function error(status: number, type: string, code: string, message: string): Fak
   };
 }
 
+// Deliberately marked up: reasoning is model output like any other and must render as markdown,
+// not as raw asterisks on screen (014 promise 17).
 const REASONING =
-  'The friend is talking to a GPU on somebody else’s desk. ' +
+  '**A real question**, from a friend on a GPU on somebody else’s desk. ' +
   'I should answer plainly and show a little markdown so the renderer is exercised. ';
 
 function reply(prompt: string): string {
@@ -227,6 +253,19 @@ async function* chatStream(
   for (const token of tokens.slice(0, cut)) {
     yield frame({ content: token });
     await sleep(delay);
+  }
+  // The engine ran out of the invite's reply allowance: a complete transfer of an unfinished
+  // answer, which is the one ending that used to render as a finished one (014 promise 14).
+  if (mode === 'capped') {
+    yield `data: ${JSON.stringify({
+      id,
+      object: 'chat.completion.chunk',
+      model,
+      choices: [{ index: 0, delta: {}, finish_reason: 'length' }],
+    })}\n\n`;
+    yield usageFrame(id, model, Math.ceil(prompt.length / 4) + 12, 2048);
+    yield 'data: [DONE]\n\n';
+    return;
   }
   // The two ways a stream lies about being finished, exactly as a real one would.
   if (mode === 'error-mid-stream') {
