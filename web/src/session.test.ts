@@ -518,9 +518,10 @@ describe('the self-probe', () => {
     expect(run([{ t: 'verified', live: liveOn(stray) }], sick)).toBe(sick);
     expect(stray.closes).toBe(1);
     expect(t.closes).toBe(0);
-    // And one that lands after Reconnect or Disconnect took the session away.
+    // And one that lands after Disconnect took the session away. (After Reconnect it is adopted:
+    // that is the dial Reconnect joined — 023, below.)
     const late = fakeTransport();
-    const gone = run([noAnswer, { t: 'redial' }], connected(t));
+    const gone = run([noAnswer, { t: 'abort', error: null }], connected(t));
     expect(run([{ t: 'verified', live: liveOn(late) }], gone)).toBe(gone);
     expect(late.closes).toBe(1);
   });
@@ -564,5 +565,61 @@ describe('the self-probe', () => {
     // Healed: nothing more is asked.
     await vi.advanceTimersByTimeAsync(120_000);
     expect(asked).toHaveLength(4);
+  });
+});
+
+// 023: one dial per host. A Reconnect carries its target through the attempt, adopts whichever dial
+// verifies for that host (its own, or the self-probe's, which it joins), and falls back to the
+// session it was replacing — degraded — when the dial fails, never to the connect screen.
+describe('reconnect joins the dial in flight', () => {
+  const dead: SessionEvent = { t: 'streamError', code: 'host_asleep', error: { title: 'no', detail: 'no', code: 'host_asleep' } };
+  const degraded = (t: Transport): SessionState => run([dead], { name: 'connected', live: liveOn(t) });
+
+  it('carries the target through connecting and verifying, and a second Reconnect meanwhile is a no-op', () => {
+    const old = fakeTransport();
+    const s = run([{ t: 'redial' }], degraded(old));
+    expect(s.name).toBe('connecting');
+    expect(s.name === 'connecting' && s.redial?.transport).toBe(old);
+    expect(old.closes).toBe(1); // the broken session goes at once
+    expect(reduce(s, { t: 'redial' })).toBe(s);
+    const fresh = fakeTransport();
+    const v = reduce(s, { t: 'sessionUp', transport: fresh });
+    expect(v.name === 'verifying' && v.redial?.transport).toBe(old);
+  });
+
+  it('adopts the self-probe\'s dial straight from connecting, for the host it is redialling only', () => {
+    const old = fakeTransport();
+    const s = run([{ t: 'redial' }], degraded(old));
+    const stranger = fakeTransport();
+    expect(run([{ t: 'verified', live: liveOn(stranger, { addr: 'tcOTHER' }) }], s)).toBe(stranger && s);
+    expect(stranger.closes).toBe(1);
+    const joined = fakeTransport();
+    const next = run([{ t: 'verified', live: liveOn(joined) }], s);
+    expect(next.name).toBe('connected');
+    expect(live(next)?.transport).toBe(joined);
+    expect(joined.closes).toBe(0);
+    // The card's own attempt carries no target: a stray candidate is never adopted there.
+    const stray = fakeTransport();
+    expect(run([{ t: 'verified', live: liveOn(stray) }], { name: 'connecting' })).toEqual({ name: 'connecting' });
+    expect(stray.closes).toBe(1);
+  });
+
+  it('a dial that fails, or a /me that hangs past its bound, resolves to the degraded session, not the connect screen', () => {
+    const old = fakeTransport();
+    const s = run([{ t: 'redial' }], degraded(old));
+    const timedOut: SessionEvent = { t: 'meError', error: { title: 'no', detail: 'no' } };
+    // No dial at all.
+    let back = run([timedOut], s);
+    expect(back.name).toBe('degraded');
+    expect(live(back)?.meOk).toBe(false);
+    expect(live(back)?.me).toBe(ME); // the chat's payload is intact
+    expect(probing(back)).toBe(true); // and the self-probe keeps asking
+    // A dial that opened, then a /me that never answered: the new transport goes too.
+    const fresh = fakeTransport();
+    back = run([{ t: 'sessionUp', transport: fresh }, timedOut], s);
+    expect(back.name).toBe('degraded');
+    expect(fresh.closes).toBe(1);
+    // A card attempt whose /me fails still ends on the connect screen, as before.
+    expect(run([{ t: 'sessionUp', transport: fakeTransport() }, timedOut], { name: 'connecting' }).name).toBe('disconnected');
   });
 });

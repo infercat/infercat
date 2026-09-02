@@ -10,7 +10,7 @@
 // that a revoked invite's card keeps every chat.
 //
 //   BN_BIN=/path/bunny-network BN_DATA_DIR=/path/data GW=http://127.0.0.1:6720 PREVIEW_PORT=6721 \
-//     UPSTREAM=http://127.0.0.1:18080 node dev/real-check.mjs [cost|asleep|reconnect|heal|paused|wall|stall|tabs|phone|revoke|all]
+//     UPSTREAM=http://127.0.0.1:18080 node dev/real-check.mjs [cost|asleep|reconnect|heal|race|paused|wall|stall|tabs|phone|revoke|all]
 //
 // Keys are minted in BN_DATA_DIR (alice for everything, bob for the revoke) unless INVITE is set.
 // It only ever kills processes it started itself.
@@ -228,6 +228,36 @@ async function heal(browser, key, host) {
   await sleep(300);
   console.log(`  Try again → delivered over the healed session · marks left: ${await marks(page)}`);
   check((await marks(page)) === 0, 'the turn is still marked after it was delivered');
+  await page.context().close();
+  return host;
+}
+
+// --- 023: Reconnect pressed while the self-probe's dial is in flight joins it ---------------------
+async function race(browser, key, host) {
+  const page = await connected(browser, key.invite);
+  await ask(page, 'Reply with the single word: pong.');
+  await answered(page, 1);
+  killHost(host);
+  const dead = Date.now();
+  await ask(page, 'Are you still there?');
+  await page.waitForSelector('button:has-text("Reconnect")', { timeout: 60_000 });
+  console.log(`\nHOST KILLED · Reconnect offered at ${secs(dead)} s (the self-probe dials 5 s later and retries its handshake for up to 60 s)`);
+  await sleep(6_000); // squarely inside that dial
+  await page.getByRole('button', { name: 'Reconnect' }).click();
+  console.log(`  Reconnect pressed at ${secs(dead)} s, host still dead: ${JSON.stringify(await page.locator('.pitch').innerText().catch(() => '(chat)'))}`);
+  host = startHost();
+  await waitFor(`${GW}/healthz`, 'the host coming back');
+  const back = Date.now();
+  console.log(`HOST BACK at ${secs(dead)} s — waiting`);
+  await page.waitForSelector('.composer textarea', { timeout: 60_000 });
+  await page.waitForFunction(() => document.querySelector('.path')?.textContent?.includes('relayed via'), null, { timeout: 60_000 });
+  const s = (Date.now() - back) / 1000;
+  await sleep(300);
+  console.log(`  connected ${s.toFixed(0)} s after the host came back · ${await header(page)} · action: ${JSON.stringify(await page.locator('.row.assistant .actions button').last().innerText())}`);
+  check(s <= 30, `Reconnect pressed inside the probe's dial took ${s.toFixed(0)} s to connect after the host came back (023: ≤ 30 s)`);
+  await page.locator('.row.assistant .actions button:has-text("Try again")').click();
+  await answered(page, 2);
+  console.log('  Try again → delivered');
   await page.context().close();
   return host;
 }
@@ -500,6 +530,7 @@ async function main() {
     if (want('reconnect')) host = await reconnect(page);
   }
   if (want('heal')) host = await heal(browser, alice, host);
+  if (want('race')) host = await race(browser, alice, host);
   if (want('tabs')) await tabs(browser, alice);
   if (want('phone')) await phone(browser, alice);
   if (want('revoke') && bob) await revoke(browser, bob);
