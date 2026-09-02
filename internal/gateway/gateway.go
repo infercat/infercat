@@ -44,6 +44,7 @@ const (
 	defaultWriteTimeout = 60 * time.Second // a client that stops reading: any single write or flush
 	defaultIdleTimeout  = 60 * time.Second // an engine that stalls mid-stream: re-armed per read
 	defaultMaxBody      = 4 << 20          // request body cap, bytes; over it → 413 body_too_large
+	defaultQueuedEvery  = 5 * time.Second  // a streaming request waiting for a slot says `: queued` this often (018)
 	maxEndpointLen      = 64               // usage.Event.Endpoint is the request path: bounded (006 promise 7)
 	// The engine's first byte (an engine that accepted a request but does not start) is the
 	// engine's own deadline, upstream.FirstByteTimeout, behind Engine.Do (DESIGN §3.4).
@@ -61,9 +62,9 @@ type Gateway struct {
 	queue  slotQueue    // global slots; capacity = up.Info().Slots, read at every decision
 	bodies atomic.Int32 // request bodies held in memory (per-key slots bound it; tests read it)
 
-	// The deadlines and the body cap, unexported: tests shorten them, hosts get the constants.
-	queueTimeout, readTimeout, writeTimeout, idleTimeout time.Duration
-	maxBody                                              int64
+	// The deadlines, the keepalive and the body cap, unexported: tests shorten them, hosts get the constants.
+	queueTimeout, readTimeout, writeTimeout, idleTimeout, queuedEvery time.Duration
+	maxBody                                                           int64
 
 	mu      sync.Mutex
 	servers []*http.Server
@@ -96,6 +97,7 @@ func New(cfg Config, up upstream.Engine, store keys.Store, rec usage.Recorder, l
 		readTimeout:  defaultReadTimeout,
 		writeTimeout: defaultWriteTimeout,
 		idleTimeout:  defaultIdleTimeout,
+		queuedEvery:  defaultQueuedEvery,
 		maxBody:      defaultMaxBody,
 	}
 	g.seedCounters()

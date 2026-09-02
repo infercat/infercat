@@ -39,37 +39,40 @@ function transportOf(res: Response, seen: { path?: string; init?: RequestInit } 
   };
 }
 
+/** Every block's data payload, with a comment-only block rendered as `:text` so it is visible. */
+async function blocks(parts: string[]): Promise<string[]> {
+  const out: string[] = [];
+  for await (const b of sseData(stream(parts))) out.push('data' in b ? b.data : `:${b.comment}`);
+  return out;
+}
+
 describe('sseData', () => {
   it('splits events on blank lines and strips one leading space', async () => {
-    const out: string[] = [];
-    for await (const d of sseData(stream(['data: one\n\ndata:two\n\n']))) out.push(d);
-    expect(out).toEqual(['one', 'two']);
+    expect(await blocks(['data: one\n\ndata:two\n\n'])).toEqual(['one', 'two']);
   });
 
   it('reassembles events split across reads and accepts CRLF', async () => {
-    const out: string[] = [];
-    for await (const d of sseData(stream(['data: {"a"', ':1}\r\n', '\r\ndata: [DONE]\n\n']))) out.push(d);
-    expect(out).toEqual(['{"a":1}', '[DONE]']);
+    expect(await blocks(['data: {"a"', ':1}\r\n', '\r\ndata: [DONE]\n\n'])).toEqual(['{"a":1}', '[DONE]']);
   });
 
   it('joins multi-line data and ignores comment and event lines', async () => {
-    const out: string[] = [];
-    for await (const d of sseData(stream([': keep-alive\nevent: x\ndata: a\ndata: b\n\n']))) out.push(d);
-    expect(out).toEqual(['a\nb']);
+    expect(await blocks([': keep-alive\nevent: x\ndata: a\ndata: b\n\n'])).toEqual(['a\nb']);
   });
 
   // The bug this exists for: a CRLF split across two reads used to leave a stray \r on the payload,
   // which turned the [DONE] sentinel into [DONE]\r and made every reply look truncated.
   it('keeps [DONE] intact when the CRLF of its blank line is split across reads', async () => {
-    const out: string[] = [];
-    for await (const d of sseData(stream(['data: a\r\n\r\ndata: [DONE]\r', '\n\r\n']))) out.push(d);
-    expect(out).toEqual(['a', '[DONE]']);
+    expect(await blocks(['data: a\r\n\r\ndata: [DONE]\r', '\n\r\n'])).toEqual(['a', '[DONE]']);
   });
 
   it('yields a trailing event that never got its blank line', async () => {
-    const out: string[] = [];
-    for await (const d of sseData(stream(['data: last']))) out.push(d);
-    expect(out).toEqual(['last']);
+    expect(await blocks(['data: last'])).toEqual(['last']);
+  });
+
+  // 018: the gateway's keepalive is a comment in a block of its own, so it arrives as one.
+  it('surfaces a comment-only block, as it arrives, and never as data', async () => {
+    expect(await blocks([': queued\n\n', ': queued\r\n\r\n', 'data: a\n\n'])).toEqual([':queued', ':queued', 'a']);
+    expect(await blocks([': queued\n\n'])).toEqual([':queued']);
   });
 });
 
@@ -161,6 +164,23 @@ describe('streamChat', () => {
     expect(events).toHaveLength(1);
     expect(events[0]).toMatchObject({ kind: 'error', code: 'rate_limited' });
     expect((events[0] as { error: { retryAfterS?: number } }).error.retryAfterS).toBe(42);
+  });
+
+  // 018: with the head already out, Retry-After has no header to ride on; it is in the event.
+  it('reads retry_after from an error event inside a 200 stream', async () => {
+    const body = stream([
+      ': queued\n\n',
+      `data: ${JSON.stringify({ error: { message: 'waited 30s for a free slot', type: 'upstream_error', code: 'queue_timeout', retry_after: 7 } })}\n\n`,
+      'data: [DONE]\n\n',
+    ]);
+    const events = await collect(chatEvents(transportOf(new Response(body)), 'k', { model: 'm', messages: [] }, undefined, undefined, 'desk'));
+    expect(events.map((e) => e.kind)).toEqual(['queued', 'error']);
+    const last = events[1];
+    if (last?.kind !== 'error') throw new Error('unreachable');
+    expect(last.code).toBe('queue_timeout');
+    expect(last.error.retryAfterS).toBe(7);
+    expect(last.error.title).toBe('desk is busy');
+    expect(last.error.hostSaid).toBe('waited 30s for a free slot');
   });
 
   it('turns an abort into an aborted event rather than a rejection', async () => {
@@ -309,6 +329,38 @@ describe('a host that does not answer', () => {
       close: () => {},
     };
   }
+  /** A busy host (018): the head at once, `: queued` every `everyMs` for `forMs`, then either the
+   *  engine's reply or the queue's timeout — or nothing more, so the caller decides when to stop. */
+  function busy(everyMs: number, forMs: number, then: 'reply' | 'timeout' | 'silence'): Transport {
+    const enc = new TextEncoder();
+    return {
+      kind: 'tunnel',
+      fetch: (_path, init) => {
+        const signal = init?.signal;
+        const body = new ReadableStream<Uint8Array>({
+          start(c) {
+            signal?.addEventListener('abort', () => c.error(new DOMException('aborted', 'AbortError')));
+            const say = (s: string): void => {
+              if (!signal?.aborted) c.enqueue(enc.encode(s));
+            };
+            say(': queued\n\n');
+            const tick = setInterval(() => say(': queued\n\n'), everyMs);
+            setTimeout(() => {
+              clearInterval(tick);
+              if (then === 'reply') say(`${chunk({ content: 'here' })}data: [DONE]\n\n`);
+              if (then === 'timeout') {
+                say(`data: ${JSON.stringify({ error: { message: 'waited 30s', type: 'upstream_error', code: 'queue_timeout', retry_after: 5 } })}\n\ndata: [DONE]\n\n`);
+              }
+              if (then !== 'silence' && !signal?.aborted) c.close();
+            }, forMs);
+          },
+        });
+        return Promise.resolve(new Response(body, { status: 200 }));
+      },
+      ping: () => Promise.resolve(null),
+      close: () => {},
+    };
+  }
   const req = { model: 'm', messages: [{ role: 'user' as const, content: 'hi' }] };
   const fast = { noticeMs: 20, answerMs: 60 };
 
@@ -350,6 +402,51 @@ describe('a host that does not answer', () => {
     for await (const ev of chatEvents(silent(), 's', req, ac.signal, fast, 'desk')) seen.push(ev);
     expect(seen[seen.length - 1]?.kind).toBe('aborted');
   });
+
+  // 018, the three silences. The second: the head is out and the host says it is in line, so
+  // however long that takes it is never called asleep — and while the keepalives keep coming,
+  // "still waiting" never speaks over "waiting for a free slot".
+  it('a host that says it is queued is never called asleep, however long the line', async () => {
+    const seen: StreamEvent[] = [];
+    for await (const ev of chatEvents(busy(15, 150, 'reply'), 's', req, undefined, fast, 'desk')) seen.push(ev);
+    const kinds = seen.map((e) => e.kind);
+    expect(kinds.filter((k) => k === 'queued').length).toBeGreaterThanOrEqual(8);
+    expect(kinds).not.toContain('waiting');
+    expect(kinds).not.toContain('error');
+    expect(kinds.slice(-2)).toEqual(['content', 'done']);
+  });
+
+  it('says "still waiting" only once the keepalives have stopped for two notice intervals', async () => {
+    const ac = new AbortController();
+    setTimeout(() => ac.abort(), 130);
+    const seen: { kind: string; at: number }[] = [];
+    const t0 = Date.now();
+    for await (const ev of chatEvents(busy(15, 40, 'silence'), 's', req, ac.signal, fast, 'desk')) {
+      seen.push({ kind: ev.kind, at: Date.now() - t0 });
+    }
+    const waiting = seen.find((e) => e.kind === 'waiting');
+    const lastQueued = [...seen].reverse().find((e) => e.kind === 'queued');
+    expect(waiting).toBeDefined();
+    expect(lastQueued).toBeDefined();
+    expect(waiting!.at - lastQueued!.at).toBeGreaterThanOrEqual(2 * fast.noticeMs - 5);
+    expect(seen.map((e) => e.kind)).not.toContain('error');
+    expect(seen[seen.length - 1]?.kind).toBe('aborted');
+  });
+
+  // The third: the line ran out. It is the host's own error event, with its retry_after, and it
+  // is not a sleeping host — nothing here needs a reconnect.
+  it('a queue that times out is a queue_timeout with a countdown, not a sleeping host', async () => {
+    const seen: StreamEvent[] = [];
+    for await (const ev of chatEvents(busy(15, 100, 'timeout'), 's', req, undefined, fast, 'desk')) seen.push(ev);
+    const last = seen[seen.length - 1];
+    expect(last?.kind).toBe('error');
+    if (last?.kind !== 'error') throw new Error('unreachable');
+    expect(last.code).toBe('queue_timeout');
+    expect(last.error.retryAfterS).toBe(5);
+    expect(last.error.title).toBe('desk is busy');
+    expect(needsRedial(last.code)).toBe(false);
+    expect(seen.some((e) => e.kind === 'error' && e.code === 'host_asleep')).toBe(false);
+  });
 });
 
 // 014 promise 11: a model id is a filename; a reader wants the model.
@@ -377,7 +474,7 @@ describe('needsRedial', () => {
   });
 
   it('is false for the failures a working connection reports', () => {
-    for (const code of ['rate_limited', 'upstream_down', 'key_paused', 'context_too_long']) {
+    for (const code of ['rate_limited', 'upstream_down', 'key_paused', 'context_too_long', 'queue_timeout']) {
       expect(needsRedial(code), code).toBe(false);
     }
   });

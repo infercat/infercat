@@ -92,11 +92,15 @@ export default function MessageView({
         />
       )}
       <Markdown text={live ? closeFences(m.content) : m.content} />
+      {/* Three silences, three sentences (018): in line behind other people's requests, a host
+          that has gone quiet, and the ordinary pause before the first token. */}
       {live && m.content === '' && !m.reasoning && (
         <p className="waiting">
-          {m.waiting === true
-            ? `Still waiting for ${host || 'the host'}…`
-            : 'Waiting for the first token…'}
+          {m.queued === true
+            ? `Waiting for a free slot on ${host || 'the host'}…`
+            : m.waiting === true
+              ? `Still waiting for ${host || 'the host'}…`
+              : 'Waiting for the first token…'}
         </p>
       )}
       {/* The reply did not simply stop: it says which way it stopped, under the text it kept. */}

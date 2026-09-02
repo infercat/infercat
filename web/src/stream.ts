@@ -8,7 +8,7 @@ import type { Message, MessageStatus } from './storage';
 /** The parts of a Message this machine owns. `status` is undefined while it is still streaming. */
 export type Reply = Pick<
   Message,
-  'content' | 'reasoning' | 'tokens' | 'status' | 'note' | 'waiting' | 'details' | 'capped'
+  'content' | 'reasoning' | 'tokens' | 'status' | 'note' | 'waiting' | 'queued' | 'details' | 'capped'
 >;
 
 export const NEW_REPLY: Reply = { content: '', reasoning: '' };
@@ -17,14 +17,19 @@ export function reduceReply(r: Reply, e: StreamEvent): Reply {
   switch (e.kind) {
     // Not an ending: a reply that has produced nothing for long enough that saying nothing would
     // itself be a lie. It clears on the first token and on every terminal event.
+    // The newer of the two says what the silence is: a keepalive means the host has the request
+    // and it is in line; a notice that outlives the keepalives means the line is over and the
+    // model is at work — neither is an ending, and neither is a host that is not there (018).
     case 'waiting':
-      return r.status === undefined ? { ...r, waiting: true } : r;
+      return r.status === undefined ? { ...r, waiting: true, queued: false } : r;
+    case 'queued':
+      return r.status === undefined ? { ...r, queued: true, waiting: false } : r;
     case 'capped':
       return { ...r, capped: true };
     case 'reasoning':
-      return { ...r, reasoning: (r.reasoning ?? '') + e.text, waiting: false };
+      return { ...r, reasoning: (r.reasoning ?? '') + e.text, waiting: false, queued: false };
     case 'content':
-      return { ...r, content: r.content + e.text, waiting: false };
+      return { ...r, content: r.content + e.text, waiting: false, queued: false };
     case 'usage':
       return { ...r, tokens: { in: e.in, out: e.out } };
     case 'done':
@@ -58,7 +63,7 @@ export function reduceReply(r: Reply, e: StreamEvent): Reply {
 const SHORT: Record<string, string> = {
   rate_limited: 'Too fast — not sent.',
   concurrency_limited: 'Not sent — one reply at a time.',
-  queue_timeout: 'Not sent — the GPU was busy.',
+  queue_timeout: 'Not sent — every slot was taken.',
   budget_exhausted: 'Not sent — today’s tokens are used up.',
 };
 
@@ -74,7 +79,7 @@ export function saidInBanner(code: string): boolean {
 function finish(r: Reply, status: MessageStatus, note?: string, details?: string): Reply {
   const empty = r.content.trim() === '';
   const thought = (r.reasoning ?? '').trim() !== '';
-  const base = { ...r, waiting: false, ...(details ? { details } : {}) };
+  const base = { ...r, waiting: false, queued: false, ...(details ? { details } : {}) };
   if (empty && status === 'complete') {
     return {
       ...base,

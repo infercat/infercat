@@ -145,6 +145,8 @@ export type StreamEvent =
   | { kind: 'usage'; in: number; out: number }
   /** Nothing has come back yet and it has been long enough to say so out loud (014 promise 1). */
   | { kind: 'waiting' }
+  /** The host has the request and every slot is taken: it is in line, and said so (018). */
+  | { kind: 'queued' }
   /** The engine stopped because the reply hit its cap, not because it was finished (promise 14). */
   | { kind: 'capped' }
   /** The host said it finished: `[DONE]`, or the usage-bearing final chunk the gateway injects. */
@@ -192,7 +194,10 @@ export async function* chatEvents(
   let answered = false; // a response head arrived: the host is awake, whatever the model is doing
   let spoke = false; // a token arrived: there is something on screen
   let asleep = false; // we, not the reader, aborted — and this is why
-  const notice = setTimeout(() => !spoke && pump.push({ kind: 'waiting' }), deadlines.noticeMs);
+  const sayWaiting = (): void => {
+    if (!spoke) pump.push({ kind: 'waiting' });
+  };
+  let notice = setTimeout(sayWaiting, deadlines.noticeMs);
   const giveUp = setTimeout(() => {
     // What we know at this point is that the host has not answered at all. Two things cause that:
     // it is gone, or it is queued behind a full engine (the gateway parks a request for up to 30 s).
@@ -208,8 +213,15 @@ export async function* chatEvents(
 
   void (async () => {
     try {
-      for await (const ev of rawChatEvents(t, secret, req, ac.signal, () => (answered = true))) {
+      for await (const ev of rawChatEvents(t, secret, req, ac.signal, () => (answered = true), hostName)) {
         if (ev.kind === 'reasoning' || ev.kind === 'content') spoke = true;
+        // A keepalive from the queue is a sign of life: "still waiting" starts over from it, with
+        // room for the next one — the gateway sends one every 5 s, and a notice due at the same
+        // moment would race it. When they stop, the slot has come and the model is at work (018).
+        if (ev.kind === 'queued') {
+          clearTimeout(notice);
+          notice = setTimeout(sayWaiting, 2 * deadlines.noticeMs);
+        }
         // Our own abort must not be reported as the reader's Stop, nor as a bare transport string.
         pump.push(asleep && (ev.kind === 'aborted' || ev.kind === 'error') ? hostAsleep(hostName) : ev);
       }
@@ -270,6 +282,7 @@ async function* rawChatEvents(
   req: ChatRequest,
   signal: AbortSignal,
   onAnswered: () => void,
+  hostName?: string,
 ): AsyncGenerator<StreamEvent, void, void> {
   let saidSo = false;
   try {
@@ -281,7 +294,14 @@ async function* rawChatEvents(
     });
     onAnswered();
     if (!res.body) throw new Error('the host sent a reply with no body');
-    for await (const data of sseData(res.body)) {
+    for await (const block of sseData(res.body)) {
+      if ('comment' in block) {
+        // The gateway's word that the request is in line for a slot (018): a comment, so every
+        // other SSE reader ignores it, and so a busy host is never mistaken for an absent one.
+        if (block.comment === 'queued') yield { kind: 'queued' };
+        continue;
+      }
+      const data = block.data;
       if (data === '[DONE]') {
         yield { kind: 'done' };
         return;
@@ -292,14 +312,16 @@ async function* rawChatEvents(
       } catch {
         continue; // a partial or non-JSON event; the next one carries the tokens
       }
-      // An error can arrive inside a 200 stream: the head was flushed before it happened.
+      // An error can arrive inside a 200 stream: the head was flushed before it happened. With
+      // the head out, Retry-After rides inside the event as `retry_after` (018).
       if (chunk.error) {
         const code = chunk.error.code ?? '';
         yield {
           kind: 'error',
           code,
           error: describeError(
-            new GatewayError(0, code, chunk.error.type ?? '', chunk.error.message ?? ''),
+            new GatewayError(0, code, chunk.error.type ?? '', chunk.error.message ?? '', chunk.error.retry_after),
+            hostName,
           ),
         };
         return;
@@ -328,7 +350,7 @@ async function* rawChatEvents(
     yield {
       kind: 'error',
       code: err instanceof GatewayError ? err.code : '',
-      error: describeError(err),
+      error: describeError(err, hostName),
     };
   }
 }
@@ -349,13 +371,20 @@ export function isAbort(err: unknown): boolean {
 interface ChatChunk {
   choices?: { delta?: { content?: string; reasoning_content?: string }; finish_reason?: string | null }[];
   usage?: { prompt_tokens?: number; completion_tokens?: number };
-  error?: { message?: string; code?: string; type?: string };
+  error?: { message?: string; code?: string; type?: string; retry_after?: number };
 }
 
-/** Yields the `data:` payload of each SSE event as it arrives. */
+/**
+ * One SSE block: the `data:` payload of an event, or — for a block that carried no data — the text
+ * of its comment. Comments are invisible to every SSE consumer by design; the gateway's `: queued`
+ * keepalive is the one this app reads (018).
+ */
+export type SSEBlock = { data: string } | { comment: string };
+
+/** Yields each SSE block as it arrives. */
 export async function* sseData(
   stream: ReadableStream<Uint8Array>,
-): AsyncGenerator<string, void, void> {
+): AsyncGenerator<SSEBlock, void, void> {
   const reader = stream.getReader();
   const decoder = new TextDecoder();
   let buf = '';
@@ -370,12 +399,12 @@ export async function* sseData(
       for (;;) {
         const end = EVENT_END.exec(buf);
         if (!end) break;
-        const payload = dataOf(buf.slice(0, end.index));
+        const block = parseBlock(buf.slice(0, end.index));
         buf = buf.slice(end.index + end[0].length);
-        if (payload !== null) yield payload;
+        if (block !== null) yield block;
       }
     }
-    const tail = dataOf(buf);
+    const tail = parseBlock(buf);
     if (tail !== null) yield tail;
   } finally {
     reader.releaseLock();
@@ -384,13 +413,18 @@ export async function* sseData(
 
 const EVENT_END = /\r?\n\r?\n/;
 
-function dataOf(block: string): string | null {
-  const data = block
-    .split(/\r?\n/)
+function parseBlock(block: string): SSEBlock | null {
+  const lines = block.split(/\r?\n/);
+  const data = lines
     .filter((line) => line.startsWith('data:'))
     .map((line) => line.slice(5).replace(/^ /, ''))
     .join('\n');
-  return data === '' ? null : data;
+  if (data !== '') return { data };
+  const comment = lines
+    .filter((line) => line.startsWith(':'))
+    .map((line) => line.slice(1).trim())
+    .join('\n');
+  return comment === '' ? null : { comment };
 }
 
 export interface FriendlyError {
@@ -444,8 +478,11 @@ const COPY: Record<
     detail: 'This invite may have one request in flight. Wait for the current reply to finish.' },
   budget_exhausted: { title: "Today's token budget is used up",
     detail: 'The host sets a daily cap per invite. It resets, or they can raise it.' },
-  queue_timeout: { retry: true, title: "The host's GPU is busy",
-    detail: 'Requests are queued and yours waited too long. Try again in a moment.' },
+  // The host is there and every slot is taken (018): a wait that ran out inside the stream, or a
+  // line already full at the door — one code, so the copy claims only what both share; the host's
+  // own sentence (how long, how many) is in Details, and the countdown is the banner's.
+  queue_timeout: { retry: true, title: '{host} is busy',
+    detail: 'Every slot was taken — your message is still here.' },
   upstream_down: { retry: true, title: "The host's engine is offline",
     detail: 'Their machine is reachable but the model server is not running. Nothing you can fix.' },
   upstream_error: { title: "The host's engine returned an error",
