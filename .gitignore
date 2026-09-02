@@ -1,0 +1,10 @@
+/bin/
+/dist/
+web/node_modules/
+web/dist/
+web/public/bunny.wasm
+web/public/bunny.wasm.gz
+web/public/wasm_exec.js
+*.log
+.DS_Store
+/.claude/worktrees/
