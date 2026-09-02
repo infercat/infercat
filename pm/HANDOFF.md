@@ -1,6 +1,6 @@
 # HANDOFF — state of the work (succession document)
 
-Updated: 2026-09-02 14:55 EDT (machine clock; earlier stamps in this file were written from mixed clocks). MILESTONE 13:30: founder ran the demo end to end and declared the concept proven; next theme polish. PM seat: Claude Fable, session on Max's laptop.
+Updated: 2026-09-02 15:15 EDT (machine clock; earlier stamps in this file were written from mixed clocks). MILESTONE 13:30: founder ran the demo end to end and declared the concept proven; next theme polish. PM seat: Claude Fable, session on Max's laptop.
 
 ## What this is
 
@@ -23,18 +23,19 @@ a public social-media launch soon after, likely serving DeepSeek v4 flash from t
 
 ## In flight
 
-- **Landed on main (`56bc3c7`):** 001–010 (009 host polish incl. the first-run identity race; 010 settle table / FIFO queue / deadlines). Earlier: 001–008 (007 web state machines; 008 `docs/DESIGN.md` with three accepted decisions). Earlier: 001–006 (005 integration with fixes 10a–10n and measured numbers; 006 the gateway request pipeline). Founder verdict 13:30: demo works, concept proven, next theme polish. Earlier: 001–004 (tunnel/invite/wasm · gateway · CLI/store/upstream/usage/admin
+- **Landed on main (`792d399`):** 001–011 (011 engine state + `Engine` seam) and `docs/ARCHITECTURE.md` v1. Earlier: 001–010 (009 host polish incl. the first-run identity race; 010 settle table / FIFO queue / deadlines). Earlier: 001–008 (007 web state machines; 008 `docs/DESIGN.md` with three accepted decisions). Earlier: 001–006 (005 integration with fixes 10a–10n and measured numbers; 006 the gateway request pipeline). Founder verdict 13:30: demo works, concept proven, next theme polish. Earlier: 001–004 (tunnel/invite/wasm · gateway · CLI/store/upstream/usage/admin
   with wiring flipped · web client). A stray 28 MB binary committed at the root during the flip was
   removed at `e5b0a11`; it remains in history (private repo) — rewrite before any public mirror.
 - **Reviews done:** Claude adversarial workflows on 001 (36 agents), 002 (55), 003 (46); second-model
   review (gpt-5.6-sol via ultracodex, 4 lenses, 39 findings) on integrated main. Summaries and rulings
   are appended to each ticket; confirmed defects became tickets 005 (10a–10n), 006, 007.
-- **Running:** 011 engine state + seam (Fable, same worktree as 010, resumed after a rate-limit kill) · 014 web polish (Opus; from the phone persona's report — host-asleep and paused handling, honest meters, multi-tab storage, messages-not-requests, touch, copy) · the desktop persona + synthesis of the experience workflow (re-run after the rate limit).
+- **Running:** 014 web polish (Opus; from the phone persona's report — host-asleep and paused handling, honest meters, multi-tab storage, messages-not-requests, touch, copy) · the desktop persona + synthesis of the experience workflow (re-run after the rate limit).
 - **Incident 2 (14:2x):** a second session rate limit (resets 15:30 EDT) killed the 010/011 engineer mid-rebase (after its push) and two workflow agents. Resumed at 14:34 on the founder's "please continue". Drafted: 012 concept trim + cleanup (after launch), 013 web follow-through. Done earlier today: truthful stream ends, session leaks, degraded
   states, host-scoped storage, revoked mid-session, abort-during-dial, IME, two tabs, log-prompts copy.
   008 architecture review (Fable): `docs/DESIGN.md` with debt inventory and proposed cleanup tickets.
   CLI first-run experience workflow (three stranger personas from README only → ranked polish list).
-- **Landing order:** 011 → 014 → `docs/ARCHITECTURE.md` v1 (PM: deadlines table, exact queue, Engine seam, unknown kind, RPM counts model calls only, retired flags) → second experiential pass → launch checklist. Founder decisions pending: name, relay VM, distribution, license, history rewrite, web app URL (needed by 009's invite link).
+- **Also running:** research workflow on github.com/deepseek-ai/deepseek-harness (founder asks whether to build the web client on it instead of a custom UI + agent runtime; PM answers when it returns).
+- **Landing order:** 014 → second experiential pass (both personas) → launch checklist. After launch: 012 concept trim + cleanup. Founder decisions pending: name, relay VM, distribution, license, history rewrite, web app URL (needed by 009's invite link).
 
 ## Standing decisions tonight
 
