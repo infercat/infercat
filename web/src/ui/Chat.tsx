@@ -78,7 +78,6 @@ const UNDO_MS = 6000;
 const CHECKPOINT_MS = 2000;
 /** The one poll behind everything the header claims (020 promise 4): the path and /me, together. */
 const POLL_MS = 30_000;
-/** Why a reply ends when another tab takes the chat over: the reason the abort carries (promise 6). */
 const TAKEN_OVER = 'Another tab took over this chat — what is above is only part of it.';
 
 export default function Chat({ state, live, dispatch, onRedial }: Props) {

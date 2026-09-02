@@ -73,8 +73,9 @@ export default function Connect({ state, dispatch }: Props) {
   const params = new URLSearchParams(typeof location === 'undefined' ? '' : location.search);
   const dev = import.meta.env.DEV;
   const [remembered, setRemembered] = useState(() => load<string>(KEYS.invite, ''));
+  // The link and the dev query seed only the first mount; a later card holds what is remembered — nothing, after "Paste a new code".
   const [text, setText] = useState(
-    () => HASH_INVITE || (dev ? (params.get('invite') ?? '') : '') || remembered,
+    () => (autoconnected ? remembered : HASH_INVITE || (dev ? (params.get('invite') ?? '') : '') || remembered),
   );
   const [direct, setDirect] = useState(() => dev && params.has('direct'));
   const [disclosure, setDisclosure] = useState<Disclosure | null>(null);
