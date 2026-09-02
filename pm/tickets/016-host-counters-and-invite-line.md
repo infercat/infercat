@@ -3,7 +3,7 @@ id: 016
 title: Host — seed daily counters from usage.jsonl at start; invite line after the QR
 kind: normal
 size: 1
-status: dispatched
+status: landed
 updated: 2026-09-02
 release: demo-1
 ---
@@ -111,3 +111,8 @@ ticket asked for the line "again after the QR"; moving the hint was outside the 
 - **Concepts:** budget 0, **0 spent**. No new CLI verb, flag, error code, config key or state file.
   `Config.DataDir` + the mirrored `gatewayOptions.DataDir` are the constructor input the ticket's scope
   contract authorised. No new dependencies. `internal/gateway/request.go` untouched (ticket 014).
+
+## Ruling (PM, 2026-09-02 16:20)
+
+**Landed** on main (ff of `14f70b3`); build/vet/test green, printed. The `Config.DataDir` field is
+accepted as the one-field cost. The `rpm` window deliberately not restored is right (a minute is a minute).
