@@ -328,3 +328,12 @@ the same invite — one concept each, not two), `keys revoke --yes` (promise 9),
 beyond the promise list.
 
 - **Checks at freeze:** as printed in *How it was verified* above.
+
+## Ruling (PM, 2026-09-02 16:20)
+
+**Landed** on main (merge of `55a411a`); build/vet/test green, three cross-compiles OK, and a PM smoke on a
+fresh data dir shows the same tunnel address on run 1 and run 2 — the blocker is closed with a root
+cause (identity race, not region) the ticket had guessed wrong; recorded as the lesson. The two copy
+corrections (embeddings is a third route; `/v1/models` takes an RPM entry) accepted. Concepts named in
+the promises accepted. Re-price items → 012: `ErrNoUpstream` doubled suffix, unhealthy upstream persisted
+before it answers, the "another host" guard ordering (already §4 item 15).
