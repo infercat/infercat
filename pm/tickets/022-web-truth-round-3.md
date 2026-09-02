@@ -124,3 +124,110 @@ All times 2026-09-02, EDT, laptop.
   the WIP commit. No new state, no new concept.
 
 ## Report
+
+<!-- CORE -->
+
+### Edge awareness, one line
+
+Handled: a probe whose candidate lands after Reconnect or Disconnect (closed by `dropped()`, never
+adopted); a candidate that lands while the session it has still reaches the host (closed); a
+30 s poll that must not reset a 30 s probe (armed on the miss count only); a probe dial that
+starts while the host is still dead (the bridge retries the handshake for 60 s, so it lands within
+~5 s of the host's return); a paused invite (the poll heals it, no probe) and a revoked one (never
+probed); a reply the model only thought through (`no_answer` counts as a request that got through:
+the row says what went wrong, the turn is not "undelivered"); two failures in a row (both marked,
+one Try again carries both); a transcript an older release marked (`pending` ignored on load); a
+follower tab (its marks derive from the leader's writes); a link invite after a Disconnect (a link
+is consent; it dials); a Disconnect with zero chats (the card, no "Welcome back", no dial); "Forget
+this invite" under a failure and on the plain card (one hint, one remover); a nameless host in the
+wall sentence; a host with no `model_context` (no wall claim); the drawer on a 927 px layout
+viewport over an 844 px visual one.
+
+### Skipped from 7–8, and why
+
+- **7, the context meter while streaming** — not started: promises 1–6 and the 8 nits left 37 of
+  the 400 source lines, and a local estimate plus an amber threshold plus a composer hint is more
+  than that. The meter still moves on every reply's usage chunk, as in 020.
+- **8, a resend affordance on older undelivered turns** — not needed as a button: by derivation the
+  newest exchange's Try again resends every undelivered turn, because the history it sends holds
+  them all (the ZEBRA run is the proof). A second button would be the same action. Copy already
+  said "Copied" for two seconds (Message.tsx `CopyButton`, since 020); left as it was.
+
+### Judgment calls
+
+- **Promise 3's sentence is not the ticket's.** The ticket's mechanism ("the client trims history
+  to fit, reasoning first") is not in the code: nothing in `web/src` trims, the gateway refuses a
+  prompt over the context (`internal/gateway/proxy.go:238`, `context_too_long`) and shrinks
+  `max_tokens` to what is left (`:241`). What the phone saw — the chat going on after a wall — is
+  because the model's thinking is never sent back (`toChatMessages` sends content only): after a
+  51 + 4045 = 4096 wall the next send went through with `prompt_tokens: 3339`. "Older turns will be
+  dropped from here on" would have been the new lie, so the row says what happens: the reply
+  stopped short; replies keep getting shorter until a message no longer fits; start a new chat for
+  a clean slate. The sheet matches. Client-side trimming is a candidate below, not a copy fix.
+- **The probe dials afresh when the host stopped answering** rather than re-asking /me over the
+  session it has, because that session never answers again once the host has restarted behind it
+  (measured twice: the probe at 18:5x and the run below; the reviewer's `57` at 2 min). While the
+  session reaches the host (engine down, path unmeasurable) the probe is the poll's own /me.
+  During a fresh dial there are briefly two sessions — the dead one the chat still renders from and
+  the candidate — and the reducer closes one the moment the other verifies. W1's "at most one" is
+  kept for every path but this one window; the alternative (drop the session first, as Reconnect
+  does) takes the chat screen away from the reader for the length of a dial.
+- **A paused invite is not probed.** The ticket keeps "the way pause already heals within a poll";
+  probing it would only make the resume show sooner, and `key` outranks every other reason in
+  `settle()`, so a paused *and* unreachable host waits for the poll too.
+- **`no_answer` is a delivery.** The host said done and the model only thought; the request got
+  through, so the turn is not "undelivered" and the action is Regenerate — the row's own note says
+  "Regenerate, or ask for a shorter answer" (promise 8's "Regenerate on every successful reply").
+- **"Paste a new code" forgets exactly one thing: the dead code.** Keeping it would make the next
+  reload dial a revoked invite and land on the failure again; the tunnel identity, the last host and
+  every chat stay. "Forget this invite" is the one remover, and the hint under it says what it
+  removes and that chats stay. Chats live under `hostScope(addr, key.id)` (W6, by design), so a
+  *new* code from the same host starts empty — "still on this device" is true of the bytes and of
+  the same code pasted again (a resumed key), not of a rotated one. If the fourth pass expects a
+  rotated key to see the old chats, that is a scope ruling (per host, with a one-time move), not
+  this ticket's copy.
+- **The wall row is promoted, not the composer disabled.** Accent block, text colour, its own
+  New chat; the composer stays enabled because the next message may well fit.
+- **`Disconnect` is remembered as a field on the last-host record** (`LastHost.left`), not a new
+  storage key: it is beside the invite, it is cleared by the next successful verify for free, and
+  the concept budget is zero.
+- **The harness's Reconnect became optional.** In the 014 `reconnect` scenario the self-probe can
+  heal the session in the 2 s before the harness presses Reconnect; the harness now presses it if
+  it is there and says so if it is not.
+
+### Bought beyond the ticket (declare loudly)
+
+- **`timeoutSignal` moved from Chat.tsx to api.ts** (exported), so the probe in App.tsx bounds its
+  /me the way the poll does. No behaviour change.
+- **`dialAgain()` in App.tsx** replaces the body of `useRedial`'s effect, so Reconnect and the probe
+  are one dial. Reconnect's failure copy and its `sessionUp` handover are unchanged.
+- **The "not part of the next question" footer is said only of text on screen** — under an empty
+  failed reply it read as a claim about the turn above it (the phone's `93`).
+- **Harnesses**: `real-check.mjs` gains `heal` and folds ZEBRA into `paused`, the wall's follow-up
+  send, the phone's header/drawer/Disconnect/reload, the revoked card's storage check;
+  `screenshots.mjs` gains the `22-*` shots and asserts the header's right edge at 360 and 390, not
+  only `scrollWidth`. Dev only.
+
+### Not verified
+
+- **A real phone.** Everything at 390 px is Chromium's phone emulation (`isMobile`, touch, DPR 2),
+  where the layout viewport is 927 px over an 844 px visual one — the same shape as a phone
+  browser bar, not the thing itself.
+- **The probe under a network that is down on the reader's side** (a phone in a tunnel): the dial
+  then takes the bridge's full 60 s to fail and the schedule is dominated by it. Reasoned, not
+  driven.
+- **A busy host** during the probe window: `/me` is unmetered and never touches the engine, so a
+  saturated engine does not look asleep to the probe; not exercised with a saturated engine.
+- **Firefox and Safari**, as in every earlier round.
+
+### Candidates (not fixed here)
+
+- Client-side trimming at the wall (chars ÷ 4 against `model_context`, oldest turns first) would
+  make "the chat goes on" unconditional; today the host refuses a message once the visible thread
+  alone exceeds the context (`context_too_long`), and says so in its row.
+- Per-host chat scope (drop `key.id` from `hostScope`, one-time move) if a rotated invite should
+  see the old chats — a W6 ruling.
+- The cost scenario's endpoint line shows the harness's own two `/me` calls beside the app's one;
+  cosmetic.
+- After a stall over a dead tunnel, /me is still asked twice (020's candidate).
+
