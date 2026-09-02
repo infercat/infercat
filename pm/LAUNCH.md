@@ -18,13 +18,13 @@ gates the public ones (BELIEFS: Authority). Nothing ships while a line in **Foun
 
 - [ ] 014 web polish landed; second experiential pass (both personas) reports launch-ready or the
       remaining items are explicitly accepted by the founder.
-- [ ] 017 release engineering: reproducible builds for the three platforms, notices file, version
-      stamping, `make release-dry` from a fresh clone (law 4).
+- [x] 017 release engineering: reproducible builds for the three platforms, notices file, version
+      stamping, `make release-dry` from a fresh clone (law 4). Landed `f5e6081`.
 - [ ] Relay: host key regenerated against the founder's derper (F2); `docs/MEASURE.md` re-run through
       that relay; numbers in the post come from that run.
 - [ ] Web app deployed to F3's URL from the release commit; the invite link form verified end to end
       from a phone on cellular.
-- [ ] `docs/ARCHITECTURE.md` and README match the shipped flags (`serve --help` diffed against README).
+- [x] `docs/ARCHITECTURE.md` and README match the shipped flags (`serve --help` diffed against README, 18:30).
 - [ ] Full checks from a fresh clone: `make check`, `make wasm`, `make web`, cross-compiles, printed.
 - [ ] Live proof on the published artifacts: install the release binary the way a stranger would
       (F4's path), serve DeepSeek V4 flash from the workstation, mint an invite, chat from a phone.
