@@ -275,7 +275,7 @@ async function stall(browser, key, host) {
   console.log('  action:', JSON.stringify(await page.locator('.row.assistant .actions button').last().innerText()));
   const engineLines = await page.locator('.degraded.engine, .degraded.both').count();
   check(engineLines === 0, 'a stalled request asserted the engine is down (promise 4)');
-  check((await page.locator('.row.assistant .md').last().innerText()).length > 50, 'the partial answer is gone');
+  check((await page.locator('.row.assistant > .md').last().innerText()).length > 50, 'the partial answer is gone');
   await shot20(page, 'stalled');
   return page;
 }
@@ -342,7 +342,7 @@ async function revoke(browser, key) {
   await sleep(500);
   const banner = await page.locator('.degraded.key').innerText();
   console.log(`\nREVOKED mid-chat → banner ${JSON.stringify(banner)}`);
-  console.log(`  still in the thread: ${await page.locator('.connect-card').count() === 0} · composer disabled: ${await page.locator('.composer textarea').isDisabled()} · answer on screen: ${(await page.locator('.row.assistant .md').innerText()).length} chars`);
+  console.log(`  still in the thread: ${await page.locator('.connect-card').count() === 0} · composer disabled: ${await page.locator('.composer textarea').isDisabled()} · answer on screen: ${(await page.locator('.row.assistant > .md').last().innerText()).length} chars`);
   check(banner.includes('revoked'), 'the banner does not say revoked');
   check((await page.locator('.connect-card').count()) === 0, 'revoke ejected to the connect screen (promise 5)');
   check(await page.locator('.composer textarea').isDisabled(), 'the composer is enabled after a revoke');
