@@ -20,6 +20,7 @@ describe('a reply that finishes', () => {
       tokens: { in: 11, out: 4 },
       status: 'complete',
       waiting: false,
+      queued: false,
     });
     expect(r.note).toBeUndefined();
   });
@@ -124,6 +125,32 @@ describe('a reply that has not started yet', () => {
     expect(r.status).toBe('interrupted');
     expect(r.note).toContain('desk');
     expect(r.note).toContain('asleep or offline');
+  });
+
+  // 018: the second silence. In line is not absent, and not an ending either.
+  it('marks itself as queued, and unmarks itself on the first token or any ending', () => {
+    expect(play({ kind: 'queued' })).toMatchObject({ queued: true, waiting: false });
+    expect(play({ kind: 'queued' }).status).toBeUndefined();
+    expect(play({ kind: 'queued' }, say('hi')).queued).toBe(false);
+    expect(play({ kind: 'queued' }, think('hm')).queued).toBe(false);
+    for (const end of [{ kind: 'done' } as const, { kind: 'eof' } as const, { kind: 'aborted' } as const]) {
+      expect(play({ kind: 'queued' }, end).queued).toBe(false);
+    }
+  });
+
+  it('lets the newer of queued and waiting say what the silence is', () => {
+    expect(play({ kind: 'waiting' }, { kind: 'queued' })).toMatchObject({ queued: true, waiting: false });
+    expect(play({ kind: 'queued' }, { kind: 'waiting' })).toMatchObject({ queued: false, waiting: true });
+  });
+
+  it('says a busy host in five words, and leaves the countdown to the one banner', () => {
+    const r = play({ kind: 'queued' }, {
+      kind: 'error',
+      code: 'queue_timeout',
+      error: { title: 'desk is busy', detail: 'Every slot was taken — your message is still here.', retryAfterS: 5 },
+    });
+    expect(r).toMatchObject({ status: 'interrupted', queued: false, note: 'Not sent — every slot was taken.' });
+    expect(saidInBanner('queue_timeout')).toBe(true);
   });
 
   it('says a rate limit in four words, and leaves the countdown to the one banner', () => {

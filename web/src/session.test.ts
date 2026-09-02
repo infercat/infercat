@@ -296,6 +296,22 @@ describe('a host that did not answer', () => {
   });
 });
 
+// 018: a busy host is a host that answered. The session it answered on is fine.
+describe('a host that was busy', () => {
+  const t = fakeTransport();
+  const connected: SessionState = { name: 'connected', live: liveOn(t) };
+
+  it('stays connected, with its engine healthy and its path current, on a queue timeout', () => {
+    const s = reduce(connected, {
+      t: 'streamError',
+      code: 'queue_timeout',
+      error: { title: 'desk is busy', detail: 'Every slot was taken.', retryAfterS: 5 },
+    });
+    expect(s).toBe(connected);
+    expect(t.closes).toBe(0);
+  });
+});
+
 describe('elapsed time, in words', () => {
   it('dates a measurement', () => {
     expect(ago(0)).toBe('0 s ago');

@@ -291,10 +291,14 @@ func (q *request) checkBudgets() *gwError {
 
 // acquireSlot joins the global queue (DESIGN §1.5). Refused on the spot is a rejection (no place
 // was held); a place held and lost is QueueLost — the settle table counts the timeout, not the
-// friend leaving.
+// friend leaving. A streaming request that has to wait says so to the friend while it does (018).
 func (q *request) acquireSlot() *gwError {
 	qstart := time.Now()
-	o, err := q.g.queue.acquire(q.r.Context(), q.g.queueTimeout)
+	var queued func() error
+	if q.n.stream {
+		queued = q.queued
+	}
+	o, err := q.g.queue.acquire(q.r.Context(), q.g.queueTimeout, q.g.queuedEvery, queued)
 	q.ev.QueuedMS = time.Since(qstart).Milliseconds()
 	if err != nil {
 		q.outcome = o
@@ -302,6 +306,33 @@ func (q *request) acquireSlot() *gwError {
 	}
 	q.slot = true
 	return nil
+}
+
+// queued is what a streaming request says while it waits for a slot (018 promise 1): the response
+// head at once — from then on the friend knows the host is awake and merely busy — and a
+// `: queued` SSE comment now and at every keepalive, each under the write deadline. A comment is
+// invisible to a compliant SSE parser; ours reads it (web/src/api.ts). A write that fails is a
+// friend who has gone: the queue drops the place, so the slot never goes to a dead request.
+func (q *request) queued() error {
+	if !q.wroteHeader {
+		q.streamHead()
+	}
+	q.armWrite()
+	if _, err := io.WriteString(q.w, ": queued\n\n"); err != nil {
+		return err
+	}
+	return q.rc.Flush()
+}
+
+// streamHead writes the head of an SSE response: 200, the event-stream type, and no buffering
+// anywhere between here and the friend. Written by pipeStream when a slot was free at once, and by
+// queued when it was not; whichever comes second finds it already out.
+func (q *request) streamHead() {
+	h := q.w.Header()
+	h.Set("Content-Type", "text/event-stream")
+	h.Set("Cache-Control", "no-cache")
+	h.Set("X-Accel-Buffering", "no")
+	q.writeHeader(http.StatusOK)
 }
 
 // callUpstream sends the normalized body through the engine seam (DESIGN §3.4: the engine adds
@@ -425,6 +456,7 @@ func (q *request) fail(e *gwError) {
 	if q.wroteHeader {
 		q.ev.Code = string(e.Code)
 		if e.Code != CodeClientClosed && q.r.Context().Err() == nil {
+			q.armWrite()
 			writeStreamError(q.w, e)
 		}
 		return

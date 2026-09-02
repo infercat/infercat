@@ -82,21 +82,27 @@ type errorBody struct {
 		Message string `json:"message"`
 		Type    string `json:"type"`
 		Code    Code   `json:"code"`
+		// RetryAfter is set only in a stream error event (018): once the head is out the
+		// Retry-After header has nowhere to go, so the seconds ride inside the event.
+		RetryAfter int `json:"retry_after,omitempty"`
 	} `json:"error"`
 }
 
-func errorJSON(e *gwError) []byte {
+func errorJSON(e *gwError, inStream bool) []byte {
 	var b errorBody
 	b.Error.Message = e.Message
 	b.Error.Type = codeTable[e.Code].typ
 	b.Error.Code = e.Code
+	if inStream {
+		b.Error.RetryAfter = e.RetryAfter
+	}
 	out, _ := json.Marshal(b)
 	return out
 }
 
 // writeError writes e as a full HTTP response. Callers must not have written headers yet.
 func writeError(w http.ResponseWriter, e *gwError) {
-	body := errorJSON(e)
+	body := errorJSON(e, false)
 	h := w.Header()
 	h.Set("Content-Type", "application/json")
 	h.Set("Content-Length", strconv.Itoa(len(body)))
@@ -107,9 +113,10 @@ func writeError(w http.ResponseWriter, e *gwError) {
 	_, _ = w.Write(body)
 }
 
-// writeStreamError appends an SSE error event to a stream whose headers are already out. The friend's
-// client sees why the stream stopped instead of a silent truncation (Surfaces tell the truth).
+// writeStreamError ends a stream whose head is already out with an SSE error event — the friend's
+// client sees why the stream stopped instead of a silent truncation (Surfaces tell the truth) — and
+// the [DONE] every stream ends with. Retry-After, when the code carries one, rides inside the event.
 func writeStreamError(w http.ResponseWriter, e *gwError) {
-	_, _ = fmt.Fprintf(w, "data: %s\n\n", errorJSON(e))
+	_, _ = fmt.Fprintf(w, "data: %s\n\ndata: [DONE]\n\n", errorJSON(e, true))
 	_ = http.NewResponseController(w).Flush()
 }

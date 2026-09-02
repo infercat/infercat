@@ -29,6 +29,8 @@ export interface Message {
   details?: string;
   /** Nothing has come back yet and it has been long enough to say so (assistant, mid-stream). */
   waiting?: boolean;
+  /** The host has the request and every slot is taken: in line, not absent (assistant, mid-stream; 018). */
+  queued?: boolean;
   /** The reply stopped at the invite's output cap, not because it had finished (promise 14). */
   capped?: boolean;
   /** The answer this one replaced, kept rather than thrown away when a turn is edited (promise 16). */
@@ -252,6 +254,7 @@ function reopen(c: Conversation): Conversation {
         ? {
             ...m,
             waiting: false,
+            queued: false,
             status: 'interrupted' as const,
             note: 'This reply was still arriving when the page was reloaded — what is above is only part of it.',
           }

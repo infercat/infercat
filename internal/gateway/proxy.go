@@ -514,18 +514,17 @@ type sseChunk struct {
 }
 
 // pipeStream copies SSE bytes to the friend verbatim, flushing at every event boundary, while
-// reading each data: payload for usage. When the stream ends without a usage chunk (the friend hit
+// reading each data: payload for usage. The head is written here unless the request queued for
+// its slot, in which case it went out then (018) and the engine's bytes follow on the same response. When the stream ends without a usage chunk (the friend hit
 // stop, or the engine omitted it) completion tokens are estimated as the number of delta chunks seen
 // (llama.cpp and vLLM emit one token per chunk) so an aborted stream is not free; prompt tokens fall
 // back to the pre-check count. A write or flush error means the friend is gone or has stopped
 // reading (the per-line write deadline fired); a read error means the friend left, the engine went
 // idle, or it died: all Cut. EOF is the end.
 func (q *request) pipeStream(body io.Reader) *gwError {
-	h := q.w.Header()
-	h.Set("Content-Type", "text/event-stream")
-	h.Set("Cache-Control", "no-cache")
-	h.Set("X-Accel-Buffering", "no")
-	q.writeHeader(http.StatusOK)
+	if !q.wroteHeader {
+		q.streamHead()
+	}
 
 	br := bufio.NewReaderSize(body, 64<<10)
 	chunks, sawUsage := 0, false
