@@ -184,7 +184,11 @@ non-stream cut, deltas seen for a stream. RPM counts model calls (`/v1/chat/comp
 `/v1/embeddings`) only.
 
 Slot queue: FIFO; cap read live from `Info().Slots`; waiting set capped at max(2, 2×cap) with an immediate
-503 `queue_timeout` on overflow; `Queue()` exact under one mutex. No `SetSlots`.
+503 `queue_timeout` on overflow; `Queue()` exact under one mutex. No `SetSlots`. **A streaming request that
+must wait writes its response head at once and an SSE comment `: queued` on joining and every 5 s** (under
+the client write deadline, so a dead reader drops its place as `client_closed`); a queue timeout after the
+head is an SSE error event `{"error":{"code":"queue_timeout","retry_after":N}}` followed by `[DONE]`.
+Every stream error event is followed by `[DONE]`. Non-streaming requests keep the 503. (018)
 
 Deadlines, one owner each (no absolute request timeout): header read 30 s · body read 30 s · queue wait
 30 s · engine first byte 120 s · engine idle 60 s (reset per line) · client write 60 s (re-armed per event)

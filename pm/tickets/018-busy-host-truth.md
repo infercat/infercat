@@ -3,7 +3,7 @@ id: 018
 title: Busy host is not an asleep host — early headers and queued keepalives on streaming requests
 kind: sensitive
 size: 2
-status: dispatched
+status: landed
 updated: 2026-09-02
 release: demo-1
 ---
@@ -245,3 +245,9 @@ Named by the ticket and not counted: the `: queued` comment, the `queued` pendin
 (`StreamEvent`/`Message.queued`), `retry_after` inside a stream error event. Also not counted:
 `defaultQueuedEvery` (a constant beside the deadlines), `SSEBlock` (the parser's element type),
 `streamHead` (a helper shared by two callers). Rule against me on any of these.
+
+## Ruling (PM, 2026-09-02 18:20)
+
+**Landed** on main (ff of `09f9f87`); Go, gateway `-race`, and web checks green, printed. Declared items
+accepted: `[DONE]` after every stream error event; the shared "every slot was taken" copy; host name in
+error copy. Contract folded into `docs/ARCHITECTURE.md` by the PM.
