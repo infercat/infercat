@@ -94,3 +94,10 @@ Do not merge.
 - `Retry-After` for rate limits: seconds until the bucket/window admits one more request, minimum 1.
 
 ## Report
+
+## Log
+
+- 2026-09-02 02:30 ACK. Base f171164 (main), lane t002-gateway. Read BELIEFS, ARCHITECTURE, ticket, seams. Seams sufficient; no contest.
+- 2026-09-02 02:35 Design: hand-rolled proxy (no httputil) for SSE flush + usage parse + cancel; RPM and TPM share one sliding 60 s log per key (one mechanism, exact Retry-After); stdlib only, go.mod untouched.
+- 2026-09-02 02:35 Judgment: contract code table lacks 400/404 rows; adding `invalid_request` (malformed JSON) and `not_found`. Flagged for PM.
+- 2026-09-02 02:35 Observed: local llama-server /props reports n_ctx 4096 per slot (ticket says 8192 = -c over -np 2). Not my concern; noted for 003/MEASURE.
