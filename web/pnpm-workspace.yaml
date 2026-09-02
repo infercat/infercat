@@ -1,0 +1,4 @@
+# pnpm 11 reads project settings from this file. esbuild (vite's bundler) is the only
+# dependency allowed to run an install script; its postinstall selects the platform binary.
+allowBuilds:
+  esbuild: true

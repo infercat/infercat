@@ -1,0 +1,11 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <style>
+    .m { fill: #b0522b }
+    @media (prefers-color-scheme: dark) { .m { fill: #e9926a } }
+  </style>
+  <g class="m">
+    <ellipse cx="11.5" cy="9.5" rx="2.5" ry="6.4" transform="rotate(-13 11.5 9.5)" />
+    <ellipse cx="20.5" cy="9.5" rx="2.5" ry="6.4" transform="rotate(13 20.5 9.5)" />
+    <circle cx="16" cy="22" r="7.6" />
+  </g>
+</svg>
