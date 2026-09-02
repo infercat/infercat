@@ -122,10 +122,125 @@ All times 2026-09-02, EDT, laptop.
   that got through, "Try again" only when the last exchange failed; the returning sentence reads
   as one; Copy already showed "Copied" (2 s). Promise 7 does not fit: 363 of 400 source lines at
   the WIP commit. No new state, no new concept.
+- 19:45 — Follow-up after the PM's freeze (`e2f0c3c`): evidence only. Real-stack run 2 held for cost,
+  paused/ZEBRA, wall and stall, then died in 014's `reconnect` step; a targeted probe on 6722
+  reproduced it as the race between the self-probe's in-flight dial and a Reconnect pressed inside
+  it (report, first section) — not fixed here, per the follow-up's rule. heal, asleep, tabs, phone
+  and revoke were run one by one and held. Harness fixes only (`web/dev/**`): the wall waits on
+  `.ended.wall`; the phone drawer is closed before the 390 px header shot (its backdrop swallowed
+  the hamburger tap); the healed check reads the two limit meters, not the context meter, which is
+  "—" until a reply reports usage. Screenshot run with the production section last.
 
 ## Report
 
-<!-- CORE -->
+### Read this first: one defect found by the evidence run, not fixed here (no source in the follow-up)
+
+**Reconnect pressed while the self-probe is already dialling hangs on "Opening a fresh connection
+to your host…".** The probe's fresh dial starts 5 s after the session degrades and retries its
+handshake for up to 60 s while the host is dead; a Reconnect in that window starts a *second* dial
+with the *same* tunnel identity, two sessions register under one key at the relay, one of them is
+deaf, and the redial's `/me` has no timeout. Reproduced twice on the real host:
+
+```
+race     host killed 3.1 s · degraded 18.5 s (Reconnect offered; probe dial in flight from 23.5 s)
+         host back 30.7 s · Reconnect pressed 32.7 s
+         42.8 s … 92.8 s  "Opening a fresh connection to your host…"  composer: false  failure: none
+run 2    014's own `reconnect` step after the stall: Reconnect pressed 2 s after the host came back
+         → `.composer textarea` never visible in 120 s (the run died there; the scenarios after it
+         were run one by one, below)
+```
+
+Exposure: from 5 s after a session degrades until the host returns (+≤5 s) or 60 s; a reader who
+presses Reconnect inside it, after the host is back, is stuck until they reload (a reload is one
+dial and works). Outside it — Reconnect before the probe's first dial, or after the probe healed
+the session (then there is no Reconnect to press) — it works as in 020. Designed fix, ~25 source
+lines + 2 vitests: `dialAgain` keeps one in-flight dial per host address and a Reconnect that
+arrives during it *joins* it (one promise, one session at the relay); the reducer accepts
+`verified` from `connecting` when `connecting` carries the redial's target (a `redial?: Live` field
+set by the `redial` event, so the card's own attempts, which carry none, can never adopt a stale
+probe candidate); the redial's `/me` gets the `ME_TIMEOUT_MS` bound. The smaller cousin — Disconnect
+while a probe dial is in flight, then Connect from the card inside the same 60 s — needs the same
+one-dial rule under `openTransport`, keyed on the identity. Until it lands, the self-probe does
+what promise 1 asks and Reconnect is the thing that can hang; the fourth pass will press it.
+
+### The core, shown working
+
+Production bundle over the real New York relay against a real `bunny-network serve` on 6720 that
+the harness starts, kills and restarts, keys minted and paused/revoked with the host's own CLI
+(`dev/real-check.mjs`, one scenario per line; runs 2 and 3, 19:17–19:40):
+
+```
+heal     (promise 1) send over a killed host fails at 15 s: "Max's laptop didn’t answer. It’s probably
+         asleep or offline…" · "not answering · last 80 ms 16 s ago" · meters "—" · action Reconnect
+         host back after 40 s dead — nothing clicked → healed by itself 31 s after the host came back:
+         "relayed via New York · 32 ms · 20 messages left this minute · 119/200k tokens today" ·
+         action on the failed exchange "Try again" · degraded lines 0 · Try again → delivered · marks 0
+                                                                             22-real-healed-by-itself.png
+zebra    (promise 2) three answered turns · keys pause · "Please remember the secret word ZEBRA." →
+         exactly 1 mark, composer off · resume → banner cleared by itself 25 s later · reload → still 1
+         next question "What was the secret word…?" → the model recalls ZEBRA: true · marks left: 0 ·
+         "not part of the next question" lines: 0                                22-real-zebra-recalled.png
+wall     (promise 3) 5000-word essay: "This chat has filled the 4.1k memory on Max's laptop, so this
+         reply stopped short. Replies will keep getting shorter until a message no longer fits — start
+         a new chat for a clean slate." + New chat · footer 51 in · 4045 out (= 4096) · composer enabled
+         next send → "3458 tokens in · 2 out" · meters "3.5k/4.1k context" (the visible thread went back
+         whole; the thinking never does)             22-real-context-wall.png · 22-real-after-wall-send.png
+phone    (promises 4, 5, 8) 390 × 844: after one answer "19 messages left this minute · 100/200k tokens
+         today · 100/4.1k context" — horizontal overflow 0 px · header past the edge 0 px
+         drawer: Disconnect at y=795–844, visual viewport 844 · Disconnect → reload: card, no
+         "Connecting to…", no composer · "Welcome back. Your 1 chat with Max's laptop is still on this
+         device." · Reconnect → the chat is back · drawer delete → toast y=723, Undo → back
+              22-real-phone-header.png · 22-real-phone-drawer.png · 22-real-phone-after-disconnect-reload.png
+revoke   (promise 6) keys revoke mid-chat → banner, still in the thread, composer off · Paste a new code →
+         fresh card, field "" · storage: chat keys before 2 → after 2 · identity kept true · last host kept
+         true · dead code kept false                                     22-real-revoked-card-keeps-chats.png
+stall    (020, still) host SIGKILLed mid-reply → ended on its own at 25 s · composer back · meters "—" ·
+         action Reconnect                                       (then the defect above, in 014's reconnect step)
+asleep   (014, still) "Still waiting…" at 5 s · failed at 15 s · pending kept · Reconnect · engine banner
+         none · "not answering · last 74 ms 18 s ago" · meters "—"
+tabs     (020, still) follower banner · B's composer off · A sends, B sees it · meters A == B · take-over
+cost     (014, still) CONNECT → /me only · SEND rpm_used 0 → 1 → 2
+```
+
+Against the fakes (`dev/screenshots.mjs`, `22-*.png`): the fake host that fell asleep is healed by
+the probe's fresh dial with nothing clicked (`22-healed-by-itself`: header live, "Try again" on the
+failed exchange, no Reconnect); the wall row (`22-context-wall`); 360 px and 390 px with three
+counters showing numbers — no horizontal overflow and nothing in the header past the right edge
+(`22-phone-360-header`, `22-phone-390-header`); the drawer's Disconnect inside the 844 px visual
+viewport (`22-phone-drawer-disconnect`); Disconnect → reload → the returning card, no dial
+(`22-phone-after-disconnect-reload`); the revoked card with the chats and the identity still on disk
+(`22-revoked-card-keeps-chats`).
+
+Vitests over the reducers: the probe's schedule (5, 10, 20, 30, 30 s), what is probed and what is
+not, the miss count and its reset, the fresh session replacing the dead one and closing it once, a
+candidate closed when there is nothing to replace or the session is gone, and the fake clock: host
+dead 40 s → alive → connected within 30 s and nothing asked after (session.test.ts, +6); the
+delivery derivation, ZEBRA, two failures in a row, `no_answer` as a delivery, a streaming reply, the
+stored flag ignored (storage.test.ts, +6); `LastHost.left` round trip and `dialsOnArrival`
+(storage.test.ts, +3). 218 → 229.
+
+### Verified (printed, from `e2f0c3c` = the landed commit; source unchanged in the follow-up)
+
+```
+$ pnpm install --frozen-lockfile  → Done in 159ms using pnpm v11.13.0                    exit 0
+$ pnpm typecheck                  → tsc --noEmit, no output                             exit 0
+$ pnpm test                       → Test Files 10 passed (10) | Tests 229 passed (229)  exit 0
+                                    0 failed, 0 skipped   (020 left 218; +11 here)
+$ pnpm lint                       → eslint ., no output                                 exit 0
+$ pnpm build                      → index 230.46 kB (gzip 74.23); Chat 358.12 kB (gzip 109.38);
+                                    css 13.76 kB                                        exit 0
+$ node dev/real-check.mjs all     → cost · paused/ZEBRA · wall · stall held; died in 014's reconnect
+                                    step (the defect above)                              exit 1
+$ node dev/real-check.mjs heal|asleep|tabs|phone|revoke, one by one
+                                  → each "every promise above held, and no console or page errors"  exit 0 ×5
+$ node dev/screenshots.mjs        → 90 screenshots in dev/screenshots/ (15 new `22-*`); no console or
+                                    page errors, no horizontal overflow at 360 px or 390 px        exit 0
+```
+
+`package.json` and `pnpm-lock.yaml` unchanged: **no new dependencies.** Processes stopped: only
+the hosts, previews, vite dev servers, fake gateways and browsers the harnesses and my probe scripts
+started (ports 6720–6728); the shared llama-server only received requests; max-ws.lab untouched.
+
 
 ### Edge awareness, one line
 
