@@ -51,6 +51,11 @@ demo still works but the launch pitch changes to "native client for now".
   is versioned.
 - **Prompts are never logged by default.** Reason: friends' conversations are theirs; the host sees
   counts, not content. `--log-prompts` exists for debugging and says so loudly.
+- **Fix classes, not instances.** When a review finds three or more defects with one cause, the fix is
+  the missing structure (a pipeline with one exit, a state machine, a stateful upstream), never N
+  patches. Reason (founder, 2026-09-02): the demo-1 reviews produced ~30 confirmed defects that cluster
+  into four causes; tickets 006/007 were first written as patch lists and re-briefed as designs. Software
+  that grows by "one more check" becomes brittle; a great product gets simpler after release.
 
 ## Protections (a proposed safety measure must cite a line here or go to the backlog)
 
