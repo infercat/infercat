@@ -468,7 +468,9 @@ async function main() {
   await sleep(300);
   if (await gone.getByRole('button', { name: 'Reconnect' }).count()) problems.push('healed: Reconnect still offered after the session healed');
   if (!(await gone.getByRole('button', { name: 'Try again' }).count())) problems.push('healed: no Try again on the failed exchange');
-  if (await gone.locator('.meter-label:has-text("—")').count()) problems.push('healed: the meters still read "—"');
+  // The two limit meters carry numbers again; the context meter reads "—" until a reply reports usage, which none has.
+  const healedMeters = await gone.locator('.meter-label').allInnerTexts();
+  if (healedMeters.slice(0, 2).some((m) => m.startsWith('—'))) problems.push(`healed: the meters still read ${JSON.stringify(healedMeters)}`);
   if (await gone.locator('.connect-card .failure').count()) problems.push('reconnect: ended on the connect screen');
   await shot22(gone, 'healed-by-itself');
   await shot14(gone, 'reconnected');
@@ -526,7 +528,10 @@ async function main() {
   await sleep(300);
 
   // 022 promise 4. The header fits at 390 px with three counters showing numbers, and the drawer's
-  // Disconnect is inside the visible viewport, not under the browser bar.
+  // Disconnect is inside the visible viewport, not under the browser bar. The drawer is still open
+  // from the delete above (its backdrop would swallow a tap on the hamburger): close it first.
+  await ph.locator('.backdrop').click({ position: { x: 370, y: 500 } });
+  await sleep(400);
   await fits(ph, 'phone: 390 px with three meters');
   await shot22(ph, 'phone-390-header');
   await ph.getByRole('button', { name: 'Conversations' }).click();
