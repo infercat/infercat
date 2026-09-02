@@ -16,7 +16,7 @@ gates the public ones (BELIEFS: Authority). Nothing ships while a line in **Foun
 
 ## Engineering gates
 
-- [ ] 014 landed ✓. Second experiential pass (19:30): **not launch-ready this week; close** — happy path praised, four false statements in failure paths, two 014 regressions → ticket 020 (per-turn state, stream idle end, reply-end classification, one health source, tab leader). Third pass after 020 is the gate.
+- [ ] 014 landed ✓. Second experiential pass (19:30): **not launch-ready this week; close** — happy path praised, four false statements in failure paths, two 014 regressions → ticket 020 (per-turn state, stream idle end, reply-end classification, one health source, tab leader). Third pass (20:20): desktop launch-ready, phone not (two false states) → ticket 022 (degraded self-probe, delivery-derived marks, honest wall copy, phone layout, durable Disconnect, revoked card keeps chats). Fourth pass, phone-led, is the gate.
 - [x] 017 release engineering: reproducible builds for the three platforms, notices file, version
       stamping, `make release-dry` from a fresh clone (law 4). Landed `f5e6081`.
 - [ ] Relay: host key regenerated against the founder's derper (F2); `docs/MEASURE.md` re-run through
