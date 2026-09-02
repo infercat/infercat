@@ -1,16 +1,74 @@
 # Bunny Network (working name)
 
-Share your local inference with friends. The host runs one binary in front of llama.cpp, vLLM, Ollama,
-or LM Studio and mints invites; a friend pastes the invite into the web app and chats over an
-end-to-end encrypted tunnel (tailcat: Tailscale's data plane, no accounts). The host keeps per-friend
-limits and usage.
+Share your local LLM with friends. You run one binary in front of the inference server you already
+have (llama.cpp, vLLM, Ollama, LM Studio) and hand each friend an invite code. They paste it into a
+web page and chat with your model over an end-to-end encrypted tunnel — no account, no VPN, nothing
+to install. You keep per-friend limits and see usage counts, never their conversations.
 
-Status: pre-release build. See `pm/BELIEFS.md` for the vision, `docs/ARCHITECTURE.md` for the seam
-contract, `pm/tickets/` for the work.
+The tunnel is [tailcat](https://github.com/tailscale/tailcat), Tailscale's open-source data plane
+without the control plane. Traffic is WireGuard-encrypted end to end and relayed through a DERP relay
+(the browser cannot hole-punch yet); the relay sees ciphertext only.
+
+Status: pre-release, private. Design records in `pm/`, the seam contract in `docs/ARCHITECTURE.md`,
+the design review in `docs/DESIGN.md`, measured numbers in `docs/MEASURE.md`.
+
+## Quickstart (host)
+
+You need Go 1.22+ to build (the right toolchain downloads itself). Your friends need only a browser.
+
+```
+make build
+bin/bunny-network serve --name "Max's laptop"     # finds llama.cpp, Ollama, LM Studio or vLLM
+bin/bunny-network keys add alice                  # prints alice's invite once (and a QR)
+```
+
+If your engine is on a non-default port or another machine:
+
+```
+bin/bunny-network serve --upstream http://127.0.0.1:18080
+```
+
+Flags you pass to `serve` are remembered in `config.json`, so the next `serve` needs none.
+
+What friends can reach through the tunnel: exactly `/v1/models` and `/v1/chat/completions` on your
+upstream — nothing else on your machine, no other port, no files.
+
+Manage friends: `keys list` · `keys pause alice` (she gets 403 until `keys resume`) · `keys revoke alice`
+(permanent; she needs a new invite) · `keys rotate alice` (new invite, old one stops) ·
+`keys limits alice --rpm 30 --daily-tokens 500000`. Watch: `status` (live) and `usage` (history).
+
+## Quickstart (friend)
+
+Open the web app, paste the invite, chat. Until the app is hosted, the host serves it locally:
+
+```
+make web                                                             # builds the wasm too
+python3 -m http.server 59080 --directory web/dist --bind 127.0.0.1   # any static server works
+```
+
+The header shows the path (`relayed via nyc · 64 ms`), the model, and your usage against the limits.
+
+## Data directory
+
+`~/Library/Application Support/bunny-network` (macOS), `~/.config/bunny-network` (Linux),
+`%AppData%\bunny-network` (Windows), or `--data-dir`:
+
+| File | What it is |
+|---|---|
+| `host.key.json` | Your host identity. Back it up; do not sync it; deleting it invalidates every invite you sent. |
+| `keys.json` | Friends' keys as hashes (never the secret), their status and limits. |
+| `usage.jsonl` | One line per request: key, endpoint, status, token counts, timings. No prompt content unless you run `serve --log-prompts`. |
+| `config.json` | Remembered `serve` flags. |
+| `tunnel.log` | The tunnel engine's log (`serve --verbose` prints it instead). |
+
+## Building
 
 ```
 make check      # go vet + go test
 make build      # bin/bunny-network
-make wasm       # web/public/bunny.wasm (+ wasm_exec.js)
-make web        # web/dist
+make wasm       # web/public/bunny.wasm (+ wasm_exec.js), needed by the web app
+make web        # web/dist (builds the wasm first)
 ```
+
+Cross-compile: `GOOS=linux GOARCH=amd64 go build -o bunny-network-linux ./cmd/bunny-network` (same for
+`windows`).
