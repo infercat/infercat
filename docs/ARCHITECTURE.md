@@ -51,7 +51,7 @@ Module: `github.com/2185Lab/bunny-network`, Go 1.27 (auto toolchain), tailcat pi
 | `keys.json` | 003 | see Key store below; gateway hot-reloads on mtime change (checked ≤1/s) |
 | `usage.jsonl` | 003 | one `usage.Event` per line, append-only |
 | `admin.sock` | 003 | unix socket, HTTP, read-only status |
-| `config.json` | 003 | persisted `serve` settings (upstream URL, slots, caps) so `serve` with no flags reuses them |
+| `config.json` | 003 | persisted `serve` settings (upstream URL + key at 0600, slots, caps, dev-listen) so `serve` with no flags reuses them. `--log-prompts` and `--ephemeral` are per-run and never persisted (Protection 3). |
 
 ## Invite format (001 defines in Go, 004 mirrors in TS; MUST match)
 

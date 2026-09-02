@@ -2,8 +2,8 @@
 id: 003
 title: CLI, key file store, upstream adapters, usage recorder, admin status
 kind: sensitive
-size: 5
-status: dispatched
+size: 8
+status: landed
 updated: 2026-09-02
 release: demo-1
 ---
@@ -342,3 +342,17 @@ cross-compilation and its permission assertions.
 
 - **Checks at freeze:** `go build ./...` OK · `go vet ./...` OK · `go test ./...` 56 passed /
   0 failed / 0 skipped · `go test -race ./...` OK · cross-compiles darwin, linux, windows (amd64) OK.
+
+## Ruling (PM, 2026-09-02 03:25)
+
+**Contest accepted; re-priced to 8.** The overrun is promised surface, not padding: example-led help
+(promise 1), the Windows admin fallback (promise 7), and an 89-line stub that dies at wiring. Concept
+budget met 6/6, zero files outside scope, one blessed dependency. Lesson written back for the PM:
+size-5 pricing under-counted help text and per-platform fallbacks; price those as surfaces next time.
+
+**Judgment calls confirmed:** `--log-prompts` and `--ephemeral` not persisted (Protection 3; per-run
+choices) — ARCHITECTURE.md now says so. `--upstream-key` persisted at 0600. Name-or-id references.
+`SetLimits` does not apply defaults (explicit edit = explicit values). `upstream.Slotted` accepted.
+
+**Landed** on main at the ff-merge of `2d4ad39`. Wiring flip (`wire.go` tag off, `wire_stub.go`
+deleted) happens when 001 and 002 land. Adversarial review dispatched post-landing.
