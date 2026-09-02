@@ -26,7 +26,20 @@ export interface FakeOptions {
   tokenDelayMs?: number;
   /** Milliseconds before the first token, i.e. simulated TTFT. */
   ttftMs?: number;
+  /** `/me` reports the host running with --log-prompts (ticket 006 adds the real field). */
+  logPrompts?: boolean;
+  /** `/me` reports the engine as not answering. */
+  upstreamDown?: boolean;
+  /** How a streamed reply ends. The last three are the endings 007 promise 1 is about. */
+  streamMode?: StreamMode;
 }
+
+/**
+ * `normal` ends with usage + [DONE] · `error-mid-stream` flushes a 200, streams part of an answer
+ * and then sends an OpenAI-shaped error member · `eof-no-done` streams part of an answer and the
+ * connection simply ends · `reasoning-only` thinks and never answers.
+ */
+export type StreamMode = 'normal' | 'error-mid-stream' | 'eof-no-done' | 'reasoning-only';
 
 /** Counters so the usage bar in the header actually moves while you use the demo. */
 const counters = { rpm_used: 0, tpm_used: 0, today_tokens: 0, in_flight: 0 };
@@ -91,9 +104,10 @@ export function handleFake(req: FakeRequest, opts: FakeOptions = {}): FakeRespon
       usage: { ...counters },
       host: {
         name: opts.hostName ?? "Max's workstation",
-        upstream: { kind: 'llama.cpp', healthy: true, model_context: 8192 },
+        upstream: { kind: 'llama.cpp', healthy: !opts.upstreamDown, model_context: 8192 },
         models,
         relay: { region: opts.region ?? 'sfo' },
+        ...(opts.logPrompts ? { log_prompts: true } : {}),
       },
     });
   }
@@ -112,7 +126,13 @@ export function handleFake(req: FakeRequest, opts: FakeOptions = {}): FakeRespon
     };
     const last = [...(parsed.messages ?? [])].reverse().find((m) => m.role === 'user');
     const text = (last?.content ?? '').trim();
-    const failure = FAILURES[text.split(/\s/)[0] ?? ''];
+    const word = text.split(/\s/)[0] ?? '';
+    const mode: StreamMode =
+      word === '/cut' ? 'eof-no-done'
+      : word === '/mid' ? 'error-mid-stream'
+      : word === '/think' ? 'reasoning-only'
+      : (opts.streamMode ?? 'normal');
+    const failure = FAILURES[word];
     if (failure) {
       counters.rpm_used = Math.min(LIMITS.rpm, counters.rpm_used + 1);
       const res = error(failure.status, failure.type, failure.code, failure.message);
@@ -127,7 +147,7 @@ export function handleFake(req: FakeRequest, opts: FakeOptions = {}): FakeRespon
         'cache-control': 'no-cache',
         connection: 'close',
       },
-      sse: chatStream(parsed.model ?? models[0] ?? 'model', text, opts),
+      sse: chatStream(parsed.model ?? models[0] ?? 'model', text, opts, mode),
     };
   }
 
@@ -178,6 +198,7 @@ async function* chatStream(
   model: string,
   prompt: string,
   opts: FakeOptions,
+  mode: StreamMode = 'normal',
 ): AsyncGenerator<string, void, void> {
   const delay = opts.tokenDelayMs ?? 18;
   const id = `chatcmpl-${Math.random().toString(36).slice(2, 10)}`;
@@ -194,27 +215,47 @@ async function* chatStream(
     yield frame({ reasoning_content: token });
     await sleep(delay);
   }
+  // A reasoning model with a small cap: it thinks for its whole budget and never answers.
+  if (mode === 'reasoning-only') {
+    yield usageFrame(id, model, Math.ceil(prompt.length / 4) + 12, Math.ceil(REASONING.length / 4));
+    yield 'data: [DONE]\n\n';
+    return;
+  }
   const body = reply(prompt);
-  for (const token of tokenize(body)) {
+  const tokens = tokenize(body);
+  const cut = mode === 'normal' ? tokens.length : Math.max(4, Math.floor(tokens.length / 6));
+  for (const token of tokens.slice(0, cut)) {
     yield frame({ content: token });
     await sleep(delay);
   }
+  // The two ways a stream lies about being finished, exactly as a real one would.
+  if (mode === 'error-mid-stream') {
+    yield `data: ${JSON.stringify({
+      error: {
+        message: 'The engine dropped the request after 6 s.',
+        type: 'upstream_error',
+        code: 'upstream_error',
+      },
+    })}\n\n`;
+    return;
+  }
+  if (mode === 'eof-no-done') return; // no usage chunk, no [DONE]: the connection just ends
   const promptTokens = Math.ceil(prompt.length / 4) + 12;
   const completionTokens = Math.ceil((REASONING.length + body.length) / 4);
   counters.tpm_used += promptTokens + completionTokens;
   counters.today_tokens += promptTokens + completionTokens;
-  yield `data: ${JSON.stringify({
+  yield usageFrame(id, model, promptTokens, completionTokens);
+  yield 'data: [DONE]\n\n';
+}
+
+function usageFrame(id: string, model: string, prompt_tokens: number, completion_tokens: number): string {
+  return `data: ${JSON.stringify({
     id,
     object: 'chat.completion.chunk',
     model,
     choices: [],
-    usage: {
-      prompt_tokens: promptTokens,
-      completion_tokens: completionTokens,
-      total_tokens: promptTokens + completionTokens,
-    },
+    usage: { prompt_tokens, completion_tokens, total_tokens: prompt_tokens + completion_tokens },
   })}\n\n`;
-  yield 'data: [DONE]\n\n';
 }
 
 /** Word-ish tokens, so streaming looks like streaming. */

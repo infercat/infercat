@@ -10,6 +10,12 @@ export interface FakeTunnelOptions extends FakeOptions {
   connectMs?: number;
   /** Simulated relay round trip, in ms. */
   rttMs?: number;
+  /** ping() rejects, so the degraded-path surface can be seen and screenshotted. */
+  pingFails?: boolean;
+  /** ping() succeeds this many times and then fails: the "last 84 ms, 31 s ago" surface. */
+  pingFailsAfter?: number;
+  /** How long dial() takes. Long values are how the abort-during-dial path is exercised. */
+  dialMs?: number;
 }
 
 /** An address starting with this makes connect() time out, for the "host offline" screen. */
@@ -39,7 +45,7 @@ export function installFakeTunnel(opts: FakeTunnelOptions = {}): BunnyTunnel {
   return tunnel;
 }
 
-class FakeSession implements Session {
+export class FakeSession implements Session {
   readonly privateKeyJSON = JSON.stringify({ fake: true, id: Math.random().toString(36).slice(2) });
   private closed = false;
 
@@ -48,15 +54,26 @@ class FakeSession implements Session {
     private readonly opts: FakeTunnelOptions,
   ) {}
 
+  /** Conns handed out, so a test can prove an abandoned dial was closed and not leaked. */
+  readonly dialled: FakeConn[] = [];
+
   async dial(port = 80): Promise<Conn> {
     if (this.closed) throw new Error('the tunnel session is closed');
     if (port !== 80) throw new Error(`nothing is listening on tunnel port ${port}`);
-    await sleep(12); // a fresh TCP dial over an existing WireGuard session is cheap, not free
-    return new FakeConn(this.opts);
+    await sleep(this.opts.dialMs ?? 12); // a dial over a live session is cheap, not free
+    const conn = new FakeConn(this.opts);
+    this.dialled.push(conn);
+    return conn;
   }
+
+  private pings = 0;
 
   async ping(): Promise<PingResult> {
     await sleep(6);
+    if (this.opts.pingFails) throw new Error('no reply from the relay');
+    if (this.opts.pingFailsAfter !== undefined && ++this.pings > this.opts.pingFailsAfter) {
+      throw new Error('no reply from the relay');
+    }
     const base = this.opts.rttMs ?? 84;
     return { rttMs: base + Math.round((Math.random() - 0.5) * 8), via: 'DERP(sfo)', direct: false };
   }
@@ -67,7 +84,9 @@ class FakeSession implements Session {
 }
 
 /** One tunnel TCP connection: request bytes in, HTTP/1.1 response bytes out. */
-class FakeConn implements Conn {
+export class FakeConn implements Conn {
+  /** Observable so a test can assert that an abandoned conn was closed. */
+  closedByCaller = false;
   private pending: (Uint8Array | null)[] = [];
   private waiter: ((v: Uint8Array | null) => void) | null = null;
   private request: Uint8Array = new Uint8Array(0);
@@ -99,6 +118,7 @@ class FakeConn implements Conn {
   }
 
   close(): void {
+    this.closedByCaller = true;
     this.closed = true;
     this.emit(null);
   }

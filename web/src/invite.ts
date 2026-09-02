@@ -93,3 +93,19 @@ function isNewerVersion(tag: string): boolean {
 function clip(s: string): string {
   return s.length > 12 ? `${s.slice(0, 12)}…` : s;
 }
+
+/**
+ * The invite in a link the host's CLI printed: `<app>/#bn1.…`. Returns '' for any fragment that is
+ * not one, and never throws — a fragment is attacker-shaped input like any other. The caller wipes
+ * it from the address bar afterwards: a secret does not belong in history or in a shared screenshot.
+ */
+export function inviteFromHash(hash: string): string {
+  let raw = hash.replace(/^#/, '');
+  try {
+    raw = decodeURIComponent(raw);
+  } catch {
+    /* a malformed percent escape is not an invite */
+  }
+  raw = raw.trim();
+  return raw.startsWith('bn1.') ? raw : '';
+}

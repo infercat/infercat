@@ -154,7 +154,7 @@ textarea:focus-visible, input[type='text']:focus-visible, select:focus-visible {
 .conv-del { color: var(--faint); padding: 4px 10px; opacity: 0; font-size: 16px; }
 .conv:hover .conv-del, .conv.current .conv-del { opacity: 1; }
 
-.main { display: grid; grid-template-rows: auto 1fr auto auto; min-width: 0; min-height: 0; }
+.main { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
 
 .topbar {
   display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
@@ -172,7 +172,9 @@ textarea:focus-visible, input[type='text']:focus-visible, select:focus-visible {
 .meter-fill { display: block; height: 100%; background: var(--accent); border-radius: 2px; transition: width 0.3s; }
 .hamburger { display: none; font-size: 18px; padding: 2px 6px; }
 
-.scroll { overflow-y: auto; overflow-x: hidden; scrollbar-gutter: stable; }
+/* flex-1 with min-height:0 rather than a fixed grid row count: the header can grow a truthful
+   line (a degraded engine, a host that logs prompts) without stealing the thread's height. */
+.scroll { flex: 1 1 auto; min-height: 0; overflow-y: auto; overflow-x: hidden; scrollbar-gutter: stable; }
 .thread { max-width: 46rem; margin: 0 auto; padding: 28px 20px 40px; }
 
 .row { margin-bottom: 26px; }
@@ -198,6 +200,20 @@ textarea:focus-visible, input[type='text']:focus-visible, select:focus-visible {
 .meta-text { color: var(--faint); font-size: 12px; font-variant-numeric: tabular-nums; }
 .waiting { color: var(--faint); font-size: 14px; margin: 0; }
 .msg-error { color: var(--danger); margin: 0; }
+
+/* A reply that stopped says how it stopped, right under what it managed to say. */
+.ended { color: var(--muted); font-size: 13px; margin: 6px 0 0; line-height: 1.45; }
+.ended.interrupted { color: var(--danger); }
+
+/* Host-level truths that are not about one message: they sit under the header, as text. */
+.degraded, .logging {
+  margin: 0;
+  padding: 8px 20px;
+  font-size: 13px;
+  border-bottom: 1px solid var(--line);
+}
+.degraded { color: var(--danger); background: var(--panel); }
+.logging { color: var(--text); background: var(--accent-soft); }
 
 .thinking { border-left: 2px solid var(--line); padding-left: 12px; margin-bottom: 12px; }
 .thinking-toggle { display: flex; gap: 8px; align-items: baseline; color: var(--muted); font-size: 13px; padding: 2px 0; }

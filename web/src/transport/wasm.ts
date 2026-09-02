@@ -57,9 +57,10 @@ async function waitForTunnel(timeoutMs = 15_000): Promise<BunnyTunnel> {
 // which case the browser has already decoded it and decompressing again destroys the module.
 async function fetchWasm(base: string, onProgress?: (p: WasmProgress) => void): Promise<Response> {
   const headers = { 'content-type': 'application/wasm' };
-  const gz = await fetch(`${base}bunny.wasm.gz`).catch(() => null);
+  const gz = await fetch(`${base}bunny.wasm.gz`, { signal: assetTimeout() }).catch(() => null);
   if (gz?.ok && gz.body && !isHTML(gz)) {
-    const decoded = (gz.headers.get('content-encoding') ?? '').includes('gzip');
+    // Header values are case-insensitive: a host that says `GZIP` has decoded it just the same.
+    const decoded = (gz.headers.get('content-encoding') ?? '').toLowerCase().includes('gzip');
     // When the browser decoded it, Content-Length describes the wire bytes, not the ones we are
     // counting, so there is no honest total to show a percentage against.
     const total = decoded ? 0 : Number(gz.headers.get('content-length')) || 0;
@@ -71,10 +72,19 @@ async function fetchWasm(base: string, onProgress?: (p: WasmProgress) => void): 
       { headers },
     );
   }
-  const raw = await fetch(`${base}bunny.wasm`);
+  const raw = await fetch(`${base}bunny.wasm`, { signal: assetTimeout() });
   if (!raw.ok || !raw.body) throw new Error(`could not download the tunnel module (${raw.status})`);
   const size = Number(raw.headers.get('content-length')) || 0;
   return new Response(counted(raw.body, size, onProgress), { headers });
+}
+
+/**
+ * A static host that accepts the connection and then says nothing would otherwise leave the
+ * connect screen on "Loading the tunnel …" for ever, with a Try again that joins the same hung
+ * promise. Sixty seconds, then a failure the screen can offer a real retry from.
+ */
+function assetTimeout(): AbortSignal | undefined {
+  return typeof AbortSignal?.timeout === 'function' ? AbortSignal.timeout(60_000) : undefined;
 }
 
 function isHTML(r: Response): boolean {
