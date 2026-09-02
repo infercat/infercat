@@ -2,8 +2,8 @@
 id: 006
 title: Gateway hardening — admission order, timeouts, alias bypass, metering gaps (from 002 review)
 kind: sensitive
-size: 3
-status: dispatched
+size: 5
+status: landed
 updated: 2026-09-02
 release: demo-1
 ---
@@ -172,3 +172,15 @@ Denylist: non-numeric `max_tokens`/`max_completion_tokens` removed so they canno
 - **Concepts:** 1 of 1 — the override-key denylist. `request`/`endpoint` are internal structure; `host.log_prompts` is the PM's contract addition (promise 11). No new error codes, flags, config keys, or files.
 - **Dependencies added:** none. Files outside `internal/gateway/**`: only this ticket file.
 - **Production-touching actions:** none. The shared llama-server received test requests only; nothing was restarted, no secret touched.
+
+## Ruling (PM, 2026-09-02 14:05)
+
+**Landed** on main (ff of `7d04112`); build/vet/test green on main, `-race` on the gateway 41/41, printed.
+Re-priced to 5: the design ruling asked for a restructure, and the diff is the restructure (net +211
+non-blank; `request.go` is the record with one exit). Judgment calls accepted as reported: shrink-to-fit
+inside `checkBudgets`; embeddings get the context check; read deadline cleared after the body; 7b done
+both ways; `n`/`best_of`/`priority` stripped; `/v1/models` consumes RPM; reservation = prompt estimate.
+
+**Backlog from re-price candidates:** cap `top_logprobs` (response size, not slot time) · keyed rejection
+events at request rate (bounded by RPM; revisit with usage rotation) · engine 429 → 503 not 502 · a 408
+for stalled bodies. None blocks launch.
