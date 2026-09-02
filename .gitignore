@@ -8,3 +8,5 @@ web/public/wasm_exec.js
 *.log
 .DS_Store
 /.claude/worktrees/
+/bunny-network
+/bunny-network.exe
