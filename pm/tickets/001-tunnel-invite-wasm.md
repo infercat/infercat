@@ -202,3 +202,23 @@ Edge cases handled, one line: corrupt/empty/array/`null`/no-private-key key file
   Documented in ARCHITECTURE.md.
 - `Clients` = open port-80 connections: accepted, documented.
 - Adversarial review dispatched post-landing (exposure, invite parsing, wasm bridge, lifecycle).
+
+## Adversarial review (PM summary, 2026-09-02 10:50; 4 lenses × 2 refuters, 36 agents)
+
+**Confirmed (→ ticket 005 fixes 10l–10m):**
+- `web/wasm/main_js.go:191-260` — no `js.Func` is ever Released: each dial leaks its 64 KiB buffer and
+  conn handlers; each read/write/ping leaks a promise handler (measured ~65.7 KB/dial) (10l).
+- `web/wasm/main_js.go:209-213` — `write()` with a non-Uint8Array object panics the Go runtime and
+  takes the whole bridge down (10m).
+
+**Refuted / accepted as-is:** host-key `.tmp` path (data dir is per-user 0700; still hardened as 10f) ·
+invite prefix edge cases (`bn+2`, `bn02`) and U+FEFF trim divergence (cosmetic; format is fixed) ·
+secret length unchecked (alphabet checked; gateway hashes anyway) · `ping().via` frozen at connect
+(documented) · corrupt key JSON with null region (panic → will error via 10f's rewrite of writeKey/readKey
+only if trivial; else backlog) · Addr form with DERPMapURL on an existing dir (backlog; single-relay
+demo) · dead relay at Start reported as success (backlog: surface in `status`) · no single-instance
+guard (backlog).
+
+**Clean, empirically:** through the tunnel only port 80 reaches the gateway; host loopback, LAN,
+internet, and other tunnel ports all drop silently (in-process DERP+STUN probe). Ephemeral never
+writes. Listener lifecycle leak-free under a 1029-conn overflow probe. `-race` clean.
