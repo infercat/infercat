@@ -1,6 +1,6 @@
 # HANDOFF — state of the work (succession document)
 
-Updated: 2026-09-02 03:55 (overnight build night 1). PM seat: Claude Fable, session on Max's laptop.
+Updated: 2026-09-02 10:15 (morning after build night 1). PM seat: Claude Fable, session on Max's laptop.
 
 ## What this is
 
@@ -23,14 +23,21 @@ a public social-media launch soon after, likely serving DeepSeek v4 flash from t
 
 ## In flight
 
-- **Landed on main:** 003 (CLI/store/upstream/usage/admin; wiring behind `//go:build wire` until 002
-  lands) and 001 (tunnel/invite/wasm bridge; relay numbers in `docs/MEASURE.md`).
-- **Building:** 002 gateway (Fable engineer), 004 web client (Opus engineer).
-- **Reviewing:** adversarial review workflows running on 003 and 001 (fresh Opus contexts, two refuters
-  per finding). Findings land in the ticket files as PM rulings.
-- **Next:** land 002 → flip wiring (delete `cmd/bunny-network/wire_stub.go`, drop the `wire` tag in
-  `wire.go`, `go mod tidy`) → land 004 → ticket 005 integration: real `serve` against llama-server
-  18080 with `--dev-listen`, web app in Direct then Tunnel mode, measure, experience review, morning report.
+- **Landed on main (`e6695c0`):** 001 tunnel/invite/wasm · 002 gateway · 003 CLI/store/upstream/usage/admin
+  (wiring flipped, stub deleted) · 004 web client. `go build ./cmd/bunny-network` is the real host;
+  `make wasm && cd web && pnpm build` is the real client.
+- **Incident 04:40–09:55:** the account's session rate limit killed every running agent (004 engineer
+  after its report, 005 engineer at start, most review finders/refuters). Nothing ran until the founder
+  said "continue" at 09:55. 004 was committed by the PM from its worktree after re-running its checks.
+- **Running now:** 005 integration (Fable engineer; fixes 10a–f, end-to-end proof in Direct and Tunnel
+  mode via Playwright, vLLM run, `hack/measure.sh` numbers). Review workflows for 001/002/003 resumed
+  (cached results replay; failed agents re-run).
+- **Review findings so far:** 001 exposure lens — no defects, empirical proof that only tunnel port 80
+  reaches the gateway; invite parsing — no defects. 003 secrets/permissions — no defects; the
+  "friend's secret forwarded to upstream" claim is refuted by code (`proxy.go` builds a fresh request).
+  Low: host-key temp path (005 fix 10f).
+- **Next:** land 005 → experience review of the integrated build (fresh Opus, Playwright) → founder
+  morning report with the `docs/MEASURE.md` numbers and the how-to-run block.
 
 ## Standing decisions tonight
 
