@@ -118,7 +118,7 @@ Auth: `Authorization: Bearer <secret>` on every route except `/healthz`.
 | Route | Behaviour |
 |---|---|
 | `GET /healthz` | `{"ok":true}` always; no auth; no other info |
-| `GET /me` | `{key:{id,name,status}, limits:Limits, usage:{rpm_used, tpm_used, today_tokens, in_flight}, host:{name, upstream:{kind,healthy,model_context}, models:[ids], relay:{region}}}` |
+| `GET /me` | `{key:{id,name,status}, limits:Limits, usage:{rpm_used, tpm_used, today_tokens, in_flight}, host:{name, upstream:{kind,healthy,model_context}, models:[ids], relay:{region}, log_prompts:bool}}` (`log_prompts` added 2026-09-02 by 006; the client discloses it) |
 | `GET /v1/models` | upstream list filtered by key's allowed models |
 | `POST /v1/chat/completions` | stream and non-stream. Gateway MUST: flush every SSE chunk immediately; inject `stream_options.include_usage=true` when streaming; clamp `max_tokens`; enforce context; pass `reasoning_content` through untouched |
 | `POST /v1/embeddings` | pass-through with auth + limits |
