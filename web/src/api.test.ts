@@ -295,6 +295,39 @@ describe('describeError', () => {
 
 // 014 promise 1, the blocker. A host that is asleep must be named as asleep — after saying so once
 // while we wait — and a host that is merely busy must never be called asleep.
+/** A busy host (018): the head at once, `: queued` every `everyMs` for `forMs`, then either the
+ *  engine's reply or the queue's timeout — or nothing more, so the caller decides when to stop. */
+function busy(everyMs: number, forMs: number, then: 'reply' | 'timeout' | 'silence'): Transport {
+  const enc = new TextEncoder();
+  return {
+    kind: 'tunnel',
+    fetch: (_path, init) => {
+      const signal = init?.signal;
+      const body = new ReadableStream<Uint8Array>({
+        start(c) {
+          signal?.addEventListener('abort', () => c.error(new DOMException('aborted', 'AbortError')));
+          const say = (s: string): void => {
+            if (!signal?.aborted) c.enqueue(enc.encode(s));
+          };
+          say(': queued\n\n');
+          const tick = setInterval(() => say(': queued\n\n'), everyMs);
+          setTimeout(() => {
+            clearInterval(tick);
+            if (then === 'reply') say(`${chunk({ content: 'here' })}data: [DONE]\n\n`);
+            if (then === 'timeout') {
+              say(`data: ${JSON.stringify({ error: { message: 'waited 30s', type: 'upstream_error', code: 'queue_timeout', retry_after: 5 } })}\n\ndata: [DONE]\n\n`);
+            }
+            if (then !== 'silence' && !signal?.aborted) c.close();
+          }, forMs);
+        },
+      });
+      return Promise.resolve(new Response(body, { status: 200 }));
+    },
+    ping: () => Promise.resolve(null),
+    close: () => {},
+  };
+}
+
 describe('a host that does not answer', () => {
   /** A transport whose request never answers. It honours abort, as both real transports do. */
   function silent(): Transport {
@@ -329,40 +362,8 @@ describe('a host that does not answer', () => {
       close: () => {},
     };
   }
-  /** A busy host (018): the head at once, `: queued` every `everyMs` for `forMs`, then either the
-   *  engine's reply or the queue's timeout — or nothing more, so the caller decides when to stop. */
-  function busy(everyMs: number, forMs: number, then: 'reply' | 'timeout' | 'silence'): Transport {
-    const enc = new TextEncoder();
-    return {
-      kind: 'tunnel',
-      fetch: (_path, init) => {
-        const signal = init?.signal;
-        const body = new ReadableStream<Uint8Array>({
-          start(c) {
-            signal?.addEventListener('abort', () => c.error(new DOMException('aborted', 'AbortError')));
-            const say = (s: string): void => {
-              if (!signal?.aborted) c.enqueue(enc.encode(s));
-            };
-            say(': queued\n\n');
-            const tick = setInterval(() => say(': queued\n\n'), everyMs);
-            setTimeout(() => {
-              clearInterval(tick);
-              if (then === 'reply') say(`${chunk({ content: 'here' })}data: [DONE]\n\n`);
-              if (then === 'timeout') {
-                say(`data: ${JSON.stringify({ error: { message: 'waited 30s', type: 'upstream_error', code: 'queue_timeout', retry_after: 5 } })}\n\ndata: [DONE]\n\n`);
-              }
-              if (then !== 'silence' && !signal?.aborted) c.close();
-            }, forMs);
-          },
-        });
-        return Promise.resolve(new Response(body, { status: 200 }));
-      },
-      ping: () => Promise.resolve(null),
-      close: () => {},
-    };
-  }
   const req = { model: 'm', messages: [{ role: 'user' as const, content: 'hi' }] };
-  const fast = { noticeMs: 20, answerMs: 60 };
+  const fast = { noticeMs: 20, answerMs: 60, idleMs: 30 };
 
   it('says it is still waiting before it gives up', async () => {
     const kinds: StreamEvent['kind'][] = [];
@@ -446,6 +447,110 @@ describe('a host that does not answer', () => {
     expect(last.error.title).toBe('desk is busy');
     expect(needsRedial(last.code)).toBe(false);
     expect(seen.some((e) => e.kind === 'error' && e.code === 'host_asleep')).toBe(false);
+  });
+});
+
+// 020 promise 2, the fourth silence: the head is out, tokens were flowing, and then nothing.
+describe('a host that stops answering mid-reply', () => {
+  /** Answers the head, streams two tokens, and then never another byte — a host killed mid-reply. */
+  function stalls(): Transport {
+    const enc = new TextEncoder();
+    return {
+      kind: 'tunnel',
+      fetch: (_path, init) => {
+        const signal = init?.signal;
+        const body = new ReadableStream<Uint8Array>({
+          start(c) {
+            signal?.addEventListener('abort', () => c.error(new DOMException('aborted', 'AbortError')));
+            c.enqueue(enc.encode(chunk({ content: 'half' })));
+            c.enqueue(enc.encode(chunk({ content: ' way' })));
+          },
+        });
+        return Promise.resolve(new Response(body, { status: 200 }));
+      },
+      ping: () => Promise.resolve(null),
+      close: () => {},
+    };
+  }
+  const req = { model: 'm', messages: [{ role: 'user' as const, content: 'hi' }] };
+  const fast = { noticeMs: 20, answerMs: 60, idleMs: 30 };
+
+  it('ends the reply as host_stalled, in the host’s name, when /me says the host is gone', async () => {
+    let probes = 0;
+    const gone = () => {
+      probes++;
+      return Promise.reject(new Error('dial port 80: context deadline exceeded'));
+    };
+    const seen: StreamEvent[] = [];
+    for await (const ev of chatEvents(stalls(), 's', req, undefined, fast, 'desk', gone)) seen.push(ev);
+    expect(seen.map((e) => e.kind)).toEqual(['content', 'content', 'error']);
+    const last = seen[seen.length - 1];
+    if (last?.kind !== 'error') throw new Error('unreachable');
+    expect(last.code).toBe('host_stalled');
+    expect(last.error.title).toBe('desk stopped answering mid-reply');
+    expect(last.error.detail).toContain('What arrived is above');
+    expect(probes).toBe(1);
+    expect(needsRedial(last.code)).toBe(false); // the /me that follows decides whether it is Reconnect
+  });
+
+  it('ends it the same way when /me answers that the engine is unhealthy', async () => {
+    const seen: StreamEvent[] = [];
+    for await (const ev of chatEvents(stalls(), 's', req, undefined, fast, 'desk', () => Promise.resolve(false))) seen.push(ev);
+    expect(seen[seen.length - 1]).toMatchObject({ kind: 'error', code: 'host_stalled' });
+    expect(seen.some((e) => e.kind === 'aborted')).toBe(false);
+  });
+
+  // A long prompt takes a slow GPU longer than any idle clock to read: silence with a healthy host
+  // behind it is patience, not an ending.
+  it('keeps waiting, and keeps asking, while /me says the host is healthy', async () => {
+    let probes = 0;
+    const healthy = () => {
+      probes++;
+      return Promise.resolve(true);
+    };
+    const ac = new AbortController();
+    setTimeout(() => ac.abort(), 150);
+    const seen: StreamEvent[] = [];
+    for await (const ev of chatEvents(stalls(), 's', req, ac.signal, fast, 'desk', healthy)) seen.push(ev);
+    expect(seen.map((e) => e.kind)).toEqual(['content', 'content', 'aborted']);
+    expect(probes).toBeGreaterThanOrEqual(2);
+  });
+
+  it('never fires while the host is sending keepalives, however long the line', async () => {
+    let probes = 0;
+    const gone = () => {
+      probes++;
+      return Promise.resolve(false);
+    };
+    const seen: StreamEvent[] = [];
+    for await (const ev of chatEvents(busy(10, 120, 'reply'), 's', req, undefined, fast, 'desk', gone)) seen.push(ev);
+    expect(seen.slice(-2).map((e) => e.kind)).toEqual(['content', 'done']);
+    expect(probes).toBe(0);
+  });
+
+  it('is silent without a probe: a slow model on its own is never an ending', async () => {
+    const ac = new AbortController();
+    setTimeout(() => ac.abort(), 100);
+    const seen: StreamEvent[] = [];
+    for await (const ev of chatEvents(stalls(), 's', req, ac.signal, fast, 'desk')) seen.push(ev);
+    expect(seen.map((e) => e.kind)).toEqual(['content', 'content', 'aborted']);
+  });
+
+  it('a reader pressing Stop in the silence is still a stop', async () => {
+    const ac = new AbortController();
+    setTimeout(() => ac.abort(), 10);
+    const seen: StreamEvent[] = [];
+    for await (const ev of chatEvents(stalls(), 's', req, ac.signal, fast, 'desk', () => Promise.resolve(false))) seen.push(ev);
+    expect(seen[seen.length - 1]).toEqual({ kind: 'aborted' });
+  });
+
+  // 020 promise 6: an abort the app asked for, with a reason, is not the reader's Stop.
+  it('an abort with a reason carries it, so the reply never says the reader stopped it', async () => {
+    const ac = new AbortController();
+    setTimeout(() => ac.abort('Another tab took over this chat'), 10);
+    const seen: StreamEvent[] = [];
+    for await (const ev of chatEvents(stalls(), 's', req, ac.signal, fast, 'desk')) seen.push(ev);
+    expect(seen[seen.length - 1]).toEqual({ kind: 'aborted', why: 'Another tab took over this chat' });
   });
 });
 

@@ -2,7 +2,7 @@
 // finished answer (promises 1 and 2).
 import { describe, expect, it } from 'vitest';
 import type { StreamEvent } from './api';
-import { NEW_REPLY, reduceReply, saidInBanner, type Reply } from './stream';
+import { contextUsed, NEW_REPLY, reduceReply, replyEnding, saidInBanner, type Reply } from './stream';
 
 function play(...events: StreamEvent[]): Reply {
   return events.reduce(reduceReply, NEW_REPLY);
@@ -164,6 +164,64 @@ describe('a reply that has not started yet', () => {
     expect(saidInBanner('rate_limited')).toBe(true);
     expect(saidInBanner('host_asleep')).toBe(false);
     expect(saidInBanner('upstream_error')).toBe(false);
+  });
+});
+
+// 020 promise 2 and 6: "You stopped this reply" is the reader's sentence and nobody else's.
+describe('an abort the app asked for', () => {
+  it('is a cut with its reason, never a stop', () => {
+    const r = play(say('as far as'), { kind: 'aborted', why: 'Another tab took over this chat — what is above is only part of it.' });
+    expect(r.status).toBe('interrupted');
+    expect(r.note).toContain('Another tab took over');
+    expect(play(say('x'), { kind: 'aborted' })).toMatchObject({ status: 'stopped', note: 'You stopped this reply.' });
+  });
+
+  it('says a dead or paused invite in five words and leaves the rest to the header', () => {
+    for (const [code, word] of [['key_paused', 'paused'], ['key_revoked', 'revoked'], ['invalid_key', 'no longer works']]) {
+      const r = play({ kind: 'error', code: code as string, error: { title: 'long', detail: 'longer' } });
+      expect(r.status).toBe('interrupted');
+      expect(r.note).toMatch(/^Not sent — /);
+      expect(r.note).toContain(word as string);
+    }
+  });
+});
+
+// 020 promise 3: which wall a reply hit is one function over four numbers.
+describe('which wall a reply hit', () => {
+  const cap = 2048;
+  const ctx = 4096; // slack for 4096 is 64
+
+  it('is nothing unless the engine stopped for length', () => {
+    expect(replyEnding(undefined, { in: 100, out: 2048 }, cap, ctx)).toBeNull();
+    expect(replyEnding(false, { in: 3000, out: 1096 }, cap, ctx)).toBeNull();
+  });
+
+  it('is the reply cap only when the output reached it', () => {
+    expect(replyEnding(true, { in: 100, out: 2048 }, cap, ctx)).toBe('capped');
+    expect(replyEnding(true, { in: 100, out: 2100 }, cap, ctx)).toBe('capped');
+    // Both walls at once: the cap is what stopped it, and Continue still helps.
+    expect(replyEnding(true, { in: 2048, out: 2048 }, cap, ctx)).toBe('capped');
+  });
+
+  // The two friends' own arithmetic: 2971 + 1125 and 3047 + 1049, under a line claiming a 2048 cap.
+  it('is the context wall when the sum filled the model, and the output did not reach the cap', () => {
+    expect(replyEnding(true, { in: 2971, out: 1125 }, cap, ctx)).toBe('context');
+    expect(replyEnding(true, { in: 3047, out: 1049 }, cap, ctx)).toBe('context');
+    expect(replyEnding(true, { in: 3000, out: 1032 }, cap, ctx)).toBe('context'); // 4032 = ctx − slack
+    expect(replyEnding(true, { in: 3000, out: 1031 }, cap, ctx)).toBe('length'); // one under the slack
+  });
+
+  it('is a plain length stop when it cannot tell, and never a wall it cannot see', () => {
+    expect(replyEnding(true, undefined, cap, ctx)).toBe('length');
+    expect(replyEnding(true, { in: 3000, out: 1096 }, cap, 0)).toBe('length'); // no context size known
+    expect(replyEnding(true, { in: 100, out: 500 }, 0, ctx)).toBe('length'); // no cap known, nowhere near the wall
+  });
+
+  it('reads the context the last reply reported, for the meter', () => {
+    expect(contextUsed([])).toBeNull();
+    expect(contextUsed([{ role: 'user' }, { role: 'assistant' }])).toBeNull();
+    expect(contextUsed([{ role: 'user' }, { role: 'assistant', tokens: { in: 10, out: 5 } }, { role: 'user' }])).toBe(15);
+    expect(contextUsed([{ role: 'assistant', tokens: { in: 10, out: 5 } }, { role: 'assistant', tokens: { in: 20, out: 5 } }])).toBe(25);
   });
 });
 
