@@ -9,6 +9,7 @@ import (
 	"flag"
 	"fmt"
 	"io"
+	"math/rand"
 	"net"
 	"net/http"
 	"net/http/httptest"
@@ -160,9 +161,11 @@ type fakeUpstream struct {
 	countErr   error
 	countGate  chan struct{} // when set, CountTokens blocks until it is closed
 	countPanic bool          // when set, CountTokens panics (the handler's panic path)
-	mode       string        // sse | json | 500 | garbage | hang | redirect | status:NNN
+	mode       string        // sse | json | usage | 500 | garbage | hang | redirect | status:NNN
 	events     []string      // sse: data payloads; json and status:NNN: events[0] is the body
-	gap        time.Duration
+	gap        time.Duration // sse: between events
+	stallAfter int           // sse: after this many events the engine sends nothing until cancelled; -1 = never
+	delay      time.Duration // json: headers at once, then this long before the body (or until cancelled)
 
 	// observations
 	started   chan struct{} // closed when the first request reaches the handler
@@ -173,6 +176,7 @@ type fakeUpstream struct {
 	lastPath  string
 	lastAuth  string
 	requests  atomic.Int32
+	tags      []string     // body["user"] of every proxied request, in arrival order
 	landed    atomic.Int32 // requests that reached /landed, the redirect target
 	countNow  atomic.Int32 // CountTokens calls in progress
 	countMax  atomic.Int32 // the most at once
@@ -182,12 +186,13 @@ type fakeUpstream struct {
 
 func newFakeUpstream() *fakeUpstream {
 	f := &fakeUpstream{
-		info:      upstream.Info{Kind: upstream.LlamaCPP, Healthy: true, Slots: 2, Models: []string{"m1", "m2", "m3"}},
-		mode:      "json",
-		events:    []string{`{"id":"x","object":"chat.completion","choices":[{"index":0,"message":{"role":"assistant","content":"hi there"}}],"usage":{"prompt_tokens":4,"completion_tokens":4}}`},
-		gap:       50 * time.Millisecond,
-		started:   make(chan struct{}),
-		cancelled: make(chan struct{}),
+		info:       upstream.Info{Kind: upstream.LlamaCPP, Healthy: true, Slots: 1, Models: []string{"m1", "m2", "m3"}},
+		mode:       "json",
+		stallAfter: -1,
+		events:     []string{`{"id":"x","object":"chat.completion","choices":[{"index":0,"message":{"role":"assistant","content":"hi there"}}],"usage":{"prompt_tokens":4,"completion_tokens":4}}`},
+		gap:        50 * time.Millisecond,
+		started:    make(chan struct{}),
+		cancelled:  make(chan struct{}),
 	}
 	f.srv = httptest.NewServer(http.HandlerFunc(f.handle))
 	f.base, _ = url.Parse(f.srv.URL)
@@ -198,9 +203,14 @@ func newFakeUpstream() *fakeUpstream {
 func (f *fakeUpstream) handle(w http.ResponseWriter, r *http.Request) {
 	f.requests.Add(1)
 	body, _ := io.ReadAll(r.Body)
+	var sent map[string]any
+	_ = json.Unmarshal(body, &sent)
 	f.mu.Lock()
 	f.lastBody, f.lastPath, f.lastAuth = body, r.URL.Path, r.Header.Get("Authorization")
-	mode, events, gap := f.mode, f.events, f.gap
+	if tag, _ := sent["user"].(string); tag != "" {
+		f.tags = append(f.tags, tag)
+	}
+	mode, events, gap, stallAfter, delay := f.mode, f.events, f.gap, f.stallAfter, f.delay
 	f.mu.Unlock()
 	f.startOnce.Do(func() { close(f.started) })
 
@@ -236,11 +246,30 @@ func (f *fakeUpstream) handle(w http.ResponseWriter, r *http.Request) {
 		_, _ = w.Write([]byte(events[0]))
 	case "json":
 		w.Header().Set("Content-Type", "application/json")
+		if delay > 0 {
+			w.WriteHeader(200)
+			_ = http.NewResponseController(w).Flush()
+			select {
+			case <-r.Context().Done():
+				f.cancOnce.Do(func() { close(f.cancelled) })
+				return
+			case <-time.After(delay):
+			}
+		}
 		_, _ = w.Write([]byte(events[0]))
+	case "usage":
+		// An honest engine: prompt_tokens = the words it was sent, completion_tokens ≤ max_tokens.
+		words := len(strings.Fields(messagesText(sent["messages"])))
+		maxTok, _ := sent["max_tokens"].(float64)
+		done := rand.Intn(int(maxTok) + 1)
+		time.Sleep(time.Duration(rand.Intn(3)) * time.Millisecond)
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprintf(w, `{"choices":[{"message":{"content":"x"}}],"usage":{"prompt_tokens":%d,"completion_tokens":%d}}`, words, done)
 	case "sse":
 		w.Header().Set("Content-Type", "text/event-stream")
 		w.WriteHeader(200)
 		rc := http.NewResponseController(w)
+		_ = rc.Flush() // headers out at once, as a real engine's are
 		write := func(s string) {
 			f.mu.Lock()
 			f.wrote.WriteString(s)
@@ -248,7 +277,12 @@ func (f *fakeUpstream) handle(w http.ResponseWriter, r *http.Request) {
 			_, _ = io.WriteString(w, s)
 			_ = rc.Flush()
 		}
-		for _, e := range events {
+		for i, e := range events {
+			if i == stallAfter {
+				<-r.Context().Done()
+				f.cancOnce.Do(func() { close(f.cancelled) })
+				return
+			}
 			write("data: " + e + "\n\n")
 			select {
 			case <-r.Context().Done():
@@ -326,6 +360,11 @@ func (f *fakeUpstream) body(t *testing.T) map[string]any {
 }
 
 func (f *fakeUpstream) written() string { f.mu.Lock(); defer f.mu.Unlock(); return f.wrote.String() }
+func (f *fakeUpstream) order() []string {
+	f.mu.Lock()
+	defer f.mu.Unlock()
+	return append([]string(nil), f.tags...)
+}
 
 // deadUpstream is an Upstream whose engine address refuses connections.
 type deadUpstream struct{ *fakeUpstream }
@@ -387,6 +426,9 @@ func (h *harness) setKey(fn func(*keys.Key)) {
 	fn(h.key)
 	h.store.set(testSecret, h.key)
 }
+
+// slots is what the engine reports; the gateway's queue reads it at every decision (DESIGN §1.5).
+func (h *harness) slots(n int) { h.up.setInfo(func(i *upstream.Info) { i.Slots = n }) }
 
 type resp struct {
 	status  int

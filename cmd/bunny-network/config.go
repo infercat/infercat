@@ -5,7 +5,6 @@ import (
 	"errors"
 	"os"
 	"path/filepath"
-	"time"
 
 	"github.com/2185Lab/bunny-network/internal/product"
 )
@@ -18,18 +17,17 @@ const configName = "config.json"
 // Two `serve` flags are deliberately NOT persisted: --log-prompts, because a host who debugs
 // once must not keep logging their friends' conversations forever (pm/BELIEFS.md Protection 3),
 // and --ephemeral, because it changes the host address and is a per-run mode, not a setting.
+// Keys a newer build no longer knows (queue_timeout, request_timeout, max_body, retired by ticket
+// 010) are ignored on load and dropped on the next save.
 type config struct {
-	Upstream       string `json:"upstream,omitempty"`
-	UpstreamKey    string `json:"upstream_key,omitempty"`
-	Slots          int    `json:"slots,omitempty"`
-	QueueTimeout   string `json:"queue_timeout,omitempty"`
-	RequestTimeout string `json:"request_timeout,omitempty"`
-	MaxBody        int64  `json:"max_body,omitempty"`
-	DevListen      string `json:"dev_listen,omitempty"`
-	DERPMapURL     string `json:"derpmap_url,omitempty"`
-	Region         string `json:"region,omitempty"`
-	Name           string `json:"name,omitempty"`
-	WebURL         string `json:"web_url,omitempty"`
+	Upstream    string `json:"upstream,omitempty"`
+	UpstreamKey string `json:"upstream_key,omitempty"`
+	Slots       int    `json:"slots,omitempty"`
+	DevListen   string `json:"dev_listen,omitempty"`
+	DERPMapURL  string `json:"derpmap_url,omitempty"`
+	Region      string `json:"region,omitempty"`
+	Name        string `json:"name,omitempty"`
+	WebURL      string `json:"web_url,omitempty"`
 }
 
 // webURL is where this host's friends open the web app: the remembered --web-url, else the
@@ -97,26 +95,7 @@ func writeFileAtomic(path string, b []byte) error {
 	return os.Rename(name, path)
 }
 
-// durOr parses a stored duration, falling back to def for empty or malformed values.
-func durOr(s string, def time.Duration) time.Duration {
-	if s == "" {
-		return def
-	}
-	d, err := time.ParseDuration(s)
-	if err != nil || d <= 0 {
-		return def
-	}
-	return d
-}
-
 func intOr(v, def int) int {
-	if v <= 0 {
-		return def
-	}
-	return v
-}
-
-func int64Or(v, def int64) int64 {
 	if v <= 0 {
 		return def
 	}

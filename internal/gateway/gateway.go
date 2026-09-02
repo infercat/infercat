@@ -22,48 +22,44 @@ import (
 	"github.com/2185Lab/bunny-network/internal/usage"
 )
 
-// Config is everything the gateway needs beyond its collaborators. Zero values take the defaults
-// in docs/ARCHITECTURE.md: Slots 1, QueueTimeout 30 s, RequestTimeout 300 s, MaxBody 4 MiB.
+// Config is everything the gateway needs beyond its collaborators. The queue's capacity is not
+// here: it is the engine's slot count, read live (DESIGN §1.5). Deadlines and the body cap are
+// constants (§1.6), each bounding one party's failure.
 type Config struct {
-	Slots          int           // global concurrency around the upstream call (= engine slots)
-	QueueTimeout   time.Duration // bounded wait for a global slot, then 503 queue_timeout
-	RequestTimeout time.Duration // upstream call timeout (covers the whole stream)
-	MaxBody        int64         // request body cap, bytes; over it → 413 body_too_large
-	LogPrompts     bool          // put prompt/completion text into usage events (Protection 3: opt-in)
-	HostName       string        // shown in /me
-	RelayRegion    func() string // shown in /me; nil → ""
+	LogPrompts  bool          // put prompt/completion text into usage events (Protection 3: opt-in)
+	HostName    string        // shown in /me
+	RelayRegion func() string // shown in /me; nil → ""
 }
 
 const (
 	retryAfterUpstreamDown = 10 // seconds; matches the CLI's 10 s upstream health poll
-	retryAfterQueueTimeout = 5  // seconds; the friend already waited QueueTimeout
-	defaultQueueTimeout    = 30 * time.Second
-	defaultRequestTimeout  = 300 * time.Second
-	defaultMaxBody         = 4 << 20
-	defaultReadTimeout     = 30 * time.Second // whole request body, from handler entry (006 promise 4)
-	defaultWriteTimeout    = 60 * time.Second // any single write or flush to the friend (006 promise 3)
-	maxEndpointLen         = 64               // usage.Event.Endpoint is the request path: bounded (006 promise 7)
+	retryAfterQueueTimeout = 5  // seconds; the friend already waited the queue timeout
+
+	// DESIGN §1.6: one owner each, no general "request timeout".
+	defaultQueueTimeout     = 30 * time.Second  // an engine that is full: wait for a slot, then 503 queue_timeout
+	defaultReadTimeout      = 30 * time.Second  // a client that stalls its body: from handler entry to body in hand
+	defaultWriteTimeout     = 60 * time.Second  // a client that stops reading: any single write or flush
+	defaultFirstByteTimeout = 120 * time.Second // an engine that accepted the request but does not start
+	defaultIdleTimeout      = 60 * time.Second  // an engine that stalls mid-stream: re-armed per read
+	defaultMaxBody          = 4 << 20           // request body cap, bytes; over it → 413 body_too_large
+	maxEndpointLen          = 64                // usage.Event.Endpoint is the request path: bounded (006 promise 7)
 )
 
 // Gateway serves the API on any number of listeners (the tunnel, and loopback in dev mode) and
 // implements usage.Snapshot for the admin status API.
 type Gateway struct {
-	cfg   Config
-	up    upstream.Upstream
-	store keys.Store
-	rec   usage.Recorder
-	logf  func(string, ...any)
-	lim   *limiter
+	cfg    Config
+	up     upstream.Upstream
+	store  keys.Store
+	rec    usage.Recorder
+	logf   func(string, ...any)
+	lim    *limiter
+	queue  slotQueue    // global slots; capacity = up.Info().Slots, read at every decision
+	bodies atomic.Int32 // request bodies held in memory (per-key slots bound it; tests read it)
 
-	semMu      sync.Mutex    // guards sem, which SetSlots swaps
-	sem        chan struct{} // global slots; cap(sem) = slots
-	inFlight   atomic.Int32  // holders of a global slot (on any generation of sem)
-	waiting    atomic.Int32  // goroutines blocked on sem
-	maxWaiting atomic.Int32  // max(2, 2×slots) may wait at once (006 promise 10); follows SetSlots
-	bodies     atomic.Int32  // request bodies held in memory (per-key slots bound it; tests read it)
-
-	readTimeout  time.Duration // unexported: tests shorten them, hosts get the defaults
-	writeTimeout time.Duration
+	// The deadlines and the body cap, unexported: tests shorten them, hosts get the constants.
+	queueTimeout, readTimeout, writeTimeout, firstByteTimeout, idleTimeout time.Duration
+	maxBody                                                                int64
 
 	mu      sync.Mutex
 	servers []*http.Server
@@ -76,44 +72,30 @@ var _ interface {
 	Serve(l net.Listener) error
 	ServeDev(addr string) error
 	Shutdown(ctx context.Context) error
-	SetSlots(n int)
 } = (*Gateway)(nil)
 
 // New builds a gateway. logf may be nil. Nothing is listening until Serve or ServeDev is called.
 func New(cfg Config, up upstream.Upstream, store keys.Store, rec usage.Recorder, logf func(string, ...any)) *Gateway {
-	if cfg.Slots <= 0 {
-		cfg.Slots = 1
-	}
-	if cfg.QueueTimeout <= 0 {
-		cfg.QueueTimeout = defaultQueueTimeout
-	}
-	if cfg.RequestTimeout <= 0 {
-		cfg.RequestTimeout = defaultRequestTimeout
-	}
-	if cfg.MaxBody <= 0 {
-		cfg.MaxBody = defaultMaxBody
-	}
 	if logf == nil {
 		logf = func(string, ...any) {}
 	}
-	g := &Gateway{
+	return &Gateway{
 		cfg:   cfg,
 		up:    up,
 		store: store,
 		rec:   rec,
 		logf:  logf,
 		lim:   newLimiter(),
-		sem:   make(chan struct{}, cfg.Slots),
+		queue: slotQueue{cap: func() int { return up.Info().Slots }},
 
-		readTimeout:  defaultReadTimeout,
-		writeTimeout: defaultWriteTimeout,
+		queueTimeout:     defaultQueueTimeout,
+		readTimeout:      defaultReadTimeout,
+		writeTimeout:     defaultWriteTimeout,
+		firstByteTimeout: defaultFirstByteTimeout,
+		idleTimeout:      defaultIdleTimeout,
+		maxBody:          defaultMaxBody,
 	}
-	g.maxWaiting.Store(waitCap(cfg.Slots))
-	return g
 }
-
-// waitCap is how many requests may wait for a global slot at once: max(2, 2×slots).
-func waitCap(slots int) int32 { return int32(max(2, 2*slots)) }
 
 // Handler is the routed API without CORS. Serve wraps it in an http.Server; use it directly only in tests.
 func (g *Gateway) Handler() http.Handler { return http.HandlerFunc(g.serveHTTP) }
@@ -193,60 +175,9 @@ func (g *Gateway) Counters(keyID string) usage.KeyCounters { return g.lim.counte
 // AllCounters implements usage.Snapshot.
 func (g *Gateway) AllCounters() map[string]usage.KeyCounters { return g.lim.allCounters() }
 
-// Queue implements usage.Snapshot: holders of a global slot, and goroutines waiting for one.
-func (g *Gateway) Queue() (inFlight, waiting int) {
-	return int(g.inFlight.Load()), int(g.waiting.Load())
-}
-
-// SetSlots resizes the global queue to the engine's slot count (ticket 005 fix 10d: an engine
-// that is down at New reports its real count only after a later Refresh). New arrivals use the
-// new size at once; requests already holding a slot finish and release on the old one.
-func (g *Gateway) SetSlots(n int) {
-	if n <= 0 {
-		n = 1
-	}
-	g.semMu.Lock()
-	defer g.semMu.Unlock()
-	if n == cap(g.sem) {
-		return
-	}
-	g.cfg.Slots = n
-	g.sem = make(chan struct{}, n)
-	g.maxWaiting.Store(waitCap(n))
-}
-
-// acquire takes a global slot, waiting at most QueueTimeout. The returned func releases it. At most
-// maxWaiting requests wait at once (each holds a body, a goroutine, and a per-key slot); one more is
-// refused on the spot with the same 503 queue_timeout, so a burst degrades to fast 503s with
-// Retry-After instead of a growing set of parked bodies (Protection 4).
-func (g *Gateway) acquire(ctx context.Context) (func(), *gwError) {
-	g.semMu.Lock()
-	sem := g.sem
-	g.semMu.Unlock()
-	release := func() { g.inFlight.Add(-1); <-sem }
-	select {
-	case sem <- struct{}{}:
-		g.inFlight.Add(1)
-		return release, nil
-	default:
-	}
-	if n := g.waiting.Add(1); n > g.maxWaiting.Load() {
-		g.waiting.Add(-1)
-		return nil, errf(CodeQueueTimeout, retryAfterQueueTimeout, "the host's engine is busy; %d requests already waiting", n-1)
-	}
-	defer g.waiting.Add(-1)
-	t := time.NewTimer(g.cfg.QueueTimeout)
-	defer t.Stop()
-	select {
-	case sem <- struct{}{}:
-		g.inFlight.Add(1)
-		return release, nil
-	case <-t.C:
-		return nil, errf(CodeQueueTimeout, retryAfterQueueTimeout, "the host's engine is busy; waited %s for a free slot", g.cfg.QueueTimeout)
-	case <-ctx.Done():
-		return nil, errf(CodeClientClosed, 0, "client went away while queued")
-	}
-}
+// Queue implements usage.Snapshot: holders of a global slot, and requests waiting for one — read
+// from the queue itself, exact.
+func (g *Gateway) Queue() (inFlight, waiting int) { return g.queue.counts() }
 
 func (g *Gateway) serveHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.ContentLength != 0 {

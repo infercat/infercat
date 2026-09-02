@@ -18,13 +18,16 @@ import (
 //     Retry-After (when the oldest admission leaves the window), and is the same number /me reports
 //     as rpm_used — the friend's usage bar and the limiter never disagree.
 //   - TPM = prompt+completion tokens charged in the last 60 s, from real usage reported by the upstream,
-//     plus the prompt estimates reserved by requests still in flight (settled to real usage on release).
-// Rejected requests are not logged (an admission that is rejected before it reaches the queue is
-// aborted, which un-counts it), so a friend retrying against a 4xx does not dig the hole deeper.
-// The log is pruned on every touch, bounding memory to one minute of traffic per key.
+//     plus the worst case (prompt + max_tokens) reserved by requests still in flight, settled to the
+//     charge when they end (DESIGN §1.4). So Σ reservations + Σ charges never exceeds TPM: the limit
+//     is a ceiling for tokens, not for prompts.
+// What a request counts and what it is charged is decided in one place, the settle table
+// (request.settleRow): an admission that did not count is removed from the log by its own seq, so a
+// friend retrying against a 4xx does not dig the hole deeper. The log is pruned on every touch,
+// bounding memory to one minute of traffic per key.
 //
-// Daily budget = prompt+completion tokens charged since UTC midnight. Retry-After is seconds to the
-// next UTC midnight.
+// Daily budget = prompt+completion tokens charged since UTC midnight, plus live reservations.
+// Retry-After is seconds to the next UTC midnight.
 //
 // Per-key concurrency is an immediate 429 (never queued): one person's burst must not hold a global
 // slot (or a queue position) for the others; the friend's own request finishing is what frees it.
@@ -33,18 +36,29 @@ const window = 60 * time.Second
 
 type logEntry struct {
 	t      time.Time
-	req    int // 1 for an admission, 0 for a token charge
+	req    int    // 1 for an admission, 0 for a token charge
+	seq    uint64 // admissions: which admission wrote it, so settle removes exactly its own
 	tokens int
 }
 
 type keyState struct {
 	mu       sync.Mutex
 	log      []logEntry
+	seq      uint64 // the last admission seq handed out
 	inFlight int
-	reserved int       // prompt estimates of requests in flight, counted by TPM and daily until settled
+	reserved int       // prompt + max_tokens of requests in flight, counted by TPM and daily until settled
 	day      time.Time // UTC midnight of the day `today` counts
 	today    int
 	lastSeen time.Time
+}
+
+// admission is what admit hands out and settle takes back: the key, the RPM entry this admission
+// wrote (by seq), and the tokens reserve later put on it. The request record holds it; nothing
+// else ends it.
+type admission struct {
+	key      string
+	seq      uint64
+	reserved int
 }
 
 // limiter owns all keyState. now is injectable for tests.
@@ -113,9 +127,8 @@ func (l *limiter) touch(id string) {
 // admit atomically checks per-key concurrency and RPM and, on success, counts the admission and
 // takes one in-flight slot. It runs right after auth, before a byte of body is read (ticket 006,
 // promise 2): cheap and in memory, so a burst from one key is bounded by max_concurrent in buffered
-// bodies and in engine tokenize calls alike. The caller ends the admission exactly once: release once
-// the request reached the queue or the engine, abort if it was rejected before that.
-func (l *limiter) admit(id string, lim keys.Limits) *gwError {
+// bodies and in engine tokenize calls alike. The caller settles the admission exactly once.
+func (l *limiter) admit(id string, lim keys.Limits) (*admission, *gwError) {
 	st := l.state(id)
 	st.mu.Lock()
 	defer st.mu.Unlock()
@@ -124,7 +137,7 @@ func (l *limiter) admit(id string, lim keys.Limits) *gwError {
 	st.lastSeen = now
 
 	if lim.MaxConcurrent > 0 && st.inFlight >= lim.MaxConcurrent {
-		return errf(CodeConcurrencyLimited, 1, "this key allows %d request(s) at a time; %d in flight", lim.MaxConcurrent, st.inFlight)
+		return nil, errf(CodeConcurrencyLimited, 1, "this key allows %d request(s) at a time; %d in flight", lim.MaxConcurrent, st.inFlight)
 	}
 	reqs, _ := st.used()
 	if lim.RPM > 0 && reqs >= lim.RPM {
@@ -136,86 +149,119 @@ func (l *limiter) admit(id string, lim keys.Limits) *gwError {
 				break
 			}
 		}
-		return errf(CodeRateLimited, secondsUntil(oldest.Add(window), now), "rate limit: %d requests per minute; %d used", lim.RPM, reqs)
+		return nil, errf(CodeRateLimited, secondsUntil(oldest.Add(window), now), "rate limit: %d requests per minute; %d used", lim.RPM, reqs)
 	}
 	st.inFlight++
-	st.log = append(st.log, logEntry{t: now, req: 1})
-	return nil
+	st.seq++
+	st.log = append(st.log, logEntry{t: now, req: 1, seq: st.seq})
+	return &admission{key: id, seq: st.seq}, nil
 }
 
-// reserve is the second half of admission, once the prompt is tokenized: TPM over the sliding window
-// and the daily budget, both counting the prompt estimates of the key's other in-flight requests and
-// this one, so a request that alone would exceed the remaining minute or day is refused with the
-// numbers in the message. On success the estimate is reserved until release or abort.
-func (l *limiter) reserve(id string, lim keys.Limits, promptTokens int) *gwError {
-	st := l.state(id)
+// minOutputTokens is the floor when max_tokens is shrunk to fit the context or a token budget.
+const minOutputTokens = 16
+
+// fitBudget is the shrink-to-fit rule (DESIGN §1.4) against one ceiling: the request's worst case,
+// prompt + out, must fit in what the ceiling has left; when it does not, out shrinks to the room
+// left when that is at least minOutputTokens — the rule context already applies — else the request
+// does not fit. out < 0 is an unbounded output (a chat with no cap anywhere): the ceiling becomes
+// the cap. out == 0 is no output (embeddings): the prompt alone must fit. A zero ceiling is none.
+func fitBudget(limit, used, prompt, out int) (int, bool) {
+	if limit <= 0 {
+		return out, true
+	}
+	room := limit - used - prompt
+	switch {
+	case out == 0:
+		return 0, room >= 0
+	case out > 0 && out <= room:
+		return out, true
+	case room >= minOutputTokens:
+		return room, true
+	}
+	return 0, false
+}
+
+// floorFor is the least output fitBudget will grant for out: nothing for none, the floor for an
+// unbounded or shrinkable cap, the cap itself when it is already under the floor.
+func floorFor(out int) int {
+	switch {
+	case out == 0:
+		return 0
+	case out < 0:
+		return minOutputTokens
+	}
+	return min(out, minOutputTokens)
+}
+
+// reserve is the second half of admission, once the prompt is tokenized: the request's worst case,
+// prompt + out tokens, must fit TPM over the sliding window and the daily budget, both counting the
+// charges and the live reservations of the key's other requests. When it does not, out shrinks to
+// what fits (fitBudget), else the request is refused with the numbers and an exact Retry-After.
+// On success exactly prompt + out is reserved on the admission until settle, and the cap in force
+// is returned so the caller can write it into the body (out < 0 comes back unchanged only when no
+// ceiling is set: nothing bounded it).
+func (l *limiter) reserve(a *admission, lim keys.Limits, prompt, out int) (int, *gwError) {
+	st := l.state(a.key)
 	st.mu.Lock()
 	defer st.mu.Unlock()
 	now := l.now()
 	st.prune(now)
 	_, charged := st.used()
-	tokens := charged + st.reserved
-	if lim.TPM > 0 && tokens+promptTokens > lim.TPM {
-		// Walk the log oldest-first until enough tokens have expired for this request to fit.
+	live := charged + st.reserved
+	need := prompt + floorFor(out)
+	fitted, ok := fitBudget(lim.TPM, live, prompt, out)
+	if !ok {
+		// Walk the log oldest-first until enough tokens have expired for the least this request
+		// can take to fit; a reservation never expires by time, so it may not fit before the window.
 		retry := 1
-		remaining := tokens
+		remaining := live
 		for _, e := range st.log {
 			remaining -= e.tokens
-			if remaining+promptTokens <= lim.TPM {
+			if remaining+need <= lim.TPM {
 				retry = secondsUntil(e.t.Add(window), now)
 				break
 			}
 		}
-		if remaining+promptTokens > lim.TPM {
-			retry = secondsUntil(now.Add(window), now) // cannot fit even with an empty window
+		if remaining+need > lim.TPM {
+			retry = secondsUntil(now.Add(window), now)
 		}
-		return errf(CodeRateLimited, retry, "token limit: %d tokens per minute; %d used, this request needs %d", lim.TPM, tokens, promptTokens)
+		return 0, errf(CodeRateLimited, retry, "token limit: %d tokens per minute; %d used, this request needs at least %d", lim.TPM, live, need)
 	}
-	if lim.DailyTokens > 0 && st.today+st.reserved+promptTokens > lim.DailyTokens {
+	out = fitted
+	if fitted, ok = fitBudget(lim.DailyTokens, st.today+st.reserved, prompt, out); !ok {
 		midnight := st.day.Add(24 * time.Hour)
-		return errf(CodeBudgetExhausted, secondsUntil(midnight, now), "daily budget: %d tokens per day (UTC); %d used, this request needs %d", lim.DailyTokens, st.today+st.reserved, promptTokens)
+		return 0, errf(CodeBudgetExhausted, secondsUntil(midnight, now), "daily budget: %d tokens per day (UTC); %d used, this request needs at least %d", lim.DailyTokens, st.today+st.reserved, need)
 	}
-	st.reserved += promptTokens
-	return nil
+	out = fitted
+	a.reserved = prompt + max(out, 0)
+	st.reserved += a.reserved
+	return out, nil
 }
 
-// release ends an admission that reached the queue: frees the in-flight slot, drops the reservation,
-// and charges the real token usage (0 when the engine never answered with a 2xx).
-func (l *limiter) release(id string, reserved, tokens int) {
-	st := l.state(id)
+// settle ends an admission exactly once, as the settle table decided (DESIGN §1.4): frees the
+// per-key slot, drops the reservation, removes the admission's own RPM entry when the request did
+// not count, and charges what the request cost against the window and the day. Nothing is
+// clamped at zero on purpose: a second settle would show up as a negative counter (I1).
+func (l *limiter) settle(a *admission, counted bool, charged int) {
+	st := l.state(a.key)
 	st.mu.Lock()
 	defer st.mu.Unlock()
 	now := l.now()
 	st.prune(now)
-	st.unreserve(reserved)
-	if tokens > 0 {
-		st.log = append(st.log, logEntry{t: now, tokens: tokens})
-		st.today += tokens
-	}
-}
-
-// abort ends an admission that never reached the queue: frees the in-flight slot, drops the
-// reservation, and removes the newest admission from the RPM log (with max_concurrent > 1 that may
-// be a sibling's entry a few milliseconds apart; the count is exact either way).
-func (l *limiter) abort(id string, reserved int) {
-	st := l.state(id)
-	st.mu.Lock()
-	defer st.mu.Unlock()
-	st.unreserve(reserved)
-	for i := len(st.log) - 1; i >= 0; i-- {
-		if st.log[i].req == 1 {
-			st.log = append(st.log[:i], st.log[i+1:]...)
-			break
+	st.inFlight--
+	st.reserved -= a.reserved
+	if !counted {
+		for i, e := range st.log {
+			if e.req == 1 && e.seq == a.seq {
+				st.log = append(st.log[:i], st.log[i+1:]...)
+				break
+			}
 		}
 	}
-}
-
-// unreserve gives back one in-flight slot and a reservation. Caller holds st.mu.
-func (st *keyState) unreserve(reserved int) {
-	if st.inFlight > 0 {
-		st.inFlight--
+	if charged > 0 {
+		st.log = append(st.log, logEntry{t: now, tokens: charged})
+		st.today += charged
 	}
-	st.reserved = max(st.reserved-reserved, 0)
 }
 
 func (l *limiter) counters(id string) usage.KeyCounters {

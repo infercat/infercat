@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"os"
+	"sync/atomic"
 	"time"
 
 	"github.com/2185Lab/bunny-network/internal/keys"
@@ -22,12 +23,37 @@ const (
 	embeddingsEndpoint endpoint = "/v1/embeddings"
 )
 
+// outcome is how a request ended, set by the stage that ended it (DESIGN §1.4). finish reads it
+// through the settle table: it alone decides what the request counted and what it is charged.
+type outcome uint8
+
+const (
+	outcomeNone      outcome = iota // still running
+	outcomeRejected                 // refused before the queue: 4xx/5xx from stages 0–6, or the waiting set was full
+	outcomeQueueLost                // client gone or QueueTimeout while holding a place in the queue
+	outcomeEngineErr                // dial failed, or a non-2xx from the engine
+	outcomeServed                   // 2xx relayed to the end (usage object seen or not)
+	outcomeCut                      // the engine was asked (2xx started or not), then: client stopped reading, client gone, engine idle/error mid-stream
+)
+
+// normalized is what normalize returns (DESIGN §1.7): the friend's JSON as the engine will see it,
+// plus the facts the later stages read instead of re-inspecting the map.
+type normalized struct {
+	body     map[string]any
+	model    string
+	stream   bool
+	text     string   // the prompt text the count is over
+	maxTok   int      // output cap in force after every shrink; 0 = none in force
+	stripped []string // override keys removed, for the host's log
+}
+
 // request is one friend's request through the gateway: the record that owns every resource the
-// request takes — the key's admission (per-key slot and RPM entry), the buffered body, the tokens
-// reserved against TPM and the daily budget, the global slot, the read and write deadlines, the
-// upstream response — and has exactly one exit, finish, which releases them all in reverse order and
-// records the usage event. serveHTTP defers finish, so success, rejection, client abort, timeout, and
-// panic all leave through it; no stage releases anything itself (ticket 006 design ruling).
+// request takes — the key's admission (per-key slot, RPM entry, token reservation), the buffered
+// body, the global slot, the read, write, first-byte and idle deadlines, the upstream response —
+// and has exactly one exit, finish, which releases them all in reverse order, settles the
+// admission by the outcome, and records the usage event. serveHTTP defers finish, so success,
+// rejection, client abort, timeout, and panic all leave through it; no stage releases anything
+// itself (ticket 006 design ruling).
 type request struct {
 	g     *Gateway
 	w     http.ResponseWriter
@@ -39,25 +65,24 @@ type request struct {
 	// Identity and input, filled stage by stage.
 	key    *keys.Key
 	kind   endpoint
-	body   map[string]any // decoded and normalized
-	text   string         // the prompt text the count is over
-	prompt int            // tokens in text: the pre-check estimate
-	maxTok int            // output cap in force, 0 = none
+	n      normalized
+	prompt int // tokens in n.text: the pre-check estimate
 
 	// Resources. Each is taken by one stage and released only by finish.
-	admitted       bool // per-key slot and RPM entry (limiter.admit)
-	queued         bool // reached acquireSlot: the admission counts even if the request fails after
-	buffered       bool // counted in g.bodies
-	reserved       int  // tokens reserved by checkBudgets, settled against the engine's usage
-	releaseSlot    func()
+	adm            *admission // per-key slot, RPM entry, reservation (limiter.admit, .reserve)
+	buffered       bool       // counted in g.bodies
+	slot           bool       // holds a global slot
 	cancelUpstream context.CancelFunc
+	idle           *time.Timer // engine idle deadline, armed by relay
 	resp           *http.Response
 
 	// Response state.
+	outcome     outcome
 	wroteHeader bool
 	ttftSet     bool
-	noEvent     bool // 401: nothing to record (promise 7b)
-	stalled     bool // the body read deadline fired: net/http cancelled r.Context, the friend is still there
+	noEvent     bool        // 401: nothing to record (promise 7b)
+	stalled     bool        // the body read deadline fired: net/http cancelled r.Context, the friend is still there
+	engineIdle  atomic.Bool // the idle deadline fired: the engine, not the friend, stopped
 }
 
 func (g *Gateway) newRequest(w http.ResponseWriter, r *http.Request) *request {
@@ -92,6 +117,8 @@ func (q *request) serve() {
 // record and returns the first error; finish gives everything back. The order is the protection
 // (promise 2): the cheap in-memory admission bounds a key's burst before a byte of body is read or
 // the engine is asked to tokenize, and nothing waits for a global slot before its budgets are known.
+// A stage that ends the request past the queue sets the outcome; one that fails before it leaves
+// it unset, which is a rejection.
 func (q *request) proxy(kind endpoint) {
 	q.kind = kind
 	for _, stage := range []func() *gwError{
@@ -100,16 +127,20 @@ func (q *request) proxy(kind endpoint) {
 		q.readBody,     // under the read deadline, into the record
 		q.normalize,    // strip override aliases, fill model, clamp max_tokens, stream_options
 		q.count,        // tokenize the prompt: an engine call, bounded by the per-key slot
-		q.checkBudgets, // context (reject or shrink-to-fit), then reserve the estimate against TPM/daily
-		q.acquireSlot,  // global slot: bounded wait, bounded waiting set
-		q.callUpstream, // the engine, no redirects; 4xx is the friend's, the rest is the host's
-		q.relay,        // stream or body to the friend under a per-line write deadline
+		q.checkBudgets, // context, TPM, daily: shrink max_tokens to fit or reject; reserve the worst case
+		q.acquireSlot,  // global slot: FIFO, bounded wait, bounded waiting set
+		q.callUpstream, // the engine, no redirects, under the first-byte deadline; 4xx is the friend's
+		q.relay,        // stream or body to the friend under the idle and write deadlines
 	} {
 		if err := stage(); err != nil {
+			if q.outcome == outcomeNone {
+				q.outcome = outcomeRejected
+			}
 			q.fail(err)
 			return
 		}
 	}
+	q.outcome = outcomeServed
 }
 
 // ---- stages ----
@@ -153,21 +184,23 @@ func (q *request) checkHealth() *gwError {
 	return nil
 }
 
-// admitKey takes the per-key slot and the RPM entry. Until acquireSlot marks the request queued, a
-// rejection hands them back un-counted (a friend retrying against a 4xx does not dig the hole deeper).
+// admitKey takes the per-key slot and the RPM entry onto the record; finish settles them by the
+// outcome (a rejection hands them back un-counted: a friend retrying against a 4xx does not dig
+// the hole deeper).
 func (q *request) admitKey() *gwError {
-	if err := q.g.lim.admit(q.key.ID, q.key.Limits); err != nil {
+	a, err := q.g.lim.admit(q.key.ID, q.key.Limits)
+	if err != nil {
 		return err
 	}
-	q.admitted = true
+	q.adm = a
 	return nil
 }
 
-// readBody reads the body into the record under MaxBody and the read deadline serveHTTP armed: a
-// declared Content-Length over the cap is refused before a byte is read; an undeclared one is cut
+// readBody reads the body into the record under the body cap and the read deadline serveHTTP armed:
+// a declared Content-Length over the cap is refused before a byte is read; an undeclared one is cut
 // off by MaxBytesReader; a body that does not arrive in time is a 400 (promise 4).
 func (q *request) readBody() *gwError {
-	limit := q.g.cfg.MaxBody
+	limit := q.g.maxBody
 	if q.r.ContentLength > limit {
 		return errf(CodeBodyTooLarge, 0, "request body is %d bytes; the limit is %d", q.r.ContentLength, limit)
 	}
@@ -188,39 +221,28 @@ func (q *request) readBody() *gwError {
 	// Body in hand: clear the read deadline. Left armed, net/http's background read (which starts at
 	// body EOF) would hit it during a long stream and cancel the request as a client disconnect.
 	_ = q.rc.SetReadDeadline(time.Time{})
-	q.body, err = decodeObject(raw)
+	q.n.body, err = decodeObject(raw)
 	if err != nil {
 		return errf(CodeInvalidRequest, 0, "request body must be a JSON object")
 	}
 	return nil
 }
 
-// normalize is the one place the body is shaped before the engine sees it: engine-override aliases
-// are stripped (promise 1, overrideKeys), a missing model is filled and the allowlist enforced, the
-// output cap is clamped to the key's, and streams get include_usage. Shrink-to-fit (005) needs the
+// normalize is the one place the friend's JSON becomes the engine's (DESIGN §1.7): the function
+// returns a value; the stage puts it on the record and the event. Shrink-to-fit (005) needs the
 // token count and so runs in checkBudgets.
 func (q *request) normalize() *gwError {
-	if removed := stripOverrides(q.body); len(removed) > 0 {
-		q.g.logf("gateway: removed %v from a request by key %s", removed, q.key.ID)
-	}
-	model, err := q.resolveModel()
+	n, err := normalize(q.kind, q.n.body, q.key, q.g.up.Info().Models)
 	if err != nil {
 		return err
 	}
-	q.ev.Model = model
-	switch q.kind {
-	case chatEndpoint:
-		q.ev.Stream, _ = q.body["stream"].(bool)
-		q.text = messagesText(q.body["messages"])
-		q.maxTok = clampMaxTokens(q.body, q.key.Limits)
-		if q.ev.Stream {
-			setIncludeUsage(q.body)
-		}
-	case embeddingsEndpoint:
-		q.text = inputText(q.body["input"])
+	q.n = n
+	if len(n.stripped) > 0 {
+		q.g.logf("gateway: removed %v from a request by key %s", n.stripped, q.key.ID)
 	}
+	q.ev.Model, q.ev.Stream = n.model, n.stream
 	if q.g.cfg.LogPrompts {
-		q.ev.Prompt = q.text
+		q.ev.Prompt = n.text
 	}
 	return nil
 }
@@ -228,98 +250,137 @@ func (q *request) normalize() *gwError {
 // count tokenizes the prompt through the engine (an estimate when it cannot). The provisional
 // prompt count on the event is replaced by the engine's usage when the response carries one.
 func (q *request) count() *gwError {
-	q.prompt = q.countTokens(q.text)
+	q.prompt = q.countTokens(q.n.text)
 	q.ev.PromptTokens = q.prompt
 	return nil
 }
 
 // checkBudgets: the prompt must fit the effective context (max_tokens shrinks to what remains: 005),
-// then the prompt estimate is reserved against TPM and the daily budget so concurrent requests from
-// one key see each other; finish settles the reservation to what the engine reported.
+// then the request's worst case — prompt + max_tokens — must fit TPM and the daily budget the same
+// way (DESIGN §1.4: max_tokens shrinks to what the window has left, floor 16, else 429 with the
+// numbers), and exactly that worst case is reserved so concurrent requests from one key see each
+// other; finish settles the reservation to what the request cost. A chat with no cap anywhere is
+// unbounded, so a ceiling that is set becomes its cap.
 func (q *request) checkBudgets() *gwError {
 	if err := q.fitContext(); err != nil {
 		return err
 	}
-	if err := q.g.lim.reserve(q.key.ID, q.key.Limits, q.prompt); err != nil {
-		return err
+	out := q.n.maxTok
+	if q.kind == chatEndpoint && out == 0 {
+		out = -1
 	}
-	q.reserved = q.prompt
-	return nil
-}
-
-// acquireSlot joins the global queue. From here the request counts as one of the key's requests
-// whatever happens: it has reached the engine's door.
-func (q *request) acquireSlot() *gwError {
-	q.queued = true
-	qstart := time.Now()
-	release, err := q.g.acquire(q.r.Context())
-	q.ev.QueuedMS = time.Since(qstart).Milliseconds()
+	fitted, err := q.g.lim.reserve(q.adm, q.key.Limits, q.prompt, out)
 	if err != nil {
 		return err
 	}
-	q.releaseSlot = release
+	if fitted > 0 && fitted != q.n.maxTok {
+		q.setMaxTok(fitted)
+	}
 	return nil
 }
 
-// callUpstream sends the normalized body to the engine under RequestTimeout (which also bounds the
-// whole relay), never following a redirect (promise 6). A 2xx puts the response on the record.
+// acquireSlot joins the global queue (DESIGN §1.5). Refused on the spot is a rejection (no place
+// was held); a place held and lost is QueueLost — the settle table counts the timeout, not the
+// friend leaving.
+func (q *request) acquireSlot() *gwError {
+	qstart := time.Now()
+	o, err := q.g.queue.acquire(q.r.Context(), q.g.queueTimeout)
+	q.ev.QueuedMS = time.Since(qstart).Milliseconds()
+	if err != nil {
+		q.outcome = o
+		return err
+	}
+	q.slot = true
+	return nil
+}
+
+// callUpstream sends the normalized body to the engine, never following a redirect (promise 6),
+// under the engine first-byte deadline (DESIGN §1.6): a timer on the upstream context that fires
+// only if no headers have arrived, so a slow-but-live stream is never touched by it (011 moves this
+// bound onto the engine's transport as ResponseHeaderTimeout). A 2xx puts the response on the
+// record; anything else is the engine's outcome — unless the friend left while the engine was
+// working for them, which is Cut.
 func (q *request) callUpstream() *gwError {
-	payload, err := json.Marshal(q.body)
+	payload, err := json.Marshal(q.n.body)
 	if err != nil {
 		return errf(CodeInvalidRequest, 0, "request body could not be re-encoded: %v", err)
 	}
-	ctx, cancel := context.WithTimeout(q.r.Context(), q.g.cfg.RequestTimeout)
+	ctx, cancel := context.WithCancel(q.r.Context())
 	q.cancelUpstream = cancel
 	req, _ := http.NewRequestWithContext(ctx, http.MethodPost, q.upstreamURL(string(q.kind)), bytes.NewReader(payload))
 	req.Header.Set("Content-Type", "application/json")
-	if q.ev.Stream {
+	if q.n.stream {
 		req.Header.Set("Accept", "text/event-stream")
 	}
-	resp, err := q.doUpstream(req)
-	if err != nil {
-		return q.upstreamErr(err)
+	var decided atomic.Bool // whoever flips it first — the headers or the timer — wins
+	first := time.AfterFunc(q.g.firstByteTimeout, func() {
+		if decided.CompareAndSwap(false, true) {
+			cancel()
+		}
+	})
+	resp, derr := q.doUpstream(req)
+	timedOut := !decided.CompareAndSwap(false, true)
+	first.Stop()
+	if derr == nil && timedOut { // headers arrived as the timer fired: the context went with them
+		resp.Body.Close()
+		derr = context.Canceled
+	}
+	if derr != nil {
+		if q.r.Context().Err() != nil {
+			q.outcome = outcomeCut
+			return errf(CodeClientClosed, 0, "client went away")
+		}
+		q.outcome = outcomeEngineErr
+		if timedOut {
+			q.g.logf("gateway: upstream did not answer within %s", q.g.firstByteTimeout)
+			return errf(CodeUpstreamError, 0, "the host's engine did not answer within %s", q.g.firstByteTimeout)
+		}
+		return q.upstreamErr(derr)
 	}
 	q.resp = resp
 	if resp.StatusCode/100 != 2 {
+		q.outcome = outcomeEngineErr
 		return upstreamStatusErr(resp)
 	}
 	return nil
 }
 
-// relay pipes the engine's response to the friend: SSE events flushed as they arrive, or the body
-// whole. Tokens are charged for a 2xx (full or partial) response only, which finish reads off the
-// event's status.
+// relay pipes the engine's response to the friend under the engine idle deadline (DESIGN §1.6: a
+// timer that cancels the upstream, re-armed by every read) and the per-line client write deadline.
+// The pipes set the outcome when either party stops; reaching the end is Served.
 func (q *request) relay() *gwError {
-	if q.ev.Stream {
-		return q.pipeStream()
+	q.idle = time.AfterFunc(q.g.idleTimeout, func() {
+		q.engineIdle.Store(true)
+		q.cancelUpstream()
+	})
+	body := idleReader{r: q.resp.Body, t: q.idle, d: q.g.idleTimeout}
+	if q.n.stream {
+		return q.pipeStream(body)
 	}
-	return q.pipeBody()
+	return q.pipeBody(body)
 }
 
 // ---- the one exit ----
 
-// finish releases everything the request holds, in reverse order of acquisition, and records the
-// usage event. It is deferred by serveHTTP and is the only way out.
+// finish releases everything the request holds, in reverse order of acquisition, settles the
+// admission by the settle table, and records the usage event. It is deferred by serveHTTP and is
+// the only way out.
 func (q *request) finish() {
+	if q.idle != nil {
+		q.idle.Stop()
+	}
 	if q.resp != nil {
 		q.resp.Body.Close()
 	}
 	if q.cancelUpstream != nil {
 		q.cancelUpstream()
 	}
-	if q.releaseSlot != nil {
-		q.releaseSlot()
+	if q.slot {
+		q.g.queue.release()
 	}
-	if q.admitted {
-		if q.queued {
-			charged := 0
-			if q.wroteHeader && q.ev.Status/100 == 2 {
-				charged = q.ev.PromptTokens + q.ev.CompletionTokens
-			}
-			q.g.lim.release(q.key.ID, q.reserved, charged)
-		} else {
-			q.g.lim.abort(q.key.ID, q.reserved)
-		}
+	if q.adm != nil {
+		counted, charged := q.settleRow()
+		q.g.lim.settle(q.adm, counted, charged)
 	}
 	if q.buffered {
 		q.g.bodies.Add(-1)
@@ -334,6 +395,37 @@ func (q *request) finish() {
 	if q.g.rec != nil {
 		q.g.rec.Record(context.WithoutCancel(q.r.Context()), q.ev)
 	}
+}
+
+// settleRow is the settle table (DESIGN §1.4), read by finish: whether the request counted against
+// RPM and what it is charged against TPM and the daily budget.
+//
+//	Rejected                          not counted; charged 0 (the reservation is released)
+//	QueueLost, timed out              counted (a place was held); 0
+//	QueueLost, client gone            not counted; 0
+//	EngineErr                         counted; 0
+//	Served, usage object seen         counted; prompt + completion as reported
+//	Served, no usage object (stream)  counted; pre-check prompt + delta chunks seen (002's blessed deviation)
+//	Cut, stream                       counted; pre-check prompt + delta chunks seen
+//	Cut, non-stream (client gone)     counted; the reservation — the engine did the work
+//
+// A request that never reached an outcome (the pipeline was abandoned by a panic) is a rejection.
+// The event keeps what was observed; only the non-stream Cut charge differs from its token sum.
+func (q *request) settleRow() (counted bool, charged int) {
+	switch q.outcome {
+	case outcomeQueueLost:
+		return q.ev.Code == string(CodeQueueTimeout), 0
+	case outcomeEngineErr:
+		return true, 0
+	case outcomeServed:
+		return true, q.ev.PromptTokens + q.ev.CompletionTokens
+	case outcomeCut:
+		if !q.ev.Stream {
+			return true, q.adm.reserved
+		}
+		return true, q.ev.PromptTokens + q.ev.CompletionTokens
+	}
+	return false, 0
 }
 
 // fail writes e as the response: a full error response if nothing was written yet, an SSE error

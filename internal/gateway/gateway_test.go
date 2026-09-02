@@ -187,7 +187,8 @@ func TestModelsFiltered(t *testing.T) {
 // ---- body, model, clamps ----
 
 func TestBodyCap(t *testing.T) {
-	h := newHarness(t, Config{MaxBody: 100}, nil)
+	h := newHarness(t, Config{}, nil)
+	h.gw.maxBody = 100
 	big := chatBody("m1", 60, "")
 	h.expectErr(h.post("/v1/chat/completions", big), CodeBodyTooLarge)
 	if h.up.requests.Load() != 0 {
@@ -389,28 +390,37 @@ func TestRPM(t *testing.T) {
 	h.expectErr(h.get("/v1/models"), CodeRateLimited)
 }
 
+// The reservation is the worst case, prompt + max_tokens, shrunk to what the window has left
+// (DESIGN §1.4, 010): a key with TPM 26 and a 2-token prompt gets max_tokens 24, then 16 (the
+// floor) once 8 are charged, then a 429 with the numbers once 16 are charged. (002's 10-token key
+// is refused outright now: it cannot hold prompt + 16, which is the honest answer.)
 func TestTPMAndDailyAfterRealUsage(t *testing.T) {
 	h := newHarness(t, Config{}, nil)
-	h.setKey(func(k *keys.Key) { k.Limits.TPM = 10 })
+	h.setKey(func(k *keys.Key) { k.Limits.TPM = 26 })
 	// upstream reports 4+4 = 8 tokens per call; pre-check prompt is 2.
-	for i := 0; i < 2; i++ {
+	for i, wantCap := range []string{"24", "16"} {
 		if r := h.post("/v1/chat/completions", chatBody("m1", 2, "")); r.status != 200 {
 			t.Fatalf("request %d: %d %s", i, r.status, r.body)
+		}
+		if got := fmt.Sprint(h.up.body(t)["max_tokens"]); got != wantCap {
+			t.Fatalf("request %d: max_tokens shrunk to %s, want %s", i, got, wantCap)
 		}
 		h.rec.waitFor(t, i+1)
 	}
 	r := h.post("/v1/chat/completions", chatBody("m1", 2, ""))
 	h.expectErr(r, CodeRateLimited)
-	if !strings.Contains(r.message, "16 used") {
+	if !strings.Contains(r.message, "16 used") || !strings.Contains(r.message, "at least 18") {
 		t.Fatalf("message: %s", r.message)
 	}
 	c := h.gw.Counters("k_alice1")
 	if c.TPMUsed != 16 || c.TodayTokens != 16 || c.RPMUsed != 2 || c.InFlight != 0 {
 		t.Fatalf("counters: %+v", c)
 	}
+	h.setKey(func(k *keys.Key) { k.Limits.TPM = 10 })
+	h.expectErr(h.post("/v1/chat/completions", chatBody("m1", 2, "")), CodeRateLimited)
 
 	h2 := newHarness(t, Config{}, nil)
-	h2.setKey(func(k *keys.Key) { k.Limits.DailyTokens = 10 })
+	h2.setKey(func(k *keys.Key) { k.Limits.DailyTokens = 26 })
 	for i := 0; i < 2; i++ {
 		if r := h2.post("/v1/chat/completions", chatBody("m1", 2, "")); r.status != 200 {
 			t.Fatalf("daily request %d: %d %s", i, r.status, r.body)
@@ -431,7 +441,8 @@ func TestTPMAndDailyAfterRealUsage(t *testing.T) {
 }
 
 func TestPerKeyConcurrency(t *testing.T) {
-	h := newHarness(t, Config{Slots: 4}, nil)
+	h := newHarness(t, Config{}, nil)
+	h.slots(4)
 	h.up.set("sse", sseEvents(20, true)...)
 	h.setKey(func(k *keys.Key) { k.Limits.MaxConcurrent = 1 })
 	ctx, cancel := context.WithCancel(context.Background())
@@ -467,7 +478,8 @@ func TestPerKeyConcurrency(t *testing.T) {
 }
 
 func TestGlobalQueueTimeout(t *testing.T) {
-	h := newHarness(t, Config{Slots: 1, QueueTimeout: 150 * time.Millisecond}, nil)
+	h := newHarness(t, Config{}, nil)
+	h.gw.queueTimeout = 150 * time.Millisecond
 	h.up.set("sse", sseEvents(20, true)...)
 	h.store.set("second", &keys.Key{ID: "k_bob", Name: "bob", Status: keys.Active})
 	ctx, cancel := context.WithCancel(context.Background())
@@ -491,11 +503,12 @@ func TestGlobalQueueTimeout(t *testing.T) {
 	cancel()
 }
 
-// Ticket 005 fix 10d: SetSlots widens the global queue for new arrivals (bob would otherwise get
-// 503 queue_timeout behind alice, as TestGlobalQueueTimeout shows), while alice, holding a slot
-// on the old size, finishes and releases cleanly.
-func TestSetSlotsResizesTheGlobalQueue(t *testing.T) {
-	h := newHarness(t, Config{Slots: 1, QueueTimeout: 150 * time.Millisecond}, nil)
+// The queue follows the engine's slot count on the next acquire (DESIGN §1.5; was 005 fix 10d's
+// SetSlots push): an engine that reports 2 slots after alice took the only one lets bob run beside
+// her at once, and an engine that reports 0 means 1.
+func TestQueueFollowsEngineSlots(t *testing.T) {
+	h := newHarness(t, Config{}, nil)
+	h.gw.queueTimeout = 150 * time.Millisecond
 	h.up.set("sse", sseEvents(20, true)...)
 	h.store.set("second", &keys.Key{ID: "k_bob", Name: "bob", Status: keys.Active})
 	ctx, cancel := context.WithCancel(context.Background())
@@ -509,31 +522,27 @@ func TestSetSlotsResizesTheGlobalQueue(t *testing.T) {
 	if in, w := h.gw.Queue(); in != 1 || w != 0 {
 		t.Fatalf("Queue() = %d, %d; want alice in flight", in, w)
 	}
-	h.gw.SetSlots(2)
+	h.slots(2)
 	r := h.do(http.MethodPost, "/v1/chat/completions", "Bearer second", chatBody("m1", 1, `"stream":true`))
 	if r.status != 200 {
 		t.Fatalf("with 2 slots bob must run beside alice: %d %s", r.status, r.body)
 	}
 	cancel()
-	deadline := time.Now().Add(2 * time.Second)
-	for {
-		in, w := h.gw.Queue()
-		if in == 0 && w == 0 {
-			break
-		}
-		if time.Now().After(deadline) {
-			t.Fatalf("Queue() = %d, %d after both finished; want 0, 0", in, w)
-		}
-		time.Sleep(10 * time.Millisecond)
+	waitUntil(t, 2*time.Second, "both to finish", func() bool { in, w := h.gw.Queue(); return in == 0 && w == 0 })
+	h.slots(0)
+	h.up.set("sse", sseEvents(20, true)...)
+	res2, err := h.streamReq(context.Background(), chatBody("m1", 1, `"stream":true`))
+	if err != nil {
+		t.Fatal(err)
 	}
-	h.gw.SetSlots(0)
-	if h.gw.cfg.Slots != 1 || cap(h.gw.sem) != 1 {
-		t.Fatalf("SetSlots(0) must mean 1, got %d/%d", h.gw.cfg.Slots, cap(h.gw.sem))
-	}
+	defer res2.Body.Close()
+	waitUntil(t, 2*time.Second, "alice to hold the slot", func() bool { in, _ := h.gw.Queue(); return in == 1 })
+	h.expectErr(h.do(http.MethodPost, "/v1/chat/completions", "Bearer second", chatBody("m1", 1, "")), CodeQueueTimeout)
 }
 
 func TestUpstreamFailures(t *testing.T) {
-	h := newHarness(t, Config{RequestTimeout: 200 * time.Millisecond}, nil)
+	h := newHarness(t, Config{}, nil)
+	h.gw.firstByteTimeout = 200 * time.Millisecond
 	h.up.set("500")
 	r := h.post("/v1/chat/completions", chatBody("m1", 1, ""))
 	h.expectErr(r, CodeUpstreamError)
@@ -546,8 +555,8 @@ func TestUpstreamFailures(t *testing.T) {
 	start := time.Now()
 	r = h.post("/v1/chat/completions", chatBody("m1", 1, ""))
 	h.expectErr(r, CodeUpstreamError)
-	if d := time.Since(start); d < 200*time.Millisecond || d > 3*time.Second {
-		t.Fatalf("timeout took %s", d)
+	if d := time.Since(start); d < 200*time.Millisecond || d > 3*time.Second || !strings.Contains(r.message, "did not answer within") {
+		t.Fatalf("first-byte timeout took %s: %s", d, r.message)
 	}
 	select {
 	case <-h.up.cancelled:
@@ -725,9 +734,15 @@ func TestStreamWithoutUsageFallsBackToChunkCount(t *testing.T) {
 	}
 }
 
+// An engine that goes quiet mid-stream is cut by the idle deadline (DESIGN §1.6), with an SSE
+// error event so the friend sees why; the two events that arrived are charged.
 func TestStreamUpstreamDiesMidway(t *testing.T) {
-	h := newHarness(t, Config{RequestTimeout: 300 * time.Millisecond}, nil)
-	h.up.set("sse", sseEvents(50, true)...) // 2.5 s; the timeout cuts it
+	h := newHarness(t, Config{}, nil)
+	h.gw.idleTimeout = 300 * time.Millisecond
+	h.up.set("sse", sseEvents(50, true)...)
+	h.up.mu.Lock()
+	h.up.stallAfter = 2
+	h.up.mu.Unlock()
 	res, err := h.streamReq(context.Background(), chatBody("m1", 1, `"stream":true`))
 	if err != nil {
 		t.Fatal(err)
@@ -738,8 +753,13 @@ func TestStreamUpstreamDiesMidway(t *testing.T) {
 		t.Fatalf("a cut stream must end with an SSE error event: %q", got)
 	}
 	ev := h.rec.last(t)
-	if ev.Status != 200 || ev.Code != "upstream_error" || ev.CompletionTokens < 2 {
+	if ev.Status != 200 || ev.Code != "upstream_error" || ev.CompletionTokens != 2 {
 		t.Fatalf("event: %+v", ev)
+	}
+	select {
+	case <-h.up.cancelled:
+	case <-time.After(2 * time.Second):
+		t.Fatal("the idle engine was not cancelled")
 	}
 }
 
@@ -910,17 +930,19 @@ func TestServeDevRefusesNonLoopback(t *testing.T) {
 
 // ---- limiter unit tests with a fake clock ----
 
-// admitAll is 002's one-shot admission (concurrency, RPM, TPM, daily) composed from 006's split:
-// admit, then reserve the prompt count, aborting the admission when the tokens do not fit.
-func (l *limiter) admitAll(id string, lim keys.Limits, prompt int) *gwError {
-	if e := l.admit(id, lim); e != nil {
-		return e
+// admitAll is 002's one-shot admission (concurrency, RPM, TPM, daily) composed from 006/010's split:
+// admit, then reserve the prompt (no output: the embeddings shape), settling the admission
+// un-counted when the tokens do not fit.
+func (l *limiter) admitAll(id string, lim keys.Limits, prompt int) (*admission, *gwError) {
+	a, e := l.admit(id, lim)
+	if e != nil {
+		return nil, e
 	}
-	if e := l.reserve(id, lim, prompt); e != nil {
-		l.abort(id, 0)
-		return e
+	if _, e := l.reserve(a, lim, prompt, 0); e != nil {
+		l.settle(a, false, 0)
+		return nil, e
 	}
-	return nil
+	return a, nil
 }
 
 func TestLimiterWindowsWithFakeClock(t *testing.T) {
@@ -929,19 +951,18 @@ func TestLimiterWindowsWithFakeClock(t *testing.T) {
 	l.now = func() time.Time { return now }
 	lim := keys.Limits{RPM: 2, TPM: 100, DailyTokens: 150}
 
-	must := func(e *gwError) {
+	must := func(a *admission, e *gwError) *admission {
 		t.Helper()
 		if e != nil {
 			t.Fatalf("unexpected: %v", e)
 		}
+		return a
 	}
-	must(l.admitAll("k", lim, 10))
-	l.release("k", 10, 60)
+	l.settle(must(l.admitAll("k", lim, 10)), true, 60)
 	now = now.Add(10 * time.Second)
-	must(l.admitAll("k", lim, 10))
-	l.release("k", 10, 30)
+	l.settle(must(l.admitAll("k", lim, 10)), true, 30)
 	// RPM full: Retry-After = when the first admission leaves the window (50 s).
-	e := l.admitAll("k", lim, 10)
+	_, e := l.admitAll("k", lim, 10)
 	if e == nil || e.Code != CodeRateLimited || e.RetryAfter != 50 {
 		t.Fatalf("rpm: %+v", e)
 	}
@@ -951,19 +972,18 @@ func TestLimiterWindowsWithFakeClock(t *testing.T) {
 		t.Fatalf("after expiry: %+v", c)
 	}
 	// TPM: 30 used + 80 requested > 100; retry when the 30-token charge (t=10) expires at t=70 → 10 s.
-	e = l.admitAll("k", lim, 80)
+	_, e = l.admitAll("k", lim, 80)
 	if e == nil || e.RetryAfter != 10 || !strings.Contains(e.Message, "token limit") {
 		t.Fatalf("tpm: %+v", e)
 	}
 	// A request bigger than the whole TPM can never fit: Retry-After is the full window.
-	if e = l.admitAll("k", lim, 101); e == nil || e.RetryAfter != 60 {
+	if _, e = l.admitAll("k", lim, 101); e == nil || e.RetryAfter != 60 {
 		t.Fatalf("oversize: %+v", e)
 	}
 	// Daily: 90 used today. Jump to one second before UTC midnight (same day, window empty).
 	now = time.Date(2026, 9, 2, 23, 59, 59, 0, time.UTC)
-	must(l.admitAll("k", lim, 1))
-	l.release("k", 1, 59) // 149 today
-	e = l.admitAll("k", lim, 2)
+	l.settle(must(l.admitAll("k", lim, 1)), true, 59) // 149 today
+	_, e = l.admitAll("k", lim, 2)
 	if e == nil || e.Code != CodeBudgetExhausted || e.RetryAfter != 1 {
 		t.Fatalf("daily: %+v", e)
 	}
@@ -973,17 +993,28 @@ func TestLimiterWindowsWithFakeClock(t *testing.T) {
 		t.Fatalf("day did not roll: %+v", c)
 	}
 	must(l.admitAll("k", keys.Limits{DailyTokens: 150}, 100))
-	// Concurrency and release bookkeeping.
+	// Concurrency and settle bookkeeping.
 	l2 := newLimiter()
+	a1 := must(l2.admitAll("k", keys.Limits{MaxConcurrent: 2}, 0))
 	must(l2.admitAll("k", keys.Limits{MaxConcurrent: 2}, 0))
-	must(l2.admitAll("k", keys.Limits{MaxConcurrent: 2}, 0))
-	if e := l2.admitAll("k", keys.Limits{MaxConcurrent: 2}, 0); e == nil || e.Code != CodeConcurrencyLimited || e.RetryAfter != 1 {
+	if _, e := l2.admitAll("k", keys.Limits{MaxConcurrent: 2}, 0); e == nil || e.Code != CodeConcurrencyLimited || e.RetryAfter != 1 {
 		t.Fatalf("concurrency: %+v", e)
 	}
-	l2.release("k", 0, 0)
+	l2.settle(a1, true, 0)
 	must(l2.admitAll("k", keys.Limits{MaxConcurrent: 2}, 0))
 	// Zero limits mean unlimited.
 	for i := 0; i < 50; i++ {
 		must(l2.admitAll("z", keys.Limits{}, 1000))
+	}
+	// A settle that does not count removes exactly its own admission (by seq), not the newest.
+	l3 := newLimiter()
+	first := must(l3.admitAll("k", keys.Limits{MaxConcurrent: 3, RPM: 3}, 0))
+	must(l3.admitAll("k", keys.Limits{MaxConcurrent: 3, RPM: 3}, 0))
+	l3.settle(first, false, 0)
+	if c := l3.counters("k"); c.RPMUsed != 1 || c.InFlight != 1 {
+		t.Fatalf("un-counting the first admission: %+v", c)
+	}
+	if st := l3.state("k"); len(st.log) != 1 || st.log[0].seq != 2 {
+		t.Fatalf("the surviving entry must be the second admission: %+v", st.log)
 	}
 }
