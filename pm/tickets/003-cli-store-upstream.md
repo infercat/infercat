@@ -356,3 +356,27 @@ choices) — ARCHITECTURE.md now says so. `--upstream-key` persisted at 0600. Na
 
 **Landed** on main at the ff-merge of `2d4ad39`. Wiring flip (`wire.go` tag off, `wire_stub.go`
 deleted) happens when 001 and 002 land. Adversarial review dispatched post-landing.
+
+## Adversarial review (PM summary, 2026-09-02 10:40; workflow of 4 lenses × 2 refuters, 46 agents)
+
+**Confirmed (→ ticket 005 fixes 10g–10k):**
+- `internal/upstream/client.go:107` + `kinds.go:75-89` — engine down at `serve` start is stored as
+  Generic and never re-sniffed: wrong kind/slots/tokenize for the life of the process (10g).
+- `cmd/bunny-network/main.go:220-230` — `keys add zed --models` (value omitted) stores `--` (10h).
+- `internal/usage/recorder.go:67/118` — Record after Close panics; unreachable on today's shutdown
+  order but a latent crash (10i).
+- `internal/usage/aggregate.go:115-139` — one >8 MiB line breaks `usage`/`keys list` permanently (10j).
+- `internal/admin/admin_test.go` — 0600 assertion cannot pass on Windows (10k).
+
+**Refuted (kept for the record):** friend's secret forwarded to upstream (gateway builds a fresh
+request; no header copy) · stored `--upstream-key` reused across URLs (contracted persistence; no
+Protection) · admin.sock bound-then-chmod window (data dir is 0700) · userinfo in `--upstream`
+printed (no Protection; host's own URL) · `--dev-listen` persisted silently (contracted) · second-host
+guard ordering (documented) · config.json parse error wording (cosmetic).
+
+**Backlog (not for demo-1):** two concurrent `keys add` processes can lose a key (no cross-process
+lock; single-operator CLI today) · `fsync` of the data dir after rename · Windows admin has no
+"already serving" guard.
+
+**Clean:** secret never logged/persisted/echoed; constant-time compare; temp files 0600 before write;
+keys.json fails closed on corruption; hot-reload stamp survives same-size rotate on ns-mtime filesystems.
