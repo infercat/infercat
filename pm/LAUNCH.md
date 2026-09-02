@@ -24,7 +24,7 @@ gates the public ones (BELIEFS: Authority). Nothing ships while a line in **Foun
       that relay; numbers in the post come from that run.
 - [ ] Web app deployed to F3's URL from the release commit; the invite link form verified end to end
       from a phone on cellular.
-- [x] `docs/ARCHITECTURE.md` and README match the shipped flags (`serve --help` diffed against README, 18:30).
+- [x] `docs/ARCHITECTURE.md` and README match the shipped flags (`serve --help` diffed against README; four flags were missing and were added, 18:40).
 - [ ] Full checks from a fresh clone: `make check`, `make wasm`, `make web`, cross-compiles, printed.
 - [ ] Live proof on the published artifacts: install the release binary the way a stranger would
       (F4's path), serve DeepSeek V4 flash from the workstation, mint an invite, chat from a phone.
