@@ -118,6 +118,15 @@ export async function getMe(t: Transport, secret: string, signal?: AbortSignal):
 /** How long a background /me gets before its silence is itself the news. */
 export const ME_TIMEOUT_MS = 10_000;
 
+/** AbortSignal.timeout, where it exists; a hand-rolled one where it does not. */
+export function timeoutSignal(ms: number): AbortSignal {
+  const T = AbortSignal as typeof AbortSignal & { timeout?: (ms: number) => AbortSignal };
+  if (typeof T.timeout === 'function') return T.timeout(ms);
+  const ac = new AbortController();
+  setTimeout(() => ac.abort(), ms);
+  return ac.signal;
+}
+
 export async function getModels(t: Transport, secret: string): Promise<string[]> {
   const body = (await (await call(t, secret, '/v1/models')).json()) as { data?: { id?: string }[] };
   return (body.data ?? []).map((m) => m.id).filter((id): id is string => typeof id === 'string');

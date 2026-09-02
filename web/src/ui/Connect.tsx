@@ -8,6 +8,7 @@ import { PRODUCT_NAME, privacyLine } from '../product';
 import type { Live, SessionEvent, SessionState } from '../session';
 import {
   countChats,
+  dialsOnArrival,
   dropLegacyHistory,
   forget,
   hostScope,
@@ -88,7 +89,15 @@ export default function Connect({ state, dispatch }: Props) {
   const field = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
-    if (!autoconnected && state.name === 'idle' && text !== '' && inviteProblem(text) === null) {
+    // A link is consent; so is a return visit, unless the reader's last move was Disconnect
+    // (022 promise 5) — then the card waits for them.
+    if (
+      !autoconnected &&
+      state.name === 'idle' &&
+      text !== '' &&
+      inviteProblem(text) === null &&
+      dialsOnArrival(lastHost, HASH_INVITE !== '')
+    ) {
       autoconnected = true;
       void connect();
       return;
@@ -158,6 +167,7 @@ export default function Connect({ state, dispatch }: Props) {
         meOk: true,
         key: me.key.status,
         ephemeral: !exclusive,
+        probed: 0,
       };
       // Promise 12: the privacy sentence on this page is only true when the host is not logging.
       // If it is, the correction goes here — before the first message, not after it.
@@ -183,13 +193,20 @@ export default function Connect({ state, dispatch }: Props) {
     dispatch({ t: 'abort', error: null });
   }
 
-  function forgetInvite(): void {
-    forget(KEYS.invite, KEYS.privateKey, KEYS.lastHost);
+  /** An empty card for the next code. Forgets the dead code — a reload must not dial it again — and nothing else (022 promise 6). */
+  function newCode(): void {
+    forget(KEYS.invite);
     setRemembered('');
     setText('');
     setPasting(true);
     dispatch({ t: 'abort', error: null });
     field.current?.focus();
+  }
+
+  /** The one action that removes anything: the code, the tunnel identity, the last host. Never a chat. */
+  function forgetInvite(): void {
+    forget(KEYS.privateKey, KEYS.lastHost);
+    newCode();
   }
 
   /** Typing is the reader answering the last failure; the old one stops being the current news. */
@@ -216,6 +233,10 @@ export default function Connect({ state, dispatch }: Props) {
   const who = lastHost?.name?.trim() ?? '';
   // A revoked or unrecognised invite cannot be retried; the only move is a new code from the host.
   const needsNewCode = failure?.fatal === true;
+  // The one button that removes anything says what it removes, and what it keeps (022 promise 6).
+  const forgetHint = (
+    <p className="field-hint">Forget removes the code and this device’s tunnel identity. Your chats stay.</p>
+  );
 
   if (disclosure) return <LogPromptsGate me={disclosure.me} onAccept={disclosure.accept} />;
 
@@ -252,8 +273,8 @@ export default function Connect({ state, dispatch }: Props) {
         <h1>{PRODUCT_NAME}</h1>
         {returning ? (
           <p className="pitch">
-            <strong>Welcome back.</strong> Your {chats} {chats === 1 ? 'chat is' : 'chats are'} with{' '}
-            {who || 'your host'} still on this device.
+            <strong>Welcome back.</strong> Your {chats} {chats === 1 ? 'chat' : 'chats'} with {who || 'your host'}{' '}
+            {chats === 1 ? 'is' : 'are'} still on this device.
           </p>
         ) : (
           <p className="pitch">
@@ -321,6 +342,7 @@ export default function Connect({ state, dispatch }: Props) {
             </button>
           )}
         </div>
+        {remembered !== '' && !failure && forgetHint}
 
         {failure && (
           <div className="failure" role="alert">
@@ -334,7 +356,7 @@ export default function Connect({ state, dispatch }: Props) {
             )}
             <div className="connect-actions">
               {needsNewCode ? (
-                <button className="primary" onClick={forgetInvite}>
+                <button className="primary" onClick={newCode}>
                   Paste a new code
                 </button>
               ) : (
@@ -348,6 +370,7 @@ export default function Connect({ state, dispatch }: Props) {
                 </button>
               )}
             </div>
+            {remembered !== '' && !needsNewCode && forgetHint}
           </div>
         )}
 

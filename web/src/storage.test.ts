@@ -4,6 +4,7 @@ import {
   chatsChanged,
   countChats,
   deleteChat,
+  dialsOnArrival,
   dropLegacyHistory,
   forget,
   hostScope,
@@ -13,8 +14,9 @@ import {
   mergeChats,
   modelFor,
   electStore,
+  rememberLeft,
   reopenChats,
-  settlePending,
+  undelivered,
   newConversation,
   prune,
   save,
@@ -22,6 +24,7 @@ import {
   scopedKeys,
   titleFrom,
   type Conversation,
+  type LastHost,
   type Message,
 } from './storage';
 
@@ -248,35 +251,77 @@ describe('multi-tab conversation storage', () => {
   });
 
   // 020 promise 1, the blocker: "Not delivered" under an answered message, persisted for ever.
-  describe('the pending mark is per turn', () => {
-    const turn = (id: string, pending?: boolean): Message => ({ id, role: 'user', content: id, ...(pending ? { pending } : {}) });
-    const answer = (id: string, status: Message['status']): Message => ({ id, role: 'assistant', content: status === 'no_answer' ? '' : 'a', status });
+  // 022 promise 2: the mark derives from delivery. No flag on the turn, so nothing persisted can
+  // contradict what the next request will actually carry.
+  describe('undelivered turns derive from delivery', () => {
+    const turn = (id: string): Message => ({ id, role: 'user', content: id });
+    const answer = (id: string, status: Message['status'] | undefined): Message => ({
+      id, role: 'assistant', content: status === 'no_answer' || status === undefined ? '' : 'a', ...(status ? { status } : {}),
+    });
+    const ids = (thread: Message[]) => [...undelivered(thread)].sort();
 
-    it('clears exactly the turns that have their answer, and keeps the one that does not', () => {
+    it('marks exactly the turns after the last reply that got through', () => {
       const thread = [
-        turn('u1', true), answer('a1', 'complete'),
-        turn('u2', true), answer('a2', 'stopped'),
-        turn('u3', true), answer('a3', 'complete'),
-        turn('u4', true), { id: 'a4', role: 'assistant' as const, content: '', status: 'interrupted' as const },
+        turn('u1'), answer('a1', 'complete'),
+        turn('u2'), answer('a2', 'stopped'),
+        turn('u3'), answer('a3', 'complete'),
+        turn('u4'), answer('a4', 'interrupted'),
       ];
-      const settled = settlePending(thread);
-      expect(settled.filter((m) => m.pending === true).map((m) => m.id)).toEqual(['u4']);
+      expect(ids(thread)).toEqual(['u4']);
     });
 
-    it('does not call a reply with no answer in it a delivery', () => {
-      expect(settlePending([turn('u1', true), answer('a1', 'no_answer')])[0]?.pending).toBe(true);
-      expect(settlePending([turn('u1', true)])[0]?.pending).toBe(true); // nothing after it yet
+    it('clears a turn the moment a later send succeeds with it in the history (ZEBRA)', () => {
+      // Sent while paused, refused; the reader resumes and sends the next message, whose history
+      // holds ZEBRA — the model recalls it, so nothing about that turn may say "not delivered".
+      const thread = [turn('zebra'), answer('a1', 'interrupted'), turn('u2'), answer('a2', 'complete')];
+      expect(ids(thread)).toEqual([]);
     });
 
-    it('is the same object when there is nothing to settle', () => {
-      const thread = [turn('u1'), answer('a1', 'complete')];
-      expect(settlePending(thread)).toBe(thread);
+    it('keeps every turn since the last delivery when several fail in a row', () => {
+      const thread = [turn('u1'), answer('a1', 'complete'), turn('u2'), answer('a2', 'interrupted'), turn('u3'), answer('a3', 'interrupted')];
+      expect(ids(thread)).toEqual(['u2', 'u3']);
     });
 
-    it('repairs a transcript an older release marked, on load', () => {
-      saveChat(S, { ...chat('c1', 10, msg('m1', 'x')), messages: [turn('u1', true), answer('a1', 'complete'), turn('u2', true), answer('a2', 'complete')] });
-      expect(loadChats(S)[0]?.messages.some((m) => m.pending === true)).toBe(false);
+    it('counts a reply with no answer in it as a request that got through', () => {
+      // The host said done; the model only thought. The reply row says so; the turn was asked.
+      expect(ids([turn('u1'), answer('a1', 'no_answer')])).toEqual([]);
     });
+
+    it('holds a turn whose reply has not ended, and one with no reply at all', () => {
+      expect(ids([turn('u1')])).toEqual(['u1']);
+      expect(ids([turn('u1'), answer('a1', undefined)])).toEqual(['u1']); // the view hides it while answering
+    });
+
+    it('ignores the flag an older release stored on the turn', () => {
+      const marked = { ...turn('u1'), pending: true } as Message;
+      saveChat(S, { ...chat('c1', 10, msg('m1', 'x')), messages: [marked, answer('a1', 'complete'), { ...turn('u2'), pending: true } as Message, answer('a2', 'complete')] });
+      expect(undelivered(loadChats(S)[0]?.messages ?? [])).toEqual(new Set());
+    });
+  });
+});
+
+// 022 promise 5: Disconnect outlives the tab.
+describe('a reader who left', () => {
+  const HOST: LastHost = { name: 'desk', scope: 'abc' };
+
+  it('is remembered beside the host, and a fresh verify forgets it', () => {
+    save(KEYS.lastHost, HOST);
+    rememberLeft();
+    expect(load<LastHost | null>(KEYS.lastHost, null)).toEqual({ ...HOST, left: true });
+    save(KEYS.lastHost, HOST); // what a successful connect writes
+    expect(load<LastHost | null>(KEYS.lastHost, null)?.left).toBeUndefined();
+  });
+
+  it('does not write a host record that does not exist', () => {
+    rememberLeft();
+    expect(load(KEYS.lastHost, null)).toBeNull();
+  });
+
+  it('is not dialled again on arrival — unless the code came by link', () => {
+    expect(dialsOnArrival({ ...HOST, left: true }, false)).toBe(false);
+    expect(dialsOnArrival({ ...HOST, left: true }, true)).toBe(true);
+    expect(dialsOnArrival(HOST, false)).toBe(true);
+    expect(dialsOnArrival(null, false)).toBe(true);
   });
 });
 

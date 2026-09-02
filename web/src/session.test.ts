@@ -1,7 +1,7 @@
 // The session machine. These are the promises that used to be scattered flags: a transport is
 // never left open, a stale measurement is never presented as current, and a revoked key is never
 // swallowed by a background refresh.
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { Me } from './api';
 import {
   ago,
@@ -15,7 +15,10 @@ import {
   meters,
   metersUnknown,
   pathLine,
+  probeDelay,
+  probing,
   reduce,
+  scheduleProbe,
   waitText,
   type Live,
   type SessionEvent,
@@ -63,6 +66,7 @@ function liveOn(t: Transport, over: Partial<Live> = {}): Live {
     meOk: true,
     key: 'active',
     ephemeral: false,
+    probed: 0,
     ...over,
   };
 }
@@ -456,5 +460,109 @@ describe('redialling a host whose session broke', () => {
 
   it('is ignored when there is no session to redial', () => {
     expect(reduce(IDLE, { t: 'redial' })).toBe(IDLE);
+  });
+});
+
+// 022 promise 1: a degraded session asks after the host by itself, backing off, and heals the
+// moment a probe finds it — by a /me over the session it has, or by a fresh dial when the host
+// stopped answering over that session (measured: such a session never answers again).
+describe('the self-probe', () => {
+  const connected = (t: Transport, over: Partial<Live> = {}): SessionState => ({ name: 'connected', live: liveOn(t, over) });
+  const noAnswer: SessionEvent = { t: 'streamError', code: 'host_asleep', error: { title: 'no', detail: 'no', code: 'host_asleep' } };
+
+  afterEach(() => vi.useRealTimers());
+
+  it('backs off 5 s, 10 s, 20 s, then holds at 30 s', () => {
+    expect([0, 1, 2, 3, 4, 9].map(probeDelay)).toEqual([5_000, 10_000, 20_000, 30_000, 30_000, 30_000]);
+  });
+
+  it('runs for every degradation that can heal, never for an invite the host switched off', () => {
+    const t = fakeTransport();
+    expect(probing(reduce(connected(t), noAnswer))).toBe(true);
+    expect(probing(reduce(connected(t), { t: 'pingFail' }))).toBe(true);
+    expect(probing(reduce(connected(t), { t: 'meOk', me: { ...ME, host: { ...ME.host, upstream: { ...ME.host.upstream, healthy: false } } } }))).toBe(true);
+    expect(probing(reduce(connected(t), { t: 'meOk', me: { ...ME, key: { ...ME.key, status: 'paused' } } }))).toBe(false);
+    expect(probing(connected(t))).toBe(false);
+  });
+
+  it('counts each miss while degraded, and forgets the count on the way back to connected', () => {
+    const t = fakeTransport();
+    let s = reduce(connected(t), noAnswer);
+    s = reduce(reduce(s, { t: 'probed' }), { t: 'probed' });
+    expect(s.name).toBe('degraded');
+    expect(live(s)?.probed).toBe(2);
+    expect(reduce(connected(t), { t: 'probed' })).toEqual(connected(t)); // nothing to count while healthy
+    s = reduce(s, { t: 'verified', live: liveOn(fakeTransport(), { probed: 0 }) });
+    expect(s.name).toBe('connected');
+    expect(live(s)?.probed).toBe(0);
+  });
+
+  it('a fresh session replaces the one the host stopped answering over, closing it once', () => {
+    const old = fakeTransport();
+    const fresh = fakeTransport();
+    let s = run([noAnswer], connected(old));
+    expect(s.name).toBe('degraded');
+    s = run([{ t: 'verified', live: liveOn(fresh, { probed: 0 }) }], s);
+    expect(s.name).toBe('connected');
+    expect(live(s)?.transport).toBe(fresh);
+    expect(live(s)?.meOk).toBe(true);
+    expect(old.closes).toBe(1);
+    expect(fresh.closes).toBe(0);
+  });
+
+  it('a candidate that lands while the session it has still reaches the host is closed, not adopted', () => {
+    const t = fakeTransport();
+    const stray = fakeTransport();
+    // Engine down: /me got through, so the probe is a /me, and a stray dial has nothing to replace.
+    const sick = reduce(connected(t), { t: 'meOk', me: { ...ME, host: { ...ME.host, upstream: { ...ME.host.upstream, healthy: false } } } });
+    expect(run([{ t: 'verified', live: liveOn(stray) }], sick)).toBe(sick);
+    expect(stray.closes).toBe(1);
+    expect(t.closes).toBe(0);
+    // And one that lands after Reconnect or Disconnect took the session away.
+    const late = fakeTransport();
+    const gone = run([noAnswer, { t: 'redial' }], connected(t));
+    expect(run([{ t: 'verified', live: liveOn(late) }], gone)).toBe(gone);
+    expect(late.closes).toBe(1);
+  });
+
+  it('host dead for 40 s, then back: connected within 30 s of its return, on a fake clock', async () => {
+    vi.useFakeTimers();
+    const t = fakeTransport();
+    let s = reduce(connected(t), noAnswer);
+    let dead = true;
+    const asked: number[] = [];
+    let cancel = () => {};
+    let armed = { on: false, probed: -1 };
+    // The effect in App.tsx: armed on the miss count and on whether the session is degraded at
+    // all — never on the poll's other news — and cancelled once healed.
+    const rearm = () => {
+      const now = { on: probing(s), probed: live(s)?.probed ?? 0 };
+      if (now.on === armed.on && now.probed === armed.probed) return;
+      armed = now;
+      cancel();
+      cancel = now.on ? scheduleProbe(now.probed, probe, dispatch) : () => {};
+    };
+    const dispatch = (e: SessionEvent) => {
+      s = reduce(s, e);
+      rearm();
+    };
+    const probe = async () => {
+      asked.push(Date.now());
+      if (dead) dispatch({ t: 'meError', error: { title: 'no', detail: 'no' } });
+      else dispatch({ t: 'verified', live: liveOn(fakeTransport()) });
+    };
+    rearm();
+    const t0 = Date.now();
+    await vi.advanceTimersByTimeAsync(40_000);
+    expect(s.name).toBe('degraded');
+    expect(asked.map((at) => (at - t0) / 1000)).toEqual([5, 15, 35]);
+    dead = false;
+    const back = Date.now();
+    await vi.advanceTimersByTimeAsync(30_000);
+    expect(s.name).toBe('connected');
+    expect((asked[asked.length - 1] as number) - back).toBeLessThanOrEqual(30_000);
+    // Healed: nothing more is asked.
+    await vi.advanceTimersByTimeAsync(120_000);
+    expect(asked).toHaveLength(4);
   });
 });

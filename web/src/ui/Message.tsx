@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { modelLabel } from '../api';
 import { compact } from '../session';
-import type { Message } from '../storage';
+import { isAnswer, type Message } from '../storage';
 import { replyEnding } from '../stream';
 import type { ThreadAction } from './Chat';
 import Markdown from './Markdown';
@@ -16,6 +16,8 @@ interface Props {
   busy: boolean;
   /** (User turns) the reply right after this turn is still arriving — in this tab or another. */
   answering: boolean;
+  /** (User turns) no request carrying this turn has succeeded yet (022 promise 2). Derived by Chat, never stored. */
+  undelivered: boolean;
   /** A follower tab (020 promise 6): nothing here may start a request or edit the thread. */
   readOnly: boolean;
   /** Actions only appear on the last exchange, the way ChatGPT does it. */
@@ -36,6 +38,7 @@ export default function MessageView({
   live,
   busy,
   answering,
+  undelivered,
   readOnly,
   last,
   action,
@@ -66,9 +69,9 @@ export default function MessageView({
         </div>
       );
     }
-    // The pending mark is per turn (020 promise 1): this turn's own flag, hidden only while its
-    // own reply is on the way. Never a claim about any other turn.
-    const pending = m.pending === true && !answering;
+    // The mark is derived from delivery (022 promise 2): it clears the moment any request that
+    // carried this turn succeeds, and it hides while this turn's own reply is on the way.
+    const pending = undelivered && !answering;
     return (
       <div className="row user">
         <div className={`bubble ${pending ? 'pending' : ''}`}>{m.content}</div>
@@ -132,9 +135,18 @@ export default function MessageView({
           {!readOnly && <button className="ghost tiny" onClick={onContinue}>Continue</button>}
         </p>
       )}
+      {/* The one wall that ends chats, said in the register it deserves (022 promise 3). What is
+          true: the reply stopped here; the thread goes back to the host without the model's
+          thinking, so the next message may still fit, but each reply has less room until one no
+          longer fits and the host says so in its own row. Nothing is dropped behind the reader's
+          back, and nothing is disabled. */}
       {ending === 'context' && (
-        <p className="ended capped">
-          This chat has filled the {compact(limits.modelContext)} memory on {host || 'the host'} — start a new chat to keep going.{' '}
+        <p className="ended wall">
+          <span>
+            This chat has filled the {compact(limits.modelContext)} memory on {host || 'the host'}, so this reply
+            stopped short. Replies will keep getting shorter until a message no longer fits — start a new chat for
+            a clean slate.
+          </span>
           {!readOnly && <button className="ghost tiny" onClick={onNewChat}>New chat</button>}
         </p>
       )}
@@ -152,9 +164,9 @@ export default function MessageView({
           {m.tokens ? ` · ${m.tokens.in} tokens in · ${m.tokens.out} out` : ''}
           {/* A stopped reply never gets its usage chunk, but the host counted what it made. */}
           {!m.tokens && m.status === 'stopped' ? ' · still counted against today’s tokens' : ''}
-          {m.status === 'interrupted' || m.status === 'no_answer'
-            ? ' · not part of the next question'
-            : ''}
+          {/* Said only of text that is on screen: a reply with nothing in it is not "part" of anything,
+              and under a turn that was never answered it read as a claim about the turn (022 promise 2). */}
+          {!isAnswer(m) && m.content.trim() !== '' ? ' · not part of the next question' : ''}
         </span>
         <span className="actions">
           {!live && m.content !== '' && <CopyButton text={m.content} />}

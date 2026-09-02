@@ -37,6 +37,11 @@ export interface Live {
   key: KeyState;
   /** True when another tab holds the persisted tunnel identity and this one connected fresh. */
   ephemeral: boolean;
+  /**
+   * How many self-probes have found the host still unreachable or its engine still down since the
+   * session last degraded (022 promise 1). The schedule is probeDelay(probed); zero while connected.
+   */
+  probed: number;
 }
 
 /**
@@ -74,6 +79,8 @@ export type SessionEvent =
   | { t: 'streamError'; code: string; error: FriendlyError }
   /** Throw this session away and dial the same host again (014 promise 13). */
   | { t: 'redial' }
+  /** A self-probe came back, whatever it found: the next one waits longer (022 promise 1). */
+  | { t: 'probed' }
   /** The attempt failed, or the reader pressed Disconnect (`error` null). */
   | { t: 'abort'; error: FriendlyError | null };
 
@@ -93,7 +100,11 @@ export function reduce(s: SessionState, e: SessionEvent): SessionState {
       // hands the orphan to the closer.
       return s.name === 'connecting' ? { name: 'verifying', transport: e.transport } : s;
     case 'verified':
-      return s.name === 'verifying' && s.transport === e.live.transport ? settle(e.live) : s;
+      if (s.name === 'verifying' && s.transport === e.live.transport) return settle(e.live);
+      // A self-probe dialled the host afresh because this session stopped reaching it (022
+      // promise 1): the new session takes over and dropped() closes the one it replaces. While the
+      // session it has does reach the host there is nothing to replace: the candidate is closed.
+      return l && !l.meOk ? settle(e.live) : s;
     case 'meOk':
       // A /me that answers is the one source of the engine's health and the key's state (020
       // promise 4): whatever it says is what the header says, and a pause ends the moment it says
@@ -127,6 +138,8 @@ export function reduce(s: SessionState, e: SessionEvent): SessionState {
     // what dials again. Only from a live session: there is nothing to redial from anywhere else.
     case 'redial':
       return l ? { name: 'connecting' } : s;
+    case 'probed':
+      return s.name === 'degraded' ? settle({ ...s.live, probed: s.live.probed + 1 }) : s;
     case 'abort':
       return { name: 'disconnected', reason: e.error };
   }
@@ -189,7 +202,48 @@ function settle(l: Live): SessionState {
           : path
             ? 'path'
             : null;
-  return reason ? { name: 'degraded', live: l, reason } : { name: 'connected', live: l };
+  if (reason) return { name: 'degraded', live: l, reason };
+  return { name: 'connected', live: l.probed === 0 ? l : { ...l, probed: 0 } };
+}
+
+// ---- the self-probe (022 promise 1) --------------------------------------------------------------
+
+/**
+ * Whether the session asks after the host by itself. Every degradation but a switched-off invite
+ * can end without the reader doing anything — the host wakes, the engine comes back, the path is
+ * measurable again — so the session keeps asking, on a schedule that backs off; a pause heals on
+ * the ordinary poll, and a revoked invite cannot heal at all.
+ */
+export function probing(s: SessionState): boolean {
+  return s.name === 'degraded' && s.reason !== 'key';
+}
+
+/** How long after the last probe the next one goes out: 5 s, then 10, 20, and 30 s from there. */
+export function probeDelay(probed: number): number {
+  return Math.min(30_000, 5_000 * 2 ** probed);
+}
+
+/**
+ * One probe on the schedule: `probe` runs after probeDelay(probed) and dispatches what it finds;
+ * `probed` follows, so the reducer counts the miss and the next one waits longer. The caller
+ * re-arms on every change of `probed` and cancels when the session is no longer degraded (or is
+ * gone), so a host that heals — by a probe, by the poll, by Reconnect — is asked nothing more.
+ */
+export function scheduleProbe(
+  probed: number,
+  probe: () => Promise<void>,
+  dispatch: (e: SessionEvent) => void,
+): () => void {
+  let armed = true;
+  const timer = setTimeout(() => {
+    void probe().finally(() => {
+      if (armed) dispatch({ t: 'probed' });
+    });
+  }, probeDelay(probed));
+  return () => {
+    armed = false;
+    clearTimeout(timer);
+  };
 }
 
 // ---- what the surfaces say -------------------------------------------------------------------

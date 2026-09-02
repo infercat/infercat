@@ -69,4 +69,26 @@ estimate pushes it). Concept budget 0. **Normal**; the fourth experience pass (p
 
 ## Log
 
+All times 2026-09-02, EDT, laptop.
+
+- 18:40 — ACK. Worktree `t022-web-truth-3` at `5d04654` (public main); scope `web/**` except
+  `web/wasm/**`, no Go. Read BELIEFS, DESIGN §2, the 014/020 reports, all of `web/src`, both
+  harnesses and the phone shots (`ux3-phone-shots/51–94`). pnpm 11, Node 22; `make build`,
+  `make web`, `pnpm install --frozen-lockfile`, `pnpm test` (218) green at base. Host for evidence:
+  `bin/bunny-network … --dev-listen 127.0.0.1:6720`, preview on 6721; the shared llama-server only
+  receives requests.
+- 18:50 — Two premises checked against the real host before any edit (probe script in the job's
+  tmp, not the repo):
+  (i) **Promise 3's mechanism is not in the code.** Nothing in `web/src` trims history; the gateway
+  refuses a prompt over the context (`internal/gateway/proxy.go:238`, `context_too_long`) and
+  shrinks `max_tokens` to what is left (`:241`). Measured: after a 51 + 4045 = 4096 wall the next
+  send went through with `prompt_tokens: 3339` — the thread fit again only because the model's
+  *thinking* is never sent back (`Chat.tsx toChatMessages`), not because anything was dropped. So
+  "older turns will be dropped from here on" would be the new lie. The copy will say what happens:
+  replies get shorter until a message no longer fits, and the host says so; New chat stays; the
+  composer stays. Judgment call, declared in the report; client-side trimming listed as a candidate.
+  (ii) **Whether a dead session heals by itself once the host is back** (the reviewer's 57 says
+  not, at 2 min): probing now — decides whether the self-probe is a /me over the session it has,
+  or a fresh dial when that /me cannot get through.
+
 ## Report
