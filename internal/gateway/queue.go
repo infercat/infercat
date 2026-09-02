@@ -25,7 +25,8 @@ type waiter struct{ ch chan struct{} } // closed when a slot is handed over
 // wait. The outcome says how it ended: outcomeNone with a slot held; outcomeRejected when the
 // waiting set was full (refused on the spot, no place was held); outcomeQueueLost when a place was
 // held and then lost to the timeout (queue_timeout) or to the friend leaving (client_closed). On
-// timeout or ctx the waiter removes itself; if a slot was handed over in that race it hands it on.
+// timeout or ctx the waiter removes itself; if a slot was handed over in that race — including the
+// hand-over wait declines because the friend has gone — it hands it on to the next waiter.
 //
 // queued, when non-nil, is the request's word to the friend that it is in line (018): called once
 // on joining and again every `every` while waiting. An error from it is a friend who has gone —
@@ -66,8 +67,12 @@ func (s *slotQueue) acquire(ctx context.Context, wait, every time.Duration, queu
 	return outcomeQueueLost, err
 }
 
-// wait is the waiter's side of acquire: nil when the slot was handed over; otherwise why the wait
-// ended — the timeout, the friend's context, or a keepalive write that failed.
+// wait is the waiter's side of acquire: nil when the slot was handed over to a friend who is still
+// there; otherwise why the wait ended — the timeout, the friend's context, or a keepalive write
+// that failed. A hand-over and a departure can become ready in the same instant, and Go's select
+// picks between ready cases at random: the departure wins, always, so a slot is never spent on a
+// request that has already gone (021; DESIGN §1.4 charges a Cut its whole reservation, which is the
+// wrong answer for a friend who left while queued).
 func (s *slotQueue) wait(ctx context.Context, w *waiter, wait, every time.Duration, queued func() error) *gwError {
 	var tick <-chan time.Time
 	if queued != nil {
@@ -83,6 +88,9 @@ func (s *slotQueue) wait(ctx context.Context, w *waiter, wait, every time.Durati
 	for {
 		select {
 		case <-w.ch:
+			if ctx.Err() != nil {
+				return errf(CodeClientClosed, 0, "client went away while queued")
+			}
 			return nil
 		case <-t.C:
 			return errf(CodeQueueTimeout, retryAfterQueueTimeout, "the host's engine is busy; waited %s for a free slot", wait)
