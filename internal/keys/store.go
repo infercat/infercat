@@ -108,7 +108,10 @@ func cloneKey(k *Key) *Key {
 	return &c
 }
 
-// Lookup resolves a presented secret in constant time with respect to which key matched.
+// Lookup resolves a presented secret in constant time with respect to which key matched. A miss
+// re-stats the file first, past the once-per-second throttle, so a key minted a moment ago by
+// `keys add` in another process never answers 401 (ticket 005 fix 10a): the miss is the rare
+// path and one stat is cheap.
 func (s *FileStore) Lookup(ctx context.Context, secret string) (*Key, bool, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -116,16 +119,28 @@ func (s *FileStore) Lookup(ctx context.Context, secret string) (*Key, bool, erro
 		return nil, false, err
 	}
 	want := []byte(HashSecret(secret))
+	found := s.match(want)
+	if found == nil {
+		if err := s.reload(true); err != nil {
+			return nil, false, err
+		}
+		found = s.match(want)
+	}
+	if found == nil {
+		return nil, false, nil
+	}
+	return cloneKey(found), true, nil
+}
+
+// match scans every key so the time taken does not depend on which one matched. Callers hold s.mu.
+func (s *FileStore) match(want []byte) *Key {
 	var found *Key
 	for _, k := range s.keys {
 		if subtle.ConstantTimeCompare([]byte(k.SecretHash), want) == 1 {
 			found = k
 		}
 	}
-	if found == nil {
-		return nil, false, nil
-	}
-	return cloneKey(found), true, nil
+	return found
 }
 
 // List returns every key, oldest first.

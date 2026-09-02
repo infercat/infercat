@@ -3,9 +3,11 @@ package upstream
 import (
 	"context"
 	"encoding/json"
+	"io"
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync/atomic"
 	"testing"
 )
 
@@ -156,7 +158,7 @@ func TestDetectOrder(t *testing.T) {
 		url  string
 		kind Kind
 	}{{dead, LlamaCPP}, {llama.URL, LlamaCPP}, {vl.URL, VLLM}}
-	up, err := Detect(ctx)
+	up, err := Detect(ctx, "")
 	if err != nil {
 		t.Fatalf("Detect: %v", err)
 	}
@@ -169,7 +171,7 @@ func TestDetectOrder(t *testing.T) {
 		url  string
 		kind Kind
 	}{{dead, LlamaCPP}, {vl.URL, VLLM}}
-	up, err = Detect(ctx)
+	up, err = Detect(ctx, "")
 	if err != nil {
 		t.Fatalf("Detect: %v", err)
 	}
@@ -181,8 +183,47 @@ func TestDetectOrder(t *testing.T) {
 		url  string
 		kind Kind
 	}{{dead, LlamaCPP}}
-	if _, err := Detect(ctx); err != ErrNoUpstream {
+	if _, err := Detect(ctx, ""); err != ErrNoUpstream {
 		t.Errorf("Detect with nothing listening = %v, want ErrNoUpstream", err)
+	}
+}
+
+// 005 fix 10n: auto-detection sends --upstream-key on its probes, so a vLLM behind a bearer token
+// (401 to an unauthenticated probe) is found instead of being reported as no engine at all.
+func TestDetectPassesTheAPIKeyToProbes(t *testing.T) {
+	const key = "sk-guarded"
+	guard := func(h http.HandlerFunc) http.HandlerFunc {
+		return func(w http.ResponseWriter, r *http.Request) {
+			if r.Header.Get("Authorization") != "Bearer "+key {
+				http.Error(w, "unauthorized", http.StatusUnauthorized)
+				return
+			}
+			h(w, r)
+		}
+	}
+	mux := http.NewServeMux()
+	mux.HandleFunc("/version", guard(jsonOK(`{"version":"0.25.0"}`)))
+	mux.HandleFunc("/v1/models", guard(jsonOK(`{"object":"list","data":[{"id":"m","owned_by":"vllm","max_model_len":8192}]}`)))
+	srv := serve(t, mux)
+
+	restore := candidates
+	t.Cleanup(func() { candidates = restore })
+	candidates = []struct {
+		url  string
+		kind Kind
+	}{{srv.URL, VLLM}}
+
+	// Without the key the guarded engine looks absent.
+	if _, err := Detect(context.Background(), ""); err != ErrNoUpstream {
+		t.Fatalf("Detect without the key = %v; want ErrNoUpstream (401 on every probe)", err)
+	}
+	// With the key it is found, healthy, and correctly typed.
+	up, err := Detect(context.Background(), key)
+	if err != nil {
+		t.Fatalf("Detect with the key: %v", err)
+	}
+	if i := up.Info(); i.Kind != VLLM || !i.Healthy || i.ModelContext != 8192 {
+		t.Fatalf("detected %+v; want vllm, healthy, context 8192", i)
 	}
 }
 
@@ -204,6 +245,43 @@ func TestDefaultDetectionOrderMatchesTheContract(t *testing.T) {
 		if candidates[i] != want[i] {
 			t.Errorf("candidate %d = %v, want %v", i, candidates[i], want[i])
 		}
+	}
+}
+
+// 005 fix 10g: an engine that is down when serve starts is a guess (Generic, unhealthy); the
+// first Refresh that finds it answering re-sniffs and adopts the real kind, slots, and context.
+func TestRefreshReSniffsAnEngineThatWasDownAtOpen(t *testing.T) {
+	var up atomic.Bool
+	srv := serve(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !up.Load() {
+			http.Error(w, "starting", http.StatusServiceUnavailable)
+			return
+		}
+		switch r.URL.Path {
+		case "/props":
+			io.WriteString(w, `{"total_slots":4,"default_generation_settings":{"n_ctx":8192}}`)
+		case "/v1/models":
+			io.WriteString(w, `{"data":[{"id":"m"}]}`)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	u, err := Open(context.Background(), srv.URL, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if i := u.Info(); i.Healthy || i.Kind != Generic {
+		t.Fatalf("down engine at Open = %+v; want Generic and unhealthy", i)
+	}
+	if err := u.Refresh(context.Background()); err == nil {
+		t.Fatal("Refresh against a down engine must fail")
+	}
+	up.Store(true)
+	if err := u.Refresh(context.Background()); err != nil {
+		t.Fatal(err)
+	}
+	if i := u.Info(); !i.Healthy || i.Kind != LlamaCPP || i.Slots != 4 || i.ModelContext != 8192 || len(i.Models) != 1 {
+		t.Fatalf("after the engine came up = %+v; want llama.cpp, 4 slots, context 8192, 1 model", i)
 	}
 }
 

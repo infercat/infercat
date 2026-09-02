@@ -200,6 +200,33 @@ func TestHotReload(t *testing.T) {
 	}
 }
 
+// Ticket 005 fix 10a: a key minted by another process is usable at once, even inside the
+// once-per-second reload throttle, because a Lookup miss re-stats the file before answering.
+func TestLookupMissForcesReload(t *testing.T) {
+	ctx := context.Background()
+	s, dir := newStore(t)
+	writer, err := NewFileStore(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	clock := time.Now()
+	s.now = func() time.Time { return clock }
+	if list, _ := s.List(ctx); len(list) != 0 { // arms the throttle
+		t.Fatalf("fresh store has %d keys", len(list))
+	}
+	_, secret, err := writer.Add(ctx, "alice", Limits{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	k, ok, err := s.Lookup(ctx, secret)
+	if err != nil || !ok || k.Name != "alice" {
+		t.Fatalf("Lookup right after another process's Add = %v %v %v; want alice", k, ok, err)
+	}
+	if _, ok, err := s.Lookup(ctx, "not-a-secret"); ok || err != nil {
+		t.Fatalf("garbage secret = %v %v; want a plain miss", ok, err)
+	}
+}
+
 func TestWritesAreAtomicAndLeaveNoTemps(t *testing.T) {
 	ctx := context.Background()
 	s, dir := newStore(t)

@@ -53,6 +53,7 @@ type gatewayServer interface {
 	Serve(l net.Listener) error
 	ServeDev(addr string) error
 	Shutdown(ctx context.Context) error
+	SetSlots(n int) // follow the engine's slot count once a refresh sees it (005 fix 10d)
 }
 
 type gatewayOptions struct {
@@ -192,8 +193,9 @@ func resolveDataDir(s string) (string, error) {
 
 // reorder moves positional arguments behind the flags. The standard flag package stops parsing
 // at the first non-flag word, which would make the documented `keys add alice --rpm 60` silently
-// treat --rpm as a second name.
-func reorder(fs *flag.FlagSet, args []string) []string {
+// treat --rpm as a second name. A value flag with nothing after it is an error here, because the
+// "--" terminator appended below would otherwise become its value (005 fix 10h).
+func reorder(fs *flag.FlagSet, args []string) ([]string, error) {
 	var flags, positional []string
 	for i := 0; i < len(args); i++ {
 		a := args[i]
@@ -217,24 +219,31 @@ func reorder(fs *flag.FlagSet, args []string) []string {
 		if b, ok := f.Value.(interface{ IsBoolFlag() bool }); ok && b.IsBoolFlag() {
 			continue // --bool takes no value
 		}
-		if i+1 < len(args) {
-			i++
-			flags = append(flags, args[i])
+		if i+1 >= len(args) {
+			return nil, fmt.Errorf("flag needs an argument: %s", a)
 		}
+		i++
+		flags = append(flags, args[i])
 	}
 	if len(positional) == 0 {
-		return flags
+		return flags, nil
 	}
 	// The "--" terminator keeps a positional that looks like a flag (or one that followed an
 	// explicit "--") positional; flag.Parse consumes it.
-	return append(append(flags, "--"), positional...)
+	return append(append(flags, "--"), positional...), nil
 }
 
 // parse runs fs, turning -h into printed help and a bad flag into a usage error.
 func (e *env) parse(fs *flag.FlagSet, help string, args []string) error {
 	fs.SetOutput(e.errw)
 	fs.Usage = func() {}
-	if err := fs.Parse(reorder(fs, args)); err != nil {
+	ordered, err := reorder(fs, args)
+	if err != nil {
+		fmt.Fprintln(e.errw, err)
+	} else {
+		err = fs.Parse(ordered)
+	}
+	if err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			fmt.Fprint(e.out, help)
 			return errDone

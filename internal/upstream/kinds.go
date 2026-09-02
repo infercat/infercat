@@ -74,8 +74,16 @@ func sniff(ctx context.Context, c *client) (Kind, bool) {
 // in place but marks the upstream unhealthy, so /me keeps telling the truth about what it knew.
 func (c *client) Refresh(ctx context.Context) error {
 	c.mu.RLock()
-	kind, override := c.info.Kind, c.setSlots
+	kind, override, sniffed := c.info.Kind, c.setSlots, c.sniffed
 	c.mu.RUnlock()
+	if !sniffed { // the engine was down when we guessed: adopt the real kind once it answers (005 fix 10g)
+		if k, ok := sniff(ctx, c); ok {
+			kind = k
+			c.mu.Lock()
+			c.sniffed = true
+			c.mu.Unlock()
+		}
+	}
 
 	next := Info{Kind: kind, URL: c.base.String(), Healthy: true, Slots: defaultSlots(kind)}
 	var err error

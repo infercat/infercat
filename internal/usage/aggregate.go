@@ -111,31 +111,38 @@ type Report struct {
 func Aggregate(r io.Reader, f Filter) (*Report, error) {
 	rep := &Report{}
 	byKey := map[string]*Stats{}
-	sc := bufio.NewScanner(r)
-	sc.Buffer(make([]byte, 0, 64*1024), 8*1024*1024)
-	for sc.Scan() {
-		line := sc.Bytes()
-		if len(line) == 0 {
-			continue
+	rd := bufio.NewReaderSize(r, 64*1024)
+	for {
+		line, err := readLine(rd)
+		if err != nil && !errors.Is(err, io.EOF) {
+			return nil, err
+		}
+		if line == nil { // a single line past maxLine: skipped whole, counted (005 fix 10j)
+			rep.Malformed++
 		}
 		var e Event
-		if err := json.Unmarshal(line, &e); err != nil {
+		if len(line) > 0 && json.Unmarshal(line, &e) != nil {
 			rep.Malformed++
+			line = nil
+		}
+		if len(line) == 0 {
+			if errors.Is(err, io.EOF) {
+				break
+			}
 			continue
 		}
-		if !f.match(&e) {
-			continue
+		if f.match(&e) {
+			rep.Total.add(&e)
+			s := byKey[e.KeyID]
+			if s == nil {
+				s = &Stats{KeyID: e.KeyID}
+				byKey[e.KeyID] = s
+			}
+			s.add(&e)
 		}
-		rep.Total.add(&e)
-		s := byKey[e.KeyID]
-		if s == nil {
-			s = &Stats{KeyID: e.KeyID}
-			byKey[e.KeyID] = s
+		if errors.Is(err, io.EOF) {
+			break
 		}
-		s.add(&e)
-	}
-	if err := sc.Err(); err != nil {
-		return nil, err
 	}
 	rep.Total.finish()
 	for _, s := range byKey {
@@ -144,6 +151,45 @@ func Aggregate(r io.Reader, f Filter) (*Report, error) {
 	}
 	sort.Slice(rep.Keys, func(i, j int) bool { return rep.Keys[i].KeyID < rep.Keys[j].KeyID })
 	return rep, nil
+}
+
+// maxLine bounds one usage.jsonl line; a longer one (a corrupt write, or a --log-prompts event
+// past any real body cap) is skipped and counted rather than ending the whole read, which
+// bufio.Scanner's ErrTooLong would do (005 fix 10j).
+const maxLine = 8 * 1024 * 1024
+
+// readLine returns the next line without its terminator, joining ReadSlice fragments up to
+// maxLine. A longer line is consumed whole and reported as nil. err is io.EOF on the last line.
+func readLine(rd *bufio.Reader) ([]byte, error) {
+	var acc []byte
+	over := false
+	for {
+		chunk, err := rd.ReadSlice('\n')
+		if errors.Is(err, bufio.ErrBufferFull) {
+			if !over {
+				acc = append(acc, chunk...)
+				if len(acc) > maxLine {
+					acc, over = nil, true
+				}
+			}
+			continue
+		}
+		if over {
+			return nil, err // the rest of the over-long line; drop it, keep err (may be EOF)
+		}
+		line := chunk
+		if acc != nil {
+			line = append(acc, chunk...)
+		}
+		return trimEOL(line), err
+	}
+}
+
+func trimEOL(b []byte) []byte {
+	for len(b) > 0 && (b[len(b)-1] == '\n' || b[len(b)-1] == '\r') {
+		b = b[:len(b)-1]
+	}
+	return b
 }
 
 // AggregateFile is Aggregate over <dataDir>/usage.jsonl. A missing file is an empty report, not

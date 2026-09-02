@@ -95,6 +95,46 @@ func TestRecorderDropsRatherThanBlocks(t *testing.T) {
 	}
 }
 
+// 005 fix 10i: a Record that races Close (the gateway's last usage event landing after the CLI
+// closed the recorder) is dropped and counted, never a send on a closed channel.
+func TestRecordAfterCloseDropsAndCounts(t *testing.T) {
+	r, err := NewFileRecorder(t.TempDir(), nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	r.Record(context.Background(), Event{KeyID: "k1"})
+	if err := r.Close(); err != nil {
+		t.Fatal(err)
+	}
+	r.Record(context.Background(), Event{KeyID: "late"})
+	if got := r.Dropped(); got != 1 {
+		t.Fatalf("Dropped() after a late Record = %d, want 1", got)
+	}
+	if err := r.Close(); err != nil {
+		t.Fatalf("second Close: %v", err)
+	}
+}
+
+// 005 fix 10j: one over-long line (a corrupt write) is skipped and counted; the lines around it
+// still aggregate, and a long-but-valid line (a --log-prompts event) still parses.
+func TestAggregateSkipsAnOverlongLine(t *testing.T) {
+	good := `{"key_id":"k1","status":200,"prompt_tokens":1,"completion_tokens":2}` + "\n"
+	long := `{"key_id":"k1","status":200,"prompt":"` + strings.Repeat("p", 100*1024) + `"}` + "\n"
+	huge := `{"key_id":"k1","status":200,"prompt":"` + strings.Repeat("x", 9*1024*1024) + `"}` + "\n"
+	rep, err := Aggregate(strings.NewReader(good+long+huge+good), Filter{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rep.Malformed != 1 || rep.Total.Requests != 3 {
+		t.Fatalf("malformed %d, requests %d; want 1 skipped line and 3 requests", rep.Malformed, rep.Total.Requests)
+	}
+	// No trailing newline on the last line, and a CRLF line, both still count.
+	rep, err = Aggregate(strings.NewReader(strings.TrimSuffix(good, "\n")+"\r\n"+strings.TrimSuffix(good, "\n")), Filter{})
+	if err != nil || rep.Total.Requests != 2 || rep.Malformed != 0 {
+		t.Fatalf("unterminated/CRLF lines: %+v %v", rep, err)
+	}
+}
+
 func TestAggregatePercentilesAndErrorCodes(t *testing.T) {
 	var b strings.Builder
 	enc := json.NewEncoder(&b)

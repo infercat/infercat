@@ -4,6 +4,9 @@ import (
 	"context"
 	"flag"
 	"fmt"
+	"log"
+	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/2185Lab/bunny-network/internal/admin"
@@ -14,8 +17,12 @@ import (
 )
 
 // refreshEvery is how often a running host re-probes the upstream. An engine that was down at
-// startup becomes healthy on its own within this interval.
-const refreshEvery = 10 * time.Second
+// startup becomes healthy on its own within this interval. A variable so a test can hurry it.
+var refreshEvery = 10 * time.Second
+
+// tunnelLogName is where the tunnel engine's own log goes, under the data dir; truncated at
+// every start so it never grows without bound.
+const tunnelLogName = "tunnel.log"
 
 // drainTimeout is how long Ctrl-C waits for in-flight completions before hanging up.
 const drainTimeout = 10 * time.Second
@@ -44,6 +51,7 @@ func (e *env) cmdServe(ctx context.Context, pre string, args []string) error {
 	derpMapURL := fs.String("derpmap-url", cfg.DERPMapURL, "relay map URL")
 	region := fs.String("region", cfg.Region, "preferred relay region")
 	name := fs.String("name", cfg.Name, "host display name your friends see")
+	verbose := fs.Bool("verbose", false, "print the tunnel engine's log on the terminal instead of tunnel.log (not remembered)")
 	if err := e.parse(fs, serveHelp, args); err != nil {
 		return err
 	}
@@ -78,8 +86,13 @@ func (e *env) cmdServe(ctx context.Context, pre string, args []string) error {
 	}
 	defer rec.Close()
 
+	tunLogf, closeTunLog, err := tunnelLogf(dataDir, *verbose, e.logf)
+	if err != nil {
+		return err
+	}
+	defer closeTunLog()
 	tun, err := e.plat.startTunnel(ctx, tunnelOptions{
-		DataDir: dataDir, Ephemeral: *ephemeral, DERPMapURL: *derpMapURL, Region: *region, Logf: e.logf,
+		DataDir: dataDir, Ephemeral: *ephemeral, DERPMapURL: *derpMapURL, Region: *region, Logf: tunLogf,
 	})
 	if err != nil {
 		return fmt.Errorf("tunnel: %w", err)
@@ -110,7 +123,7 @@ func (e *env) cmdServe(ctx context.Context, pre string, args []string) error {
 
 	e.printStartup(ctx, tun, up, store)
 
-	go refreshLoop(ctx, up, e.logf)
+	go refreshLoop(ctx, up, gw, e.logf)
 
 	errc := make(chan error, 2)
 	go func() { errc <- gw.Serve(tun.Listener()) }()
@@ -146,7 +159,7 @@ func (e *env) openUpstream(ctx context.Context, url, key string, slots int) (ups
 	if url != "" {
 		up, err = upstream.Open(ctx, url, key)
 	} else {
-		up, err = upstream.Detect(ctx)
+		up, err = upstream.Detect(ctx, key)
 	}
 	if err != nil {
 		return nil, err
@@ -160,24 +173,50 @@ func (e *env) openUpstream(ctx context.Context, url, key string, slots int) (ups
 	return up, nil
 }
 
-func refreshLoop(ctx context.Context, up upstream.Upstream, logf func(string, ...any)) {
+// tunnelLogf routes the tunnel engine's chatter (wgengine, magicsock, netstack, …) to
+// <data-dir>/tunnel.log so the terminal shows only the product's own lines; --verbose sends it
+// to the terminal instead (ticket 005 fix 10b).
+func tunnelLogf(dataDir string, verbose bool, terminal func(string, ...any)) (func(string, ...any), func(), error) {
+	if verbose {
+		return terminal, func() {}, nil
+	}
+	if err := os.MkdirAll(dataDir, 0o700); err != nil {
+		return nil, nil, err
+	}
+	f, err := os.OpenFile(filepath.Join(dataDir, tunnelLogName), os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o600)
+	if err != nil {
+		return nil, nil, fmt.Errorf("tunnel log: %w", err)
+	}
+	return log.New(f, "", log.LstdFlags|log.Lmicroseconds).Printf, func() { f.Close() }, nil
+}
+
+// refreshLoop re-probes the engine; when it comes or goes that is logged once, and when a
+// successful probe reports a different slot count the gateway follows it (005 fix 10d: an
+// engine down at startup must not pin the gateway at one slot forever).
+func refreshLoop(ctx context.Context, up upstream.Upstream, gw gatewayServer, logf func(string, ...any)) {
 	t := time.NewTicker(refreshEvery)
 	defer t.Stop()
 	was := up.Info().Healthy
+	slots := up.Info().Slots
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-t.C:
 			err := up.Refresh(ctx)
-			now := up.Info().Healthy
-			if now != was {
-				if now {
-					logf("upstream is back: %s", up.Info().URL)
+			info := up.Info()
+			if info.Healthy != was {
+				if info.Healthy {
+					logf("upstream is back: %s", info.URL)
 				} else {
 					logf("upstream went away: %v", err)
 				}
-				was = now
+				was = info.Healthy
+			}
+			if err == nil && info.Slots > 0 && info.Slots != slots {
+				gw.SetSlots(info.Slots)
+				logf("engine slots: %d (was %d)", info.Slots, slots)
+				slots = info.Slots
 			}
 		}
 	}
@@ -295,6 +334,8 @@ Flags:
                           Off by default and never remembered: your friends' conversations
                           are theirs. Turn it on only to debug, one run at a time.
   --ephemeral             never write the host key; a new address every run (not remembered)
+  --verbose               print the tunnel engine's log on the terminal instead of
+                          <data-dir>/tunnel.log (not remembered)
   --data-dir DIR          where keys, usage, config, and the host key live
 
 There is no daemon mode: run it under your supervisor of choice (launchd, systemd, tmux).

@@ -83,7 +83,11 @@ describe('streamChat', () => {
     ]);
     expect(seen.path).toBe('/v1/chat/completions');
     expect(new Headers(seen.init?.headers).get('authorization')).toBe('Bearer sekrit');
-    expect(JSON.parse(String(seen.init?.body))).toMatchObject({ model: 'm', stream: true });
+    const sent = JSON.parse(String(seen.init?.body));
+    expect(sent).toMatchObject({ model: 'm', stream: true });
+    // 005 fix 10e: no max_tokens unless the user set one, so the key's clamp is the only cap.
+    expect(sent).not.toHaveProperty('max_tokens');
+    expect(sent).not.toHaveProperty('max_completion_tokens');
   });
 
   it('stops at [DONE] and ignores anything after it', async () => {
