@@ -3,7 +3,7 @@ id: 014
 title: Web polish — the two failures a friend will hit, honest meters, touch, copy (from the friend-experience pass; folds in 013)
 kind: normal
 size: 5
-status: dispatched
+status: landed
 updated: 2026-09-02
 release: demo-1
 ---
@@ -383,3 +383,17 @@ them), `modelLabel`, `cityFor`, `maskInvite`, `privacyLine`, `coarsePointer`, `r
 Synthesis verdict (both personas): not launch-ready yet; "everything wrong lives in the second minute
 and nothing wrong is architectural"; the first minute is "genuinely excellent". Host-side item from
 the same pass → ticket 016 (usage meter resets on host restart).
+
+## Ruling (PM, 2026-09-02 17:30)
+
+**Landed** on main (merge of `t014-web-polish`); Go and gateway `-race` green, web typecheck/test 181/lint/
+build green, printed. `raceAbort` in `http1.ts` and the 10 s `/me` bound accepted as necessary. The
+promise-5 root cause (connect-time `/v1/models` took an RPM entry) closed on both sides.
+
+**Rulings on the two re-price items:** (a) `/v1/models` refused at the RPM ceiling — accepted as-is for
+launch; the client no longer calls it at connect, so only the 60 s poll can hit it; one-line fix listed in
+012. (b) **Busy host reads as asleep** — not acceptable for launch (Surfaces tell the truth; strangers
+will queue): ticket 018 makes the gateway send response headers and `: queued` SSE keepalives while a
+streaming request waits for a slot, with a queue timeout delivered as an SSE error event, and the client
+shows "Waiting for a free slot on <host>…" when headers arrived but no token has.
+Dispatch note: the 66000–66999 port range in the brief was invalid (> 65535); the engineer used 6609–6611.
