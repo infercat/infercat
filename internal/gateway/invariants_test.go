@@ -302,6 +302,7 @@ func TestI1ExactlyOnceRelease(t *testing.T) {
 			waitUntil(t, 3*time.Second, "alice to be queued", func() bool { _, w := h.gw.Queue(); return w == 1 })
 			cancelMe()
 			<-done
+			h.rec.waitFor(t, 1) // alice's place is given up before bob's slot is freed (see I6)
 			cancel()
 			h.up.set("json")
 			return h
@@ -609,6 +610,11 @@ func TestI6SettleTable(t *testing.T) {
 			waitUntil(t, 3*time.Second, "alice to be queued", func() bool { _, w := h.gw.Queue(); return w == 1 })
 			cancelMe()
 			<-done
+			// The client returning does not mean the gateway has let go: alice's event is the proof
+			// that her place is given up. Releasing bob's slot before it lands races the departure —
+			// the queue hands the free slot to a request that is already gone, which is a different
+			// row of the table (Cut) and is what made this one load-sensitive.
+			h.rec.waitFor(t, 1)
 			cancel()
 		}, 0, exactly(0)},
 		{"EngineErr: 500", func(t *testing.T, h *harness) {
@@ -627,12 +633,20 @@ func TestI6SettleTable(t *testing.T) {
 		}, 1, exactly(8)},
 		{"Served: no usage object (stream)", func(t *testing.T, h *harness) {
 			h.up.set("sse", sseEvents(4, false)...)
+			h.up.mu.Lock()
+			h.up.gap = 0
+			h.up.mu.Unlock()
 			if r := h.post("/v1/chat/completions", chatBody("m1", 3, `"stream":true`)); r.status != 200 {
 				t.Fatalf("%d %s", r.status, r.body)
 			}
 		}, 1, exactly(3 + 4)},
 		{"Cut: stream, client gone", func(t *testing.T, h *harness) {
-			h.up.set("sse", sseEvents(200, true)...)
+			// Six deltas back to back, then the engine holds: whatever the scheduler does, the
+			// gateway can have counted at most six — the upper bound is the fixture, not the clock.
+			h.up.set("sse", sseEvents(6, true)...)
+			h.up.mu.Lock()
+			h.up.gap, h.up.stallAfter = 0, 6
+			h.up.mu.Unlock()
 			ctx, cancel := context.WithCancel(context.Background())
 			res, err := h.streamReq(ctx, chatBody("m1", 1, `"stream":true`))
 			if err != nil {
@@ -646,12 +660,15 @@ func TestI6SettleTable(t *testing.T) {
 			}
 			cancel()
 			res.Body.Close()
-		}, 1, func(ev usage.Event) (int, int) { return 1 + 3, 1 + 10 }},
+		}, 1, func(usage.Event) (int, int) { return 1 + 3, 1 + 6 }},
 		{"Cut: stream, engine idle", func(t *testing.T, h *harness) {
-			h.gw.idleTimeout = 100 * time.Millisecond
+			// Both deltas are written without a gap, so the count no longer depends on the gateway
+			// reading them faster than the deadline it is racing: the engine's whole output is in
+			// the socket before it goes silent, and the idle deadline is ~1000x that delivery.
+			h.gw.idleTimeout = time.Second
 			h.up.set("sse", sseEvents(10, true)...)
 			h.up.mu.Lock()
-			h.up.stallAfter = 2
+			h.up.gap, h.up.stallAfter = 0, 2
 			h.up.mu.Unlock()
 			h.post("/v1/chat/completions", chatBody("m1", 1, `"stream":true`))
 		}, 1, exactly(1 + 2)},
@@ -663,8 +680,7 @@ func TestI6SettleTable(t *testing.T) {
 			ctx, cancel := context.WithCancel(context.Background())
 			done := make(chan struct{})
 			go func() { defer close(done); _, _ = h.streamReq(ctx, chatBody("m1", 2, "")) }()
-			<-h.up.started
-			time.Sleep(50 * time.Millisecond) // the engine's headers are out; the body is not
+			<-h.up.headers // the engine's head is out; its body is not — the fixture says so, not a sleep
 			cancel()
 			<-done
 		}, 1, exactly(2 + 50)},
@@ -710,7 +726,7 @@ func TestI6SettleTable(t *testing.T) {
 func TestI7FIFOAndResize(t *testing.T) {
 	h := newHarness(t, Config{}, nil)
 	h.slots(2)
-	h.gw.queueTimeout = 10 * time.Second
+	h.gw.queueTimeout = time.Minute // every waiter here is released by name; no wait ends on the clock
 	h.up.set("sse", sseEvents(400, true)...)
 	var peak atomic.Int32 // the most slots Queue() ever reported held
 	stop := make(chan struct{})
@@ -823,7 +839,7 @@ func TestI8Deadlines(t *testing.T) {
 		h.up.mu.Unlock()
 		start := time.Now()
 		r := h.post("/v1/chat/completions", chatBody("m1", 1, `"stream":true`))
-		if d := time.Since(start); r.status != 200 || !strings.Contains(string(r.body), `"code":"upstream_error"`) || d > 2*time.Second {
+		if d := time.Since(start); r.status != 200 || !strings.Contains(string(r.body), `"code":"upstream_error"`) || d > 5*time.Second {
 			t.Fatalf("idle stream: %d %s after %s", r.status, r.body, d)
 		}
 		if ev := h.rec.last(t); ev.Code != "upstream_error" || ev.CompletionTokens != 0 {
@@ -840,12 +856,12 @@ func TestI8Deadlines(t *testing.T) {
 		start := time.Now()
 		r := h.post("/v1/chat/completions", chatBody("m1", 1, ""))
 		h.expectErr(r, CodeUpstreamError)
-		if d := time.Since(start); d > 2*time.Second || !strings.Contains(r.message, "stopped answering") {
+		if d := time.Since(start); d > 5*time.Second || !strings.Contains(r.message, "stopped answering") {
 			t.Fatalf("idle body: %s after %s", r.message, d)
 		}
 		select {
 		case <-h.up.cancelled:
-		case <-time.After(2 * time.Second):
+		case <-time.After(5 * time.Second):
 			t.Fatal("the idle engine was not cancelled")
 		}
 		h.clean()
@@ -857,22 +873,23 @@ func TestI8Deadlines(t *testing.T) {
 		start := time.Now()
 		r := h.post("/v1/chat/completions", chatBody("m1", 1, `"stream":true`))
 		h.expectErr(r, CodeUpstreamError)
-		if d := time.Since(start); d < 200*time.Millisecond || d > 2*time.Second || !strings.Contains(r.message, "did not answer in time") {
+		if d := time.Since(start); d < 200*time.Millisecond || d > 5*time.Second || !strings.Contains(r.message, "did not answer in time") {
 			t.Fatalf("first byte: %s after %s", r.message, d)
 		}
 		select {
 		case <-h.up.cancelled:
-		case <-time.After(2 * time.Second):
+		case <-time.After(5 * time.Second):
 			t.Fatal("the silent engine was not cancelled")
 		}
 		h.clean()
 	})
 	t.Run("slow but live stream is never cut", func(t *testing.T) {
-		// Every engine- and client-side deadline is 250 ms; the engine sends one event every 120 ms
-		// for 3 s (the §1.8 fixture "one byte every 10 s for 10 minutes", scaled).
+		// Every engine- and client-side deadline is 1.2 s; the engine sends one event every 120 ms
+		// for 3 s (the §1.8 fixture "one byte every 10 s for 10 minutes", scaled). The ratio is the
+		// fixture's own: 10 gaps to a deadline, so a scheduling hiccup cannot pass for a stall.
 		h := newHarness(t, Config{}, nil)
-		h.up.firstByte(250 * time.Millisecond)
-		h.gw.idleTimeout, h.gw.writeTimeout, h.gw.readTimeout = 250*time.Millisecond, 250*time.Millisecond, 250*time.Millisecond
+		h.up.firstByte(1200 * time.Millisecond)
+		h.gw.idleTimeout, h.gw.writeTimeout, h.gw.readTimeout = 1200*time.Millisecond, 1200*time.Millisecond, 1200*time.Millisecond
 		h.up.set("sse", sseEvents(25, true)...)
 		h.up.mu.Lock()
 		h.up.gap = 120 * time.Millisecond

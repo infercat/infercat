@@ -186,6 +186,7 @@ type fakeUpstream struct {
 
 	// observations
 	started   chan struct{} // closed when the first request reaches the handler
+	headers   chan struct{} // closed when a delayed json handler has flushed its response head
 	cancelled chan struct{} // closed when a handler sees its context cancelled
 	finished  atomic.Bool   // set when an sse handler wrote [DONE]
 	wrote     bytes.Buffer  // exact bytes an sse handler wrote
@@ -198,6 +199,7 @@ type fakeUpstream struct {
 	countNow  atomic.Int32 // CountTokens calls in progress
 	countMax  atomic.Int32 // the most at once
 	startOnce sync.Once
+	hdrOnce   sync.Once
 	cancOnce  sync.Once
 }
 
@@ -210,6 +212,7 @@ func newFakeUpstream() *fakeUpstream {
 		events:     []string{`{"id":"x","object":"chat.completion","choices":[{"index":0,"message":{"role":"assistant","content":"hi there"}}],"usage":{"prompt_tokens":4,"completion_tokens":4}}`},
 		gap:        50 * time.Millisecond,
 		started:    make(chan struct{}),
+		headers:    make(chan struct{}),
 		cancelled:  make(chan struct{}),
 	}
 	f.srv = httptest.NewServer(http.HandlerFunc(f.handle))
@@ -267,6 +270,7 @@ func (f *fakeUpstream) handle(w http.ResponseWriter, r *http.Request) {
 		if delay > 0 {
 			w.WriteHeader(200)
 			_ = http.NewResponseController(w).Flush()
+			f.hdrOnce.Do(func() { close(f.headers) }) // the head is out; the body is not
 			select {
 			case <-r.Context().Done():
 				f.cancOnce.Do(func() { close(f.cancelled) })
