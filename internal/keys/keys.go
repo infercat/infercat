@@ -29,7 +29,7 @@ type Limits struct {
 
 // DefaultLimits are applied at `keys add` when a field is zero.
 func DefaultLimits() Limits {
-	return Limits{RPM: 20, TPM: 20000, MaxConcurrent: 1, MaxOutputTokens: 2048, MaxContext: 0, DailyTokens: 200000}
+	return Limits{RPM: 20, TPM: 20000, MaxConcurrent: 1, MaxOutputTokens: 4096, MaxContext: 0, DailyTokens: 200000}
 }
 
 // Key is one friend. SecretHash is "sha256:<hex>" of the invite secret; the secret itself is never stored.
