@@ -1,6 +1,6 @@
 # HANDOFF — state of the work (succession document)
 
-Updated: 2026-09-02 10:15 (morning after build night 1). PM seat: Claude Fable, session on Max's laptop.
+Updated: 2026-09-02 12:05 (day after build night 1). PM seat: Claude Fable, session on Max's laptop.
 
 ## What this is
 
@@ -23,21 +23,19 @@ a public social-media launch soon after, likely serving DeepSeek v4 flash from t
 
 ## In flight
 
-- **Landed on main (`e6695c0`):** 001 tunnel/invite/wasm · 002 gateway · 003 CLI/store/upstream/usage/admin
-  (wiring flipped, stub deleted) · 004 web client. `go build ./cmd/bunny-network` is the real host;
-  `make wasm && cd web && pnpm build` is the real client.
-- **Incident 04:40–09:55:** the account's session rate limit killed every running agent (004 engineer
-  after its report, 005 engineer at start, most review finders/refuters). Nothing ran until the founder
-  said "continue" at 09:55. 004 was committed by the PM from its worktree after re-running its checks.
-- **Running now:** 005 integration (Fable engineer; fixes 10a–f, end-to-end proof in Direct and Tunnel
-  mode via Playwright, vLLM run, `hack/measure.sh` numbers). Review workflows for 001/002/003 resumed
-  (cached results replay; failed agents re-run).
-- **Review findings so far:** 001 exposure lens — no defects, empirical proof that only tunnel port 80
-  reaches the gateway; invite parsing — no defects. 003 secrets/permissions — no defects; the
-  "friend's secret forwarded to upstream" claim is refuted by code (`proxy.go` builds a fresh request).
-  Low: host-key temp path (005 fix 10f).
-- **Next:** land 005 → experience review of the integrated build (fresh Opus, Playwright) → founder
-  morning report with the `docs/MEASURE.md` numbers and the how-to-run block.
+- **Landed on main (`8a3a3c4`):** 001–004 (tunnel/invite/wasm · gateway · CLI/store/upstream/usage/admin
+  with wiring flipped · web client). A stray 28 MB binary committed at the root during the flip was
+  removed at `e5b0a11`; it remains in history (private repo) — rewrite before any public mirror.
+- **Reviews done:** Claude adversarial workflows on 001 (36 agents), 002 (55), 003 (46); second-model
+  review (gpt-5.6-sol via ultracodex, 4 lenses, 39 findings) on integrated main. Summaries and rulings
+  are appended to each ticket; confirmed defects became tickets 005 (10a–10n), 006, 007.
+- **Running:** 005 integration (Fable): fixes 10a–10n, end-to-end proof Direct + Tunnel via Playwright,
+  vLLM run, `hack/measure.sh` numbers. 006 gateway hardening (Fable): alias bypass, admission order,
+  write/read deadlines, bounded queue, metered /v1/models, no redirects, audit key_id, upstream 4xx,
+  `/me.host.log_prompts`. 007 web hardening (Opus): truthful stream ends, session leaks, degraded
+  states, host-scoped storage, revoked mid-session, abort-during-dial, IME, two tabs, log-prompts copy.
+- **Landing order:** 005 → 006 (rebase over 005's proxy.go edits) → 007 → experience review of the
+  integrated build (fresh Opus, Playwright) → founder demo instructions + morning report.
 
 ## Standing decisions tonight
 
