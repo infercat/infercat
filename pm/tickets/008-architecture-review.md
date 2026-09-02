@@ -3,7 +3,7 @@ id: 008
 title: Architecture review and debt inventory after demo-1 (investigation → docs/DESIGN.md)
 kind: investigation
 size: 3
-status: dispatched
+status: landed
 updated: 2026-09-02
 release: demo-1
 ---
