@@ -1,6 +1,6 @@
 # HANDOFF — state of the work (succession document)
 
-Updated: 2026-09-02 15:15 EDT (machine clock; earlier stamps in this file were written from mixed clocks). MILESTONE 13:30: founder ran the demo end to end and declared the concept proven; next theme polish. PM seat: Claude Fable, session on Max's laptop.
+Updated: 2026-09-02 15:55 EDT (machine clock; earlier stamps in this file were written from mixed clocks). MILESTONE 13:30: founder ran the demo end to end and declared the concept proven; next theme polish. PM seat: Claude Fable, session on Max's laptop.
 
 ## What this is
 
@@ -29,13 +29,14 @@ a public social-media launch soon after, likely serving DeepSeek v4 flash from t
 - **Reviews done:** Claude adversarial workflows on 001 (36 agents), 002 (55), 003 (46); second-model
   review (gpt-5.6-sol via ultracodex, 4 lenses, 39 findings) on integrated main. Summaries and rulings
   are appended to each ticket; confirmed defects became tickets 005 (10a–10n), 006, 007.
-- **Running:** 014 web polish (Opus; from the phone persona's report — host-asleep and paused handling, honest meters, multi-tab storage, messages-not-requests, touch, copy) · the desktop persona + synthesis of the experience workflow (re-run after the rate limit).
+- **Running:** 016 host counters seeded from usage.jsonl + invite line after the QR (Opus, size 1) · 014 web polish (Opus; from the phone persona's report — host-asleep and paused handling, honest meters, multi-tab storage, messages-not-requests, touch, copy) · the desktop persona + synthesis of the experience workflow (re-run after the rate limit).
 - **Incident 2 (14:2x):** a second session rate limit (resets 15:30 EDT) killed the 010/011 engineer mid-rebase (after its push) and two workflow agents. Resumed at 14:34 on the founder's "please continue". Drafted: 012 concept trim + cleanup (after launch), 013 web follow-through. Done earlier today: truthful stream ends, session leaks, degraded
   states, host-scoped storage, revoked mid-session, abort-during-dial, IME, two tabs, log-prompts copy.
   008 architecture review (Fable): `docs/DESIGN.md` with debt inventory and proposed cleanup tickets.
   CLI first-run experience workflow (three stranger personas from README only → ranked polish list).
-- **Also running:** research workflow on github.com/deepseek-ai/deepseek-harness (founder asks whether to build the web client on it instead of a custom UI + agent runtime; PM answers when it returns).
-- **Landing order:** 014 → second experiential pass (both personas) → launch checklist. After launch: 012 concept trim + cleanup. Founder decisions pending: name, relay VM, distribution, license, history rewrite, web app URL (needed by 009's invite link).
+- **Decided today (founder):** vision reframed to "share an AI" (model + named, budgeted, isolated capabilities); the client runs the agent loop, the host runs tools; Docker-class isolation or nothing for host-side execution; DeepSeek Harness is a catalogue to borrow from, not a runtime (researched; pm/DECLINED.md). Ticket 015 (capability seam + web search as first host tool) drafted for after launch.
+- **Experience pass complete (both personas):** verdict "not launch-ready yet; everything wrong lives in the second minute and nothing wrong is architectural". All items are in 014 (web) and 016 (host).
+- **Landing order:** 016 → 014 → second experiential pass (both personas, same script, `wf_9e6581b7-630`) → launch checklist (founder decisions: name, relay VM, distribution, license, history rewrite, web app URL). After launch: 012 concept trim + cleanup, 015 capability seam. Founder decisions pending: name, relay VM, distribution, license, history rewrite, web app URL (needed by 009's invite link).
 
 ## Standing decisions tonight
 
