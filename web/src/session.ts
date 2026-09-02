@@ -57,8 +57,14 @@ export type Degradation = 'path' | 'engine' | 'both' | 'key';
 export type SessionState =
   | { name: 'idle' }
   | { name: 'loadingWasm'; pct: number | null }
-  | { name: 'connecting' }
-  | { name: 'verifying'; transport: Transport }
+  /**
+   * `redial` is the session being dialled again (023): Reconnect's target, carried through the
+   * attempt so it can adopt whichever dial verifies for that host — its own, or the self-probe's,
+   * which it joins rather than starting a second one under the same identity — and fall back to
+   * that session, degraded, when the dial fails, instead of to the connect screen.
+   */
+  | { name: 'connecting'; redial?: Live }
+  | { name: 'verifying'; transport: Transport; redial?: Live }
   | { name: 'connected'; live: Live }
   | { name: 'degraded'; live: Live; reason: Degradation }
   /** `reason` is null only when the reader left on purpose. */
@@ -98,9 +104,12 @@ export function reduce(s: SessionState, e: SessionEvent): SessionState {
     case 'sessionUp':
       // Out of `connecting` this is a superseded attempt; the state is unchanged and dropped()
       // hands the orphan to the closer.
-      return s.name === 'connecting' ? { name: 'verifying', transport: e.transport } : s;
+      return s.name === 'connecting' ? { name: 'verifying', transport: e.transport, ...(s.redial ? { redial: s.redial } : {}) } : s;
     case 'verified':
       if (s.name === 'verifying' && s.transport === e.live.transport) return settle(e.live);
+      // A redial that joined the self-probe's dial (023) verifies straight from `connecting`, for
+      // the host it is redialling. The card's own attempts carry no target and adopt nothing.
+      if (s.name === 'connecting' && sameHost(s.redial, e.live)) return settle(e.live);
       // A self-probe dialled the host afresh because this session stopped reaching it (022
       // promise 1): the new session takes over and dropped() closes the one it replaces. While the
       // session it has does reach the host there is nothing to replace: the candidate is closed.
@@ -111,6 +120,10 @@ export function reduce(s: SessionState, e: SessionEvent): SessionState {
       // `active`.
       return l ? settle({ ...l, me: e.me, meOk: true, key: e.me.key.status }) : s;
     case 'meError':
+      // A redial that failed — no dial, or a /me that hung past its bound — goes back to the session
+      // it was replacing, degraded (023): the chat stays, the header says the host is not answering,
+      // the self-probe keeps asking. Never a permanent "Opening a fresh connection…".
+      if ((s.name === 'connecting' || s.name === 'verifying') && s.redial) return settle(afterFailure(s.redial, e.error));
       // Verifying: the invite never checked out, so the transport we opened for it goes. At verify
       // time there is no chat to keep, so even a pause has to be said on the connect screen.
       if (s.name === 'verifying') return { name: 'disconnected', reason: e.error };
@@ -137,12 +150,17 @@ export function reduce(s: SessionState, e: SessionEvent): SessionState {
     // `connecting` is what drops it — `dropped()` closes it — and the redial effect in App.tsx is
     // what dials again. Only from a live session: there is nothing to redial from anywhere else.
     case 'redial':
-      return l ? { name: 'connecting' } : s;
+      return l ? { name: 'connecting', redial: l } : s;
     case 'probed':
       return s.name === 'degraded' ? settle({ ...s.live, probed: s.live.probed + 1 }) : s;
     case 'abort':
       return { name: 'disconnected', reason: e.error };
   }
+}
+
+/** The candidate is for the host a redial is replacing: same address, same invite. */
+function sameHost(target: Live | undefined, candidate: Live): boolean {
+  return target !== undefined && target.addr === candidate.addr && target.secret === candidate.secret;
 }
 
 /**

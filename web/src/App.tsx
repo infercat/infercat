@@ -60,13 +60,28 @@ function shut(t: Transport): void {
   }
 }
 
+/** One dial per host at a time (023): whoever asks while one is in flight joins it. */
+const dialling = new Map<string, Promise<Live>>();
+
 /**
  * The same host, dialled again: a new transport to the same address, verified with the same invite,
  * carrying everything the old session knew. What Reconnect does by hand (014 promise 13) and the
- * self-probe does by itself (022 promise 1). `onOpened` sees the transport before /me is asked; a
- * transport the invite does not verify over is closed here.
+ * self-probe does by itself (022 promise 1). A second ask while a dial is in flight gets that
+ * dial (023): two sessions under one tunnel identity leave one of them deaf at the relay. `onOpened`
+ * sees the transport before /me is asked (only when this call is the one dialling); a transport
+ * the invite does not verify over — or that does not answer /me within its bound — is closed here.
  */
-async function dialAgain(from: Live, onOpened?: (t: Transport) => void): Promise<Live> {
+function dialAgain(from: Live, onOpened?: (t: Transport) => void): Promise<Live> {
+  const joined = dialling.get(from.addr);
+  if (joined) return joined;
+  const dial = dialFresh(from, onOpened);
+  dialling.set(from.addr, dial);
+  const done = () => dialling.delete(from.addr);
+  dial.then(done, done);
+  return dial;
+}
+
+async function dialFresh(from: Live, onOpened?: (t: Transport) => void): Promise<Live> {
   const opened = await openTransport(from.addr, {
     mode: from.mode,
     directURL: __DEFAULT_DIRECT_URL__,
@@ -74,7 +89,7 @@ async function dialAgain(from: Live, onOpened?: (t: Transport) => void): Promise
   });
   onOpened?.(opened.transport);
   try {
-    const me = await getMe(opened.transport, from.secret);
+    const me = await getMe(opened.transport, from.secret, timeoutSignal(ME_TIMEOUT_MS));
     return {
       ...from,
       transport: opened.transport,
@@ -97,57 +112,28 @@ async function dialAgain(from: Live, onOpened?: (t: Transport) => void): Promise
  *
  * A tunnel session that has failed stays failed, so retrying a request over it costs the reader
  * another 30 s and tells them nothing. `redial` drops the session — the reducer returns to
- * `connecting`, and the one closer above closes what it dropped — and this effect does what a
- * reload plus Connect would do, without the reload: open a new transport to the same address and
- * re-verify the same invite. It runs only on a redial (the ref is set by the dispatcher it
- * returns), so the connect screen's own attempt is never raced by it.
+ * `connecting`, carrying the session as its target, and the one closer above closes what it
+ * dropped — and this effect does what a reload plus Connect would do, without the reload: open a
+ * new transport to the same address and re-verify the same invite. Its lifetime is the target's
+ * (023): it spans `connecting` and `verifying`, it joins the self-probe's dial when one is in
+ * flight, and a failure hands the target back to the reducer as a degraded session rather than
+ * the connect screen. The card's own attempts carry no target, so they are never raced by it.
  */
-function useRedial(
-  state: SessionState,
-  dispatch: (e: SessionEvent) => void,
-): [boolean, (l: Live) => void] {
-  const target = useRef<Live | null>(null);
-  const [dialling, setDialling] = useState(false);
-
+function useRedial(state: SessionState, dispatch: (e: SessionEvent) => void): void {
+  const from = state.name === 'connecting' || state.name === 'verifying' ? (state.redial ?? null) : null;
   useEffect(() => {
-    const from = target.current;
-    if (state.name !== 'connecting' || !from) return;
-    target.current = null;
+    if (!from) return;
     let live = true;
     // From `sessionUp` on the machine owns the transport: every path out of `verifying` closes it.
     void dialAgain(from, (t) => (live ? dispatch({ t: 'sessionUp', transport: t }) : shut(t)))
       .then((next) => (live ? dispatch({ t: 'verified', live: next }) : shut(next.transport)))
       .catch((err: unknown) => {
-        if (!live) return;
-        const who = hostName(from.me);
-        // A second failure is not a third invitation to wait: say what actually works.
-        dispatch({
-          t: 'abort',
-          error: {
-            title: `Still can’t reach ${who || 'your host'}`,
-            detail: 'Reload this page to start a fresh connection.',
-            ...(err instanceof Error && err.message.trim() !== ''
-              ? { hostSaid: err.message.trim() }
-              : {}),
-          },
-        });
-      })
-      .finally(() => {
-        if (live) setDialling(false);
+        if (live) dispatch({ t: 'meError', error: describeError(err, hostName(from.me)) });
       });
     return () => {
       live = false;
     };
-  }, [state.name, dispatch]);
-
-  return [
-    dialling,
-    (l: Live) => {
-      target.current = l;
-      setDialling(true);
-      dispatch({ t: 'redial' });
-    },
-  ];
+  }, [from, dispatch]);
 }
 
 /**
@@ -196,12 +182,13 @@ function useProbe(state: SessionState, dispatch: (e: SessionEvent) => void): voi
 
 export default function App() {
   const [state, dispatch] = useSession();
-  const [dialling, redial] = useRedial(state, dispatch);
+  useRedial(state, dispatch);
   useProbe(state, dispatch);
   const l = live(state);
+  const redialling = (state.name === 'connecting' || state.name === 'verifying') && state.redial !== undefined;
 
   if (!l) {
-    return dialling ? (
+    return redialling ? (
       <main className="connect">
         <div className="connect-card">
           <h1>{PRODUCT_NAME}</h1>
@@ -216,7 +203,7 @@ export default function App() {
   return (
     <Suspense fallback={<div className="booting">Opening…</div>}>
       {/* Remounting per host is what makes the host-scoped store load cleanly for the new one. */}
-      <Chat key={`${l.addr}/${l.me.key.id}`} state={state} live={l} dispatch={dispatch} onRedial={redial} />
+      <Chat key={`${l.addr}/${l.me.key.id}`} state={state} live={l} dispatch={dispatch} onRedial={() => dispatch({ t: 'redial' })} />
     </Suspense>
   );
 }
