@@ -51,8 +51,10 @@ together.
        prompt alone does not fit. Test the boundary.
     d. (002 + 003) `Gateway.SetSlots(n)`; serve re-applies `Info().Slots` after every successful
        `Refresh` when the value changed, so an engine down at startup does not pin slots at 1 forever.
-    e. (004, once landed) The web client must not send `max_tokens` unless the user set one, so the
-       key's clamp is the only cap.
+    e. (004) The web client must not send `max_tokens` unless the user set one, so the key's clamp is
+       the only cap.
+    f. (001, `internal/tunnel/tunnel.go` writeKey) Use `os.CreateTemp` in the data dir (0600, O_EXCL)
+       instead of a fixed `.tmp` path, then rename. Review finding, low severity.
 
 **Size 3** (≤900 source lines of fixes; expected far less). Concept budget 0: no new concepts.
 **Sensitive** (touches gateway/keys paths while fixing).

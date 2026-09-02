@@ -74,7 +74,8 @@ The six design laws from the aipm skill apply. Specific to this project:
 ## Size calibration (source lines, tests excluded; set 2026-09-02, uncalibrated by history)
 
 1 ≈ ≤150 · 2 ≈ ≤400 · 3 ≈ ≤900 · 5 ≈ ≤2000 · 8 = negotiated. Concept budget per rung: 0 / 1 / 3 /
-6 / negotiated.
+6 / negotiated. Stylesheets, help text, and per-platform fallbacks are surfaces, not source (rulings on
+003 and 004, 2026-09-02): price them by surface count, exclude them from the line ceiling.
 
 ## Authority
 
