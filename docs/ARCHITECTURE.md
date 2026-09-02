@@ -177,7 +177,7 @@ One pipeline, one exit. A request record owns every resource; the stage order is
 `checkHealth → admitKey (RPM + per-key concurrency) → readBody → normalize → count → checkBudgets (reserve
 `prompt + max_tokens`, shrunk to fit TPM/daily) → acquireSlot → callUpstream → relay → finish`. `finish`
 is the single deferred exit; it settles by the **outcome** table: rejected before the queue → not counted,
-reservation released · queue timeout → counted, 0 charged · client gone while waiting → not counted ·
+reservation released · queue timeout → counted, 0 charged · client gone while waiting, or before any request byte reached the engine (`httptrace.WroteRequest` never fired) → not counted, 0 charged ·
 engine error → counted, 0 · served → charged as the engine's usage (or pre-check prompt + deltas seen when
 no usage object) · cut (client stopped reading / gone / engine stalled) → charged the reservation for a
 non-stream cut, deltas seen for a stream. RPM counts model calls (`/v1/chat/completions`,

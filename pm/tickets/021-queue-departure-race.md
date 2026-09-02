@@ -2,8 +2,8 @@
 id: 021
 title: Queue departure race — a client that leaves while waiting must never take the slot (DESIGN §1.4 QueueLost row)
 kind: sensitive
-size: 1
-status: dispatched
+size: 2
+status: landed
 updated: 2026-09-02
 release: demo-1
 ---
@@ -248,3 +248,12 @@ reached C. Estimated cost: 1 source line, 1 test line, ~10 minutes.
 | bought beyond the ticket | nothing |
 | production-touching actions | none. Four `yes > /dev/null` hogs started locally for the stress runs and killed after (`pgrep -x yes` = 0). max-ws.lab and the shared llama-server untouched. Temporary `logf` instrumentation in `request.go` was reverted; the diff touches only `queue.go`, `request.go` (`callUpstream`) and `queue_test.go`. |
 | a reviewer might mistake for a bug | `outcomeCut` still charges the full reservation for a non-stream request whose friend left — that is DESIGN §1.4 and is deliberate. What changed is only which requests are Cut at all. |
+
+## Ruling (PM, 2026-09-02 18:10)
+
+**Contest accepted** (the remaining hole was in `request.go`, not the queue) and **landed** on main; gateway
+`-race` and full tests green, printed. Re-priced to 2: the overrun is the scope the ruling added after
+pricing. The `httptrace.WroteRequest` reading of "the engine received something" is accepted as the
+truthful test — a context check cannot see a cancellation that lands inside the send. The settle table's
+other rows are untouched (a request whose bytes reached the engine stays `Cut`). Lesson written for the PM:
+when a contest is accepted mid-ticket, re-price at the same moment.
