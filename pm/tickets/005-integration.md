@@ -3,7 +3,7 @@ id: 005
 title: Integration — wire, run end to end, measure, fix what breaks
 kind: sensitive
 size: 3
-status: draft
+status: dispatched
 updated: 2026-09-02
 release: demo-1
 ---
@@ -38,6 +38,21 @@ together.
    Tunnel (relay), 3 runs each, from a script `hack/measure.sh` that anyone can rerun.
 9. Every defect found is fixed on this branch **within the scope contracts of the owning ticket** and
    noted here with file:line and the ticket it belongs to; anything larger is contested, not patched.
+10. **Known fixes to make (from rulings and the PM's smoke run on main at `b0a52e5`):**
+    a. (003, `internal/keys/store.go`) A `Lookup` miss must force a reload (one stat) before answering
+       401: the ≤1/s throttle made a key minted by `keys add` return `invalid_key` for up to a second when
+       the admin socket had just touched the store. Test: add key, look up immediately after a `List`.
+    b. (003 `cmd/bunny-network/serve.go` + 001 `internal/tunnel`) Startup output must be the product's
+       five lines, not tailcat/wgengine's engine log. Route the tunnel `Logf` to a file
+       `<data-dir>/tunnel.log` (rotated/truncated at start) unless `--verbose`, and never print the
+       NetworkMap dump to the terminal. `status` gains nothing; `serve --verbose` shows it all.
+    c. (002 `internal/gateway`) Shrink-to-fit: when the prompt fits but prompt + `max_tokens` exceeds the
+       effective context, reduce `max_tokens` to what remains (floor 16) instead of 422; 422 only when the
+       prompt alone does not fit. Test the boundary.
+    d. (002 + 003) `Gateway.SetSlots(n)`; serve re-applies `Info().Slots` after every successful
+       `Refresh` when the value changed, so an engine down at startup does not pin slots at 1 forever.
+    e. (004, once landed) The web client must not send `max_tokens` unless the user set one, so the
+       key's clamp is the only cap.
 
 **Size 3** (≤900 source lines of fixes; expected far less). Concept budget 0: no new concepts.
 **Sensitive** (touches gateway/keys paths while fixing).
@@ -57,5 +72,10 @@ real invite redacted, mid-stream with Thinking block, 429 countdown, revoked sta
   Tunnel-mode captures; extend, do not duplicate.
 
 ## Log
+
+- 04:30 PM smoke on main `b0a52e5` (before this ticket): serve → tunnel addr (relay nyc) → `keys add`
+  → dev-listen 401s for ~1 s (fix 10a) → `tailcat socks curl` through the public relay: `/me` OK, non-stream
+  chat returned a real completion; `status`/`usage` correct; SIGINT exit in 1 s. Startup output polluted by
+  engine logs (fix 10b).
 
 ## Report
