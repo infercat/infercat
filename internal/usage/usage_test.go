@@ -141,13 +141,18 @@ func TestAggregatePercentilesAndErrorCodes(t *testing.T) {
 	base := time.Date(2026, 9, 2, 12, 0, 0, 0, time.UTC)
 	for i, ttft := range []int64{10, 20, 30, 40, 50, 60, 70, 80, 90, 100} {
 		enc.Encode(Event{
-			TS: base.Add(time.Duration(i) * time.Minute), KeyID: "k_1", Status: 200,
+			TS: base.Add(time.Duration(i) * time.Minute), KeyID: "k_1", Endpoint: "/v1/chat/completions", Status: 200,
 			PromptTokens: 10, CompletionTokens: 5, TTFTMS: ttft, TotalMS: ttft * 10,
 		})
 	}
-	enc.Encode(Event{TS: base, KeyID: "k_2", Status: 429, Code: "rate_limited"})
-	enc.Encode(Event{TS: base, KeyID: "k_2", Status: 429, Code: "rate_limited"})
-	enc.Encode(Event{TS: base, KeyID: "k_2", Status: 503, Code: "upstream_down"})
+	// Two polls from a tab left open an hour later, and a failed model call: neither may move the
+	// percentiles or "last seen", and the polls are not requests the friend made (009 promise 6).
+	enc.Encode(Event{TS: base.Add(time.Hour), KeyID: "k_1", Endpoint: "/me", Status: 200, TTFTMS: 3, TotalMS: 3})
+	enc.Encode(Event{TS: base.Add(2 * time.Hour), KeyID: "k_1", Endpoint: "/v1/models", Status: 200, TTFTMS: 4, TotalMS: 4})
+	enc.Encode(Event{TS: base.Add(3 * time.Hour), KeyID: "k_1", Endpoint: "/v1/chat/completions", Status: 503, Code: "upstream_down", TTFTMS: 9999, TotalMS: 9999})
+	enc.Encode(Event{TS: base, KeyID: "k_2", Endpoint: "/v1/chat/completions", Status: 429, Code: "rate_limited"})
+	enc.Encode(Event{TS: base, KeyID: "k_2", Endpoint: "/v1/chat/completions", Status: 429, Code: "rate_limited"})
+	enc.Encode(Event{TS: base, KeyID: "k_2", Endpoint: "/v1/chat/completions", Status: 503, Code: "upstream_down"})
 	b.WriteString("{ this is not json\n")
 
 	rep, err := Aggregate(strings.NewReader(b.String()), Filter{})
@@ -157,8 +162,11 @@ func TestAggregatePercentilesAndErrorCodes(t *testing.T) {
 	if rep.Malformed != 1 {
 		t.Errorf("malformed = %d, want 1 (a truncated line must not fail the whole read)", rep.Malformed)
 	}
-	if rep.Total.Requests != 13 || rep.Total.Errors != 3 {
+	if rep.Total.Requests != 16 || rep.Total.Errors != 4 {
 		t.Errorf("total = %d requests, %d errors", rep.Total.Requests, rep.Total.Errors)
+	}
+	if rep.Total.ModelCalls != 14 || rep.Total.AppPolls != 2 {
+		t.Errorf("split = %d model calls, %d app polls; want 14 and 2", rep.Total.ModelCalls, rep.Total.AppPolls)
 	}
 	if got := rep.Total.ErrorsByCode["rate_limited"]; got != 2 {
 		t.Errorf("rate_limited = %d, want 2", got)
@@ -176,12 +184,16 @@ func TestAggregatePercentilesAndErrorCodes(t *testing.T) {
 	if len(rep.Keys) != 2 || rep.Keys[0].KeyID != "k_1" || rep.Keys[1].KeyID != "k_2" {
 		t.Fatalf("per-key breakdown = %v", rep.Keys)
 	}
-	if rep.Keys[1].Requests != 3 || rep.Keys[1].Errors != 3 {
+	if rep.Keys[1].Requests != 3 || rep.Keys[1].ModelCalls != 3 || rep.Keys[1].Errors != 3 {
 		t.Errorf("k_2 = %+v", rep.Keys[1])
 	}
+	// "Last seen" is the last model call, not the last poll and not the failed call three hours later.
 	seen := rep.LastSeen()
-	if !seen["k_1"].Equal(base.Add(9 * time.Minute)) {
-		t.Errorf("last seen k_1 = %v", seen["k_1"])
+	if !seen["k_1"].Equal(base.Add(3 * time.Hour)) {
+		t.Errorf("last seen k_1 = %v; want the last model call", seen["k_1"])
+	}
+	if !rep.Keys[0].LastSeen.Equal(base.Add(3 * time.Hour)) {
+		t.Errorf("k_1 LastSeen = %v", rep.Keys[0].LastSeen)
 	}
 }
 

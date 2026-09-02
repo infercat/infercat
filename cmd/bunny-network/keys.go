@@ -1,7 +1,10 @@
 package main
 
 import (
+	"bufio"
 	"context"
+	"encoding/json"
+	"errors"
 	"flag"
 	"fmt"
 	"strings"
@@ -117,9 +120,20 @@ func (e *env) open(verb, help, pre string, args []string, want int, reg func(*fl
 
 func (e *env) keysAdd(ctx context.Context, pre string, args []string) error {
 	var apply func(keys.Limits) keys.Limits
-	store, dataDir, pos, err := e.open("add", keysAddHelp, pre, args, 1, func(fs *flag.FlagSet) { apply = limitFlags(fs) })
+	var force, asJSON, noQR *bool
+	store, dataDir, pos, err := e.open("add", keysAddHelp, pre, args, 1, func(fs *flag.FlagSet) {
+		apply = limitFlags(fs)
+		force = fs.Bool("force", false, "mint a second key for a name that already has one")
+		asJSON = fs.Bool("json", false, "print only the machine-readable invite object")
+		noQR = fs.Bool("no-qr", false, "do not draw the QR code")
+	})
 	if err != nil {
 		return err
+	}
+	if !*force {
+		if err := e.refuseDuplicate(ctx, store, dataDir, pos[0]); err != nil {
+			return err
+		}
 	}
 	// Resolve the address before minting: a key whose invite cannot be printed is worse than no
 	// key at all, because the secret is only ever shown here.
@@ -131,12 +145,100 @@ func (e *env) keysAdd(ctx context.Context, pre string, args []string) error {
 	if err != nil {
 		return err
 	}
+	e.reloadHost(ctx, dataDir)
 	inv := e.plat.encodeInvite(addr, secret)
+	if *asJSON {
+		return e.printInviteJSON(dataDir, k, inv)
+	}
 	fmt.Fprintf(e.out, "key %s  %s\n%s\n\n", k.ID, k.Name, limitsLine(k.Limits))
 	fmt.Fprintf(e.out, "Invite for %s — it is shown once and stored only as a hash:\n\n  %s\n\n", k.Name, inv)
-	writeQR(e.out, inv)
+	e.printDestination(dataDir, k.Name, inv, *noQR)
 	fmt.Fprintf(e.out, "\nLost it? `%s keys rotate %s` issues a new one and retires this.\n", product.CLIName, k.ID)
 	return nil
+}
+
+// refuseDuplicate stops the obvious mistake after losing an invite in scrollback: `keys add alice`
+// a second time used to mint a second alice, and from then on every `keys pause alice` refused as
+// ambiguous. A revoked namesake is not in the way (ticket 009 promise 3).
+func (e *env) refuseDuplicate(ctx context.Context, store *keys.FileStore, dataDir, name string) error {
+	list, err := store.List(ctx)
+	if err != nil {
+		return err
+	}
+	name = strings.TrimSpace(name)
+	for _, k := range list {
+		if k.Name != name || k.Status == keys.Revoked {
+			continue
+		}
+		seen := "never used"
+		if rep, err := usage.AggregateFile(dataDir, usage.Filter{KeyID: k.ID}); err == nil {
+			if t := rep.LastSeen()[k.ID]; !t.IsZero() {
+				seen = "last seen " + ago(t)
+			}
+		}
+		return fmt.Errorf("%s already has %s key (%s, %s).\nLost the invite? `%s keys rotate %s`. Second device? `%s keys add %s-laptop`.\n(--force mints a second key for this name anyway.)",
+			name, article(string(k.Status)), k.ID, seen, product.CLIName, name, product.CLIName, name)
+	}
+	return nil
+}
+
+func article(word string) string {
+	if strings.ContainsRune("aeiou", rune(word[0])) {
+		return "an " + word
+	}
+	return "a " + word
+}
+
+// printDestination answers the question the invite creates — where does my friend paste this? —
+// with a link when the host has a web app to point at, and with the honest alternative when
+// nobody has hosted one yet (ticket 009 promise 2).
+func (e *env) printDestination(dataDir, name, inv string, noQR bool) {
+	code := inv
+	if link := inviteLink(dataDir, inv); link != "" {
+		fmt.Fprintf(e.out, "Send %s this link:\n\n  %s\n\n", name, link)
+		code = link // the QR carries the link, so a phone camera finishes the job
+	} else {
+		fmt.Fprintf(e.out, "%s pastes this code into the web app (serve web/dist yourself for now — see README).\n\n", name)
+	}
+	if !noQR && e.tty {
+		writeQR(e.out, code)
+	}
+}
+
+// inviteLink is the one thing a friend can be sent: the web app plus the invite in the fragment,
+// which never reaches a server. Empty when this host has no web app to name.
+func inviteLink(dataDir, inv string) string {
+	cfg, err := loadConfig(dataDir)
+	if err != nil {
+		cfg = config{}
+	}
+	base := webURL(cfg)
+	if base == "" {
+		return ""
+	}
+	return strings.TrimRight(base, "#") + "#" + inv
+}
+
+// printInviteJSON is `keys add --json`: the four fields a script needs and nothing else, so the
+// invite can be handed to a chat bot or a provisioning script without scraping the human output.
+func (e *env) printInviteJSON(dataDir string, k *keys.Key, inv string) error {
+	enc := json.NewEncoder(e.out)
+	enc.SetIndent("", "  ")
+	return enc.Encode(struct {
+		KeyID  string `json:"key_id"`
+		Name   string `json:"name"`
+		Invite string `json:"invite"`
+		Link   string `json:"link"`
+	}{k.ID, k.Name, inv, inviteLink(dataDir, inv)})
+}
+
+// reloadHost pushes a key change to the running host over the admin socket so it is in force
+// before the command returns, instead of within the store's once-per-second re-read. No running
+// host is not a problem: keys.json is the truth either way (ticket 009 promise 9).
+func (e *env) reloadHost(ctx context.Context, dataDir string) {
+	if err := admin.Reload(ctx, dataDir); err != nil && !errors.Is(err, admin.ErrNoDaemon) {
+		e.logf("the running host did not accept the change yet (%v); it will re-read within a second", err)
+	}
 }
 
 // hostAddr asks the running host first, then the saved host key.
@@ -180,7 +282,12 @@ func (e *env) keysList(ctx context.Context, pre string, args []string) error {
 }
 
 func (e *env) keysStatus(ctx context.Context, pre string, args []string, st keys.Status, word string) error {
-	store, _, pos, err := e.open(word, keysHelp, pre, args, 1, nil)
+	var yes *bool
+	reg := func(fs *flag.FlagSet) {}
+	if st == keys.Revoked {
+		reg = func(fs *flag.FlagSet) { yes = fs.Bool("yes", false, "revoke without asking") }
+	}
+	store, dataDir, pos, err := e.open(word, keysHelp, pre, args, 1, reg)
 	if err != nil {
 		return err
 	}
@@ -188,15 +295,46 @@ func (e *env) keysStatus(ctx context.Context, pre string, args []string, st keys
 	if err != nil {
 		return err
 	}
+	// Revoke is permanent and sits one word from pause in the same help block, so it asks —
+	// naming the reversible alternative in the question (ticket 009 promise 9).
+	if st == keys.Revoked && !*yes {
+		fmt.Fprintf(e.out, "Revoking is permanent — %s would need a new invite.\n", k.Name)
+		fmt.Fprintf(e.out, "`%s keys pause %s` stops them temporarily instead.\n", product.CLIName, k.Name)
+		if !e.confirm(fmt.Sprintf("Revoke %s (%s)? [y/N] ", k.Name, k.ID)) {
+			fmt.Fprintf(e.out, "nothing changed. Pass --yes to revoke without being asked.\n")
+			return nil
+		}
+	}
 	if err := store.SetStatus(ctx, k.ID, st); err != nil {
 		return err
 	}
+	e.reloadHost(ctx, dataDir)
 	fmt.Fprintf(e.out, "%s (%s) is now %s\n", k.ID, k.Name, word)
 	return nil
 }
 
+// confirm asks a yes/no question. Anything but y/yes is no, and so is a stdin that cannot be read
+// (a pipe, a script, a killed terminal): a permanent change is never made by default.
+func (e *env) confirm(question string) bool {
+	if e.in == nil {
+		return false
+	}
+	fmt.Fprint(e.out, question)
+	line, err := bufio.NewReader(e.in).ReadString('\n')
+	if err != nil && line == "" {
+		fmt.Fprintln(e.out)
+		return false
+	}
+	a := strings.ToLower(strings.TrimSpace(line))
+	return a == "y" || a == "yes"
+}
+
 func (e *env) keysRotate(ctx context.Context, pre string, args []string) error {
-	store, dataDir, pos, err := e.open("rotate", keysHelp, pre, args, 1, nil)
+	var asJSON, noQR *bool
+	store, dataDir, pos, err := e.open("rotate", keysHelp, pre, args, 1, func(fs *flag.FlagSet) {
+		asJSON = fs.Bool("json", false, "print only the machine-readable invite object")
+		noQR = fs.Bool("no-qr", false, "do not draw the QR code")
+	})
 	if err != nil {
 		return err
 	}
@@ -212,15 +350,19 @@ func (e *env) keysRotate(ctx context.Context, pre string, args []string) error {
 	if err != nil {
 		return err
 	}
+	e.reloadHost(ctx, dataDir)
 	inv := e.plat.encodeInvite(addr, secret)
+	if *asJSON {
+		return e.printInviteJSON(dataDir, k, inv)
+	}
 	fmt.Fprintf(e.out, "key %s  %s — the previous invite no longer works.\n\n  %s\n\n", k.ID, k.Name, inv)
-	writeQR(e.out, inv)
+	e.printDestination(dataDir, k.Name, inv, *noQR)
 	return nil
 }
 
 func (e *env) keysLimits(ctx context.Context, pre string, args []string) error {
 	var apply func(keys.Limits) keys.Limits
-	store, _, pos, err := e.open("limits", keysLimitsHelp, pre, args, 1, func(fs *flag.FlagSet) { apply = limitFlags(fs) })
+	store, dataDir, pos, err := e.open("limits", keysLimitsHelp, pre, args, 1, func(fs *flag.FlagSet) { apply = limitFlags(fs) })
 	if err != nil {
 		return err
 	}
@@ -232,6 +374,7 @@ func (e *env) keysLimits(ctx context.Context, pre string, args []string) error {
 	if err := store.SetLimits(ctx, k.ID, next); err != nil {
 		return err
 	}
+	e.reloadHost(ctx, dataDir)
 	fmt.Fprintf(e.out, "key %s  %s\n%s\n", k.ID, k.Name, limitsLine(next))
 	return nil
 }
@@ -245,10 +388,16 @@ func limitsLine(l keys.Limits) string {
 	if l.MaxContext > 0 {
 		ctx = fmt.Sprintf("%d context", l.MaxContext)
 	}
-	return fmt.Sprintf("limits: %s rpm · %s tpm · %s concurrent · %s max output · %s · %s tokens/day · %s",
+	return fmt.Sprintf("limits: %s rpm · %s tpm · %s concurrent · %s max output · %s · %s tokens/day · %s\n        %s",
 		limitNum(l.RPM), limitNum(l.TPM), limitNum(l.MaxConcurrent), limitNum(l.MaxOutputTokens),
-		ctx, limitNum(l.DailyTokens), models)
+		ctx, limitNum(l.DailyTokens), models, countsLine)
 }
+
+// countsLine is the one sentence that says what a key's numbers count, printed wherever a limit
+// or a counter is shown so `keys`, `status`, and `usage` cannot drift apart. Checked against
+// internal/gateway rather than assumed: models() takes the RPM entry (006 promise 5), /me takes
+// nothing, and only a completion carries tokens.
+const countsLine = "rpm counts model calls and the app's /v1/models lookup; tpm and tokens/day count model calls only"
 
 // limitNum renders 0 as the word the host means by it.
 func limitNum(n int) string {
@@ -287,13 +436,14 @@ One key is one person. Limits live on the key.
 
 Subcommands:
   add NAME [limits]   mint a key and print the invite and its QR code
-  list                every key with its limits and when it was last seen
+  list                every key with its limits and when it last used the engine
   pause ID            stop a key answering, keep it
   resume ID           undo pause
-  revoke ID           stop it for good
+  revoke ID           stop it for good (asks first; --yes skips the question)
   rotate ID           issue a new secret, keeping id, name, and limits
   limits ID [limits]  change limits; only the flags you pass change
 
+An invite is bn1.<host address>.<secret>; the web app sends the secret as "Bearer <secret>".
 ID is a key id (k_7f3a2b) or a key name when that name is unique.
 Limit flags: --rpm --tpm --max-concurrent --max-output-tokens --max-context --daily-tokens --models
 `
@@ -318,6 +468,11 @@ Limit flags:
   --max-context N         context ceiling (0 = the upstream's)
   --daily-tokens N        tokens per UTC day
   --models a,b            model allowlist (empty = every model)
+
+Other flags:
+  --force                 mint a second key for a name that already has an active one
+  --json                  print {"key_id","name","invite","link"} and nothing else
+  --no-qr                 skip the QR code (it is also skipped when stdout is not a terminal)
   --data-dir DIR          where keys, usage, and the host key live
 `
 

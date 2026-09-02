@@ -75,28 +75,9 @@ func Start(ctx context.Context, o Options) (*Server, error) {
 	if o.Logf != nil {
 		logf = quiet(o.Logf)
 	}
-	pk, err := loadKey(o)
+	pk, reg, err := identity(ctx, o)
 	if err != nil {
 		return nil, err
-	}
-	ci := pk.Public
-	pin := len(ci.Region) == 0 && ci.RegionID <= 0 // a fresh (or unpinned) key
-	if pin {
-		if err := chooseRegion(ctx, o, &ci); err != nil {
-			return nil, err
-		}
-	}
-	if err := ci.Expand(ctx, expandOpts(o)...); err != nil {
-		return nil, fmt.Errorf("tunnel: resolving relay region: %w", err)
-	}
-	reg := ci.Region[0]
-	if pin {
-		pinRegion(pk, reg, o.DERPMapURL != "" || o.Region != "")
-		if !o.Ephemeral {
-			if err := writeKey(filepath.Join(o.DataDir, KeyFile), pk); err != nil {
-				return nil, err
-			}
-		}
 	}
 	s := &Server{addr: addrFor(pk), region: reg}
 	s.ln = newListener(s)
@@ -107,6 +88,55 @@ func Start(ctx context.Context, o Options) (*Server, error) {
 	}
 	s.started = time.Now()
 	return s, nil
+}
+
+// identity resolves the host identity this server will answer as, together with the relay region
+// pinned into it. On return, and for a non-ephemeral host, the key is byte-for-byte the one in
+// <DataDir>/KeyFile, so Addr() always equals SavedAddr(DataDir) and every invite minted in the
+// first session keeps working.
+//
+// That guarantee is the fix for ticket 009 promise 1. A fresh data dir used to be filled by
+// whichever `serve` renamed its key last, while each process went on serving — and minting
+// invites for — the identity it had generated in memory; two hosts starting in the same second
+// (the stranger's `serve` plus a second one that only failed later, at the admin socket) left the
+// survivor advertising an address whose key no longer existed. The identity file is now created
+// once: a loser adopts the winner's key rather than inventing its own.
+func identity(ctx context.Context, o Options) (*tailcat.PrivateKey, *tailcfg.DERPRegion, error) {
+	pk, err := loadKey(o)
+	if err != nil {
+		return nil, nil, err
+	}
+	for adopted := false; ; adopted = true {
+		ci := pk.Public
+		pin := len(ci.Region) == 0 && ci.RegionID <= 0 // a fresh (or unpinned) key
+		if pin {
+			if adopted {
+				return nil, nil, ErrUnpinned
+			}
+			if err := chooseRegion(ctx, o, &ci); err != nil {
+				return nil, nil, err
+			}
+		}
+		if err := ci.Expand(ctx, expandOpts(o)...); err != nil {
+			return nil, nil, fmt.Errorf("tunnel: resolving relay region: %w", err)
+		}
+		reg := ci.Region[0]
+		if !pin {
+			return pk, reg, nil // the saved key already names its relay; serve on that one
+		}
+		pinRegion(pk, reg, o.DERPMapURL != "" || o.Region != "")
+		if o.Ephemeral {
+			return pk, reg, nil // pinned in memory only; nothing on disk to agree with
+		}
+		saved, err := saveKey(filepath.Join(o.DataDir, KeyFile), pk)
+		if err != nil {
+			return nil, nil, err
+		}
+		if addrFor(saved) == addrFor(pk) {
+			return pk, reg, nil
+		}
+		pk = saved // another host got there first: take its identity, then re-resolve its relay
+	}
 }
 
 // quiet drops the NetworkMap dump tailcat logs at startup (one JSON line describing this very
@@ -196,33 +226,47 @@ func readKey(path string) (*tailcat.PrivateKey, error) {
 	return pk, nil
 }
 
-// writeKey writes the key atomically, mode 0600, in a 0700 directory: a fresh O_EXCL temp file
-// beside the target (never a predictable name; ticket 005 fix 10f), then rename.
-func writeKey(path string, pk *tailcat.PrivateKey) error {
+// saveKey publishes pk as the host identity and returns the identity that is on disk afterwards —
+// pk itself, or the one another host published first. The host key is created once and never
+// overwritten: the content is staged in a fresh O_EXCL temp file beside the target (never a
+// predictable name; ticket 005 fix 10f) and claimed with a hard link, which is both atomic and
+// exclusive, so a reader never sees a half file and a second host never replaces a live identity
+// (ticket 009 promise 1). Mode 0600 in a 0700 directory.
+//
+// A filesystem without hard links falls back to rename and re-reads what landed, which keeps the
+// "the address is what is on disk" guarantee even though the last writer then wins the file.
+func saveKey(path string, pk *tailcat.PrivateKey) (*tailcat.PrivateKey, error) {
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return fmt.Errorf("tunnel: creating data dir: %w", err)
+		return nil, fmt.Errorf("tunnel: creating data dir: %w", err)
 	}
 	b, err := json.MarshalIndent(pk, "", "\t")
 	if err != nil {
-		return err
+		return nil, err
 	}
 	tmp, err := os.CreateTemp(dir, "."+filepath.Base(path)+"-*") // 0600, O_EXCL
 	if err != nil {
-		return fmt.Errorf("tunnel: writing host key: %w", err)
+		return nil, fmt.Errorf("tunnel: writing host key: %w", err)
 	}
-	defer os.Remove(tmp.Name()) // no-op once the rename has happened
+	defer os.Remove(tmp.Name()) // no-op only if the temp file was renamed away
 	if _, err := tmp.Write(b); err != nil {
 		tmp.Close()
-		return fmt.Errorf("tunnel: writing host key: %w", err)
+		return nil, fmt.Errorf("tunnel: writing host key: %w", err)
 	}
 	if err := tmp.Close(); err != nil {
-		return fmt.Errorf("tunnel: writing host key: %w", err)
+		return nil, fmt.Errorf("tunnel: writing host key: %w", err)
 	}
-	if err := os.Rename(tmp.Name(), path); err != nil {
-		return fmt.Errorf("tunnel: writing host key: %w", err)
+	switch err := os.Link(tmp.Name(), path); {
+	case err == nil:
+		return pk, nil
+	case errors.Is(err, os.ErrExist):
+		return readKey(path) // another host published first; its key is the host's identity
+	default:
+		if err := os.Rename(tmp.Name(), path); err != nil {
+			return nil, fmt.Errorf("tunnel: writing host key: %w", err)
+		}
+		return readKey(path)
 	}
-	return nil
 }
 
 // addrFor builds the ConnBlob from the private key and the pinned region. The public keys are

@@ -76,10 +76,11 @@ func (e *env) writeUsage(rep *usage.Report, since, keyID string, names map[strin
 		fmt.Fprintln(e.out, "nothing yet")
 		return
 	}
-	fmt.Fprintf(e.out, "requests  %d  (%d errors%s)\n", t.Requests, t.Errors, errCodes(t.ErrorsByCode))
+	fmt.Fprintf(e.out, "requests  %s%s%s\n", calls(t.ModelCalls), polls(t.AppPolls), errs(t.Errors, t.ErrorsByCode))
 	fmt.Fprintf(e.out, "tokens    %s prompt  %s completion\n", comma(t.PromptTokens), comma(t.CompletionTokens))
 	fmt.Fprintf(e.out, "ttft      median %s  p95 %s\n", ms(t.TTFTMedianMS), ms(t.TTFTP95MS))
-	fmt.Fprintf(e.out, "total     median %s  p95 %s\n", ms(t.TotalMedianMS), ms(t.TotalP95MS))
+	fmt.Fprintf(e.out, "total     median %s  p95 %s   (successful model calls only)\n", ms(t.TotalMedianMS), ms(t.TotalP95MS))
+	fmt.Fprintf(e.out, "counts    %s\n", countsLine)
 	if rep.Malformed > 0 {
 		fmt.Fprintf(e.out, "\n%d unreadable line(s) in the log were skipped\n", rep.Malformed)
 	}
@@ -88,14 +89,38 @@ func (e *env) writeUsage(rep *usage.Report, since, keyID string, names map[strin
 	}
 	fmt.Fprintln(e.out)
 	tw := tabwriter.NewWriter(e.out, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(tw, "ID\tNAME\tREQ\tERR\tPROMPT\tCOMPLETION\tTTFT p50\tTOTAL p50\tLAST SEEN")
+	fmt.Fprintln(tw, "ID\tNAME\tCALLS\tPOLLS\tERR\tPROMPT\tCOMPLETION\tTTFT p50\tTOTAL p50\tLAST SEEN")
 	for _, k := range rep.Keys {
-		fmt.Fprintf(tw, "%s\t%s\t%d\t%d\t%s\t%s\t%s\t%s\t%s\n",
-			orDash(k.KeyID), orDash(names[k.KeyID]), k.Requests, k.Errors,
+		fmt.Fprintf(tw, "%s\t%s\t%d\t%d\t%d\t%s\t%s\t%s\t%s\t%s\n",
+			orDash(k.KeyID), orDash(names[k.KeyID]), k.ModelCalls, k.AppPolls, k.Errors,
 			comma(k.PromptTokens), comma(k.CompletionTokens),
 			ms(k.TTFTMedianMS), ms(k.TotalMedianMS), ago(k.LastSeen))
 	}
 	tw.Flush()
+}
+
+// calls, polls and errs write the headline the way a host reads it: what the friend did, then what
+// their browser did on its own, then what went wrong. A web app polls /me every 30 s, and counting
+// those as requests is what made one conversation read as 58 (ticket 009 promise 6).
+func calls(n int) string {
+	if n == 1 {
+		return "1 model call"
+	}
+	return fmt.Sprintf("%d model calls", n)
+}
+
+func polls(n int) string {
+	if n == 0 {
+		return ""
+	}
+	return fmt.Sprintf(" (+%d app polls)", n)
+}
+
+func errs(n int, byCode map[string]int) string {
+	if n == 0 {
+		return ""
+	}
+	return fmt.Sprintf(" — %s%s", plural(n, "error"), errCodes(byCode))
 }
 
 func errCodes(m map[string]int) string {
@@ -168,8 +193,10 @@ func comma(n int) string {
 
 const usageHelp = `Usage: bunny-network usage [--key ID] [--since 24h] [--data-dir DIR]
 
-Reads usage.jsonl and totals it: requests, errors by code, tokens, and the median and p95 of
-time-to-first-token and total time. Works whether or not the host is running.
+Reads usage.jsonl and totals it: model calls (what your friends asked the engine for) and app
+polls (what their browser did on its own), errors by code, tokens, and the median and p95 of
+time-to-first-token and total time over successful model calls. Works whether or not the host is
+running.
 
   bunny-network usage
   bunny-network usage --since 7d

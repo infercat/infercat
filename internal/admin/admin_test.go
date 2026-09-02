@@ -2,6 +2,7 @@ package admin
 
 import (
 	"context"
+	"errors"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -36,7 +37,7 @@ func sample() Status {
 
 func TestServeAndFetchRoundTrip(t *testing.T) {
 	dir := t.TempDir()
-	s, err := Serve(dir, sample)
+	s, err := Serve(dir, sample, nil)
 	if err != nil {
 		t.Fatalf("Serve: %v", err)
 	}
@@ -65,7 +66,7 @@ func TestServeAndFetchRoundTrip(t *testing.T) {
 // socket only the host's own user can open.
 func TestSocketIsPrivate(t *testing.T) {
 	dir := t.TempDir()
-	s, err := Serve(dir, sample)
+	s, err := Serve(dir, sample, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -102,7 +103,7 @@ func TestFetchWithoutADaemon(t *testing.T) {
 
 func TestCloseRemovesTheSocket(t *testing.T) {
 	dir := t.TempDir()
-	s, err := Serve(dir, sample)
+	s, err := Serve(dir, sample, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -124,7 +125,7 @@ func TestTooLongDataDirSaysWhy(t *testing.T) {
 		t.Skip("no sun_path limit on the windows fallback")
 	}
 	dir := filepath.Join(shortDir(t), strings.Repeat("x", 120))
-	if _, err := Serve(dir, sample); err == nil || !strings.Contains(err.Error(), "too long") {
+	if _, err := Serve(dir, sample, nil); err == nil || !strings.Contains(err.Error(), "too long") {
 		t.Errorf("err = %v, want a clear complaint about the path length", err)
 	}
 }
@@ -138,7 +139,7 @@ func TestStaleSocketIsReplaced(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, SockName), nil, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	s, err := Serve(dir, sample)
+	s, err := Serve(dir, sample, nil)
 	if err != nil {
 		t.Fatalf("Serve over a stale socket: %v", err)
 	}
@@ -154,12 +155,46 @@ func TestSecondHost(t *testing.T) {
 		t.Skip("the windows fallback has no socket to collide on")
 	}
 	dir := shortDir(t)
-	s, err := Serve(dir, sample)
+	s, err := Serve(dir, sample, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer s.Close()
-	if _, err := Serve(dir, sample); err == nil {
+	if _, err := Serve(dir, sample, nil); err == nil {
 		t.Error("a second Serve on the same data dir succeeded")
+	}
+}
+
+// Ticket 009 promise 9: POST /reload is the CLI telling a running host that keys.json changed.
+// It is on the same socket as /status — never on TCP except the documented Windows loopback
+// fallback, where it needs the same token (Protection 1).
+func TestReloadCallsTheHook(t *testing.T) {
+	dir := shortDir(t)
+	var called int
+	s, err := Serve(dir, sample, func() error { called++; return nil })
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	ctx := context.Background()
+	if err := Reload(ctx, dir); err != nil {
+		t.Fatalf("Reload: %v", err)
+	}
+	if called != 1 {
+		t.Fatalf("reload hook called %d times; want 1", called)
+	}
+	// A hook that fails is reported, not swallowed.
+	s.Close()
+	s2, err := Serve(dir, sample, func() error { return errors.New("keys.json is corrupt") })
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s2.Close()
+	if err := Reload(ctx, dir); err == nil || !strings.Contains(err.Error(), "500") {
+		t.Fatalf("Reload with a failing hook = %v; want the failure", err)
+	}
+	// No host at all is ErrNoDaemon, which the CLI treats as "nothing to tell".
+	if err := Reload(ctx, shortDir(t)); !errors.Is(err, ErrNoDaemon) {
+		t.Fatalf("Reload without a host = %v; want ErrNoDaemon", err)
 	}
 }

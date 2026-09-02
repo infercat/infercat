@@ -6,6 +6,8 @@ import (
 	"os"
 	"path/filepath"
 	"time"
+
+	"github.com/2185Lab/bunny-network/internal/product"
 )
 
 // configName holds the `serve` settings so a later `serve` with no flags reuses them.
@@ -27,7 +29,20 @@ type config struct {
 	DERPMapURL     string `json:"derpmap_url,omitempty"`
 	Region         string `json:"region,omitempty"`
 	Name           string `json:"name,omitempty"`
+	WebURL         string `json:"web_url,omitempty"`
 }
+
+// webURL is where this host's friends open the web app: the remembered --web-url, else the
+// built-in product.WebURL, else empty (no hosted app yet).
+func webURL(c config) string {
+	if c.WebURL != "" {
+		return c.WebURL
+	}
+	return product.WebURL
+}
+
+// configPath is the file `serve` remembers its flags in, named in the messages that depend on it.
+func configPath(dataDir string) string { return filepath.Join(dataDir, configName) }
 
 func loadConfig(dataDir string) (config, error) {
 	var c config

@@ -2,16 +2,21 @@ package main
 
 import (
 	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"log"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/2185Lab/bunny-network/internal/admin"
 	"github.com/2185Lab/bunny-network/internal/keys"
 	"github.com/2185Lab/bunny-network/internal/product"
+	// only for tunnel.KeyFile: the host identity's file name is the tunnel's to define, and a
+	// second copy of it here would be a lie waiting to happen.
+	"github.com/2185Lab/bunny-network/internal/tunnel"
 	"github.com/2185Lab/bunny-network/internal/upstream"
 	"github.com/2185Lab/bunny-network/internal/usage"
 )
@@ -50,20 +55,27 @@ func (e *env) cmdServe(ctx context.Context, pre string, args []string) error {
 	ephemeral := fs.Bool("ephemeral", false, "do not touch disk for the host key; a new address every run (not remembered)")
 	derpMapURL := fs.String("derpmap-url", cfg.DERPMapURL, "relay map URL")
 	region := fs.String("region", cfg.Region, "preferred relay region")
-	name := fs.String("name", cfg.Name, "host display name your friends see")
+	name := fs.String("name", cfg.Name, "host display name your friends see; defaults to this machine's hostname")
+	webURLFlag := fs.String("web-url", cfg.WebURL, "where your friends open the web app; invites print as <url>#<invite>")
 	verbose := fs.Bool("verbose", false, "print the tunnel engine's log on the terminal instead of tunnel.log (not remembered)")
 	if err := e.parse(fs, serveHelp, args); err != nil {
 		return err
 	}
 
+	*upURL = forgetIfAuto(*upURL)
 	if err := saveConfig(dataDir, config{
 		Upstream: *upURL, UpstreamKey: *upKey, Slots: *slots,
 		QueueTimeout: queueTimeout.String(), RequestTimeout: requestTimeout.String(),
 		MaxBody: *maxBody, DevListen: *devListen, DERPMapURL: *derpMapURL,
-		Region: *region, Name: *name,
+		Region: *region, Name: *name, WebURL: *webURLFlag,
 	}); err != nil {
 		return err
 	}
+	hostName := hostDisplayName(*name)
+	// Whether this run is the one that creates the host identity, checked before the tunnel does
+	// it, so the note that explains the file is printed exactly once (ticket 009 promise 8).
+	_, keyErr := os.Stat(filepath.Join(dataDir, tunnel.KeyFile))
+	newIdentity := errors.Is(keyErr, os.ErrNotExist) && !*ephemeral
 
 	if e.plat.warn != "" {
 		e.logf("%s", e.plat.warn)
@@ -72,7 +84,7 @@ func (e *env) cmdServe(ctx context.Context, pre string, args []string) error {
 		e.logf("--log-prompts is ON: your friends' prompts and completions are being written to %s/%s.", dataDir, usage.FileName)
 	}
 
-	up, err := e.openUpstream(ctx, *upURL, *upKey, *slots)
+	up, err := e.openUpstream(ctx, dataDir, *upURL, *upKey, *slots)
 	if err != nil {
 		return err
 	}
@@ -105,7 +117,7 @@ func (e *env) cmdServe(ctx context.Context, pre string, args []string) error {
 		RequestTimeout: *requestTimeout,
 		MaxBody:        *maxBody,
 		LogPrompts:     *logPrompts,
-		HostName:       *name,
+		HostName:       hostName,
 		RelayRegion:    func() string { return tun.Status().Region },
 	}, up, store, rec, e.logf)
 	if err != nil {
@@ -115,13 +127,16 @@ func (e *env) cmdServe(ctx context.Context, pre string, args []string) error {
 	started := time.Now()
 	adm, err := admin.Serve(dataDir, func() admin.Status {
 		return buildStatus(ctx, started, tun, up, gw, store)
-	})
+	}, store.Reload)
 	if err != nil {
 		return fmt.Errorf("admin API: %w", err)
 	}
 	defer adm.Close()
 
-	e.printStartup(ctx, tun, up, store)
+	e.printStartup(ctx, startup{
+		tun: tun, up: up, store: store, dataDir: dataDir,
+		hostName: hostName, webURL: webURL(config{WebURL: *webURLFlag}), newIdentity: newIdentity,
+	})
 
 	go refreshLoop(ctx, up, gw, e.logf)
 
@@ -153,7 +168,7 @@ func (e *env) cmdServe(ctx context.Context, pre string, args []string) error {
 
 // openUpstream honours an explicit --upstream (unreachable is a warning) and otherwise runs
 // detection (nothing found is fatal, because there is nothing to proxy to).
-func (e *env) openUpstream(ctx context.Context, url, key string, slots int) (upstream.Upstream, error) {
+func (e *env) openUpstream(ctx context.Context, dataDir, url, key string, slots int) (upstream.Upstream, error) {
 	var up upstream.Upstream
 	var err error
 	if url != "" {
@@ -162,15 +177,41 @@ func (e *env) openUpstream(ctx context.Context, url, key string, slots int) (ups
 		up, err = upstream.Detect(ctx, key)
 	}
 	if err != nil {
-		return nil, err
+		// Detection found nothing: end with the command that fixes it, and say where the flag
+		// goes, because `--upstream` reads like a subcommand to a first-time host (promise 5).
+		return nil, fmt.Errorf("%w — like this, as a flag of `serve`:\n\n  %s serve --upstream http://127.0.0.1:<port>", err, product.CLIName)
 	}
 	if s, ok := up.(upstream.Slotted); ok && slots > 0 {
 		s.SetSlots(slots)
 	}
 	if !up.Info().Healthy {
 		e.logf("WARNING: %s is not answering. Friends get 503 upstream_down until it does; retrying every %s.", up.Info().URL, refreshEvery)
+		e.logf("         It is remembered in %s — `%s serve --upstream auto` detects again and forgets it.", configPath(dataDir), product.CLIName)
 	}
 	return up, nil
+}
+
+// forgetIfAuto turns `--upstream auto` into "no remembered upstream": detection runs again this
+// run, and the empty value is what gets persisted, so the mistyped URL is gone for good. It is
+// the documented way out of a remembered upstream that never answers (ticket 009 promise 10).
+func forgetIfAuto(url string) string {
+	if strings.EqualFold(strings.TrimSpace(url), "auto") {
+		return ""
+	}
+	return url
+}
+
+// hostDisplayName is what /me shows a friend: the host's --name, else this machine's hostname
+// without the mDNS suffix, else empty (and the client then omits the sentence).
+func hostDisplayName(name string) string {
+	if name = strings.TrimSpace(name); name != "" {
+		return name
+	}
+	h, err := os.Hostname()
+	if err != nil {
+		return ""
+	}
+	return strings.TrimSuffix(strings.TrimSpace(h), ".local")
 }
 
 // tunnelLogf routes the tunnel engine's chatter (wgengine, magicsock, netstack, …) to
@@ -222,10 +263,23 @@ func refreshLoop(ctx context.Context, up upstream.Upstream, gw gatewayServer, lo
 	}
 }
 
+// startup is everything the banner names. It is a struct because the banner grew the four lines
+// the strangers asked for (web, name, access, data) and a positional list of seven was worse.
+type startup struct {
+	tun         tunnelServer
+	up          upstream.Upstream
+	store       keys.Store
+	dataDir     string
+	hostName    string
+	webURL      string
+	newIdentity bool // this run created host.key.json: explain the file, once
+}
+
 // printStartup writes the block docs the ticket fixes the order of: product, upstream, tunnel,
-// relay, then what to do next.
-func (e *env) printStartup(ctx context.Context, tun tunnelServer, up upstream.Upstream, store keys.Store) {
-	info := up.Info()
+// relay, then — added by ticket 009 — where friends open the app, the name they see, exactly what
+// they can reach, where the host's own files live, and finally what to do next.
+func (e *env) printStartup(ctx context.Context, s startup) {
+	info := s.up.Info()
 	health := ""
 	if !info.Healthy {
 		health = "  (not answering)"
@@ -233,9 +287,22 @@ func (e *env) printStartup(ctx context.Context, tun tunnelServer, up upstream.Up
 	fmt.Fprintf(e.out, "%s %s\n", product.Name, product.Version)
 	fmt.Fprintf(e.out, "upstream  %s  %s%s\n", info.Kind, info.URL, health)
 	fmt.Fprintf(e.out, "          %s  context %s  slots %d\n", modelList(info.Models), contextStr(info.ModelContext), info.Slots)
-	fmt.Fprintf(e.out, "tunnel    %s\n", orDash(tun.Addr()))
-	fmt.Fprintf(e.out, "relay     %s\n", orDash(tun.Status().Region))
-	list, err := store.List(ctx)
+	fmt.Fprintf(e.out, "tunnel    %s\n", orDash(s.tun.Addr()))
+	fmt.Fprintf(e.out, "relay     %s\n", orDash(s.tun.Status().Region))
+	if s.webURL != "" {
+		fmt.Fprintf(e.out, "web       %s  (your friends open this and paste their invite)\n", s.webURL)
+	}
+	if s.hostName != "" {
+		fmt.Fprintf(e.out, "name      %s  (shown to your friends)\n", s.hostName)
+	}
+	fmt.Fprintf(e.out, "access    friends reach only %s on %s\n", friendRoutes, info.URL)
+	fmt.Fprintf(e.out, "          nothing else on this machine — no other port, no files\n")
+	fmt.Fprintf(e.out, "data      %s\n", s.dataDir)
+	if s.newIdentity {
+		fmt.Fprintf(e.out, "          wrote %s — this is your host identity. Back it up; don't sync it to\n", tunnel.KeyFile)
+		fmt.Fprintf(e.out, "          Dropbox or a dotfiles repo; deleting it invalidates every invite you send.\n")
+	}
+	list, err := s.store.List(ctx)
 	if err != nil {
 		e.logf("keys: %v", err)
 		return
@@ -249,12 +316,20 @@ func (e *env) printStartup(ctx context.Context, tun tunnelServer, up upstream.Up
 	switch {
 	case len(list) == 0:
 		fmt.Fprintf(e.out, "\nMint a friend: %s keys add <name>\n", product.CLIName)
+	case active == 0:
+		fmt.Fprintf(e.out, "\n%s, none active — all paused or revoked; `%s keys add <name>` invites someone\n",
+			plural(len(list), "key"), product.CLIName)
 	case active == len(list):
-		fmt.Fprintf(e.out, "\n%d keys active\n", active)
+		fmt.Fprintf(e.out, "\n%s active\n", plural(active, "key"))
 	default:
-		fmt.Fprintf(e.out, "\n%d keys, %d active\n", len(list), active)
+		fmt.Fprintf(e.out, "\n%s, %d active\n", plural(len(list), "key"), active)
 	}
 }
+
+// friendRoutes is the whole of what the tunnel exposes, checked against internal/gateway's router
+// (request.go serve): /me and /healthz are answered by the gateway itself and never touch the
+// engine, so the sentence names the three routes that reach it.
+const friendRoutes = "/v1/models, /v1/chat/completions and /v1/embeddings"
 
 func buildStatus(ctx context.Context, started time.Time, tun tunnelServer, up upstream.Upstream, gw gatewayServer, store keys.Store) admin.Status {
 	ts := tun.Status()
@@ -320,7 +395,8 @@ Ctrl-C drains in-flight requests for up to 10s, then stops.
 
 Flags:
   --upstream URL          inference server; detected when absent, in the order
-                          llama.cpp :8080, Ollama :11434, LM Studio :1234, vLLM :8000
+                          llama.cpp :8080, Ollama :11434, LM Studio :1234, vLLM :8000.
+                          --upstream auto forgets a remembered URL and detects again
   --upstream-key TOKEN    bearer token for the inference server
   --slots N               parallel requests the engine can serve (0 = ask the engine)
   --queue-timeout D       how long a request may wait for a slot   (default 30s)
@@ -329,14 +405,22 @@ Flags:
   --dev-listen ADDR       also serve on this loopback address, permissive CORS
   --derpmap-url URL       relay map URL
   --region NAME           preferred relay region
-  --name NAME             host display name your friends see
+  --name NAME             host display name your friends see   (default: this machine's hostname)
+  --web-url URL           where your friends open the web app; invites then print as a link
   --log-prompts           write prompts and completions to usage.jsonl.
                           Off by default and never remembered: your friends' conversations
                           are theirs. Turn it on only to debug, one run at a time.
   --ephemeral             never write the host key; a new address every run (not remembered)
   --verbose               print the tunnel engine's log on the terminal instead of
                           <data-dir>/tunnel.log (not remembered)
-  --data-dir DIR          where keys, usage, config, and the host key live
+  --data-dir DIR          where this host's files live:
+                            host.key.json  your host identity — every invite points at it.
+                                           Back it up; don't sync it; deleting it kills every invite.
+                            keys.json      one entry per friend, secrets stored only as hashes
+                            usage.jsonl    one line per request; no prompt text unless --log-prompts
+                            config.json    the flags above, remembered
+                            tunnel.log     the tunnel engine's own log, truncated at every start
+                            admin.sock     how keys, status and usage talk to a running host
 
 There is no daemon mode: run it under your supervisor of choice (launchd, systemd, tmux).
 `

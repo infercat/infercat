@@ -7,6 +7,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"io"
 	"net"
 	"net/http"
 	"time"
@@ -71,15 +72,32 @@ type Server struct {
 	clean func()
 }
 
-// Serve starts the admin endpoint for dataDir. status is called per request.
-func Serve(dataDir string, status func() Status) (*Server, error) {
+// Serve starts the admin endpoint for dataDir. status is called per GET /status; reload is called
+// per POST /reload and must make an external edit to keys.json visible at once (ticket 009
+// promise 9). Both are the host's own, over the unix socket only — never the tunnel (Protection 1).
+func Serve(dataDir string, status func() Status, reload func() error) (*Server, error) {
 	l, token, clean, err := listen(dataDir)
 	if err != nil {
 		return nil, err
 	}
+	authed := func(r *http.Request) bool { return token == "" || r.Header.Get("Authorization") == "Bearer "+token }
 	mux := http.NewServeMux()
+	mux.HandleFunc("POST /reload", func(w http.ResponseWriter, r *http.Request) {
+		if !authed(r) {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		if reload != nil {
+			if err := reload(); err != nil {
+				http.Error(w, err.Error(), http.StatusInternalServerError)
+				return
+			}
+		}
+		w.Header().Set("Content-Type", "application/json")
+		io.WriteString(w, `{"ok":true}`)
+	})
 	mux.HandleFunc("/status", func(w http.ResponseWriter, r *http.Request) {
-		if token != "" && r.Header.Get("Authorization") != "Bearer "+token {
+		if !authed(r) {
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
 			return
 		}
@@ -108,6 +126,33 @@ func (s *Server) Close() error {
 		s.clean()
 	}
 	return err
+}
+
+// Reload tells the running host to re-read keys.json now, so a `keys` command's change is in
+// force before the command returns instead of within the store's once-per-second poll. No running
+// host is not an error to the caller: ErrNoDaemon means there was nothing to tell.
+func Reload(ctx context.Context, dataDir string) error {
+	hc, base, token, err := dial(dataDir)
+	if err != nil {
+		return err
+	}
+	req, err := http.NewRequestWithContext(ctx, http.MethodPost, base+"/reload", nil)
+	if err != nil {
+		return err
+	}
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+	resp, err := hc.Do(req)
+	if err != nil {
+		return ErrNoDaemon
+	}
+	defer resp.Body.Close()
+	io.Copy(io.Discard, resp.Body)
+	if resp.StatusCode != http.StatusOK {
+		return errors.New("admin API: " + resp.Status)
+	}
+	return nil
 }
 
 // Fetch asks the running host for its status. ErrNoDaemon means nothing is listening.
