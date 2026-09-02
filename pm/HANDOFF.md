@@ -23,19 +23,19 @@ a public social-media launch soon after, likely serving DeepSeek v4 flash from t
 
 ## In flight
 
-- **Landed on main (`8a3a3c4`):** 001–004 (tunnel/invite/wasm · gateway · CLI/store/upstream/usage/admin
+- **Landed on main (`ed3033f`):** 001–006 (005 integration with fixes 10a–10n and measured numbers; 006 the gateway request pipeline). Founder verdict 13:30: demo works, concept proven, next theme polish. Earlier: 001–004 (tunnel/invite/wasm · gateway · CLI/store/upstream/usage/admin
   with wiring flipped · web client). A stray 28 MB binary committed at the root during the flip was
   removed at `e5b0a11`; it remains in history (private repo) — rewrite before any public mirror.
 - **Reviews done:** Claude adversarial workflows on 001 (36 agents), 002 (55), 003 (46); second-model
   review (gpt-5.6-sol via ultracodex, 4 lenses, 39 findings) on integrated main. Summaries and rulings
   are appended to each ticket; confirmed defects became tickets 005 (10a–10n), 006, 007.
-- **Running:** 005 integration (Fable): fixes 10a–10n, end-to-end proof Direct + Tunnel via Playwright,
-  vLLM run, `hack/measure.sh` numbers. 006 gateway hardening (Fable): alias bypass, admission order,
-  write/read deadlines, bounded queue, metered /v1/models, no redirects, audit key_id, upstream 4xx,
-  `/me.host.log_prompts`. 007 web hardening (Opus): truthful stream ends, session leaks, degraded
+- **Running:** 007 web hardening (Opus, re-briefed as session + message state machines): truthful stream ends, session leaks, degraded
   states, host-scoped storage, revoked mid-session, abort-during-dial, IME, two tabs, log-prompts copy.
-- **Landing order:** 005 → 006 (rebase over 005's proxy.go edits) → 007 → experience review of the
-  integrated build (fresh Opus, Playwright) → founder demo instructions + morning report.
+  008 architecture review (Fable): `docs/DESIGN.md` with debt inventory and proposed cleanup tickets.
+  CLI first-run experience workflow (three stranger personas from README only → ranked polish list).
+- **Landing order:** 007 → web experience review (fresh Opus, Playwright, integrated build) → 008 design
+  doc → PM prices the polish + cleanup tickets. Founder decisions pending: name, relay VM, distribution,
+  license, history rewrite (see the 13:45 message).
 
 ## Standing decisions tonight
 
