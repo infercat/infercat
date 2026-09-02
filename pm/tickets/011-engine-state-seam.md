@@ -3,7 +3,7 @@ id: 011
 title: Engine state (Unknown kind, Health) and the three-method Engine seam (DESIGN §3)
 kind: sensitive
 size: 2
-status: draft
+status: dispatched
 updated: 2026-09-02
 release: demo-1
 ---
@@ -32,5 +32,7 @@ this ticket), `internal/gateway/**` for the import change only, `cmd/bunny-netwo
 for the banner/status words. Lands after 010 (same engineer, same worktree, rebased).
 
 ## Log
+
+- 2026-09-02 12:10 ACK (PM's message: start 011 on the rebased 010 without waiting). Base 19e3598 (origin/main with 009) + 010's commits on the same lane. Read DESIGN §3, this ticket, internal/upstream/** and every seam consumer (gateway, cmd, admin, wasm, hack). No contest. One item outside the scope contract, declared up front: `status` cannot print "NOT ANSWERING for Ns" without the time, so `admin.Upstream` gains one field (`since`, when health last changed) — one line in internal/admin, filled by `buildStatus`.
 
 ## Report

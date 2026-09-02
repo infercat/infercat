@@ -1,15 +1,17 @@
 package gateway
 
 // The engine-facing half of a request: body shaping (what normalize and checkBudgets call), the two
-// read-only routes, the upstream client, and the two relays. The pipeline itself is in request.go.
+// read-only routes, the error mapping for the engine seam, and the two relays. The pipeline itself
+// is in request.go. Everything the engine is sent goes through upstream.Engine.Do: this package
+// never sees the engine's address or transport (DESIGN §3.4, E4).
 
 import (
 	"bufio"
 	"bytes"
-	"context"
 	"encoding/json"
 	"errors"
 	"io"
+	"net"
 	"net/http"
 	"sort"
 	"strconv"
@@ -20,10 +22,7 @@ import (
 	"github.com/2185Lab/bunny-network/internal/upstream"
 )
 
-const (
-	maxUpstreamBody = 64 << 20         // non-stream response cap
-	countTimeout    = 10 * time.Second // CountTokens / models list
-)
+const maxUpstreamBody = 64 << 20 // non-stream response cap
 
 // ---- body shaping ----
 
@@ -157,13 +156,12 @@ func inputText(v any) string {
 	return ""
 }
 
+// countTokens asks the engine, which bounds the call itself (upstream.ProbeTimeout).
 func (q *request) countTokens(text string) int {
 	if text == "" {
 		return 0
 	}
-	ctx, cancel := context.WithTimeout(q.r.Context(), countTimeout)
-	defer cancel()
-	n, _, err := q.g.up.CountTokens(ctx, text)
+	n, _, err := q.g.up.CountTokens(q.r.Context(), text)
 	if err != nil {
 		q.g.logf("gateway: count tokens failed, estimating: %v", err)
 		return (len(text) + 3) / 4
@@ -283,10 +281,7 @@ func (q *request) models() {
 		return
 	}
 	q.outcome = outcomeEngineErr
-	ctx, cancel := context.WithTimeout(q.r.Context(), countTimeout)
-	q.cancelUpstream = cancel
-	req, _ := http.NewRequestWithContext(ctx, http.MethodGet, q.upstreamURL("/v1/models"), nil)
-	resp, err := q.doUpstream(req)
+	resp, err := q.g.up.Do(q.r.Context(), http.MethodGet, "/v1/models", nil, false)
 	if err != nil {
 		q.fail(q.upstreamErr(err))
 		return
@@ -352,7 +347,7 @@ func (q *request) me() {
 	info := q.g.up.Info()
 	m.Host.Name = q.g.cfg.HostName
 	m.Host.LogPrompts = q.g.cfg.LogPrompts
-	m.Host.Upstream.Kind, m.Host.Upstream.Healthy, m.Host.Upstream.ModelContext = info.Kind, info.Healthy, info.ModelContext
+	m.Host.Upstream.Kind, m.Host.Upstream.Healthy, m.Host.Upstream.ModelContext = info.Kind, info.Health.OK, info.ModelContext
 	m.Host.Models = []string{}
 	for _, id := range info.Models {
 		if q.key.AllowsModel(id) {
@@ -375,27 +370,10 @@ func (q *request) writeJSON(v any) {
 
 // ---- upstream ----
 
-func (q *request) upstreamURL(path string) string {
-	u := *q.g.up.BaseURL()
-	u.Path = strings.TrimSuffix(u.Path, "/") + path
-	u.RawPath, u.RawQuery, u.Fragment = "", "", ""
-	return u.String()
-}
-
-// doUpstream never follows a redirect (006 promise 6): the engine's transport stamps the host's
-// upstream API key on every request it sends, so a 3xx would replay that key to wherever Location
-// points. The 3xx surfaces as a non-2xx status instead.
-func (q *request) doUpstream(req *http.Request) (*http.Response, error) {
-	client := &http.Client{
-		Transport:     q.g.up.Transport(),
-		CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
-	}
-	return client.Do(req)
-}
-
-// upstreamErr maps a failed engine read: the friend left, the engine stalled past the idle
-// deadline, or the engine is not there. The friend never sees the engine's address (Protection 1);
-// the host sees it in the log.
+// upstreamErr maps a failed engine call or read: the friend left, the engine stalled past the
+// idle deadline, the engine's own deadline fired (its first byte, or a list's probe bound — a
+// timeout error from the seam), or the engine is not there. The friend never sees the engine's
+// address (Protection 1); the host sees it in the log.
 func (q *request) upstreamErr(err error) *gwError {
 	if q.r.Context().Err() != nil {
 		return errf(CodeClientClosed, 0, "client went away")
@@ -403,6 +381,11 @@ func (q *request) upstreamErr(err error) *gwError {
 	if q.engineIdle.Load() {
 		q.g.logf("gateway: upstream sent nothing for %s", q.g.idleTimeout)
 		return errf(CodeUpstreamError, 0, "the host's engine stopped answering for %s", q.g.idleTimeout)
+	}
+	var ne net.Error
+	if errors.As(err, &ne) && ne.Timeout() {
+		q.g.logf("gateway: upstream did not answer in time: %v", err)
+		return errf(CodeUpstreamError, 0, "the host's engine did not answer in time")
 	}
 	q.g.logf("gateway: upstream unreachable: %v", err)
 	return errf(CodeUpstreamDown, retryAfterUpstreamDown, "the host's engine is not reachable right now")

@@ -36,20 +36,21 @@ const (
 	retryAfterQueueTimeout = 5  // seconds; the friend already waited the queue timeout
 
 	// DESIGN §1.6: one owner each, no general "request timeout".
-	defaultQueueTimeout     = 30 * time.Second  // an engine that is full: wait for a slot, then 503 queue_timeout
-	defaultReadTimeout      = 30 * time.Second  // a client that stalls its body: from handler entry to body in hand
-	defaultWriteTimeout     = 60 * time.Second  // a client that stops reading: any single write or flush
-	defaultFirstByteTimeout = 120 * time.Second // an engine that accepted the request but does not start
-	defaultIdleTimeout      = 60 * time.Second  // an engine that stalls mid-stream: re-armed per read
-	defaultMaxBody          = 4 << 20           // request body cap, bytes; over it → 413 body_too_large
-	maxEndpointLen          = 64                // usage.Event.Endpoint is the request path: bounded (006 promise 7)
+	defaultQueueTimeout = 30 * time.Second // an engine that is full: wait for a slot, then 503 queue_timeout
+	defaultReadTimeout  = 30 * time.Second // a client that stalls its body: from handler entry to body in hand
+	defaultWriteTimeout = 60 * time.Second // a client that stops reading: any single write or flush
+	defaultIdleTimeout  = 60 * time.Second // an engine that stalls mid-stream: re-armed per read
+	defaultMaxBody      = 4 << 20          // request body cap, bytes; over it → 413 body_too_large
+	maxEndpointLen      = 64               // usage.Event.Endpoint is the request path: bounded (006 promise 7)
+	// The engine's first byte (an engine that accepted a request but does not start) is the
+	// engine's own deadline, upstream.FirstByteTimeout, behind Engine.Do (DESIGN §3.4).
 )
 
 // Gateway serves the API on any number of listeners (the tunnel, and loopback in dev mode) and
 // implements usage.Snapshot for the admin status API.
 type Gateway struct {
 	cfg    Config
-	up     upstream.Upstream
+	up     upstream.Engine // the gateway's whole view of the engine (DESIGN §3.4)
 	store  keys.Store
 	rec    usage.Recorder
 	logf   func(string, ...any)
@@ -58,8 +59,8 @@ type Gateway struct {
 	bodies atomic.Int32 // request bodies held in memory (per-key slots bound it; tests read it)
 
 	// The deadlines and the body cap, unexported: tests shorten them, hosts get the constants.
-	queueTimeout, readTimeout, writeTimeout, firstByteTimeout, idleTimeout time.Duration
-	maxBody                                                                int64
+	queueTimeout, readTimeout, writeTimeout, idleTimeout time.Duration
+	maxBody                                              int64
 
 	mu      sync.Mutex
 	servers []*http.Server
@@ -75,7 +76,7 @@ var _ interface {
 } = (*Gateway)(nil)
 
 // New builds a gateway. logf may be nil. Nothing is listening until Serve or ServeDev is called.
-func New(cfg Config, up upstream.Upstream, store keys.Store, rec usage.Recorder, logf func(string, ...any)) *Gateway {
+func New(cfg Config, up upstream.Engine, store keys.Store, rec usage.Recorder, logf func(string, ...any)) *Gateway {
 	if logf == nil {
 		logf = func(string, ...any) {}
 	}
@@ -88,12 +89,11 @@ func New(cfg Config, up upstream.Upstream, store keys.Store, rec usage.Recorder,
 		lim:   newLimiter(),
 		queue: slotQueue{cap: func() int { return up.Info().Slots }},
 
-		queueTimeout:     defaultQueueTimeout,
-		readTimeout:      defaultReadTimeout,
-		writeTimeout:     defaultWriteTimeout,
-		firstByteTimeout: defaultFirstByteTimeout,
-		idleTimeout:      defaultIdleTimeout,
-		maxBody:          defaultMaxBody,
+		queueTimeout: defaultQueueTimeout,
+		readTimeout:  defaultReadTimeout,
+		writeTimeout: defaultWriteTimeout,
+		idleTimeout:  defaultIdleTimeout,
+		maxBody:      defaultMaxBody,
 	}
 }
 

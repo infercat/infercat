@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"strings"
+	"sync"
 	"sync/atomic"
 	"testing"
 )
@@ -115,8 +116,8 @@ func TestOpenSniffsEveryKind(t *testing.T) {
 			if got.Kind != tc.want {
 				t.Errorf("kind = %q, want %q", got.Kind, tc.want)
 			}
-			if !got.Healthy {
-				t.Error("healthy = false after a successful Refresh")
+			if !got.Health.OK || got.Health.Err != "" || got.Health.Since.IsZero() || got.ProbedAt.IsZero() {
+				t.Errorf("health after a successful Refresh = %+v", got.Health)
 			}
 			if got.ModelContext != tc.info.ModelContext {
 				t.Errorf("context = %d, want %d", got.ModelContext, tc.info.ModelContext)
@@ -222,7 +223,7 @@ func TestDetectPassesTheAPIKeyToProbes(t *testing.T) {
 	if err != nil {
 		t.Fatalf("Detect with the key: %v", err)
 	}
-	if i := up.Info(); i.Kind != VLLM || !i.Healthy || i.ModelContext != 8192 {
+	if i := up.Info(); i.Kind != VLLM || !i.Health.OK || i.ModelContext != 8192 {
 		t.Fatalf("detected %+v; want vllm, healthy, context 8192", i)
 	}
 }
@@ -248,9 +249,11 @@ func TestDefaultDetectionOrderMatchesTheContract(t *testing.T) {
 	}
 }
 
-// 005 fix 10g: an engine that is down when serve starts is a guess (Generic, unhealthy); the
-// first Refresh that finds it answering re-sniffs and adopts the real kind, slots, and context.
-func TestRefreshReSniffsAnEngineThatWasDownAtOpen(t *testing.T) {
+// E3 (DESIGN §3.5): an engine that is down at Open is Unknown, not a guess; the first probe that
+// finds it answering identifies it with its real kind, slots and context — and the gateway's queue
+// cap follows on its next acquire with no call from serve (gateway: TestQueueFollowsEngineSlots;
+// cmd: TestServeRoutesTunnelLogAndFollowsSlots).
+func TestE3EngineDownAtOpenIsIdentifiedByTheNextProbe(t *testing.T) {
 	var up atomic.Bool
 	srv := serve(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !up.Load() {
@@ -270,28 +273,35 @@ func TestRefreshReSniffsAnEngineThatWasDownAtOpen(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if i := u.Info(); i.Healthy || i.Kind != Generic {
-		t.Fatalf("down engine at Open = %+v; want Generic and unhealthy", i)
+	before := u.Info()
+	if before.Health.OK || before.Kind != Unknown || before.Health.Err == "" {
+		t.Fatalf("down engine at Open = %+v; want Unknown, not OK, with the probe's error", before)
 	}
 	if err := u.Refresh(context.Background()); err == nil {
 		t.Fatal("Refresh against a down engine must fail")
+	}
+	if i := u.Info(); i.Kind != Unknown || !i.Health.Since.Equal(before.Health.Since) {
+		t.Fatalf("a second failed probe must keep Unknown and Since: %+v", i)
 	}
 	up.Store(true)
 	if err := u.Refresh(context.Background()); err != nil {
 		t.Fatal(err)
 	}
-	if i := u.Info(); !i.Healthy || i.Kind != LlamaCPP || i.Slots != 4 || i.ModelContext != 8192 || len(i.Models) != 1 {
-		t.Fatalf("after the engine came up = %+v; want llama.cpp, 4 slots, context 8192, 1 model", i)
+	if i := u.Info(); !i.Health.OK || i.Health.Err != "" || i.Kind != LlamaCPP || i.Slots != 4 || i.ModelContext != 8192 || len(i.Models) != 1 || !i.Health.Since.After(before.Health.Since) {
+		t.Fatalf("after the engine came up = %+v; want llama.cpp, OK since now, 4 slots, context 8192, 1 model", i)
 	}
 }
 
-func TestUnreachableUpstreamOpensUnhealthy(t *testing.T) {
+// E1 (DESIGN §3.5): Unknown ⇒ one slot, no context, no models — even with a --slots override,
+// which shows once an engine is identified.
+func TestE1UnknownEngineHasNothingButOneSlot(t *testing.T) {
 	up, err := Open(context.Background(), "http://127.0.0.1:1", "")
 	if err != nil {
 		t.Fatalf("Open should not fail on an engine that is merely down: %v", err)
 	}
-	if up.Info().Healthy {
-		t.Error("healthy = true for an upstream that never answered")
+	up.(Slotted).SetSlots(7)
+	if i := up.Info(); i.Kind != Unknown || i.Health.OK || i.Slots != 1 || i.ModelContext != 0 || len(i.Models) != 0 {
+		t.Fatalf("Unknown engine = %+v; want one slot, no context, no models", i)
 	}
 	// It still counts tokens, by estimate, so the gateway's pre-check works while it waits.
 	if n, exact, err := up.CountTokens(context.Background(), "abcd"); err != nil || exact || n != 1 {
@@ -299,9 +309,10 @@ func TestUnreachableUpstreamOpensUnhealthy(t *testing.T) {
 	}
 }
 
-// When a healthy engine goes away, Refresh reports the failure and flips Healthy, but the models
-// and context it last knew stay in Info so /me keeps telling the truth about what it saw.
-func TestRefreshKeepsTheLastGoodInfoWhenTheEngineGoesAway(t *testing.T) {
+// E2 (DESIGN §3.5): when a healthy engine goes away, Refresh reports the failure and flips Health
+// (OK false, Since moved, Err set) but Kind, models, slots and context stay, so /me keeps telling
+// the truth about what it saw.
+func TestE2RefreshKeepsTheLastGoodInfoWhenTheEngineGoesAway(t *testing.T) {
 	ctx := context.Background()
 	mux := http.NewServeMux()
 	mux.HandleFunc("/props", jsonOK(`{"total_slots":2,"default_generation_settings":{"n_ctx":4096}}`))
@@ -312,8 +323,9 @@ func TestRefreshKeepsTheLastGoodInfoWhenTheEngineGoesAway(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !up.Info().Healthy || up.Info().ModelContext != 4096 {
-		t.Fatalf("info before = %+v", up.Info())
+	before := up.Info()
+	if !before.Health.OK || before.ModelContext != 4096 {
+		t.Fatalf("info before = %+v", before)
 	}
 	srv.Close()
 
@@ -321,11 +333,11 @@ func TestRefreshKeepsTheLastGoodInfoWhenTheEngineGoesAway(t *testing.T) {
 		t.Error("Refresh against a dead engine returned no error")
 	}
 	got := up.Info()
-	if got.Healthy {
-		t.Error("healthy = true after the engine went away")
+	if got.Health.OK || got.Health.Err == "" || !got.Health.Since.After(before.Health.Since) {
+		t.Errorf("health after the engine went away = %+v; want not OK, since now, with the error", got.Health)
 	}
-	if got.ModelContext != 4096 || len(got.Models) != 1 || got.Models[0] != "gemma" {
-		t.Errorf("info = %+v, want the last known models and context kept", got)
+	if got.Kind != LlamaCPP || got.Slots != 2 || got.ModelContext != 4096 || len(got.Models) != 1 || got.Models[0] != "gemma" {
+		t.Errorf("info = %+v, want the last known kind, slots, models and context kept", got)
 	}
 }
 
@@ -350,7 +362,7 @@ func TestSlotsOverride(t *testing.T) {
 	}
 }
 
-func TestTransportAddsTheUpstreamKey(t *testing.T) {
+func TestDoAddsTheUpstreamKey(t *testing.T) {
 	var seen string
 	srv := serve(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		seen = r.Header.Get("Authorization")
@@ -360,8 +372,7 @@ func TestTransportAddsTheUpstreamKey(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	req, _ := http.NewRequest("GET", srv.URL+"/v1/models", nil)
-	resp, err := up.Transport().RoundTrip(req)
+	resp, err := up.Do(context.Background(), http.MethodGet, "/v1/models", nil, false)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -369,6 +380,57 @@ func TestTransportAddsTheUpstreamKey(t *testing.T) {
 	if seen != "Bearer sk-secret" {
 		t.Errorf("Authorization = %q, want the upstream key", seen)
 	}
+}
+
+// E5 (DESIGN §3.5): Do never follows a redirect (the bearer would otherwise be replayed to
+// wherever Location points) and carries nothing of the friend's — the request is built from
+// method, path and body alone. A GET is a list, bounded by the probe deadline until its body is closed.
+func TestE5DoNeverFollowsRedirectsNorLeaksHeaders(t *testing.T) {
+	var landed atomic.Int32
+	var mu sync.Mutex
+	var auths []string
+	srv := serve(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		mu.Lock()
+		auths = append(auths, r.Header.Get("Authorization"))
+		mu.Unlock()
+		switch r.URL.Path {
+		case "/landed":
+			landed.Add(1)
+			io.WriteString(w, `{}`)
+		case "/v1/chat/completions":
+			http.Redirect(w, r, "/landed", http.StatusFound)
+		default:
+			jsonOK(`{"object":"list","data":[{"id":"m"}]}`)(w, r)
+		}
+	}))
+	up, err := Open(context.Background(), srv.URL, "sk-host")
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp, err := up.Do(context.Background(), http.MethodPost, "/v1/chat/completions", []byte(`{"x":1}`), true)
+	if err != nil {
+		t.Fatal(err)
+	}
+	resp.Body.Close()
+	if resp.StatusCode != http.StatusFound || landed.Load() != 0 {
+		t.Fatalf("Do returned %d and the redirect target was hit %d time(s); want the 302 itself and 0", resp.StatusCode, landed.Load())
+	}
+	mu.Lock()
+	seen := append([]string(nil), auths...)
+	mu.Unlock()
+	for _, a := range seen {
+		if a != "Bearer sk-host" {
+			t.Fatalf("the engine saw Authorization %q; only the host's key may reach it", a)
+		}
+	}
+	resp, err = up.Do(context.Background(), http.MethodGet, "/v1/models", nil, false)
+	if err != nil || resp.StatusCode != 200 {
+		t.Fatalf("GET through Do: %v %v", err, resp)
+	}
+	if _, ok := resp.Body.(cancelOnClose); !ok {
+		t.Fatal("a GET's body must end the probe deadline on Close")
+	}
+	resp.Body.Close()
 }
 
 func TestNormalizeURL(t *testing.T) {
@@ -423,14 +485,18 @@ func TestEstimateTokens(t *testing.T) {
 	}
 }
 
-func TestBaseURLIsACopy(t *testing.T) {
-	up, err := Open(context.Background(), "http://127.0.0.1:1", "")
+// The vLLM slot default (docs/ARCHITECTURE.md: 2 unless --slots) is applied at identification,
+// not guessed while Unknown.
+func TestVLLMSlotsDefaultToTwoOnceIdentified(t *testing.T) {
+	up, err := Open(context.Background(), vllm(t).URL, "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	u := up.BaseURL()
-	u.Path = "/mutated"
-	if up.BaseURL().Path == "/mutated" {
-		t.Error("BaseURL handed out the client's own URL")
+	if i := up.Info(); i.Kind != VLLM || i.Slots != 2 {
+		t.Fatalf("vllm = %+v; want 2 slots", i)
+	}
+	up.(Slotted).SetSlots(5)
+	if err := up.Refresh(context.Background()); err != nil || up.Info().Slots != 5 {
+		t.Fatalf("override 5 must survive a refresh: %v %d", err, up.Info().Slots)
 	}
 }

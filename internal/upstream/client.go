@@ -14,9 +14,13 @@ import (
 	"time"
 )
 
-// probeTimeout caps every detection, sniff, refresh, and tokenize call. Probes must never be the
-// reason a request hangs.
-const probeTimeout = 3 * time.Second
+// The two deadlines the engine owns (DESIGN §1.6). Probes, tokenize and lists must never be the
+// reason a request hangs; a generation's first byte bounds an engine that accepted a request but
+// does not start (its later bytes are the gateway's idle deadline).
+const (
+	ProbeTimeout     = 3 * time.Second
+	FirstByteTimeout = 120 * time.Second
+)
 
 // Slotted is implemented by upstreams whose parallel-slot count the host can override
 // (`serve --slots N`). Engines that report their own slot count ignore the override.
@@ -26,21 +30,18 @@ type Slotted interface {
 
 // client is the single Upstream implementation; the Kind selects which probes it runs.
 type client struct {
-	base   *url.URL
-	apiKey string
-	hc     *http.Client
-	rt     http.RoundTripper
+	base *url.URL
+	hc   *http.Client // the one client: bearer, no redirects, first-byte deadline
 
 	mu       sync.RWMutex
 	info     Info
-	setSlots int  // host override from --slots; 0 = engine's own answer
-	sniffed  bool // the kind came from an engine that answered, not a guess (005 fix 10g)
+	setSlots int // host override from --slots; shows once the engine is identified
 }
 
 var _ Upstream = (*client)(nil)
 var _ Slotted = (*client)(nil)
 
-// bearer adds the upstream API key to every proxied request.
+// bearer adds the upstream API key to every request the engine is sent.
 type bearer struct {
 	rt  http.RoundTripper
 	key string
@@ -54,31 +55,25 @@ func (b bearer) RoundTrip(r *http.Request) (*http.Response, error) {
 	return b.rt.RoundTrip(r)
 }
 
-func newClient(base *url.URL, kind Kind, apiKey string) *client {
+// newClient is the Unknown state: nothing has answered yet, one slot, not OK since now.
+func newClient(base *url.URL, apiKey string) *client {
 	rt := http.DefaultTransport.(*http.Transport).Clone()
-	rt.ResponseHeaderTimeout = 0 // streaming responses hold headers open; the gateway times out
+	rt.ResponseHeaderTimeout = FirstByteTimeout
 	var tr http.RoundTripper = rt
 	if apiKey != "" {
 		tr = bearer{rt: tr, key: apiKey}
 	}
 	return &client{
-		base:   base,
-		apiKey: apiKey,
-		hc:     &http.Client{Transport: tr},
-		rt:     tr,
-		info:   Info{Kind: kind, URL: base.String(), Slots: defaultSlots(kind)},
+		base: base,
+		hc: &http.Client{
+			Transport: tr,
+			// Never follow a redirect: the bearer rides on every request, and a 3xx would replay
+			// it to wherever Location points. The 3xx surfaces as a non-2xx status instead (E5).
+			CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse },
+		},
+		info: Info{URL: base.String(), Kind: Unknown, Slots: 1, Health: Health{Since: time.Now(), Err: "not probed yet"}},
 	}
 }
-
-func defaultSlots(k Kind) int {
-	if k == VLLM {
-		return 2 // docs/ARCHITECTURE.md: vLLM does not report slots; --slots overrides
-	}
-	return 1
-}
-
-func (c *client) BaseURL() *url.URL            { u := *c.base; return &u }
-func (c *client) Transport() http.RoundTripper { return c.rt }
 
 func (c *client) Info() Info {
 	c.mu.RLock()
@@ -88,31 +83,73 @@ func (c *client) Info() Info {
 	return i
 }
 
+// SetSlots records the host's --slots override. It shows in Info once an engine is identified:
+// an Unknown engine has one slot (E1).
 func (c *client) SetSlots(n int) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
 	c.setSlots = n
-	if n > 0 {
+	if n > 0 && c.info.Kind != Unknown {
 		c.info.Slots = n
 	}
 }
 
-// Open dials an explicit upstream URL and sniffs which engine answers there. It returns a usable
-// Upstream even when the engine is down: `serve` warns and keeps polling Refresh.
+// Do implements Engine.Do. A GET is a list, never a generation, so the probe deadline bounds it
+// (cancelled when the caller closes the body); a POST's first byte is bounded by the transport.
+func (c *client) Do(ctx context.Context, method, path string, body []byte, stream bool) (*http.Response, error) {
+	cancel := context.CancelFunc(func() {})
+	if method == http.MethodGet {
+		ctx, cancel = context.WithTimeout(ctx, ProbeTimeout)
+	}
+	var rdr io.Reader
+	if body != nil {
+		rdr = bytes.NewReader(body)
+	}
+	req, err := http.NewRequestWithContext(ctx, method, c.base.String()+path, rdr)
+	if err != nil {
+		cancel()
+		return nil, err
+	}
+	if body != nil {
+		req.Header.Set("Content-Type", "application/json")
+	}
+	if stream {
+		req.Header.Set("Accept", "text/event-stream")
+	}
+	resp, err := c.hc.Do(req)
+	if err != nil {
+		cancel()
+		return nil, err
+	}
+	resp.Body = cancelOnClose{ReadCloser: resp.Body, cancel: cancel}
+	return resp, nil
+}
+
+// cancelOnClose ends a GET's probe deadline when the caller is done with the body.
+type cancelOnClose struct {
+	io.ReadCloser
+	cancel context.CancelFunc
+}
+
+func (b cancelOnClose) Close() error {
+	b.cancel()
+	return b.ReadCloser.Close()
+}
+
+// Open dials an explicit upstream URL and probes it once. It returns a usable Upstream even when
+// the engine is down (Unknown, not answering): `serve` warns and keeps probing.
 func Open(ctx context.Context, rawURL, apiKey string) (Upstream, error) {
 	base, err := normalize(rawURL)
 	if err != nil {
 		return nil, err
 	}
-	probe := newClient(base, Generic, apiKey)
-	kind, ok := sniff(ctx, probe)
-	c := newClient(base, kind, apiKey)
-	c.sniffed = ok // an engine that is down at serve start is re-sniffed by Refresh
+	c := newClient(base, apiKey)
 	_ = c.Refresh(ctx)
 	return c, nil
 }
 
-// candidates are probed in the order docs/ARCHITECTURE.md fixes.
+// candidates are probed in the order docs/ARCHITECTURE.md fixes; the kind is what usually lives at
+// that port and is documentation only — what answers is sniffed from the server, never assumed.
 var candidates = []struct {
 	url  string
 	kind Kind
@@ -127,26 +164,18 @@ var candidates = []struct {
 var ErrNoUpstream = errors.New("no local inference server found on 127.0.0.1 ports 8080 (llama.cpp), 11434 (Ollama), 1234 (LM Studio), 8000 (vLLM); pass --upstream URL")
 
 // Detect probes the known local engines in the contract's order and returns the first that
-// answers. The kind is sniffed from the server, not assumed from the port. apiKey, when set, is
-// sent on every probe so an engine behind a bearer token is found (005 fix 10n).
+// reaches OK. apiKey, when set, rides on every probe so an engine behind a bearer token is found
+// instead of being reported as absent (005 fix 10n).
 func Detect(ctx context.Context, apiKey string) (Upstream, error) {
 	for _, cand := range candidates {
 		base, err := normalize(cand.url)
 		if err != nil {
 			continue
 		}
-		// The key rides on every probe (005 fix 10n): an engine behind a bearer token answers 401
-		// to an unauthenticated /props or /v1/models and would otherwise be reported as absent.
-		probe := newClient(base, cand.kind, apiKey)
-		kind, ok := sniff(ctx, probe)
-		if !ok {
-			continue
+		c := newClient(base, apiKey)
+		if c.Refresh(ctx) == nil {
+			return c, nil
 		}
-		c := newClient(base, kind, apiKey)
-		if err := c.Refresh(ctx); err != nil {
-			continue
-		}
-		return c, nil
 	}
 	return nil, ErrNoUpstream
 }
@@ -173,13 +202,13 @@ func normalize(raw string) (*url.URL, error) {
 	return u, nil
 }
 
-// getJSON does a 3-second GET and decodes JSON into v. A non-2xx is an error.
+// getJSON does a GET under the probe deadline and decodes JSON into v. A non-2xx is an error.
 func (c *client) getJSON(ctx context.Context, path string, v any) error {
 	return c.doJSON(ctx, http.MethodGet, path, nil, v)
 }
 
 func (c *client) doJSON(ctx context.Context, method, path string, body any, v any) error {
-	ctx, cancel := context.WithTimeout(ctx, probeTimeout)
+	ctx, cancel := context.WithTimeout(ctx, ProbeTimeout)
 	defer cancel()
 	var rdr io.Reader
 	if body != nil {

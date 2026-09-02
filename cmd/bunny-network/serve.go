@@ -176,7 +176,7 @@ func (e *env) openUpstream(ctx context.Context, dataDir, url, key string, slots 
 	if s, ok := up.(upstream.Slotted); ok && slots > 0 {
 		s.SetSlots(slots)
 	}
-	if !up.Info().Healthy {
+	if !up.Info().Health.OK {
 		e.logf("WARNING: %s is not answering. Friends get 503 upstream_down until it does; retrying every %s.", up.Info().URL, refreshEvery)
 		e.logf("         It is remembered in %s — `%s serve --upstream auto` detects again and forgets it.", configPath(dataDir), product.CLIName)
 	}
@@ -229,7 +229,7 @@ func tunnelLogf(dataDir string, verbose bool, terminal func(string, ...any)) (fu
 func refreshLoop(ctx context.Context, up upstream.Upstream, logf func(string, ...any)) {
 	t := time.NewTicker(refreshEvery)
 	defer t.Stop()
-	was := up.Info().Healthy
+	was := up.Info().Health.OK
 	slots := up.Info().Slots
 	for {
 		select {
@@ -238,13 +238,13 @@ func refreshLoop(ctx context.Context, up upstream.Upstream, logf func(string, ..
 		case <-t.C:
 			err := up.Refresh(ctx)
 			info := up.Info()
-			if info.Healthy != was {
-				if info.Healthy {
-					logf("upstream is back: %s", info.URL)
+			if info.Health.OK != was {
+				if info.Health.OK {
+					logf("upstream is back: %s (%s)", info.URL, info.Kind)
 				} else {
 					logf("upstream went away: %v", err)
 				}
-				was = info.Healthy
+				was = info.Health.OK
 			}
 			if err == nil && info.Slots > 0 && info.Slots != slots {
 				logf("engine slots: %d (was %d)", info.Slots, slots)
@@ -272,11 +272,11 @@ type startup struct {
 func (e *env) printStartup(ctx context.Context, s startup) {
 	info := s.up.Info()
 	health := ""
-	if !info.Healthy {
-		health = "  (not answering)"
+	if !info.Health.OK {
+		health = "  " + healthWord(false, info.Health.Since)
 	}
 	fmt.Fprintf(e.out, "%s %s\n", product.Name, product.Version)
-	fmt.Fprintf(e.out, "upstream  %s  %s%s\n", info.Kind, info.URL, health)
+	fmt.Fprintf(e.out, "upstream  %s  %s%s\n", kindWord(string(info.Kind)), info.URL, health)
 	fmt.Fprintf(e.out, "          %s  context %s  slots %d\n", modelList(info.Models), contextStr(info.ModelContext), info.Slots)
 	fmt.Fprintf(e.out, "tunnel    %s\n", orDash(s.tun.Addr()))
 	fmt.Fprintf(e.out, "relay     %s\n", orDash(s.tun.Status().Region))
@@ -329,7 +329,7 @@ func buildStatus(ctx context.Context, started time.Time, tun tunnelServer, up up
 	st := admin.Status{
 		UptimeS:  int64(time.Since(started).Seconds()),
 		Tunnel:   admin.Tunnel{Addr: ts.Addr, Region: ts.Region, Clients: ts.Clients},
-		Upstream: admin.Upstream{Kind: string(info.Kind), URL: info.URL, Healthy: info.Healthy, ModelContext: info.ModelContext, Slots: info.Slots},
+		Upstream: admin.Upstream{Kind: string(info.Kind), URL: info.URL, Healthy: info.Health.OK, Since: info.Health.Since, ModelContext: info.ModelContext, Slots: info.Slots},
 		Queue:    admin.Queue{InFlight: inFlight, Waiting: waiting},
 		Keys:     []admin.Key{},
 	}
