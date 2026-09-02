@@ -153,29 +153,39 @@ export type StreamEvent =
   | { kind: 'done' }
   /** The stream ended without the host saying so. The answer is truncated, not finished. */
   | { kind: 'eof' }
-  | { kind: 'aborted' }
+  /** The request was aborted. `why` is set when it was not the reader's Stop — the app ended it,
+   *  and the reply must say that rather than "You stopped this reply" (020 promise 2). */
+  | { kind: 'aborted'; why?: string }
   | { kind: 'error'; code: string; error: FriendlyError };
 
 /**
  * How long the client waits for the *host* — not for the model. `noticeMs` is when the reply says
  * "still waiting"; `answerMs` is when a host that has not even answered the HTTP request is
- * declared asleep. The clock stops the moment a response head arrives: from then on the host is
+ * declared asleep. That clock stops the moment a response head arrives: from then on the host is
  * demonstrably awake and only its own deadlines apply, so a slow GPU is never called offline
  * (014 promise 1; the bridge's own 30 s dial timeout is too long to be the first thing a friend
- * learns from).
+ * learns from). `idleMs` is the fourth silence (020 promise 2): the head is out and then nothing
+ * — no token, no keepalive — for this long. On its own that is not evidence either (a long prompt
+ * takes a slow GPU that long to read), so it is checked against /me, and only a host that is
+ * unhealthy or unreachable ends the reply.
  */
 export interface StreamDeadlines {
   noticeMs: number;
   answerMs: number;
+  idleMs: number;
 }
 
-export const DEFAULT_DEADLINES: StreamDeadlines = { noticeMs: 5_000, answerMs: 15_000 };
+export const DEFAULT_DEADLINES: StreamDeadlines = { noticeMs: 5_000, answerMs: 15_000, idleMs: 15_000 };
 
 /**
  * A chat completion as a stream of events. Nothing here throws: a failure anywhere — a non-200
  * head, a gateway error inside an already-flushed 200 stream, a broken tunnel, an abort during the
- * dial, a host that never answers at all — arrives as the last event, so one reducer decides what
- * the message says.
+ * dial, a host that never answers at all, a host that stops answering half way — arrives as the
+ * last event, so one reducer decides what the message says.
+ *
+ * `probe` answers "is the host's engine reachable and healthy right now" — a /me, in practice —
+ * and is asked once the stream has been silent for `idleMs`. Without one, silence is never an
+ * ending (the 014/018 behaviour).
  */
 export async function* chatEvents(
   t: Transport,
@@ -184,6 +194,7 @@ export async function* chatEvents(
   signal?: AbortSignal,
   deadlines: StreamDeadlines = DEFAULT_DEADLINES,
   hostName?: string,
+  probe?: () => Promise<boolean>,
 ): AsyncGenerator<StreamEvent, void, void> {
   const pump = new Pump<StreamEvent>();
   const ac = new AbortController();
@@ -193,7 +204,7 @@ export async function* chatEvents(
 
   let answered = false; // a response head arrived: the host is awake, whatever the model is doing
   let spoke = false; // a token arrived: there is something on screen
-  let asleep = false; // we, not the reader, aborted — and this is why
+  let ended: StreamEvent | null = null; // we, not the reader, aborted — and this is why
   const sayWaiting = (): void => {
     if (!spoke) pump.push({ kind: 'waiting' });
   };
@@ -206,14 +217,42 @@ export async function* chatEvents(
     // waiting and say the likelier thing with the hedge the copy already carries ("probably"). A
     // busy host that answers later says so in its own words, and Reconnect costs the reader 2 s.
     if (!answered) {
-      asleep = true;
+      ended = hostFailed('host_asleep', hostName);
       ac.abort();
     }
   }, deadlines.answerMs);
 
+  // The fourth silence. `seen` counts what has arrived since the head; a probe that comes back
+  // after more has arrived changes nothing, because the host is demonstrably still talking.
+  let seen = 0;
+  let idle: ReturnType<typeof setTimeout> | null = null;
+  const armIdle = (): void => {
+    if (idle !== null) clearTimeout(idle);
+    if (!probe) return;
+    const at = seen;
+    idle = setTimeout(() => {
+      void probe()
+        .catch(() => false)
+        .then((alive) => {
+          if (seen !== at || ended || ac.signal.aborted) return;
+          if (alive) armIdle(); // reachable and healthy: a slow model, not a dead host — keep waiting
+          else {
+            ended = hostFailed('host_stalled', hostName);
+            ac.abort();
+          }
+        });
+    }, deadlines.idleMs);
+  };
+  const onAnswered = (): void => {
+    answered = true;
+    armIdle();
+  };
+
   void (async () => {
     try {
-      for await (const ev of rawChatEvents(t, secret, req, ac.signal, () => (answered = true), hostName)) {
+      for await (const ev of rawChatEvents(t, secret, req, ac.signal, onAnswered, hostName)) {
+        seen++;
+        armIdle();
         if (ev.kind === 'reasoning' || ev.kind === 'content') spoke = true;
         // A keepalive from the queue is a sign of life: "still waiting" starts over from it, with
         // room for the next one — the gateway sends one every 5 s, and a notice due at the same
@@ -223,7 +262,10 @@ export async function* chatEvents(
           notice = setTimeout(sayWaiting, 2 * deadlines.noticeMs);
         }
         // Our own abort must not be reported as the reader's Stop, nor as a bare transport string.
-        pump.push(asleep && (ev.kind === 'aborted' || ev.kind === 'error') ? hostAsleep(hostName) : ev);
+        // An abort the app asked for with a reason (another tab took the chat over) says so too.
+        if (ended && (ev.kind === 'aborted' || ev.kind === 'error')) pump.push(ended);
+        else if (ev.kind === 'aborted' && typeof signal?.reason === 'string') pump.push({ kind: 'aborted', why: signal.reason });
+        else pump.push(ev);
       }
     } finally {
       pump.end();
@@ -235,18 +277,15 @@ export async function* chatEvents(
   } finally {
     clearTimeout(notice);
     clearTimeout(giveUp);
+    if (idle !== null) clearTimeout(idle);
     signal?.removeEventListener('abort', relay);
     ac.abort(); // an abandoned generator must not leave a request running
   }
 }
 
-/** The failure the reviewer's phone actually hit, in the friend's words rather than the dialler's. */
-function hostAsleep(hostName?: string): StreamEvent {
-  return {
-    kind: 'error',
-    code: 'host_asleep',
-    error: describeError(new GatewayError(0, 'host_asleep', 'connection_error', ''), hostName),
-  };
+/** A host that let the reader down, in the friend's words rather than the dialler's. */
+function hostFailed(code: 'host_asleep' | 'host_stalled', hostName?: string): StreamEvent {
+  return { kind: 'error', code, error: describeError(new GatewayError(0, code, 'connection_error', ''), hostName) };
 }
 
 /** A tiny push queue: the timers above and the stream below both produce into one ordered stream. */
@@ -364,6 +403,11 @@ export function needsRedial(code: string): boolean {
   return code === 'host_asleep' || code === '';
 }
 
+/** The two codes that mean this invite is over for good, whatever the reader does next. */
+export function keyIsDead(code: string): boolean {
+  return code === 'key_revoked' || code === 'invalid_key';
+}
+
 export function isAbort(err: unknown): boolean {
   return (err as { name?: string } | null)?.name === 'AbortError';
 }
@@ -430,6 +474,8 @@ function parseBlock(block: string): SSEBlock | null {
 export interface FriendlyError {
   title: string;
   detail: string;
+  /** The gateway's code, when there was one: the session reducer tells a revoked key from a deleted one by it. */
+  code?: string;
   /** The host's own diagnostic, shown *next to* our copy — never instead of it. */
   hostSaid?: string;
   /** Seconds the host asked us to wait, when it said so. */
@@ -466,6 +512,9 @@ const COPY: Record<
   // The blocker: the machine on the other end is not there (014 promise 1).
   host_asleep: { retry: true, title: '{host} didn’t answer',
     detail: 'It’s probably asleep or offline — your message is saved, try again in a minute.' },
+  // The fourth silence (020 promise 2): it was answering, and then it was not, and /me agrees.
+  host_stalled: { retry: true, title: '{host} stopped answering mid-reply',
+    detail: 'What arrived is above. Try again — if it keeps happening, their machine may have gone to sleep.' },
   model_not_allowed: { title: 'That model is not shared with you',
     detail: 'Pick one of the models in the picker — those are the ones this invite may use.' },
   body_too_large: { title: 'That message is too large to send',
@@ -509,6 +558,7 @@ export function describeError(err: unknown, host?: string): FriendlyError {
       return {
         title: fill(copy.title),
         detail,
+        code: err.code,
         ...(said && said !== detail ? { hostSaid: said } : {}),
         ...(copy.fatal ? { fatal: true } : {}),
         ...(copy.paused ? { paused: true } : {}),
@@ -516,9 +566,10 @@ export function describeError(err: unknown, host?: string): FriendlyError {
       };
     }
     // status 0 = the error arrived inside an already-flushed 200 stream.
+    const code = err.code ? { code: err.code } : {};
     return err.status > 0
-      ? { title: `${who} answered ${err.status}`, detail: said, ...retry }
-      : { title: `${who} stopped the reply`, detail: said || 'The stream ended with an error.', ...retry };
+      ? { title: `${who} answered ${err.status}`, detail: said, ...code, ...retry }
+      : { title: `${who} stopped the reply`, detail: said || 'The stream ended with an error.', ...code, ...retry };
   }
   if (isAbort(err)) {
     return { title: 'Stopped', detail: 'You stopped this reply.' };

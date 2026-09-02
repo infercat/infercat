@@ -8,20 +8,23 @@ import {
   logsPrompts,
   ME_TIMEOUT_MS,
   modelLabel,
-  needsRedial,
   type ChatMessage,
   type FriendlyError,
+  type Me,
 } from '../api';
 import { privacyLine, VERSION } from '../product';
 import {
   ago,
   compact,
+  contextMeter,
   degradedLine,
+  keyDead,
   meters,
   metersUnknown,
   pathLine,
   waitText,
   type Live,
+  type MeterView,
   type SessionEvent,
   type SessionState,
 } from '../session';
@@ -29,23 +32,28 @@ import {
   chatsChanged,
   deleteChat,
   DEFAULT_SETTINGS,
+  electStore,
+  forget,
   hostScope,
   isAnswer,
+  KEYS,
   load,
   loadChats,
   mergeChats,
   modelFor,
   newConversation,
   newId,
+  reopenChats,
   save,
   saveChat,
   scopedKeys,
+  settlePending,
   titleFrom,
   type Conversation,
   type Message,
   type Settings,
 } from '../storage';
-import { NEW_REPLY, reduceReply, saidInBanner, type Reply } from '../stream';
+import { contextUsed, NEW_REPLY, reduceReply, saidInBanner, type Reply } from '../stream';
 import { composing } from './composing';
 import MessageView from './Message';
 import { coarsePointer } from './pointer';
@@ -68,6 +76,10 @@ export interface ThreadAction {
 const UNDO_MS = 6000;
 /** A streaming reply is written to storage at most this often (DESIGN §2.3 persistence rules). */
 const CHECKPOINT_MS = 2000;
+/** The one poll behind everything the header claims (020 promise 4): the path and /me, together. */
+const POLL_MS = 30_000;
+/** Why a reply ends when another tab takes the chat over: the reason the abort carries (promise 6). */
+const TAKEN_OVER = 'Another tab took over this chat — what is above is only part of it.';
 
 export default function Chat({ state, live, dispatch, onRedial }: Props) {
   // Conversations and settings belong to this host and this invite, never to "the browser".
@@ -79,10 +91,7 @@ export default function Chat({ state, live, dispatch, onRedial }: Props) {
 
   const [listed, setListed] = useState<string[]>([]);
   const [settings, setSettings] = useState<Settings>(() => load(keys.settings, DEFAULT_SETTINGS));
-  const [convs, setConvs] = useState<Conversation[]>(() => {
-    const stored = loadChats(scope);
-    return stored.length > 0 ? stored : [newConversation()];
-  });
+  const [convs, setConvs] = useState<Conversation[]>(() => orNew(loadChats(scope)));
   const [currentId, setCurrentId] = useState('');
   const [streaming, setStreaming] = useState(false);
   const [draft, setDraft] = useState('');
@@ -93,8 +102,10 @@ export default function Chat({ state, live, dispatch, onRedial }: Props) {
   const [sheet, setSheet] = useState(false);
   const [limitsSheet, setLimitsSheet] = useState(false);
   const [undo, setUndo] = useState<Conversation | null>(null);
-  // The connection, not the request, is what failed: offering another 30 s wait would be a lie.
-  const [broken, setBroken] = useState(false);
+  // Which tab writes this host's store (020 promise 6): null until the election has answered.
+  const [leader, setLeader] = useState<boolean | null>(null);
+  const leaderRef = useRef(false);
+  const takeOver = useRef<() => void>(() => {});
   const abort = useRef<AbortController | null>(null);
   const scroller = useRef<HTMLDivElement>(null);
   const pinned = useRef(true);
@@ -105,7 +116,9 @@ export default function Chat({ state, live, dispatch, onRedial }: Props) {
   const models = me.host.models.length > 0 ? me.host.models : listed;
   const model = modelFor(settings.model, models) ?? models[0] ?? '';
   const waiting = Math.max(0, retryUntil - now);
-  const paused = live.paused;
+  // Nothing can be sent while the invite is off, or from a tab that does not own the store.
+  const locked = live.key !== 'active';
+  const readOnly = leader !== true;
 
   const patch = useCallback((id: string, fn: (c: Conversation) => Conversation) => {
     setConvs((prev) => prev.map((c) => (c.id === id ? fn(c) : c)));
@@ -113,32 +126,69 @@ export default function Chat({ state, live, dispatch, onRedial }: Props) {
 
   const persist = useCallback(
     (c: Conversation) => {
+      if (!leaderRef.current) return; // a follower reads; it never writes (promise 6)
       savedAt.current = Date.now();
       saveChat(scope, c);
     },
     [scope],
   );
 
-  const refreshMe = useCallback(() => {
-    void getMe(live.transport, live.secret, timeoutSignal(ME_TIMEOUT_MS))
-      .then((next) => dispatch({ t: 'meOk', me: next }))
-      // The machine decides: a fatal code ends the session, a pause degrades it, anything else
-      // keeps the snapshot but stops presenting it as current.
-      .catch((err: unknown) => dispatch({ t: 'meError', error: describeError(err, host) }));
-  }, [live.transport, live.secret, dispatch, host]);
+  /**
+   * The one source of the engine's health and the meters (020 promise 4). Resolves to whether the
+   * host is reachable and its engine healthy — which is also what the stream asks when it has gone
+   * quiet (promise 2). What it learns is shared with every other tab of this browser (promise 6).
+   */
+  const refreshMe = useCallback((): Promise<boolean> => {
+    return getMe(live.transport, live.secret, timeoutSignal(ME_TIMEOUT_MS))
+      .then((next) => {
+        dispatch({ t: 'meOk', me: next });
+        save(keys.me, next);
+        return next.host.upstream.healthy;
+      })
+      .catch((err: unknown) => {
+        // The machine decides: an invite code changes the key's state, anything else keeps the
+        // snapshot but stops presenting it as current.
+        dispatch({ t: 'meError', error: describeError(err, host) });
+        return false;
+      });
+  }, [live.transport, live.secret, dispatch, host, keys.me]);
 
-  // The path is measured, not assumed: every 30 s, and a failure says so rather than leaving the
-  // last number on screen as if it were current.
+  // One tab writes (020 promise 6). The election is the same Web Lock the tunnel identity uses;
+  // the leader takes what is on disk as the truth — including a reply nobody is writing any more,
+  // which is an orphan and says so — and a tab that loses the lock mid-reply ends that reply now,
+  // with its reason, so the tab that took over never finds it still writing.
+  useEffect(() => {
+    const store = electStore(scope, (isLeader) => {
+      leaderRef.current = isLeader;
+      setLeader(isLeader);
+      if (isLeader) setConvs(orNew(reopenChats(loadChats(scope))));
+      else abort.current?.abort(TAKEN_OVER);
+    });
+    takeOver.current = store.takeOver;
+    return store.release;
+  }, [scope]);
+
+  // The path is measured and /me is asked on one clock, every 30 s, so the meters, the engine
+  // line and the pill can never be older than that (020 promise 4). A failure says so rather than
+  // leaving the last number on screen as if it were current.
   useEffect(() => {
     const tick = () => {
       void live.transport
         .ping()
         .then((p) => dispatch(p ? { t: 'pingOk', path: p, at: Date.now() } : { t: 'pingFail' }))
         .catch(() => dispatch({ t: 'pingFail' }));
+      void refreshMe();
     };
-    const timer = setInterval(tick, 30_000);
+    const timer = setInterval(tick, POLL_MS);
     return () => clearInterval(timer);
-  }, [live.transport, dispatch]);
+  }, [live.transport, dispatch, refreshMe]);
+
+  // The moment a cooldown reaches zero the numbers it was about have changed: ask, rather than
+  // showing "0 messages left" above an enabled Try again (promise 4).
+  const cooled = retryUntil > 0 && now >= retryUntil;
+  useEffect(() => {
+    if (cooled) void refreshMe();
+  }, [cooled, refreshMe]);
 
   // /v1/models is a fallback, not a routine (014 promise 5): /me already carries the models this
   // invite may use, so asking again spends one of the friend's own requests for an answer we
@@ -149,15 +199,6 @@ export default function Chat({ state, live, dispatch, onRedial }: Props) {
       .then((list) => list.length > 0 && setListed(list))
       .catch(() => {});
   }, [live.transport, live.secret, me.host.models.length]);
-
-  // A host with nothing loaded (LM Studio) may have a model a minute from now; a paused invite may
-  // be resumed a minute from now; a failed /me may succeed a minute from now. Ask, rather than
-  // making the reader reconnect to find out.
-  useEffect(() => {
-    if (models.length > 0 && !paused && live.meOk) return;
-    const timer = setInterval(refreshMe, 60_000);
-    return () => clearInterval(timer);
-  }, [models.length, paused, live.meOk, refreshMe]);
 
   // One clock, for the things on screen that are about elapsed time: the retry countdown and the
   // age of a stale path measurement. Re-derived from Date.now() on every tick and whenever the tab
@@ -176,9 +217,9 @@ export default function Chat({ state, live, dispatch, onRedial }: Props) {
 
   // Persistence is rules, not a streaming guard (DESIGN §2.3): the user turn is written by send()
   // before any I/O, a streaming reply is checkpointed at most every 2 s, and every terminal
-  // transition — which is what `streaming` going false is — is written at once.
+  // transition — which is what `streaming` going false is — is written at once. By the leader.
   useEffect(() => {
-    if (conv.messages.length === 0) return;
+    if (conv.messages.length === 0 || leader !== true) return;
     if (!streaming) {
       persist(conv);
       return;
@@ -188,21 +229,28 @@ export default function Chat({ state, live, dispatch, onRedial }: Props) {
       Math.max(0, CHECKPOINT_MS - (Date.now() - savedAt.current)),
     );
     return () => clearTimeout(timer);
-  }, [conv, streaming, persist]);
+  }, [conv, streaming, leader, persist]);
 
   useEffect(() => save(keys.settings, settings), [settings, keys.settings]);
 
-  // Another tab of this browser wrote to this host's history. Re-read before writing again: with
-  // one key per conversation the only thing that can be lost is a turn we never saw, and this is
-  // where we see it (014 promise 4).
+  // Another tab of this browser wrote to this host's history, or got a fresher /me. A follower
+  // takes the store as it is; the leader re-reads before writing again, so the only thing that can
+  // be lost is a turn it never saw, and this is where it sees it (014 promise 4, 020 promise 6).
+  // A shared /me only ever updates a session that is itself reaching the host: another tab's good
+  // news must not make this tab's broken session look healthy.
   useEffect(() => {
     const onStorage = (e: StorageEvent) => {
+      if (e.key === keys.me) {
+        const shared = load<Me | null>(keys.me, null);
+        if (shared && live.meOk) dispatch({ t: 'meOk', me: shared });
+        return;
+      }
       if (!chatsChanged(scope, e.key)) return;
-      setConvs((prev) => mergeChats(scope, prev));
+      setConvs((prev) => (leaderRef.current ? mergeChats(scope, prev) : orNew(loadChats(scope))));
     };
     globalThis.addEventListener('storage', onStorage);
     return () => globalThis.removeEventListener('storage', onStorage);
-  }, [scope]);
+  }, [scope, keys.me, live.meOk, dispatch]);
 
   // A model this host does not share is not a choice; drop it rather than showing a picker that
   // disagrees with what is sent.
@@ -228,19 +276,13 @@ export default function Chat({ state, live, dispatch, onRedial }: Props) {
         return;
       }
       const replyId = newId();
-      // The user's turn is pending from the moment it is sent: that mark is what keeps their words
-      // in the thread, with something to press, if nothing ever comes back (014 promise 1).
       patch(convId, (c) => ({
         ...c,
         updatedAt: Date.now(),
-        messages: [
-          ...history.map((m) => (m.role === 'user' ? { ...m, pending: true } : m)),
-          { id: replyId, role: 'assistant', content: '', model, ...(previous ? { previous } : {}) },
-        ],
+        messages: [...history, { id: replyId, role: 'assistant', content: '', model, ...(previous ? { previous } : {}) }],
       }));
       setBanner(null);
       setRetryUntil(0);
-      setBroken(false);
       const ac = new AbortController();
       abort.current = ac;
       setStreaming(true);
@@ -255,6 +297,7 @@ export default function Chat({ state, live, dispatch, onRedial }: Props) {
           ac.signal,
           undefined,
           host,
+          refreshMe,
         )) {
           if (ev.kind === 'error') failed = { code: ev.code, error: ev.error };
           reply = reduceReply(reply, ev);
@@ -268,30 +311,14 @@ export default function Chat({ state, live, dispatch, onRedial }: Props) {
         abort.current = null;
       }
 
-      // The turn was delivered when the host produced something. Anything else leaves it pending,
-      // which is what the thread and the Try again render from.
-      const delivered = reply.status === 'complete' || reply.status === 'stopped';
-      const lastUserText = [...history].reverse().find((m) => m.role === 'user')?.content ?? '';
-      if (failed?.error.paused) {
-        // Paused is recoverable (014 promise 2): the words go back to the composer where the reader
-        // can send them again, and the turn that never happened does not clutter the thread.
-        patch(convId, (c) => ({
-          ...c,
-          messages: c.messages.filter((m) => m.id !== replyId).slice(0, -1),
-        }));
-        setDraft(lastUserText);
-        composer.current?.focus();
-      } else if (delivered) {
-        patch(convId, (c) => ({
-          ...c,
-          messages: c.messages.map((m) => (m.pending ? { ...m, pending: false } : m)),
-        }));
-      }
+      // The turn was delivered when the host produced something, or the reader stopped it. The
+      // rule that clears the mark is the store's (020 promise 1), so what is shown and what is
+      // persisted can never disagree; anything else leaves exactly this turn pending.
+      patch(convId, (c) => ({ ...c, messages: settlePending(c.messages) }));
 
       if (failed) {
         // The message already carries the failure as its own status; the banner is only for the
         // waits the reader has to sit out, so nothing is said in two places (014 promise 10).
-        setBroken(needsRedial(failed.code));
         dispatch({ t: 'streamError', code: failed.code, error: failed.error });
         if (saidInBanner(failed.code) && failed.error.retryAfterS !== undefined) {
           setBanner(failed.error);
@@ -299,14 +326,16 @@ export default function Chat({ state, live, dispatch, onRedial }: Props) {
           setNow(Date.now());
         }
       }
-      refreshMe();
+      void refreshMe();
     },
     [live.transport, live.secret, model, settings, patch, dispatch, refreshMe, host],
   );
 
   function send(text: string): void {
-    if (streaming || text.trim() === '') return;
-    const message: Message = { id: newId(), role: 'user', content: text.trim() };
+    if (streaming || locked || readOnly || text.trim() === '') return;
+    // Pending from the moment it is sent, and only this turn (020 promise 1): that mark is what
+    // keeps the reader's words in the thread, with something to press, if nothing comes back.
+    const message: Message = { id: newId(), role: 'user', content: text.trim(), pending: true };
     const history = [...conv.messages, message];
     const next: Conversation = {
       ...conv,
@@ -327,12 +356,12 @@ export default function Chat({ state, live, dispatch, onRedial }: Props) {
    * old one has not lost it to a click (014 promise 16).
    */
   function replaceAnswer(text?: string): void {
-    if (streaming) return;
+    if (streaming || locked || readOnly) return;
     const idx = lastIndexOfRole(conv.messages, 'user');
     if (idx < 0) return;
     const replaced = conv.messages.slice(idx + 1).find((m) => m.content.trim() !== '')?.content;
     const asked = text === undefined ? (conv.messages[idx] as Message) : { ...(conv.messages[idx] as Message), content: text.trim() };
-    const history: Message[] = [...conv.messages.slice(0, idx), { ...asked, pending: false }];
+    const history: Message[] = [...conv.messages.slice(0, idx), { ...asked, pending: true }];
     patch(conv.id, (c) => ({
       ...c,
       // An edited first message is what this chat is now about; a title from the old one is stale.
@@ -372,22 +401,35 @@ export default function Chat({ state, live, dispatch, onRedial }: Props) {
     return () => clearTimeout(timer);
   }, [undo]);
 
+  /** A revoked invite's one move (020 promise 5): a fresh connect card, never Connect for this code. */
+  function pasteNewCode(): void {
+    forget(KEYS.invite, KEYS.lastHost);
+    dispatch({ t: 'abort', error: null });
+  }
+
   const lastUser = lastIndexOfRole(conv.messages, 'user');
   const pendingTurn = conv.messages.some((m) => m.pending === true);
-  // One action on the last exchange, named for what it will actually do.
-  const action: ThreadAction = broken
-    ? { label: 'Reconnect', run: () => onRedial(live) }
-    : pendingTurn
-      ? { label: 'Try again', run: regenerate }
-      : { label: 'Regenerate', run: regenerate };
-  const degraded = state.name === 'degraded' ? degradedLine(state.reason, me) : null;
+  // One action on the last exchange, named for what it will actually do. Reconnect is offered
+  // exactly while this session has not reached the host since it last tried (a request that got
+  // no answer, a /me that timed out): retrying over a session we have not proved alive is the
+  // 30 s wait 014 promise 13 exists to remove, and the next /me that gets through changes the word.
+  const action: ThreadAction | null =
+    readOnly || locked
+      ? null
+      : !live.meOk
+        ? { label: 'Reconnect', run: () => onRedial(live) }
+        : pendingTurn
+          ? { label: 'Try again', run: regenerate }
+          : { label: 'Regenerate', run: regenerate };
+  const degraded = state.name === 'degraded' ? degradedLine(state.reason, live) : null;
   const unknown = metersUnknown(live);
+  const limits = { maxOutputTokens: me.limits.max_output_tokens, modelContext: me.host.upstream.model_context };
 
   return (
     <div className={`app ${drawer ? 'drawer-open' : ''}`}>
       <aside className="sidebar">
         <div className="sidebar-head">
-          <button className="secondary wide" onClick={startNew}>
+          <button className="secondary wide" onClick={startNew} disabled={readOnly}>
             New chat
           </button>
         </div>
@@ -403,9 +445,11 @@ export default function Chat({ state, live, dispatch, onRedial }: Props) {
               >
                 {c.title}
               </button>
-              <button className="conv-del" aria-label={`Delete ${c.title}`} onClick={() => remove(c)}>
-                ×
-              </button>
+              {!readOnly && (
+                <button className="conv-del" aria-label={`Delete ${c.title}`} onClick={() => remove(c)}>
+                  ×
+                </button>
+              )}
             </div>
           ))}
         </nav>
@@ -429,7 +473,7 @@ export default function Chat({ state, live, dispatch, onRedial }: Props) {
           </div>
           <div className="truth">
             <span className="path">{pathLine(live, now)}</span>
-            <Meters live={live} onOpen={() => setLimitsSheet(true)} />
+            <Meters live={live} used={contextUsed(conv.messages)} onOpen={() => setLimitsSheet(true)} />
           </div>
           <button className="ghost tiny" onClick={() => setSheet(true)}>
             Settings
@@ -438,7 +482,20 @@ export default function Chat({ state, live, dispatch, onRedial }: Props) {
 
         {degraded && (
           <p className={`degraded ${state.name === 'degraded' ? state.reason : ''}`} role="status">
-            {degraded}
+            <span>{degraded}</span>
+            {keyDead(live) && (
+              <button className="ghost tiny" onClick={pasteNewCode}>
+                Paste a new code
+              </button>
+            )}
+          </p>
+        )}
+        {leader === false && (
+          <p className="degraded follower" role="status">
+            <span>This chat is open in another tab.</span>
+            <button className="ghost tiny" onClick={() => takeOver.current()}>
+              Use this tab instead
+            </button>
           </p>
         )}
         {logsPrompts(me) && (
@@ -461,7 +518,7 @@ export default function Chat({ state, live, dispatch, onRedial }: Props) {
                 host={host}
                 model={model}
                 logging={logsPrompts(me)}
-                engineDown={!me.host.upstream.healthy}
+                engineDown={live.meOk && !me.host.upstream.healthy}
                 onPick={send}
               />
             ) : (
@@ -472,10 +529,13 @@ export default function Chat({ state, live, dispatch, onRedial }: Props) {
                   host={host}
                   live={streaming && i === conv.messages.length - 1}
                   busy={streaming}
+                  answering={conv.messages[i + 1]?.role === 'assistant' && conv.messages[i + 1]?.status === undefined}
+                  readOnly={readOnly}
                   last={i >= lastUser && i >= conv.messages.length - 2}
                   action={action}
-                  capTokens={me.limits.max_output_tokens}
+                  limits={limits}
                   onContinue={() => send('Continue from where you stopped.')}
+                  onNewChat={startNew}
                   onResend={resend}
                 />
               ))
@@ -531,7 +591,14 @@ export default function Chat({ state, live, dispatch, onRedial }: Props) {
           onText={setDraft}
           streaming={streaming}
           touch={touch}
-          paused={paused}
+          disabled={locked || readOnly}
+          hint={
+            live.key === 'paused'
+              ? 'Send will work again the moment your host resumes your invite.'
+              : locked || readOnly || touch
+                ? null
+                : 'Enter sends · Shift+Enter makes a new line'
+          }
           onSend={send}
           onStop={() => abort.current?.abort()}
         />
@@ -551,10 +618,17 @@ export default function Chat({ state, live, dispatch, onRedial }: Props) {
   );
 }
 
-function Meters({ live, onOpen }: { live: Live; onOpen: () => void }) {
+/** A store with nothing in it still needs a chat to type into. */
+function orNew(convs: Conversation[]): Conversation[] {
+  return convs.length > 0 ? convs : [newConversation()];
+}
+
+function Meters({ live, used, onOpen }: { live: Live; used: number | null; onOpen: () => void }) {
+  const context = contextMeter(used, live.me.host.upstream.model_context);
+  const all: MeterView[] = context ? [...meters(live), context] : meters(live);
   return (
     <button className="meters" onClick={onOpen} aria-label="What these limits mean">
-      {meters(live).map((m) => (
+      {all.map((m) => (
         <span className="meter" key={m.label} title={m.label}>
           <span className="meter-label">{m.label}</span>
           <span className={`meter-track ${m.unknown ? 'unknown' : ''}`}>
@@ -568,9 +642,10 @@ function Meters({ live, onOpen }: { live: Live; onOpen: () => void }) {
   );
 }
 
-/** One sheet, one sentence each: the whole explanation of the two numbers in the header. */
+/** One sheet, one sentence each: the whole explanation of the numbers in the header. */
 function LimitsSheet({ me, onClose }: { me: Live['me']; onClose: () => void }) {
   const { rpm, daily_tokens: daily } = me.limits;
+  const context = me.host.upstream.model_context;
   return (
     <div className="sheet-wrap" onClick={onClose}>
       <div className="sheet" onClick={(e) => e.stopPropagation()}>
@@ -583,6 +658,13 @@ function LimitsSheet({ me, onClose }: { me: Live['me']; onClose: () => void }) {
           <strong>{compact(daily)} tokens a day.</strong> A token is roughly three quarters of a
           word, counting both what you write and what the model answers. The count resets daily.
         </p>
+        {context > 0 && (
+          <p>
+            <strong>{compact(context)} tokens of context.</strong> The model’s memory of this chat —
+            everything said so far, both sides. When it fills, this chat cannot go on; a new chat
+            starts empty.
+          </p>
+        )}
         <button className="primary small" onClick={onClose}>
           Got it
         </button>
@@ -638,7 +720,8 @@ function Composer({
   onText,
   streaming,
   touch,
-  paused,
+  disabled,
+  hint,
   onSend,
   onStop,
 }: {
@@ -647,7 +730,9 @@ function Composer({
   onText: (t: string) => void;
   streaming: boolean;
   touch: boolean;
-  paused: boolean;
+  /** The invite is off, or this tab does not own the store: nothing can be sent from here. */
+  disabled: boolean;
+  hint: string | null;
   onSend: (t: string) => void;
   onStop: () => void;
 }) {
@@ -664,6 +749,7 @@ function Composer({
           value={text}
           rows={1}
           placeholder="Message the host’s model…"
+          disabled={disabled}
           onChange={(e) => {
             onText(e.target.value);
             resize(e.target);
@@ -674,7 +760,7 @@ function Composer({
             // not send either (007 promise 9).
             if (touch || e.key !== 'Enter' || e.shiftKey || composing(e)) return;
             e.preventDefault();
-            if (!streaming && text.trim() !== '') {
+            if (!streaming && !disabled && text.trim() !== '') {
               onSend(text);
               resize(e.currentTarget);
             }
@@ -687,7 +773,7 @@ function Composer({
         ) : (
           <button
             className="primary small"
-            disabled={text.trim() === ''}
+            disabled={disabled || text.trim() === ''}
             onClick={() => {
               onSend(text);
               resize(ref.current);
@@ -698,11 +784,7 @@ function Composer({
           </button>
         )}
       </div>
-      {paused ? (
-        <p className="hint">Send will work again the moment your host resumes your invite.</p>
-      ) : touch ? null : (
-        <p className="hint">Enter sends · Shift+Enter makes a new line</p>
-      )}
+      {hint && <p className="hint">{hint}</p>}
     </div>
   );
 }
@@ -766,7 +848,7 @@ function SettingsSheet({
           up to {compact(me.limits.max_output_tokens)} tokens in any one reply.
           Engine: {me.host.upstream.kind}
           {me.host.upstream.model_context > 0 ? `, ${compact(me.host.upstream.model_context)} context` : ''}
-          {me.host.upstream.healthy ? '' : ' — not answering right now'}. Model id:{' '}
+          {live.meOk && !me.host.upstream.healthy ? ' — not answering right now' : ''}. Model id:{' '}
           <code>{chosen || 'none'}</code>.
           {live.ephemeral
             ? ' Another tab of this browser holds the saved tunnel identity, so this tab connected as a second client.'

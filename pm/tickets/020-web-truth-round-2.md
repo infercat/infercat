@@ -83,4 +83,16 @@ footers; the pause round-trip that heals itself; all the edge copy; the thinking
 
 ## Log
 
+All times 2026-09-02, EDT, laptop.
+
+- 17:07 — ACK. Worktree `t020-web-truth-2` at `414a830` (public main); scope `web/**` except
+  `web/wasm/**`, no Go. Read BELIEFS, DESIGN §2, 020, the 014/018/007 reports, all of `web/src`
+  and `web/dev`, and the reviewer journal (`wf_52458c2e-1f5`). pnpm 11.13.0, Node 22.23.2, Go
+  1.27.0; `make build`, `make wasm`, `pnpm install --frozen-lockfile` green. Every premise
+  reproduces in the code: `Chat.tsx:237` repaints every user turn pending and the paused branch
+  never clears it; the `/me` poll (`Chat.tsx:156-160`) runs only once something is already wrong,
+  so a healthy-looking header is stale by construction; `session.ts:117-124` asserts engine health
+  from a failed request; the phone's undo toast exists and sits under the drawer's backdrop
+  (`07b-after-delete-tap.png`). No contest.
+
 ## Report

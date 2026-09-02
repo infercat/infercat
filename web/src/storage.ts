@@ -68,6 +68,7 @@ export const KEYS = {
   // `<key>.<scope>` (see hostScope). The bare names are the pre-scope layout, cleared once.
   conversations: 'bn.conversations',
   settings: 'bn.settings',
+  me: 'bn.me',
 } as const;
 
 /**
@@ -82,11 +83,14 @@ export const KEYS = {
 export function scopedKeys(scope: string): {
   index: string;
   settings: string;
+  /** The last /me any tab of this browser got for this host, so two tabs' meters never disagree (020 promise 6). */
+  me: string;
   conv: (id: string) => string;
 } {
   return {
     index: `${KEYS.conversations}.${scope}`,
     settings: `${KEYS.settings}.${scope}`,
+    me: `${KEYS.me}.${scope}`,
     conv: (id: string) => `${KEYS.conversations}.${scope}.${id}`,
   };
 }
@@ -178,6 +182,10 @@ export function prune(convs: Conversation[], keep = 50): Conversation[] {
  * Reads this host's conversations, newest first. The index holds the order and nothing else that
  * matters, so a conversation another tab wrote after our index was read is still found (it is in
  * the index the moment it exists) and one another tab deleted simply is not there.
+ *
+ * What comes back is exactly what is on disk, with one repair: a "Not delivered" mark under a turn
+ * that has its answer is cleared (settlePending). A reply still streaming is left as it is — the
+ * tab writing it may be alive; only the leader, on taking the store, calls reopenChats().
  */
 export function loadChats(scope: string): Conversation[] {
   const keys = scopedKeys(scope);
@@ -185,9 +193,25 @@ export function loadChats(scope: string): Conversation[] {
   const out: Conversation[] = [];
   for (const id of load<string[]>(keys.index, [])) {
     const c = load<Conversation | null>(keys.conv(id), null);
-    if (c && Array.isArray(c.messages)) out.push(reopen(c));
+    if (c && Array.isArray(c.messages)) out.push({ ...c, messages: settlePending(c.messages) });
   }
   return out;
+}
+
+/**
+ * The pending mark is per turn (020 promise 1): send() marks exactly the turn it sends, and this
+ * is the one rule that clears it — a user turn whose next message is a delivered reply was
+ * delivered. Applied after every stream ends and on every load, so nothing persisted can say
+ * "Not delivered" under an answer, whichever release wrote it.
+ */
+export function settlePending(messages: Message[]): Message[] {
+  if (!messages.some((m, i) => m.pending === true && delivered(messages[i + 1]))) return messages;
+  return messages.map((m, i) => (m.pending === true && delivered(messages[i + 1]) ? { ...m, pending: false } : m));
+}
+
+/** A reply that answered its turn: the host produced something and said so, or the reader stopped it. */
+export function delivered(m: Message | undefined): boolean {
+  return m?.role === 'assistant' && (m.status === 'complete' || m.status === 'stopped');
 }
 
 /**
@@ -241,30 +265,85 @@ export function chatsChanged(scope: string, key: string | null): boolean {
 }
 
 /**
- * A reply still marked `streaming` in storage was cut off by the page going away, not by the host
- * (folded in from 013). It keeps every token it had and says what happened; it never comes back as
- * a reply that looks finished, and it is not sent as context.
+ * A reply still marked `streaming` in storage when this tab takes the store was cut off by the tab
+ * writing it going away — a reload, a closed tab, a hand-over — not by the host (folded in from
+ * 013). It keeps every token it had and says what happened; it never comes back as a reply that
+ * looks finished, and it is not sent as context.
  */
-function reopen(c: Conversation): Conversation {
-  if (!c.messages.some(unfinished)) return c;
-  return {
-    ...c,
-    messages: c.messages.map((m) =>
-      unfinished(m)
-        ? {
-            ...m,
-            waiting: false,
-            queued: false,
-            status: 'interrupted' as const,
-            note: 'This reply was still arriving when the page was reloaded — what is above is only part of it.',
-          }
-        : m,
-    ),
-  };
+export function reopenChats(convs: Conversation[]): Conversation[] {
+  return convs.map((c) =>
+    c.messages.some(unfinished)
+      ? {
+          ...c,
+          messages: c.messages.map((m) =>
+            unfinished(m)
+              ? {
+                  ...m,
+                  waiting: false,
+                  queued: false,
+                  status: 'interrupted' as const,
+                  note: 'This reply was still arriving when its tab was closed or reloaded — what is above is only part of it.',
+                }
+              : m,
+          ),
+        }
+      : c,
+  );
 }
 
 function unfinished(m: Message): boolean {
   return m.role === 'assistant' && m.status === undefined;
+}
+
+// ---- one tab writes (020 promise 6) --------------------------------------------------------------
+
+/**
+ * The conversation store has one writer per host: the tab holding this Web Lock. It is the same
+ * election the tunnel identity uses (transport/index.ts), with two more moves — a follower waits in
+ * line, so it becomes the leader the moment the leader's tab closes, and "Use this tab instead"
+ * takes the lock by force. `onRole(true)` is called each time this tab holds the lock, `onRole(false)`
+ * each time it does not, including when it is taken away; the first call is the answer to "am I
+ * the leader now". Without Web Locks (an old browser, a file: URL) there is one tab and it leads.
+ */
+export function electStore(scope: string, onRole: (leader: boolean) => void): { takeOver(): void; release(): void } {
+  const name = `bn.store.${scope}`;
+  const locks = (globalThis.navigator as Navigator | undefined)?.locks;
+  if (!locks) {
+    onRole(true);
+    return { takeOver: () => {}, release: () => {} };
+  }
+  let released = false;
+  let free: () => void = () => {};
+  const holding = new Promise<void>((resolve) => (free = resolve));
+  // Holding the lock means the callback's promise is still pending; release() settles it.
+  const hold = (lock: Lock | null): Promise<void> | undefined => {
+    if (lock === null) return undefined;
+    if (released) return Promise.resolve();
+    onRole(true);
+    return holding;
+  };
+  const lost = (): void => {
+    if (!released) onRole(false);
+  };
+  void locks
+    .request(name, { ifAvailable: true }, (lock) => {
+      if (lock === null) {
+        onRole(false);
+        // Next in line: when the leader's tab goes, this one leads without anyone asking.
+        void locks.request(name, hold).catch(lost);
+      }
+      return hold(lock);
+    })
+    .catch(lost);
+  return {
+    takeOver: () => {
+      void locks.request(name, { steal: true }, hold).catch(lost);
+    },
+    release: () => {
+      released = true;
+      free();
+    },
+  };
 }
 
 /** The pre-014 layout kept one host's whole history in a single key. Split it once, then drop it. */
