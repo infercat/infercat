@@ -1,6 +1,6 @@
 # HANDOFF — state of the work (succession document)
 
-Updated: 2026-09-02 13:30. MILESTONE: founder ran the demo end to end and declared the concept proven. PM seat: Claude Fable, session on Max's laptop.
+Updated: 2026-09-02 15:50. MILESTONE 13:30: founder ran the demo end to end and declared the concept proven; next theme polish. PM seat: Claude Fable, session on Max's laptop.
 
 ## What this is
 
@@ -23,19 +23,17 @@ a public social-media launch soon after, likely serving DeepSeek v4 flash from t
 
 ## In flight
 
-- **Landed on main (`ed3033f`):** 001–006 (005 integration with fixes 10a–10n and measured numbers; 006 the gateway request pipeline). Founder verdict 13:30: demo works, concept proven, next theme polish. Earlier: 001–004 (tunnel/invite/wasm · gateway · CLI/store/upstream/usage/admin
+- **Landed on main (`32ab219`):** 001–008 (007 web state machines; 008 `docs/DESIGN.md` with three accepted decisions). Earlier: 001–006 (005 integration with fixes 10a–10n and measured numbers; 006 the gateway request pipeline). Founder verdict 13:30: demo works, concept proven, next theme polish. Earlier: 001–004 (tunnel/invite/wasm · gateway · CLI/store/upstream/usage/admin
   with wiring flipped · web client). A stray 28 MB binary committed at the root during the flip was
   removed at `e5b0a11`; it remains in history (private repo) — rewrite before any public mirror.
 - **Reviews done:** Claude adversarial workflows on 001 (36 agents), 002 (55), 003 (46); second-model
   review (gpt-5.6-sol via ultracodex, 4 lenses, 39 findings) on integrated main. Summaries and rulings
   are appended to each ticket; confirmed defects became tickets 005 (10a–10n), 006, 007.
-- **Running:** 007 web hardening (Opus, re-briefed as session + message state machines): truthful stream ends, session leaks, degraded
+- **Running:** 009 host polish (Opus; first-run address bug, invite destination, key hygiene, accounting words) · 010 gateway settle table / FIFO queue / deadlines (Fable; then 011 engine state + seam on the same worktree) · web friend-experience workflow (two personas on the real stack → ranked polish list). Drafted: 012 concept trim + cleanup (after launch), 013 web follow-through. Done earlier today: truthful stream ends, session leaks, degraded
   states, host-scoped storage, revoked mid-session, abort-during-dial, IME, two tabs, log-prompts copy.
   008 architecture review (Fable): `docs/DESIGN.md` with debt inventory and proposed cleanup tickets.
   CLI first-run experience workflow (three stranger personas from README only → ranked polish list).
-- **Landing order:** 007 → web experience review (fresh Opus, Playwright, integrated build) → 008 design
-  doc → PM prices the polish + cleanup tickets. Founder decisions pending: name, relay VM, distribution,
-  license, history rewrite (see the 13:45 message).
+- **Landing order:** 009 → 010 → 011 → web polish ticket from the experience pass (+013) → `docs/ARCHITECTURE.md` v1 (PM) → launch checklist. Founder decisions pending: name, relay VM, distribution, license, history rewrite, web app URL (needed by 009's invite link).
 
 ## Standing decisions tonight
 
