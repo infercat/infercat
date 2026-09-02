@@ -12,6 +12,8 @@
 #
 # Prereqs: go-licenses (go install github.com/google/go-licenses@latest), pnpm, node.
 set -eu
+# go install puts go-licenses in $GOPATH/bin, which is often not on PATH.
+PATH="$(go env GOPATH 2>/dev/null)/bin:$PATH"; export PATH
 
 mode=${1:-write}
 case "$mode" in write | check) ;; *) echo "usage: notices.sh [write|check]" >&2; exit 2 ;; esac
