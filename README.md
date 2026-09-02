@@ -68,7 +68,12 @@ make check      # go vet + go test
 make build      # bin/bunny-network
 make wasm       # web/public/bunny.wasm (+ wasm_exec.js), needed by the web app
 make web        # web/dist (builds the wasm first)
+make notices    # regenerate THIRD_PARTY_NOTICES.md; make notices-check verifies it
+make release-dry  # goreleaser snapshot for darwin/linux/windows into dist/ (publishes nothing)
 ```
+
+Every binary and archive ships `THIRD_PARTY_NOTICES.md`; `bunny-network version` prints the stamped
+version, commit, and date, and the web app shows the same version.
 
 Cross-compile: `GOOS=linux GOARCH=amd64 go build -o bunny-network-linux ./cmd/bunny-network` (same for
 `windows`).
