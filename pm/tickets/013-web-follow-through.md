@@ -3,7 +3,7 @@ id: 013
 title: Web follow-through after 007 (DESIGN §2.3 persistence, §2.5 asks)
 kind: normal
 size: 1
-status: draft
+status: declined
 updated: 2026-09-02
 release: demo-1
 ---
@@ -19,3 +19,8 @@ of the reload case. Concept budget 0. Dispatched when 007 lands and the PM has r
 ## Log
 
 ## Report
+
+
+## Ruling (PM, 2026-09-02 14:50)
+
+Folded into ticket 014 (promise 4). Not dispatched separately.
