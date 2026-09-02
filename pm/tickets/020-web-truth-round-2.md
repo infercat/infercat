@@ -146,7 +146,12 @@ All times 2026-09-02, EDT, laptop.
   the card now takes what is remembered, and the link seeds only the first mount. The fake tunnel
   answered /me while "asleep", which the real host never does (014 measured it), so its sleep is now
   per session; with that the fake's host-asleep shot shows what the real one shows: Reconnect and
-  blank meters. Squashed the PM's two WIP commits into mine at freeze.
+  blank meters.
+- 18:0x — After the PM's landing (`447d1c9`, from this working tree): the final fake run came back
+  clean (75 screenshots, no console or page errors) once the Connect prefill precedence was fixed
+  (first mount: link, dev query, remembered; later cards: remembered only — the `offline` page had
+  been seeded with the remembered demo code). That fix and the re-shot screenshots are the one
+  follow-up commit on the lane; accounting above recomputed against `5bb43bc`.
 
 ## Report
 
@@ -248,8 +253,8 @@ $ pnpm test                       → Test Files 10 passed (10) | Tests 218 pass
 $ pnpm lint                       → eslint ., no output                                exit 0
 $ pnpm build                      → index 229 kB (gzip 74); Chat 358 kB (gzip 109); css 13.5 kB
 $ node dev/real-check.mjs …       → every scenario above on the real relay + host       exit 0
-$ node dev/screenshots.mjs        → 44 screenshots against the fakes, no console or page errors,
-                                    no horizontal overflow at 360/390 px            exit 0
+$ node dev/screenshots.mjs        → 75 screenshots in dev/screenshots/ (fakes + real), no console
+                                    or page errors, no horizontal overflow at 360/390 px   exit 0
 ```
 
 `package.json` and `pnpm-lock.yaml` unchanged: **no new dependencies.** The host, vite and browser
@@ -332,9 +337,9 @@ casing. Listed as candidates below.
 |---|---|---|---|
 | Source TS/TSX (`web/src/**`, tests and css excluded) | ≤900 lines of change | +641 / −258 = **899** | inside, by one |
 | Web tests (`web/src/**/*.test.ts`) | not budgeted | +418 / −55 | 10 files, 218 tests (+28) |
-| Stylesheet (`web/src/styles.css`) | not source (ruling on 004) | +14 / −2 | 5 surfaces |
-| Dev harness (`web/dev/**`) | not budgeted | +370 / −75 | fakes, both runners, six real scenarios |
-| Screenshots | ≤500 KB each | 15 `20-*` files, largest 156 KB; 1 removed | inside |
+| Stylesheet (`web/src/styles.css`) | not source (ruling on 004) | +12 / −2 | 5 surfaces |
+| Dev harness (`web/dev/**`) | not budgeted | +391 / −80 | fakes, both runners, six real scenarios |
+| Screenshots | ≤500 KB each | 56 files changed vs base (15 new `20-*`, 1 removed, the rest re-shot); largest 156 KB | inside |
 | Ticket record | — | Log + Report | — |
 | Dependencies | none | **0 added**, lockfile unchanged | — |
 
