@@ -1,0 +1,88 @@
+// Package invite encodes and decodes the one string a friend pastes:
+//
+//	bn1.<tailcat ConnBlob>.<secret>
+//
+// Ticket 004 mirrors this in TypeScript; the two MUST agree (docs/ARCHITECTURE.md §Invite format).
+package invite
+
+import (
+	"errors"
+	"fmt"
+	"strconv"
+	"strings"
+
+	"github.com/2185Lab/bunny-network/internal/product"
+)
+
+// Invite is the decoded form. Addr is the tailcat ConnBlob ("tc…"); Secret is the friend's key.
+type Invite struct {
+	Addr   string
+	Secret string
+}
+
+// Decode errors. Compare with errors.Is; the messages are for humans. A "bn<N>" prefix with N > 1
+// wraps ErrPrefix with a message saying the invite needs a newer app.
+var (
+	ErrPrefix      = errors.New("not a " + product.Name + " invite (missing or wrong prefix)")
+	ErrParts       = errors.New("invite must have exactly three dot-separated parts")
+	ErrEmptyPart   = errors.New("invite has an empty part")
+	ErrAddr        = errors.New("invite address is not a tailcat address")
+	ErrSecretChars = errors.New("invite secret has characters outside base64url")
+)
+
+// Encode builds the invite string. It does not validate its inputs; Decode does.
+func Encode(addr, secret string) string {
+	return product.InvitePrefix + "." + addr + "." + secret
+}
+
+// Decode parses s. Surrounding whitespace is trimmed; everything else is case-sensitive.
+func Decode(s string) (Invite, error) {
+	parts := strings.Split(strings.TrimSpace(s), ".")
+	// The prefix is checked before the part count so an invite from a newer app says so even
+	// if its layout differs.
+	if err := checkPrefix(parts[0]); err != nil {
+		return Invite{}, err
+	}
+	if len(parts) != 3 {
+		return Invite{}, ErrParts
+	}
+	addr, secret := parts[1], parts[2]
+	if addr == "" || secret == "" {
+		return Invite{}, ErrEmptyPart
+	}
+	if !strings.HasPrefix(addr, "tc") || len(addr) == len("tc") || !isBase64URL(addr) {
+		return Invite{}, ErrAddr
+	}
+	if !isBase64URL(secret) {
+		return Invite{}, ErrSecretChars
+	}
+	return Invite{Addr: addr, Secret: secret}, nil
+}
+
+func checkPrefix(p string) error {
+	if p == product.InvitePrefix {
+		return nil
+	}
+	if digits, ok := strings.CutPrefix(p, "bn"); ok {
+		if n, err := strconv.Atoi(digits); err == nil && n > 1 {
+			return fmt.Errorf("%w: this invite needs a newer app (format %s)", ErrPrefix, p)
+		}
+	}
+	return ErrPrefix
+}
+
+// isBase64URL reports whether s is non-empty and made only of the unpadded base64url alphabet.
+func isBase64URL(s string) bool {
+	if s == "" {
+		return false
+	}
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		switch {
+		case 'A' <= c && c <= 'Z', 'a' <= c && c <= 'z', '0' <= c && c <= '9', c == '-', c == '_':
+		default:
+			return false
+		}
+	}
+	return true
+}

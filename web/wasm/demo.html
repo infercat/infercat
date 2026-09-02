@@ -1,0 +1,22 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Bunny Network — wasm bridge demo</title>
+<style>
+  body { font: 14px system-ui, sans-serif; max-width: 60rem; margin: 2rem auto; padding: 0 1rem; }
+  label { display: block; margin: .5rem 0; } input[type=text] { width: 100%; font-family: ui-monospace, monospace; }
+  pre { background: #f4f4f4; padding: .5rem; white-space: pre-wrap; word-break: break-all; }
+</style>
+<h1>wasm bridge demo</h1>
+<p>Run <code>go run ./hack/tunneldemo</code>, paste the address it prints, Connect. The page loads
+<code>/public/bunny.wasm</code>, connects once, then dials port 80 for each request: a raw
+<code>GET /healthz</code>, a second one (no new handshake), and <code>GET /stream</code> (20 SSE events).
+Add <code>?addr=…&amp;auto=1</code> to the URL to run it unattended (see demo-check.mjs).</p>
+<label>Address <input type="text" id="addr" placeholder="tc…"></label>
+<label>DERP map URL <input type="text" id="derp" value="https://tailcat.dev/derpmap.json"></label>
+<label><input type="checkbox" id="verbose"> verbose (tailcat internals to the console)</label>
+<button id="connect">Connect</button>
+<button id="again" disabled>GET /healthz again</button>
+<button id="stream" disabled>GET /stream</button>
+<pre id="log"></pre>
+<script src="/public/wasm_exec.js"></script>
+<script type="module" src="demo.js"></script>
