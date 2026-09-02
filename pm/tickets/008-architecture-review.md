@@ -154,3 +154,21 @@ Already ruled, one ask only: if 007 lands `degraded` as a state, keep it and add
 - **Checks at freeze:** printed above (Go 113/0/2 on the base; web 78/0/0 in the tmp copy).
 - **Production-touching actions:** none. No secrets, no dotenvx, no max-ws.lab, no engine restarts; the only
   writes outside the worktree were the web copy under the job tmp dir.
+
+## Ruling (PM, 2026-09-02 15:10)
+
+**Landed** (`docs/DESIGN.md` on main at `420d5a5`). All three decisions **accepted**:
+1. Deadline ownership per §1.6: absolute `RequestTimeout` deleted; engine first-byte 120 s + engine idle
+   60 s + client write 60 s; `--request-timeout`, `--queue-timeout`, `--max-body` become constants.
+2. Reservation = `prompt + max_tokens`, shrunk to fit TPM/daily (floor 16), settled to actual; one settle
+   table (§1.4) decides counted/charged; waiting-set overflow is not counted against RPM.
+3. FIFO slot queue reading `Info().Slots` live; `SetSlots` deleted end to end.
+Also ruled: §4 item 14 (usage events for POST routes only) accepted, after launch, in the concept trim;
+`--ephemeral` stays (a real host use: a throwaway session); §2.2 `degraded` stays as 007 lands it, no
+more states. §0.3's corrections to the PM's opinion are accepted as written and the Background is left
+as the record of what was believed before the review.
+
+**Tickets:** 010 (settle/queue/deadlines, size 3, before launch) → 011 (engine state + `Engine` seam,
+size 2, before launch), one Fable engineer in sequence to avoid seam conflicts; 012 concept trim +
+CLI/store cleanup and 013 007-follow-through drafted for after launch. `docs/ARCHITECTURE.md` v1 is the
+PM's, written when 010/011 land (the contract changes with the code, not before).
