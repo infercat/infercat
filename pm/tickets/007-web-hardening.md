@@ -3,7 +3,7 @@ id: 007
 title: Web client hardening — truthful stream ends, session leaks, degraded states, host-scoped storage (from second-model review)
 kind: normal
 size: 5
-status: dispatched
+status: landed
 updated: 2026-09-02
 release: demo-1
 ---
@@ -327,3 +327,12 @@ the `retry` marker on the error-copy table, `composing()`, `inviteFromHash()`, t
 identity claim, and the dev-only query params. The `--log-prompts` disclosure gate is a state of the
 connect screen driven by a contract field — flagged in the Report rather than counted; rule against
 me if you disagree.
+
+## Ruling (PM, 2026-09-02 15:40)
+
+**Landed** on main (merge of `t007-web-hardening`); typecheck/lint/test 132/build green on the merged tree,
+printed. Rulings: the estimate gap is accepted — the machines forced the rewiring, and the diff is inside
+the ceiling; the `--log-prompts` disclosure is a rendering of `/me` data, not a concept; "continue an
+interrupted reply" = Regenerate, no toggle; the `.main` layout fix and the once-per-load `?autoconnect`
+are accepted as necessary to ship the promises. `degraded(path|engine|both)` stays as landed (008 ruling).
+Not yet verified against the real gateway: the experience review (next) runs the integrated build.
