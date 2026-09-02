@@ -213,3 +213,21 @@ tag dropped, `go mod tidy`; build/vet/test green and three cross-compiles OK, pr
   serve must re-apply slots after the first successful `Refresh` (gateway gains `SetSlots`).
 - Adversarial review dispatched post-landing (auth/secrets, streaming proxy, limits/queue, contract
   shapes, resource safety).
+
+## Adversarial review (PM summary, 2026-09-02 11:30; 5 lenses × 2 refuters, 55 agents)
+
+**Confirmed → ticket 006 (gateway hardening):** `n_predict` alias bypasses the output cap (proven against
+the live engine) · body read + `/tokenize` run before any admission (memory and engine amplification per
+key) · no write deadline: a non-reading client pins slots forever · no body read deadline · `/v1/models`
+unmetered · upstream redirects followed with the host's API key · paused/revoked usage events lack
+`key_id` · unauthenticated requests write unbounded endpoint strings to usage.jsonl · upstream 4xx
+reported as 502.
+
+**Confirmed, resolved by 005-10c:** `max_context` < `max_output_tokens` makes a key unusable (shrink-to-fit).
+
+**Backlog:** TPM/daily not reserved (bounded by `max_concurrent`) · aborted non-stream charged zero ·
+nonconforming usage object charges zero · SSE line size unbounded · store error printed verbatim.
+
+**Clean, empirically:** bearer parsing (15 cases), secret never escapes to logs/bodies/upstream/usage,
+panic path leaks no secret and releases slots, `/healthz` reveals nothing, `/me` returns only the caller's
+data, no key caching, paused/revoked consume no limits, ServeDev refuses 17 non-loopback forms.
