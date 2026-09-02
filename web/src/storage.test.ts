@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   KEYS,
   chatsChanged,
@@ -12,6 +12,9 @@ import {
   loadChats,
   mergeChats,
   modelFor,
+  electStore,
+  reopenChats,
+  settlePending,
   newConversation,
   prune,
   save,
@@ -226,10 +229,13 @@ describe('multi-tab conversation storage', () => {
         { id: 'r1', role: 'assistant', content: 'half an ans' },
       ],
     });
-    const reply = loadChats(S)[0]?.messages[1];
+    // Reading leaves it as it is: another tab may be writing it (020 promise 6).
+    expect(loadChats(S)[0]?.messages[1]?.status).toBeUndefined();
+    // Taking the store is what makes it an orphan.
+    const reply = reopenChats(loadChats(S))[0]?.messages[1];
     expect(reply?.content).toBe('half an ans');
     expect(reply?.status).toBe('interrupted');
-    expect(reply?.note).toContain('reloaded');
+    expect(reply?.note).toContain('closed or reloaded');
     expect(isAnswer(reply as Message)).toBe(false);
   });
 
@@ -240,6 +246,125 @@ describe('multi-tab conversation storage', () => {
     expect(load<string[]>(scopedKeys(S).index, [])).toEqual(['c1', 'c2']);
     expect(loadChats(S).map((c) => c.id)).toEqual(['c1', 'c2']); // idempotent
   });
+
+  // 020 promise 1, the blocker: "Not delivered" under an answered message, persisted for ever.
+  describe('the pending mark is per turn', () => {
+    const turn = (id: string, pending?: boolean): Message => ({ id, role: 'user', content: id, ...(pending ? { pending } : {}) });
+    const answer = (id: string, status: Message['status']): Message => ({ id, role: 'assistant', content: status === 'no_answer' ? '' : 'a', status });
+
+    it('clears exactly the turns that have their answer, and keeps the one that does not', () => {
+      const thread = [
+        turn('u1', true), answer('a1', 'complete'),
+        turn('u2', true), answer('a2', 'stopped'),
+        turn('u3', true), answer('a3', 'complete'),
+        turn('u4', true), { id: 'a4', role: 'assistant' as const, content: '', status: 'interrupted' as const },
+      ];
+      const settled = settlePending(thread);
+      expect(settled.filter((m) => m.pending === true).map((m) => m.id)).toEqual(['u4']);
+    });
+
+    it('does not call a reply with no answer in it a delivery', () => {
+      expect(settlePending([turn('u1', true), answer('a1', 'no_answer')])[0]?.pending).toBe(true);
+      expect(settlePending([turn('u1', true)])[0]?.pending).toBe(true); // nothing after it yet
+    });
+
+    it('is the same object when there is nothing to settle', () => {
+      const thread = [turn('u1'), answer('a1', 'complete')];
+      expect(settlePending(thread)).toBe(thread);
+    });
+
+    it('repairs a transcript an older release marked, on load', () => {
+      saveChat(S, { ...chat('c1', 10, msg('m1', 'x')), messages: [turn('u1', true), answer('a1', 'complete'), turn('u2', true), answer('a2', 'complete')] });
+      expect(loadChats(S)[0]?.messages.some((m) => m.pending === true)).toBe(false);
+    });
+  });
+});
+
+// 020 promise 6: one tab writes. The same Web Lock election as the tunnel identity, with a queue
+// and a steal, stubbed the way transport.test.ts stubs it.
+describe('the store leader', () => {
+  function fakeLocks() {
+    const held = new Map<string, { reject: (e: unknown) => void }>();
+    const queue = new Map<string, (() => void)[]>();
+    type Cb = (lock: { name: string } | null) => unknown;
+    const grant = (name: string, cb: Cb, resolve: (v: unknown) => void, reject: (e: unknown) => void) => {
+      held.set(name, { reject });
+      Promise.resolve(cb({ name })).then(
+        (v) => {
+          held.delete(name);
+          resolve(v);
+          queue.get(name)?.shift()?.();
+        },
+        reject,
+      );
+    };
+    return {
+      request(name: string, a: unknown, b?: unknown) {
+        const opts = (typeof a === 'function' ? {} : a) as { ifAvailable?: boolean; steal?: boolean };
+        const cb = (typeof a === 'function' ? a : b) as Cb;
+        return new Promise<unknown>((resolve, reject) => {
+          const holder = held.get(name);
+          if (holder && opts.steal) {
+            held.delete(name);
+            holder.reject(new DOMException('Lock broken by another request with the steal option.', 'AbortError'));
+            grant(name, cb, resolve, reject);
+          } else if (holder && opts.ifAvailable) {
+            Promise.resolve(cb(null)).then(resolve, reject);
+          } else if (holder) {
+            queue.set(name, [...(queue.get(name) ?? []), () => grant(name, cb, resolve, reject)]);
+          } else {
+            grant(name, cb, resolve, reject);
+          }
+        });
+      },
+    };
+  }
+  const tick = () => new Promise((r) => setTimeout(r, 0));
+  afterEach(() => Reflect.deleteProperty(globalThis, 'navigator'));
+
+  it('makes the first tab the leader and the second a follower, and lets the second take over', async () => {
+    Object.defineProperty(globalThis, 'navigator', { configurable: true, value: { locks: fakeLocks() } });
+    const a: boolean[] = [];
+    const b: boolean[] = [];
+    electStore('s', (l) => a.push(l));
+    await tick();
+    expect(a).toEqual([true]);
+    const tabB = electStore('s', (l) => b.push(l));
+    await tick();
+    expect(b).toEqual([false]);
+    tabB.takeOver();
+    await tick();
+    expect(a).toEqual([true, false]);
+    expect(b).toEqual([false, true]);
+  });
+
+  it('promotes the follower when the leader lets go, without anyone asking', async () => {
+    Object.defineProperty(globalThis, 'navigator', { configurable: true, value: { locks: fakeLocks() } });
+    const a: boolean[] = [];
+    const b: boolean[] = [];
+    const tabA = electStore('s', (l) => a.push(l));
+    await tick();
+    electStore('s', (l) => b.push(l));
+    await tick();
+    expect(b).toEqual([false]);
+    tabA.release();
+    await tick();
+    expect(b).toEqual([false, true]);
+    expect(a).toEqual([true]); // letting go is not losing
+  });
+
+  it('leads at once where Web Locks do not exist', () => {
+    const a: boolean[] = [];
+    electStore('s', (l) => a.push(l));
+    expect(a).toEqual([true]);
+  });
+});
+
+describe('the store leader’s me key', () => {
+  it('lives under the host scope, beside the chats and settings', () => {
+    expect(scopedKeys('abc').me).toBe('bn.me.abc');
+  });
+
 });
 
 // 014 promise 17: "New chat" is the button that makes one. A list of rows named after the button

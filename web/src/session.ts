@@ -116,7 +116,11 @@ export function reduce(s: SessionState, e: SessionEvent): SessionState {
       // the meters go blank until a /me gets through (014 promise 3). It asserts nothing about
       // the engine: that is /me's to say, never a failed request's (020 promise 4).
       if (needsRedial(e.code)) return settle({ ...l, pathOk: false, meOk: false });
-      return settle(afterFailure(l, e.error));
+      // The host answered. A code about the invite changes the key's state; every other error
+      // (busy, too fast, the engine's own failure) is the message's to say, and the /me that
+      // follows every request is what updates the header.
+      if (e.error.paused || e.error.fatal) return settle(afterFailure(l, e.error));
+      return s;
     // A tunnel session that has broken stays broken: retrying a request over it is what made the
     // reader wait 30 s three times for a host that was up (014 promise 13). Going back to
     // `connecting` is what drops it — `dropped()` closes it — and the redial effect in App.tsx is

@@ -6,7 +6,9 @@ import type { Me } from './api';
 import {
   ago,
   compact,
+  contextMeter,
   degradedLine,
+  keyDead,
   dropped,
   IDLE,
   live,
@@ -59,7 +61,7 @@ function liveOn(t: Transport, over: Partial<Live> = {}): Live {
     pathAt: 1000,
     pathOk: true,
     meOk: true,
-    paused: false,
+    key: 'active',
     ephemeral: false,
     ...over,
   };
@@ -177,13 +179,25 @@ describe('degraded states', () => {
     expect(live(s)).not.toBeNull();
   });
 
-  it('an upstream_down while streaming stops the header claiming the engine is up', () => {
+  // 020 promise 4: one health source. A failed request never asserts anything about the engine;
+  // the /me that follows every request is what does.
+  it('a failed request never asserts the engine is down — only /me does', () => {
     const s = reduce(connected, {
       t: 'streamError',
       code: 'upstream_down',
-      error: { title: 'offline', detail: 'x' },
+      error: { title: 'offline', detail: 'x', code: 'upstream_down' },
     });
-    expect(s).toMatchObject({ name: 'degraded', reason: 'engine' });
+    expect(s).toBe(connected);
+    const sick = { ...ME, host: { ...ME.host, upstream: { ...ME.host.upstream, healthy: false } } };
+    expect(reduce(s, { t: 'meOk', me: sick })).toMatchObject({ name: 'degraded', reason: 'engine' });
+  });
+
+  it('a snapshot that could not be refreshed claims nothing about the engine', () => {
+    const sick = { ...ME, host: { ...ME.host, upstream: { ...ME.host.upstream, healthy: false } } };
+    const s = reduce({ name: 'connected', live: liveOn(t, { me: sick }) }, { t: 'meError', error: { title: 'x', detail: 'y' } });
+    // "Reconnect" and "llama.cpp is not answering" on one screen are two causes, one of them stale.
+    expect(s).toMatchObject({ name: 'degraded', reason: 'path' });
+    expect(degradedLine('path', live(s)!)).toBeNull();
   });
 
   it('reports both when the path and the engine are gone', () => {
@@ -198,11 +212,24 @@ describe('a key that stops working mid-session', () => {
   const t = fakeTransport();
   const connected: SessionState = { name: 'connected', live: liveOn(t) };
 
-  it('returns to connect with the reason when the refresh says the invite is dead', () => {
-    for (const title of ['This invite was revoked', 'The host does not recognise this invite']) {
-      const s = reduce(connected, { t: 'meError', error: { title, detail: 'd', fatal: true } });
-      expect(s).toEqual({ name: 'disconnected', reason: { title, detail: 'd', fatal: true } });
-    }
+  // 020 promise 5: revoke stays in the thread, like pause. The chat, the half-written answer and
+  // the transport stay; the header says what happened and the one move is a new code.
+  it('keeps the session when the refresh says the invite is dead, and says which way it died', () => {
+    const revoked = reduce(connected, { t: 'meError', error: { title: 'gone', detail: 'd', fatal: true, code: 'key_revoked' } });
+    expect(revoked).toMatchObject({ name: 'degraded', reason: 'key' });
+    expect(live(revoked)?.key).toBe('revoked');
+    expect(live(revoked)?.transport).toBe(t);
+    expect(t.closes).toBe(0);
+    expect(degradedLine('key', live(revoked)!)).toBe('This invite was revoked — ask desk for a new code.');
+    expect(keyDead(live(revoked)!)).toBe(true);
+    expect(metersUnknown(live(revoked)!)).toBe(true);
+    // The host answered, so the path is still a live number: "not answering" would be a lie.
+    expect(pathLine(live(revoked)!, 1000)).toBe('relayed via San Francisco · 32 ms');
+
+    const unknown = reduce(connected, { t: 'meError', error: { title: 'gone', detail: 'd', fatal: true, code: 'invalid_key' } });
+    expect(live(unknown)?.key).toBe('invalid');
+    expect(degradedLine('key', live(unknown)!)).toContain('no longer recognises this invite');
+    expect(keyDead(live(unknown)!)).toBe(true);
   });
 
   // 014 promise 3: the snapshot is kept — losing it would blank the screen — but it stops being
@@ -232,8 +259,11 @@ describe('a paused invite', () => {
     expect(s).toMatchObject({ name: 'degraded', reason: 'key' });
     expect(live(s)?.transport).toBe(t);
     expect(t.closes).toBe(0);
-    expect(degradedLine('key', ME)).toContain('paused your invite');
-    expect(degradedLine('key', ME)).toContain('send it again once they resume');
+    expect(live(s)?.key).toBe('paused');
+    expect(degradedLine('key', live(s)!)).toContain('paused your invite');
+    expect(degradedLine('key', live(s)!)).toContain('try again once they resume');
+    expect(metersUnknown(live(s)!)).toBe(true); // /me refuses a paused key: no current numbers
+    expect(keyDead(live(s)!)).toBe(false);
   });
 
   it('clears the moment /me says the invite is active again', () => {
@@ -248,14 +278,16 @@ describe('a paused invite', () => {
     expect(s).toMatchObject({ name: 'degraded', reason: 'key' });
   });
 
-  it('still ejects for the two codes no waiting can fix', () => {
-    for (const code of ['key_revoked', 'invalid_key']) {
+  it('stays in the thread for the two codes no waiting can fix, and says which (020 promise 5)', () => {
+    for (const [code, key] of [['key_revoked', 'revoked'], ['invalid_key', 'invalid']] as const) {
       const s = reduce(connected, {
         t: 'streamError',
         code,
-        error: { title: 'gone', detail: 'd', fatal: true },
+        error: { title: 'gone', detail: 'd', fatal: true, code },
       });
-      expect(s.name).toBe('disconnected');
+      expect(s).toMatchObject({ name: 'degraded', reason: 'key' });
+      expect(live(s)?.key).toBe(key);
+      expect(t.closes).toBe(0);
     }
   });
 
@@ -271,15 +303,23 @@ describe('a host that did not answer', () => {
   const t = fakeTransport();
   const connected: SessionState = { name: 'connected', live: liveOn(t) };
 
-  it('moves the session to degraded(engine) so the header tells the truth', () => {
+  // 020 promise 4: what we know is that the host did not answer — so the snapshot is history
+  // (meters "—", Reconnect on offer) and nothing is claimed about the engine.
+  it('turns everything held into history, and says nothing about the engine', () => {
     const s = reduce(connected, {
       t: 'streamError',
       code: 'host_asleep',
       error: { title: 'desk didn’t answer', detail: 'asleep or offline' },
     });
-    expect(s).toMatchObject({ name: 'degraded', reason: 'both' });
-    expect(live(s)?.me.host.upstream.healthy).toBe(false);
+    expect(s).toMatchObject({ name: 'degraded', reason: 'path' });
+    expect(live(s)?.meOk).toBe(false);
+    expect(metersUnknown(live(s)!)).toBe(true);
+    expect(live(s)?.me.host.upstream.healthy).toBe(true);
+    expect(degradedLine('path', live(s)!)).toBeNull();
     expect(t.closes).toBe(0);
+    // And the /me that follows the failure is what puts the numbers back — or not.
+    expect(reduce(s, { t: 'meOk', me: ME }).name).toBe('degraded'); // pathOk is still false until a ping
+    expect(reduce(reduce(s, { t: 'meOk', me: ME }), { t: 'pingOk', path: PATH, at: 2000 }).name).toBe('connected');
   });
 
   // It failed a ping to earn the word "asleep", so the pill must stop showing a round-trip time:
@@ -309,6 +349,22 @@ describe('a host that was busy', () => {
     });
     expect(s).toBe(connected);
     expect(t.closes).toBe(0);
+  });
+});
+
+// 020 promise 3: the one limit that ends conversations gets a meter.
+describe('the context meter', () => {
+  it('reads what the last reply cost against the model context', () => {
+    expect(contextMeter(3200, 4096)).toEqual({ label: '3.2k/4.1k context', value: 3200 / 4096, unknown: false });
+    expect(contextMeter(4096, 4096)?.value).toBe(1);
+  });
+
+  it('is a dash before any reply has said, never a zero', () => {
+    expect(contextMeter(null, 8192)).toMatchObject({ label: '— / 8.2k context', unknown: true });
+  });
+
+  it('is absent when the host has not said how big the context is', () => {
+    expect(contextMeter(3200, 0)).toBeNull();
   });
 });
 
