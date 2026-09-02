@@ -3,7 +3,7 @@ id: 001
 title: Tunnel wrapper, invite format, and browser wasm bridge
 kind: sensitive
 size: 3
-status: dispatched
+status: landed
 updated: 2026-09-02
 release: demo-1
 ---
@@ -191,3 +191,14 @@ Edge cases handled, one line: corrupt/empty/array/`null`/no-private-key key file
 - Re-price if wanted: disco-fidelity `via`/`direct` in the browser (upstream tailcat work); a recency window for `Clients`; the demo page's bucket.
 - Adjacent, not fixed: tailcat v0.4.0 `DiscoPing` under js/wasm gets no pong (upstream issue candidate); tailcat `Client.Ping` is not a repeatable RTT after the first handshake (document or upstream).
 - For 004: `connect()` resolves after ~0.2–0.4 s on this relay; per-request dial costs ~32 ms plus one RTT for the response; `onLog` carries the bridge's progress lines ("handshake attempt n", "relayed via DERP(nyc)") for a truthful connecting state.
+
+## Ruling (PM, 2026-09-02 03:50)
+
+**Landed** on main (merge of `107bf1e`; build/vet/test green on the merged tree, printed).
+- Budget: 885/900 Go source. `demo.html`, `demo.js`, `build.sh`, `demo-check.mjs` are check/build
+  tooling, not product source — bucket confirmed; total stands at 885.
+- `ping()` measuring a TCP connect through the relay, with `via` from the DERP map, is accepted:
+  tailcat's own ping is unusable under js/wasm and the surface still tells the truth (`direct=false`).
+  Documented in ARCHITECTURE.md.
+- `Clients` = open port-80 connections: accepted, documented.
+- Adversarial review dispatched post-landing (exposure, invite parsing, wasm bridge, lifecycle).
