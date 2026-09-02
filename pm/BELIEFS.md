@@ -28,12 +28,18 @@ soon as it is real. Polish standard = "a stranger pastes a code and says wow", n
 machine". Public demo host: founder's workstation serving DeepSeek v4 flash on two RTX Pro 6000s
 via vLLM.
 
-## The riskiest promise
+## The riskiest promise — RESOLVED 2026-09-02
 
 Streaming chat through a **relayed** browser tunnel feels good enough that a stranger says "wow"
-rather than "laggy". Browser traffic is DERP-relayed until tailcat ships WebRTC. The first build
-measures this for real (TTFT, tokens/s through the relay vs direct localhost). If it fails, the
-demo still works but the launch pitch changes to "native client for now".
+rather than "laggy". Measured (docs/MEASURE.md): 161 tok/s through the New York relay vs 168 direct,
+browser TTFT 110–160 ms. **Founder verdict after using the demo: "the concept is decisively proven;
+streaming speed is more than sufficient."** Browser traffic stays relay-only until tailcat ships WebRTC;
+that is now a cost question (self-hosted relay), not an existence question.
+
+## Next theme (founder, 2026-09-02): polish
+
+"We still can make some polish around the user experience (both the CLI setup and the web app)."
+Polish is judged experientially — a stranger's first ten minutes on each side — not by feature count.
 
 ## Taste rules (each with its reason)
 

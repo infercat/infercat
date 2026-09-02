@@ -1,6 +1,6 @@
 # HANDOFF — state of the work (succession document)
 
-Updated: 2026-09-02 12:05 (day after build night 1). PM seat: Claude Fable, session on Max's laptop.
+Updated: 2026-09-02 13:30. MILESTONE: founder ran the demo end to end and declared the concept proven. PM seat: Claude Fable, session on Max's laptop.
 
 ## What this is
 
