@@ -18,7 +18,7 @@ check: vet test
 wasm:
 	sh web/wasm/build.sh
 
-web:
+web: wasm
 	cd web && pnpm install --frozen-lockfile && pnpm typecheck && pnpm build
 
 web-test:
