@@ -297,3 +297,33 @@ $ pnpm screenshots                → 41 screenshots; no console errors, no page
 4. **The 30 s ping and the 60 s `/me` are hard-coded.** If the launch wants them tuned, they are two
    constants in `Chat.tsx`, not a config concept.
 
+
+## Freeze
+
+- **Base:** `fe9a139` (public `main`, after 005/006/008 landed). **Lane:** `t007-web-hardening`, pushed, not merged.
+- **Patch SHA-256:** of `git diff origin/main...HEAD --binary` at the freeze commit; reported to the PM with the freeze message.
+
+| Bucket | Budget | Measured (raw added / deleted) | Verdict |
+|---|---|---|---|
+| Source TS/TSX (`web/src/**`, tests excluded) | ≤2000 lines of change | +951 / −288 = **1239** | inside; 2× the ~600 estimate (see Report §re-price 1) |
+| Tests (`web/src/**/*.test.ts`) | not budgeted | +693 / −64 | 8 files, 132 tests |
+| Dev harness (`web/dev/**`) | not budgeted | +183 / −17 | fakes + the 007 screenshot section |
+| Stylesheet (`web/src/styles.css`) | not source (ruling on 004) | +18 / −2 | 3 new surfaces + the `.main` layout fix |
+| Ticket record | — | +62 | promises 14–15, Ruling, Log, Report |
+| Dependencies | none without a reason | **0 added**, `pnpm-lock.yaml` unchanged | — |
+| Screenshots | ≤500 KB each | 41 files, largest 149 KB | inside |
+
+**Concepts: 2 budgeted, both used; 2 more introduced by the design ruling, each replacing one it deleted.**
+
+| Concept | Status |
+|---|---|
+| Message terminal status (`MessageStatus` + `note`) | budgeted (1 of 2) |
+| Host-scoped storage namespace (`hostScope`/`scopedKeys`) | budgeted (2 of 2) |
+| `SessionState`/`SessionEvent` | ruling; deletes `ConnectStage` |
+| `StreamEvent`/`reduceReply` | ruling; deletes `ChatDelta` |
+
+Not counted as concepts (properties of things that already existed): `hostSaid` on `FriendlyError`,
+the `retry` marker on the error-copy table, `composing()`, `inviteFromHash()`, the Web Locks
+identity claim, and the dev-only query params. The `--log-prompts` disclosure gate is a state of the
+connect screen driven by a contract field — flagged in the Report rather than counted; rule against
+me if you disagree.
