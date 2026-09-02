@@ -78,9 +78,21 @@ async function write(page, base) {
   if (kb > 500) throw new Error(`${base} is ${kb} KB, over the 500 KB budget`);
 }
 
+/** A code in the URL connects by itself (020 promise 8): nothing is clicked. */
 async function connectViaTunnel(page, extra = '') {
   await page.goto(`${BASE}/?${SLOW}&invite=${encodeURIComponent(INVITE)}${extra}`);
-  await page.getByRole('button', { name: 'Connect' }).click();
+}
+async function shot20(page, name) {
+  return write(page, `20-${name}`);
+}
+/** Every page here shares one host and one browser, so only the newest tab writes (020 promise 6):
+ *  a page that is about to start a thread takes the store over the way a reader would. */
+async function lead(page) {
+  await page.waitForSelector('.composer textarea', { timeout: 20_000 });
+  if (await page.locator('.degraded.follower').count()) {
+    await page.getByRole('button', { name: 'Use this tab instead' }).click();
+    await page.waitForSelector('.degraded.follower', { state: 'detached', timeout: 10_000 });
+  }
 }
 
 async function main() {
@@ -142,7 +154,6 @@ async function main() {
   const offline = await desktop.newPage();
   watch(offline, 'offline');
   await offline.goto(`${BASE}/?${SLOW}&invite=${encodeURIComponent(OFFLINE_INVITE)}`);
-  await offline.getByRole('button', { name: 'Connect' }).click();
   await offline.waitForSelector('.failure', { timeout: 20_000 });
   await shot(offline, 'host-offline');
 
@@ -167,8 +178,8 @@ async function main() {
   await direct.goto(`${BASE}/?direct&invite=${encodeURIComponent(INVITE)}&autoconnect`);
   // Same browser context as the shots above, so this one opens onto the remembered history:
   // proof that conversations survive, and a reason to start a clean thread for the shot.
-  await direct.waitForSelector('.composer textarea', { timeout: 20_000 });
-  await direct.getByRole('button', { name: 'New chat' }).click();
+  await lead(direct);
+  await direct.locator('.sidebar-head button').click();
   await direct.locator('.composer textarea').fill('Direct mode against the fake gateway.');
   await direct.getByRole('button', { name: 'Send' }).click();
   await direct.waitForSelector('.meta-text:has-text("out")', { timeout: 60_000 });
@@ -228,8 +239,8 @@ async function main() {
   // history — which is itself proof of promise 7. Start a clean thread for the shot.
   async function chatting(query, label) {
     const p = await connected(query, label);
-    await p.waitForSelector('.composer textarea', { timeout: 20_000 });
-    await p.getByRole('button', { name: 'New chat' }).click();
+    await lead(p);
+    await p.locator('.sidebar-head button').click(); // the sidebar's New chat; a context wall offers one in the thread too
     return p;
   }
 
@@ -283,12 +294,18 @@ async function main() {
   const linked = await browser.newContext({ viewport: { width: 1280, height: 860 }, colorScheme: 'light' });
   const link = await linked.newPage();
   watch(link, '07-invite-link');
-  await link.goto(`${BASE}/?${FAST}#${INVITE}`);
-  await link.waitForSelector('.connect-card h1');
-  const filled = await link.locator('.connect textarea').inputValue();
-  if (filled !== INVITE) problems.push(`invite link: field holds ${JSON.stringify(filled)}`);
+  await link.goto(`${BASE}/?${SLOW}#${INVITE}`);
+  // 020 promise 8: the link is the consent — it connects by itself, with a Cancel.
+  await link.waitForSelector('.pitch:has-text("Connecting")', { timeout: 10_000 });
   const leftInBar = await link.evaluate(() => location.hash);
   if (leftInBar !== '') problems.push(`invite link: the secret is still in the address bar (${leftInBar})`);
+  await shot20(link, 'link-connecting');
+  await link.getByRole('button', { name: 'Cancel' }).click();
+  await link.waitForSelector('.notice', { timeout: 10_000 });
+  // Cancelled: the card, with the code masked — the secret is never shown unless asked for.
+  const shownLink = await link.locator('.masked code').innerText();
+  if (shownLink.includes(INVITE.split('.')[2])) problems.push(`invite link: the secret is on screen (${shownLink})`);
+  if (await link.locator('.connect textarea').count()) problems.push('invite link: the code is in a text box unmasked');
   await shot7(link, 'invite-link');
 
   // Promise 5 + 15: a revoked invite mid-chat returns to Connect saying so, in one register.
@@ -299,8 +316,17 @@ async function main() {
   await rev.waitForSelector('.composer textarea', { timeout: 20_000 });
   await rev.locator('.composer textarea').fill('/403 revoke me');
   await rev.getByRole('button', { name: 'Send' }).click();
-  await rev.waitForSelector('.failure', { timeout: 20_000 });
-  await shot7(rev, 'revoked-return');
+  // 020 promise 5: like pause — the thread stays, the header says, the composer is off.
+  await rev.waitForSelector('.degraded.key', { timeout: 20_000 });
+  if (await rev.locator('.connect-card').count()) problems.push('revoked: ejected to the connect screen');
+  if (!(await rev.locator('.composer textarea').isDisabled())) problems.push('revoked: the composer is still enabled');
+  if (!(await rev.getByRole('button', { name: 'Paste a new code' }).count())) problems.push('revoked: no "Paste a new code"');
+  await shot20(rev, 'revoked-in-thread');
+  await rev.getByRole('button', { name: 'Paste a new code' }).click();
+  await rev.waitForSelector('.connect-card', { timeout: 10_000 });
+  if ((await rev.locator('.connect textarea').inputValue()) !== '') problems.push('revoked: the new-code card holds the old code');
+  if (await rev.locator('.notice').count()) problems.push('revoked: "Invite from your link is ready" above a revoked code');
+  await shot20(rev, 'revoked-new-code');
 
 
   // --- ticket 014: the two failures a friend will hit, and the honest meters ------------------
@@ -333,8 +359,10 @@ async function main() {
   await ask(paused, 'Is my invite still good?');
   await paused.waitForSelector('.degraded.key', { timeout: 20_000 });
   await sleep(300);
-  const kept = await paused.locator('.composer textarea').inputValue();
-  if (kept !== 'Is my invite still good?') problems.push(`paused: composer lost the text (${JSON.stringify(kept)})`);
+  // 020 promise 1: the words stay in the thread as the one pending turn, and only that one.
+  const pausedMarks = await paused.locator('.bubble.pending').count();
+  if (pausedMarks !== 1) problems.push(`paused: ${pausedMarks} bubbles marked, not exactly 1`);
+  if (!(await paused.locator('.composer textarea').isDisabled())) problems.push('paused: the composer is still enabled');
   if (await paused.locator('.connect-card').count()) problems.push('paused: ejected to the connect screen');
   await shot14(paused, 'paused-banner');
 
@@ -368,8 +396,10 @@ async function main() {
   // masked. No invite in the URL: the only thing that can fill the field is what was remembered.
   const back = await desktop.newPage();
   watch(back, '14-welcome-back');
-  await back.goto(`${BASE}/?${FAST}`);
-  await back.waitForSelector('.connect-card h1');
+  await back.goto(`${BASE}/?${SLOW}`);
+  // 020 promise 8: the return visit is the consent; the face below is what Cancel shows.
+  await back.waitForSelector('.pitch:has-text("Connecting to")', { timeout: 10_000 });
+  await back.getByRole('button', { name: 'Cancel' }).click();
   await back.waitForSelector('.masked code', { timeout: 10_000 });
   const shown = await back.locator('.masked code').innerText();
   if (shown.includes(INVITE.split('.')[2])) problems.push(`welcome back: the secret is on screen (${shown})`);
@@ -406,6 +436,7 @@ async function main() {
 
   // Promise 13 (blocker). A session that broke must be replaced, not retried: the action on the
   // dead exchange is Reconnect, and pressing it puts a live session back without a reload.
+  await lead(gone); // other tabs have taken the store since; the action is the leader's
   await gone.getByRole('button', { name: 'Reconnect' }).click();
   await gone.waitForSelector('.composer textarea', { timeout: 60_000 });
   if (await gone.locator('.connect-card .failure').count()) problems.push('reconnect: ended on the connect screen');
@@ -420,6 +451,43 @@ async function main() {
   if (!/token reply limit/.test(capCopy)) problems.push(`reply cap: copy is ${capCopy}`);
   if (!(await capped.getByRole('button', { name: 'Continue' }).count())) problems.push('reply cap: no Continue');
   await shot14(capped, 'reply-cap');
+
+  // 020 promise 3. The other wall: the sum filled the model, the output did not reach the cap.
+  const walled = await chatting('', '20-context-wall');
+  await ask(walled, '/wall Write me something very long.');
+  await walled.waitForSelector('.ended.capped', { timeout: 30_000 });
+  const wallCopy = await walled.locator('.ended.capped').innerText();
+  if (!/filled the .* memory on/.test(wallCopy)) problems.push(`context wall: copy is ${wallCopy}`);
+  if (await walled.locator('.ended.capped button:has-text("Continue")').count()) problems.push('context wall: Continue offered');
+  if (!(await walled.locator('.ended.capped button:has-text("New chat")').count())) problems.push('context wall: no New chat');
+  if (!/8\.2k\/8\.2k context/.test(await walled.locator('.meters').innerText())) problems.push(`context wall: meter reads ${await walled.locator('.meters').innerText()}`);
+  await shot20(walled, 'context-wall');
+
+  // 020 promise 6. A second tab of the same browser follows the first, and can take over.
+  const tabA = await chatting('', '20-tab-a');
+  await ask(tabA, 'First tab speaking.');
+  await tabA.waitForSelector('.meta-text:has-text("out")', { timeout: 60_000 });
+  const tabB = await connected('', '20-tab-b');
+  await tabB.waitForSelector('.degraded.follower', { timeout: 20_000 });
+  if (!(await tabB.locator('.composer textarea').isDisabled())) problems.push('follower: the composer is enabled');
+  if (await tabA.locator('.degraded.follower').count()) problems.push('leader: shows the follower banner');
+  await shot20(tabB, 'follower-tab');
+  await tabB.getByRole('button', { name: 'Use this tab instead' }).click();
+  await tabA.waitForSelector('.degraded.follower', { timeout: 10_000 });
+  await tabB.waitForSelector('.degraded.follower', { state: 'detached', timeout: 10_000 });
+  await shot20(tabA, 'tab-taken-over');
+
+  // 020 promise 7. Deleting from the phone drawer is the same six seconds of Undo as the desktop.
+  await ask(ph, 'A chat worth deleting, on a phone.');
+  await ph.waitForSelector('.meta-text:has-text("out")', { timeout: 60_000 });
+  await ph.getByRole('button', { name: 'Conversations' }).click();
+  await sleep(400);
+  await ph.locator('.conv.current .conv-del').click();
+  await ph.waitForSelector('.toast:has-text("Undo")', { timeout: 5_000 });
+  const toastBox = await ph.locator('.toast').boundingBox();
+  if (!toastBox || toastBox.y + toastBox.height > 844) problems.push('phone drawer: the undo toast is off screen');
+  await shot20(ph, 'phone-drawer-undo');
+  await ph.getByRole('button', { name: 'Undo' }).click();
 
   // Promise 16. Editing replaces the answer — and says so — but does not throw the old one away.
   const edited = await chatting('', '14-previous-answer');
@@ -451,6 +519,18 @@ async function main() {
   await shot14(marked, 'reasoning-markdown');
 
   // --- the built bundle, served statically, with every request accounted for ---
+  // PROD=0 skips it: dev/real-check.mjs serves dist/ while it runs, and a rebuild under it is a race.
+  if (process.env.PROD === '0') {
+    await browser.close();
+    stopAll();
+    console.log(`\n${readdirSync(shots).filter((f) => f.endsWith('.png')).length} screenshots in dev/screenshots/ (production section skipped)`);
+    if (problems.length > 0) {
+      console.error('\nProblems:');
+      for (const p of problems) console.error(`  ${p}`);
+      process.exit(1);
+    }
+    return;
+  }
   const previewPort = WEB_PORT + 1;
   spawnSync('node', ['node_modules/vite/bin/vite.js', 'build'], { cwd: web, stdio: 'inherit' });
   start('preview', 'node', ['node_modules/vite/bin/vite.js', 'preview', '--port', String(previewPort)], {

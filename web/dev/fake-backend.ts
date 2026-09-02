@@ -49,7 +49,7 @@ export interface FakeOptions {
  * and then sends an OpenAI-shaped error member · `eof-no-done` streams part of an answer and the
  * connection simply ends · `reasoning-only` thinks and never answers.
  */
-export type StreamMode = 'normal' | 'error-mid-stream' | 'eof-no-done' | 'reasoning-only' | 'capped';
+export type StreamMode = 'normal' | 'error-mid-stream' | 'eof-no-done' | 'reasoning-only' | 'capped' | 'context-wall';
 
 /** Counters so the usage bar in the header actually moves while you use the demo. */
 const counters = { rpm_used: 0, tpm_used: 0, today_tokens: 0, in_flight: 0 };
@@ -58,6 +58,8 @@ const counters = { rpm_used: 0, tpm_used: 0, today_tokens: 0, in_flight: 0 };
 let meCalls = 0;
 /** A pause is something the host does *while* you are chatting: /me only reports it once it bites. */
 let pauseBit = false;
+/** A revoke is for good: once /403 has been sent, /me refuses too (020 promise 5). */
+let revokedBit = false;
 
 const LIMITS = {
   rpm: 20,
@@ -113,6 +115,7 @@ export function handleFake(req: FakeRequest, opts: FakeOptions = {}): FakeRespon
   }
 
   if (path === '/me') {
+    if (revokedBit) return error(403, 'permission_error', 'key_revoked', 'This invite was revoked by the host.');
     if (opts.meFailsAfter !== undefined && meCalls++ >= opts.meFailsAfter) {
       return error(503, 'upstream_error', 'upstream_down', 'The host is not answering right now.');
     }
@@ -152,12 +155,14 @@ export function handleFake(req: FakeRequest, opts: FakeOptions = {}): FakeRespon
     const word = text.split(/\s/)[0] ?? '';
     const mode: StreamMode =
       word === '/cap' ? 'capped'
+      : word === '/wall' ? 'context-wall'
       : word === '/cut' ? 'eof-no-done'
       : word === '/mid' ? 'error-mid-stream'
       : word === '/think' ? 'reasoning-only'
       : (opts.streamMode ?? 'normal');
     const failure = FAILURES[word];
     if (failure) {
+      if (failure.code === 'key_revoked') revokedBit = true;
       counters.rpm_used = Math.min(LIMITS.rpm, counters.rpm_used + 1);
       const res = error(failure.status, failure.type, failure.code, failure.message);
       if (failure.retryAfter) res.headers['retry-after'] = String(failure.retryAfter);
@@ -256,14 +261,18 @@ async function* chatStream(
   }
   // The engine ran out of the invite's reply allowance: a complete transfer of an unfinished
   // answer, which is the one ending that used to render as a finished one (014 promise 14).
-  if (mode === 'capped') {
+  // Two walls, one finish_reason (020 promise 3): the invite's reply cap, or the model's context
+  // — the numbers in the usage chunk are the only way to tell them apart.
+  if (mode === 'capped' || mode === 'context-wall') {
     yield `data: ${JSON.stringify({
       id,
       object: 'chat.completion.chunk',
       model,
       choices: [{ index: 0, delta: {}, finish_reason: 'length' }],
     })}\n\n`;
-    yield usageFrame(id, model, Math.ceil(prompt.length / 4) + 12, 2048);
+    yield mode === 'capped'
+      ? usageFrame(id, model, Math.ceil(prompt.length / 4) + 12, 2048)
+      : usageFrame(id, model, 7000, 1192); // 8192 = model_context, and 1192 < the 2048 cap
     yield 'data: [DONE]\n\n';
     return;
   }

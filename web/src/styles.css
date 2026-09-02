@@ -384,7 +384,10 @@ input[type='range'] { accent-color: var(--accent); padding: 0; }
   .thread { padding: 20px 14px 32px; }
   .composer { padding: 10px 14px 12px; }
   .banner { padding: 10px 14px; }
-  .toast { position: fixed; left: 0; right: 0; bottom: 0; z-index: 45; padding: 12px 16px; box-shadow: 0 -4px 16px rgba(0, 0, 0, 0.08); }
+  /* In flow, so it is always inside the visible viewport (a fixed bottom sits behind a phone's
+     collapsing URL bar), and stacked above the drawer and its backdrop so a delete from the drawer
+     is as undoable as one from the desktop sidebar (020 promise 7). */
+  .toast { position: relative; z-index: 45; padding: 12px 16px; }
   .connect { padding: 24px 18px 48px; align-items: start; padding-top: 12vh; }
   .empty { padding-top: 8vh; }
 }
