@@ -100,7 +100,7 @@ interface Session {
   addr: string;
   privateKeyJSON: string;                       // persist to keep the same client identity
   dial(port?: number): Promise<Conn>;           // default 80; MUST NOT redo the handshake; cheap
-  ping(): Promise<{ rttMs: number; via: string; direct: boolean }>;  // via e.g. "DERP(sfo)" or "203.0.113.7:41641"
+  ping(): Promise<{ rttMs: number; via: string; direct: boolean }>;  // via e.g. "DERP(nyc)"; in the browser this is a TCP connect through the relay (tailcat's disco ping is unusable under js/wasm) and direct is always false today
   close(): void;
 }
 interface Conn {
