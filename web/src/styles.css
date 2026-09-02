@@ -278,7 +278,13 @@ input[type='range'] { accent-color: var(--accent); padding: 0; }
 .previous .md { margin-top: 8px; padding-left: 12px; border-left: 2px solid var(--line); }
 
 /* Running out of allowance is not finishing: it reads as an ending, with the one useful action. */
-.ended.capped { display: flex; gap: 6px; align-items: baseline; flex-wrap: wrap; }
+.ended.capped, .ended.wall { display: flex; gap: 6px 10px; align-items: baseline; flex-wrap: wrap; }
+/* The one wall that decides whether the chat survives is not quiet meta text (022 promise 3). */
+.ended.wall {
+  color: var(--text); font-size: 14px; margin-top: 12px; padding: 10px 14px;
+  background: var(--accent-soft); border-radius: 10px;
+}
+.ended.wall .ghost.tiny { color: var(--accent); font-weight: 550; padding-left: 0; }
 
 .empty { padding: 12vh 0 0; text-align: center; }
 .empty h2 { font-size: 22px; font-weight: 600; margin: 0 0 6px; letter-spacing: -0.01em; }
@@ -363,8 +369,10 @@ input[type='range'] { accent-color: var(--accent); padding: 0; }
 /* ---------- 360 px and up ---------- */
 @media (max-width: 760px) {
   .app { grid-template-columns: 1fr; }
+  /* Sized by the dynamic viewport, not pinned to a bottom edge: a phone's layout viewport runs on
+     under the browser bar, and a foot pinned there is a Disconnect nobody can reach (022 promise 4). */
   .sidebar {
-    position: fixed; inset: 0 auto 0 0; z-index: 40;
+    position: fixed; inset: 0 auto auto 0; height: 100dvh; z-index: 40;
     width: min(80vw, 300px);
     transform: translateX(-100%);
     transition: transform 0.18s ease;
@@ -380,7 +388,8 @@ input[type='range'] { accent-color: var(--accent); padding: 0; }
      to go, because the numbers next to them are what actually says something. */
   .truth { order: 3; margin-left: 0; width: 100%; gap: 14px; flex-wrap: wrap; row-gap: 2px; }
   .meter-track { display: none; }
-  .meters { gap: 14px; }
+  /* Three counters wrap to a second line rather than run off the edge (022 promise 4). */
+  .meters { gap: 2px 14px; flex-wrap: wrap; min-width: 0; max-width: 100%; }
   .thread { padding: 20px 14px 32px; }
   .composer { padding: 10px 14px 12px; }
   .banner { padding: 10px 14px; }

@@ -1,12 +1,14 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
-import { getMe, hostName } from './api';
+import { describeError, getMe, hostName, ME_TIMEOUT_MS, timeoutSignal } from './api';
 import { PRODUCT_NAME } from './product';
 import Connect from './ui/Connect';
 import {
   dropped,
   IDLE,
   live,
+  probing,
   reduce,
+  scheduleProbe,
   transportOf,
   type Live,
   type SessionEvent,
@@ -59,6 +61,38 @@ function shut(t: Transport): void {
 }
 
 /**
+ * The same host, dialled again: a new transport to the same address, verified with the same invite,
+ * carrying everything the old session knew. What Reconnect does by hand (014 promise 13) and the
+ * self-probe does by itself (022 promise 1). `onOpened` sees the transport before /me is asked; a
+ * transport the invite does not verify over is closed here.
+ */
+async function dialAgain(from: Live, onOpened?: (t: Transport) => void): Promise<Live> {
+  const opened = await openTransport(from.addr, {
+    mode: from.mode,
+    directURL: __DEFAULT_DIRECT_URL__,
+    ...(from.ephemeral ? {} : { privateKey: load<string>(KEYS.privateKey, '') }),
+  });
+  onOpened?.(opened.transport);
+  try {
+    const me = await getMe(opened.transport, from.secret);
+    return {
+      ...from,
+      transport: opened.transport,
+      me,
+      path: opened.path,
+      pathAt: Date.now(),
+      pathOk: opened.path !== null,
+      meOk: true,
+      key: me.key.status,
+      probed: 0,
+    };
+  } catch (err) {
+    shut(opened.transport);
+    throw err;
+  }
+}
+
+/**
  * Dialling the same host again after its session broke (014 promise 13).
  *
  * A tunnel session that has failed stays failed, so retrying a request over it costs the reader
@@ -80,33 +114,11 @@ function useRedial(
     if (state.name !== 'connecting' || !from) return;
     target.current = null;
     let live = true;
-    void (async () => {
-      try {
-        const opened = await openTransport(from.addr, {
-          mode: from.mode,
-          directURL: __DEFAULT_DIRECT_URL__,
-          ...(from.ephemeral ? {} : { privateKey: load<string>(KEYS.privateKey, '') }),
-        });
-        if (!live) {
-          opened.transport.close();
-          return;
-        }
-        dispatch({ t: 'sessionUp', transport: opened.transport });
-        const me = await getMe(opened.transport, from.secret);
-        dispatch({
-          t: 'verified',
-          live: {
-            ...from,
-            transport: opened.transport,
-            me,
-            path: opened.path,
-            pathAt: Date.now(),
-            pathOk: opened.path !== null,
-            meOk: true,
-            key: me.key.status,
-          },
-        });
-      } catch (err) {
+    // From `sessionUp` on the machine owns the transport: every path out of `verifying` closes it.
+    void dialAgain(from, (t) => (live ? dispatch({ t: 'sessionUp', transport: t }) : shut(t)))
+      .then((next) => (live ? dispatch({ t: 'verified', live: next }) : shut(next.transport)))
+      .catch((err: unknown) => {
+        if (!live) return;
         const who = hostName(from.me);
         // A second failure is not a third invitation to wait: say what actually works.
         dispatch({
@@ -119,10 +131,10 @@ function useRedial(
               : {}),
           },
         });
-      } finally {
+      })
+      .finally(() => {
         if (live) setDialling(false);
-      }
-    })();
+      });
     return () => {
       live = false;
     };
@@ -138,9 +150,54 @@ function useRedial(
   ];
 }
 
+/**
+ * The self-probe (022 promise 1). A session degraded for a reason that can heal — the host stopped
+ * answering, its engine is down, the path cannot be measured — asks again by itself: 5 s after it
+ * noticed, then 10, 20 and every 30 s (session.probeDelay), so a host that is up is never called
+ * "not answering" for more than one step. What it asks depends on what failed. A host that answers
+ * /me is asked /me over the session it has, exactly as the poll does. A host that did not gets a
+ * fresh dial: a tunnel session whose host has restarted behind it never answers again (measured
+ * against the real host — four 30 s polls over two minutes, nothing), so the only probe that can
+ * find it awake is the one Reconnect makes by hand; the new session replaces the old in the
+ * reducer the moment the invite verifies over it, and the old is closed there. One effect, armed
+ * on the count of misses, never on the poll's other news, so a 30 s poll cannot keep resetting a
+ * 30 s probe.
+ */
+function useProbe(state: SessionState, dispatch: (e: SessionEvent) => void): void {
+  const latest = useRef(state);
+  useEffect(() => {
+    latest.current = state;
+  });
+  const on = probing(state);
+  const probed = live(state)?.probed ?? 0;
+  useEffect(() => {
+    if (!on) return;
+    return scheduleProbe(
+      probed,
+      async () => {
+        const l = live(latest.current);
+        if (!l) return;
+        try {
+          if (l.meOk) {
+            dispatch({ t: 'meOk', me: await getMe(l.transport, l.secret, timeoutSignal(ME_TIMEOUT_MS)) });
+          } else {
+            // Lands in the reducer, which keeps it only while this session still needs replacing;
+            // a candidate that arrives after Reconnect or Disconnect is closed by dropped().
+            dispatch({ t: 'verified', live: await dialAgain(l) });
+          }
+        } catch (err) {
+          if (l.meOk) dispatch({ t: 'meError', error: describeError(err, hostName(l.me)) });
+        }
+      },
+      dispatch,
+    );
+  }, [on, probed, dispatch]);
+}
+
 export default function App() {
   const [state, dispatch] = useSession();
   const [dialling, redial] = useRedial(state, dispatch);
+  useProbe(state, dispatch);
   const l = live(state);
 
   if (!l) {

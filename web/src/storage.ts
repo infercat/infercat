@@ -35,12 +35,6 @@ export interface Message {
   capped?: boolean;
   /** The answer this one replaced, kept rather than thrown away when a turn is edited (promise 16). */
   previous?: string;
-  /**
-   * The pending turn (014 promise 1): a user message that was sent and never answered. It stays in
-   * the thread, marked, with a Try again — so a host that was asleep costs the reader their wait,
-   * never their words.
-   */
-  pending?: boolean;
 }
 
 export interface Conversation {
@@ -99,6 +93,23 @@ export function scopedKeys(scope: string): {
 export interface LastHost {
   name: string;
   scope: string;
+  /** The reader pressed Disconnect: the next visit shows the card and waits (022 promise 5). */
+  left?: boolean;
+}
+
+/**
+ * Disconnect is a choice, and a reload must not undo it (022 promise 5): the remembered code only
+ * dials by itself when the last thing the reader did with it was connect. Written on Disconnect;
+ * a successful verify writes the record afresh, without the flag.
+ */
+export function rememberLeft(): void {
+  const h = load<LastHost | null>(KEYS.lastHost, null);
+  if (h) save(KEYS.lastHost, { ...h, left: true });
+}
+
+/** Whether a code this browser holds dials on arrival: a link is consent; a return visit is, unless the reader left. */
+export function dialsOnArrival(last: LastHost | null, viaLink: boolean): boolean {
+  return viaLink || last?.left !== true;
 }
 
 /**
@@ -183,9 +194,8 @@ export function prune(convs: Conversation[], keep = 50): Conversation[] {
  * matters, so a conversation another tab wrote after our index was read is still found (it is in
  * the index the moment it exists) and one another tab deleted simply is not there.
  *
- * What comes back is exactly what is on disk, with one repair: a "Not delivered" mark under a turn
- * that has its answer is cleared (settlePending). A reply still streaming is left as it is — the
- * tab writing it may be alive; only the leader, on taking the store, calls reopenChats().
+ * What comes back is exactly what is on disk. A reply still streaming is left as it is — the tab
+ * writing it may be alive; only the leader, on taking the store, calls reopenChats().
  */
 export function loadChats(scope: string): Conversation[] {
   const keys = scopedKeys(scope);
@@ -193,25 +203,35 @@ export function loadChats(scope: string): Conversation[] {
   const out: Conversation[] = [];
   for (const id of load<string[]>(keys.index, [])) {
     const c = load<Conversation | null>(keys.conv(id), null);
-    if (c && Array.isArray(c.messages)) out.push({ ...c, messages: settlePending(c.messages) });
+    if (c && Array.isArray(c.messages)) out.push(c);
   }
   return out;
 }
 
 /**
- * The pending mark is per turn (020 promise 1): send() marks exactly the turn it sends, and this
- * is the one rule that clears it — a user turn whose next message is a delivered reply was
- * delivered. Applied after every stream ends and on every load, so nothing persisted can say
- * "Not delivered" under an answer, whichever release wrote it.
+ * The user turns no successful request has carried (022 promise 2). Every request sends the whole
+ * thread before it, so a turn is delivered the moment any later reply is — its own, a Try again, or
+ * the reply to a later message whose history holds it (the model that recalls ZEBRA was told
+ * ZEBRA). One derivation over the thread and no flag on the turn, so what is shown, what is sent
+ * and what is persisted cannot disagree, whichever release wrote the transcript.
  */
-export function settlePending(messages: Message[]): Message[] {
-  if (!messages.some((m, i) => m.pending === true && delivered(messages[i + 1]))) return messages;
-  return messages.map((m, i) => (m.pending === true && delivered(messages[i + 1]) ? { ...m, pending: false } : m));
+export function undelivered(messages: readonly Message[]): Set<string> {
+  const out = new Set<string>();
+  for (let i = messages.length - 1; i >= 0; i--) {
+    const m = messages[i] as Message;
+    if (delivered(m)) break;
+    if (m.role === 'user') out.add(m.id);
+  }
+  return out;
 }
 
-/** A reply that answered its turn: the host produced something and said so, or the reader stopped it. */
+/**
+ * A request that got through: the host ended the reply itself (with an answer in it or not — a
+ * model that only thought was still asked), or the reader stopped it. Only a reply the transport
+ * or the host cut short is not a delivery.
+ */
 export function delivered(m: Message | undefined): boolean {
-  return m?.role === 'assistant' && (m.status === 'complete' || m.status === 'stopped');
+  return m?.role === 'assistant' && m.status !== undefined && m.status !== 'interrupted';
 }
 
 /**

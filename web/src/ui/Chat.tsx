@@ -8,6 +8,7 @@ import {
   logsPrompts,
   ME_TIMEOUT_MS,
   modelLabel,
+  timeoutSignal,
   type ChatMessage,
   type FriendlyError,
   type Me,
@@ -43,12 +44,13 @@ import {
   modelFor,
   newConversation,
   newId,
+  rememberLeft,
   reopenChats,
   save,
   saveChat,
   scopedKeys,
-  settlePending,
   titleFrom,
+  undelivered,
   type Conversation,
   type Message,
   type Settings,
@@ -310,11 +312,6 @@ export default function Chat({ state, live, dispatch, onRedial }: Props) {
         abort.current = null;
       }
 
-      // The turn was delivered when the host produced something, or the reader stopped it. The
-      // rule that clears the mark is the store's (020 promise 1), so what is shown and what is
-      // persisted can never disagree; anything else leaves exactly this turn pending.
-      patch(convId, (c) => ({ ...c, messages: settlePending(c.messages) }));
-
       if (failed) {
         // The message already carries the failure as its own status; the banner is only for the
         // waits the reader has to sit out, so nothing is said in two places (014 promise 10).
@@ -332,9 +329,9 @@ export default function Chat({ state, live, dispatch, onRedial }: Props) {
 
   function send(text: string): void {
     if (streaming || locked || readOnly || text.trim() === '') return;
-    // Pending from the moment it is sent, and only this turn (020 promise 1): that mark is what
-    // keeps the reader's words in the thread, with something to press, if nothing comes back.
-    const message: Message = { id: newId(), role: 'user', content: text.trim(), pending: true };
+    // The turn goes into the thread before anything is sent: if nothing comes back it is still
+    // there, marked as undelivered by derivation (022 promise 2), with something to press.
+    const message: Message = { id: newId(), role: 'user', content: text.trim() };
     const history = [...conv.messages, message];
     const next: Conversation = {
       ...conv,
@@ -360,7 +357,7 @@ export default function Chat({ state, live, dispatch, onRedial }: Props) {
     if (idx < 0) return;
     const replaced = conv.messages.slice(idx + 1).find((m) => m.content.trim() !== '')?.content;
     const asked = text === undefined ? (conv.messages[idx] as Message) : { ...(conv.messages[idx] as Message), content: text.trim() };
-    const history: Message[] = [...conv.messages.slice(0, idx), { ...asked, pending: true }];
+    const history: Message[] = [...conv.messages.slice(0, idx), asked];
     patch(conv.id, (c) => ({
       ...c,
       // An edited first message is what this chat is now about; a title from the old one is stale.
@@ -400,14 +397,21 @@ export default function Chat({ state, live, dispatch, onRedial }: Props) {
     return () => clearTimeout(timer);
   }, [undo]);
 
-  /** A revoked invite's one move (020 promise 5): a fresh connect card, never Connect for this code. */
+  /**
+   * A revoked invite's one move (020 promise 5): a fresh connect card, never Connect for this code.
+   * Only the dead code is forgotten — a reload must not dial it again — and nothing else is: the
+   * tunnel identity, the last host and every chat stay exactly where they are (022 promise 6).
+   */
   function pasteNewCode(): void {
-    forget(KEYS.invite, KEYS.lastHost);
+    forget(KEYS.invite);
     dispatch({ t: 'abort', error: null });
   }
 
   const lastUser = lastIndexOfRole(conv.messages, 'user');
-  const pendingTurn = conv.messages.some((m) => m.pending === true);
+  // The turns no request has carried through (022 promise 2): one derivation, read by every mark
+  // and by the action's name. Non-empty means the last exchange failed, and Try again resends all
+  // of them at once, because the history it sends holds every one.
+  const lost = undelivered(conv.messages);
   // One action on the last exchange, named for what it will actually do. Reconnect is offered
   // exactly while this session has not reached the host since it last tried (a request that got
   // no answer, a /me that timed out): retrying over a session we have not proved alive is the
@@ -417,7 +421,7 @@ export default function Chat({ state, live, dispatch, onRedial }: Props) {
       ? null
       : !live.meOk
         ? { label: 'Reconnect', run: () => onRedial(live) }
-        : pendingTurn
+        : lost.size > 0
           ? { label: 'Try again', run: regenerate }
           : { label: 'Regenerate', run: regenerate };
   const degraded = state.name === 'degraded' ? degradedLine(state.reason, live) : null;
@@ -453,7 +457,13 @@ export default function Chat({ state, live, dispatch, onRedial }: Props) {
           ))}
         </nav>
         <div className="sidebar-foot">
-          <button className="ghost tiny" onClick={() => dispatch({ t: 'abort', error: null })}>
+          <button
+            className="ghost tiny"
+            onClick={() => {
+              rememberLeft(); // outlives the tab: the next visit shows the card and waits (022 promise 5)
+              dispatch({ t: 'abort', error: null });
+            }}
+          >
             Disconnect
           </button>
         </div>
@@ -529,6 +539,7 @@ export default function Chat({ state, live, dispatch, onRedial }: Props) {
                   live={streaming && i === conv.messages.length - 1}
                   busy={streaming}
                   answering={conv.messages[i + 1]?.role === 'assistant' && conv.messages[i + 1]?.status === undefined}
+                  undelivered={lost.has(m.id)}
                   readOnly={readOnly}
                   last={i >= lastUser && i >= conv.messages.length - 2}
                   action={action}
@@ -660,8 +671,8 @@ function LimitsSheet({ me, onClose }: { me: Live['me']; onClose: () => void }) {
         {context > 0 && (
           <p>
             <strong>{compact(context)} tokens of context.</strong> The model’s memory of this chat —
-            everything said so far, both sides. When it fills, this chat cannot go on; a new chat
-            starts empty.
+            everything said so far, both sides. When it fills, replies get shorter until a message
+            no longer fits; a new chat starts empty.
           </p>
         )}
         <button className="primary small" onClick={onClose}>
@@ -888,15 +899,6 @@ function toChatMessages(history: Message[], settings: Settings): ChatMessage[] {
     out.push({ role: m.role, content: m.content });
   }
   return out;
-}
-
-/** AbortSignal.timeout, where it exists; a hand-rolled one where it does not. */
-function timeoutSignal(ms: number): AbortSignal {
-  const T = AbortSignal as typeof AbortSignal & { timeout?: (ms: number) => AbortSignal };
-  if (typeof T.timeout === 'function') return T.timeout(ms);
-  const ac = new AbortController();
-  setTimeout(() => ac.abort(), ms);
-  return ac.signal;
 }
 
 function lastIndexOfRole(messages: Message[], role: Message['role']): number {
