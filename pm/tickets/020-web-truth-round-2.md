@@ -358,3 +358,11 @@ Continue; asleep: 5 s / 15 s / reconnect 0.3 s; tabs: leader/follower with share
 twice while waiting on its own harness; the PM performed the mechanical freeze (commit, rebase, checks
 printed: typecheck 0, 218 tests, lint 0, build OK; 641/258 TS lines within ≤900; scope clean) and pushed.
 Third experience pass is the launch gate.
+
+## Ruling addendum (PM, 2026-09-02 19:10)
+
+Follow-up `86489f2` landed (screenshots re-shot by the clean runner; freeze table corrected; no source
+diff). Judgment calls accepted as declared: one model for undelivered turns (pause keeps the marked turn
+in the thread); Reconnect derived from `!meOk`; `refreshMe` as the idle probe; short real timers in the
+idle tests (acceptable while they stay deterministic under the 019 stress command — re-check at the next
+flake); wall copy without the possessive. 899/900 source lines: on budget.
