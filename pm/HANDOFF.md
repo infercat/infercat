@@ -1,6 +1,6 @@
 # HANDOFF — state of the work (succession document)
 
-Updated: 2026-09-02 02:20 (overnight build night 1). PM seat: Claude Fable, session on Max's laptop.
+Updated: 2026-09-02 03:55 (overnight build night 1). PM seat: Claude Fable, session on Max's laptop.
 
 ## What this is
 
@@ -23,9 +23,14 @@ a public social-media launch soon after, likely serving DeepSeek v4 flash from t
 
 ## In flight
 
-Tickets 001–004 dispatched in parallel on worktree branches (see `pm/tickets/`). 001 and 002 on Fable
-engineers, 003 and 004 on Opus engineers. Landing order: 001 → 002 → 003 (wiring) → 004; then 005
-integration + adversarial review of 001/002/003 + experience review of 004 + `docs/MEASURE.md` numbers.
+- **Landed on main:** 003 (CLI/store/upstream/usage/admin; wiring behind `//go:build wire` until 002
+  lands) and 001 (tunnel/invite/wasm bridge; relay numbers in `docs/MEASURE.md`).
+- **Building:** 002 gateway (Fable engineer), 004 web client (Opus engineer).
+- **Reviewing:** adversarial review workflows running on 003 and 001 (fresh Opus contexts, two refuters
+  per finding). Findings land in the ticket files as PM rulings.
+- **Next:** land 002 → flip wiring (delete `cmd/bunny-network/wire_stub.go`, drop the `wire` tag in
+  `wire.go`, `go mod tidy`) → land 004 → ticket 005 integration: real `serve` against llama-server
+  18080 with `--dev-listen`, web app in Direct then Tunnel mode, measure, experience review, morning report.
 
 ## Standing decisions tonight
 
