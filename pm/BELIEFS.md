@@ -3,12 +3,19 @@
 Founder: Max (Yuanping Song). PM seat: Claude (Fable), appointed 2026-09-02.
 Repo: github.com/2185Lab/bunny-network (private). Name not locked; rename expected after first use.
 
-## Vision (stated back to the founder 2026-09-02, confirmed)
+## Vision (stated back to the founder 2026-09-02, confirmed; reframed the same evening — founder ruling)
 
-Anyone with a GPU can share their inference with anyone who has a browser, by handing them one
-code. The friend needs no account, no VPN, no install. The host keeps control through per-person
-keys, limits, and usage. Traffic is end-to-end encrypted through a relay the host can self-host,
-and becomes direct peer-to-peer when tailcat's WebRTC transport lands (tailcat issue #4).
+Anyone with a capable computer can share **an AI** with anyone who has a browser, by handing them one
+code. An AI is a model plus the capabilities the host chooses to attach — search with the host's own
+subscription, a sandbox on the host's machine, documents, later browsing — under a budget. The friend
+needs no account, no VPN, no install. The host keeps control through per-person keys, limits, and
+usage, and shares capabilities **by name**: each one opted in per key, budgeted, isolated, and visible in
+usage. Traffic is end-to-end encrypted through a relay the host can self-host, and becomes direct
+peer-to-peer when tailcat's WebRTC transport lands (tailcat issue #4).
+
+*Reason for the reframe (founder, 2026-09-02):* "people don't really care whether they are strictly
+sharing LLM inference or the more general idea of AI. In 2026 you cannot say we have AI but no tools."
+Inference sharing was the technical statement of the idea; the demo proved it; the product is the AI.
 
 **Differentiation.** Versus Tailscale + Ollama node sharing: the friend does nothing but paste.
 Versus ngrok / Cloudflare tunnels: not plaintext through a vendor, self-hostable relay, and a
@@ -57,6 +64,18 @@ Polish is judged experientially — a stranger's first ten minutes on each side 
   is versioned.
 - **Prompts are never logged by default.** Reason: friends' conversations are theirs; the host sees
   counts, not content. `--log-prompts` exists for debugging and says so loudly.
+- **The client runs the agent loop; the host runs tools.** Reason (founder, 2026-09-02): each client may
+  carry a different agent implementation, and the host cannot and should not dictate it. The host's job
+  is capabilities behind the gateway (metered tool routes), never orchestration. Consequence: tool calls
+  pass through the gateway untouched (they do), `/me` advertises capabilities, keys carry a tools
+  allowlist.
+- **Host safety is paramount: Docker-class isolation or nothing.** Reason (founder, 2026-09-02): a host
+  shares their own machine with strangers; a lightweight sandbox is not a sandbox. Host-side execution
+  ships only with container-grade isolation, per-friend workspaces, and CPU/time budgets. Post-demo.
+- **DeepSeek Harness is a catalogue, not a runtime.** Reason: researched 2026-09-02 (pm/DECLINED.md) —
+  wrong shape for a static client and a one-binary host, but its ~250 packages and the community's tools
+  are a large, high-quality menu of tool implementations and loop designs to borrow from, one at a time,
+  under our own seams.
 - **Fix classes, not instances.** When a review finds three or more defects with one cause, the fix is
   the missing structure (a pipeline with one exit, a state machine, a stateful upstream), never N
   patches. Reason (founder, 2026-09-02): the demo-1 reviews produced ~30 confirmed defects that cluster
