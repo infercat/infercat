@@ -98,3 +98,17 @@ suggestion chips; stripping the fragment; edit-in-place; settings persistence; t
 ## Log
 
 ## Report
+
+## Additions (PM, 2026-09-02 15:45 — desktop persona of the experience pass; sent to the engineer)
+
+13. Reconnect after the host comes back (blocker): tear down and re-establish the session on retry after
+    a broken connection; banner action "Reconnect"; honest fallback copy.
+14. Reply cap ending (blocker): `finish_reason: length` → "This stopped at your invite's N-token reply
+    limit." + [Continue]; Settings' limits sentence includes the reply cap.
+15. First suggestion chip answerable (seed a default system prompt or change the chip).
+16. Edit/regenerate keep the old answer ("Replace answer", retitle, previous answer kept).
+17. Rendering: single newlines as line breaks; reasoning as markdown; "Untitled chat".
+
+Synthesis verdict (both personas): not launch-ready yet; "everything wrong lives in the second minute
+and nothing wrong is architectural"; the first minute is "genuinely excellent". Host-side item from
+the same pass → ticket 016 (usage meter resets on host restart).
