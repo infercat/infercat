@@ -3,7 +3,7 @@ id: 009
 title: Host polish — first-run truth, invite destination, key hygiene, accounting words (from the stranger pass)
 kind: normal
 size: 3
-status: frozen
+status: landed
 updated: 2026-09-02
 release: demo-1
 ---
