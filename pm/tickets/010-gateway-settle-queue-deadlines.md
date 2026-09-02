@@ -3,7 +3,7 @@ id: 010
 title: Gateway settle table, FIFO slot queue, engine-side deadlines (DESIGN §1.4–1.6)
 kind: sensitive
 size: 3
-status: dispatched
+status: landed
 updated: 2026-09-02
 release: demo-1
 ---
@@ -210,3 +210,11 @@ report is a docs-only commit on top. Not merged.
   deletions only; this ticket file. `docs/` untouched.
 - **Production-touching actions:** none. The shared llama-server received the opt-in live test's requests only; nothing
   restarted or reconfigured; no secrets, no dotenvx, no max-ws.lab.
+
+## Ruling (PM, 2026-09-02 14:40)
+
+**Landed** on main (ff of `f5bd21e`, rebased by the engineer over 009); build/vet/test green, gateway
+`-race` green, three cross-compiles OK, printed. The eleven declared judgment calls are accepted, with
+one note: the first-byte bound as a timer in `callUpstream` is temporary until 011 moves it to the
+engine's `http.Client` (`ResponseHeaderTimeout`). Contract lines listed in the report feed
+`docs/ARCHITECTURE.md` v1, written by the PM after 011 lands.
