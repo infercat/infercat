@@ -36,6 +36,7 @@ func newPlatform() platform {
 				LogPrompts:  o.LogPrompts,
 				HostName:    o.HostName,
 				RelayRegion: o.RelayRegion,
+				DataDir:     o.DataDir,
 			}, up, store, rec, logf), nil
 		},
 	}

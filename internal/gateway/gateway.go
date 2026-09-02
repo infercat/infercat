@@ -29,6 +29,9 @@ type Config struct {
 	LogPrompts  bool          // put prompt/completion text into usage events (Protection 3: opt-in)
 	HostName    string        // shown in /me
 	RelayRegion func() string // shown in /me; nil → ""
+	// DataDir is where usage.jsonl lives; New reads it once to seed today's per-key counters.
+	// Empty means no history to seed from, and the counters start at zero as they always did.
+	DataDir string
 }
 
 const (
@@ -80,7 +83,7 @@ func New(cfg Config, up upstream.Engine, store keys.Store, rec usage.Recorder, l
 	if logf == nil {
 		logf = func(string, ...any) {}
 	}
-	return &Gateway{
+	g := &Gateway{
 		cfg:   cfg,
 		up:    up,
 		store: store,
@@ -95,6 +98,25 @@ func New(cfg Config, up upstream.Engine, store keys.Store, rec usage.Recorder, l
 		idleTimeout:  defaultIdleTimeout,
 		maxBody:      defaultMaxBody,
 	}
+	g.seedCounters()
+	return g
+}
+
+// seedCounters gives the limiter today's history before anything is served: one Aggregate over
+// usage.jsonl since UTC midnight (DESIGN §4 item 5), no new file and no second lane of truth.
+// History that cannot be read is logged and skipped — a host must still start, and the only cost
+// is the pre-restart limitation, counters from zero.
+func (g *Gateway) seedCounters() {
+	if g.cfg.DataDir == "" {
+		return
+	}
+	day := g.lim.now().UTC().Truncate(24 * time.Hour)
+	rep, err := usage.AggregateFile(g.cfg.DataDir, usage.Filter{Since: day})
+	if err != nil {
+		g.logf("gateway: today's usage history is unreadable (%v); per-key counters start at zero", err)
+		return
+	}
+	g.lim.seedToday(rep, day)
 }
 
 // Handler is the routed API without CORS. Serve wraps it in an http.Server; use it directly only in tests.

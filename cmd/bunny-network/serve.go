@@ -111,6 +111,7 @@ func (e *env) cmdServe(ctx context.Context, pre string, args []string) error {
 		LogPrompts:  *logPrompts,
 		HostName:    hostName,
 		RelayRegion: func() string { return tun.Status().Region },
+		DataDir:     dataDir, // today's counters are seeded from usage.jsonl there
 	}, up, store, rec, e.logf)
 	if err != nil {
 		return fmt.Errorf("gateway: %w", err)

@@ -150,6 +150,18 @@ func (r *fakeRecorder) last(t *testing.T) usage.Event {
 	return ev[len(ev)-1]
 }
 
+// teeRecorder also writes the real usage.jsonl, so a test can stop a gateway and start another one
+// against the history the first one actually recorded. Used only when Config.DataDir is set.
+type teeRecorder struct {
+	*fakeRecorder
+	file *usage.FileRecorder
+}
+
+func (r teeRecorder) Record(ctx context.Context, e usage.Event) {
+	r.fakeRecorder.Record(ctx, e)
+	r.file.Record(ctx, e)
+}
+
 // ---- upstream.Engine backed by an httptest engine ----
 
 // E4 (DESIGN §3.5), at compile time: the gateway is built against Engine alone — this fake has
@@ -436,6 +448,7 @@ type harness struct {
 	up    *fakeUpstream
 	store *fakeStore
 	rec   *fakeRecorder
+	file  *usage.FileRecorder // non-nil when cfg.DataDir is set: the real usage.jsonl
 	gw    *Gateway
 	srv   *httptest.Server
 	key   *keys.Key
@@ -463,7 +476,16 @@ func newHarness(t *testing.T, cfg Config, up upstream.Engine) *harness {
 	if cfg.HostName == "" {
 		cfg.HostName = "max-laptop"
 	}
-	h.gw = New(cfg, up, h.store, h.rec, globalLogs.logf)
+	var rec usage.Recorder = h.rec
+	if cfg.DataDir != "" {
+		f, err := usage.NewFileRecorder(cfg.DataDir, globalLogs.logf)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { f.Close() })
+		h.file, rec = f, teeRecorder{h.rec, f}
+	}
+	h.gw = New(cfg, up, h.store, rec, globalLogs.logf)
 	h.srv = httptest.NewServer(h.gw.Handler())
 	t.Cleanup(h.srv.Close)
 	return h

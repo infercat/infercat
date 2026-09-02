@@ -200,9 +200,14 @@ func (e *env) printDestination(dataDir, name, inv string, noQR bool) {
 	} else {
 		fmt.Fprintf(e.out, "%s pastes this code into the web app (serve web/dist yourself for now — see README).\n\n", name)
 	}
-	if !noQR && e.tty {
-		writeQR(e.out, code)
+	if noQR || !e.tty {
+		return
 	}
+	writeQR(e.out, code)
+	// The QR is ~30 rows tall, so on a short terminal it pushes the line above it off the screen —
+	// a host persona lost the invite that way. Print it once more underneath, in the same shape, so
+	// the last thing left on screen is the thing to copy. Nothing is repeated when there is no QR.
+	fmt.Fprintf(e.out, "\n  %s\n", code)
 }
 
 // inviteLink is the one thing a friend can be sent: the web app plus the invite in the fragment,
