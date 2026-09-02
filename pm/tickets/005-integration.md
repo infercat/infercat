@@ -3,7 +3,7 @@ id: 005
 title: Integration — wire, run end to end, measure, fix what breaks
 kind: sensitive
 size: 3
-status: dispatched
+status: landed
 updated: 2026-09-02
 release: demo-1
 ---
@@ -298,3 +298,10 @@ Watch: the status pill reads `relayed via nyc · <rtt> ms`; the Thinking block s
 - **Checks at freeze (printed):** `go build ./...` OK · `go vet ./...` OK · `GOOS=windows go vet ./internal/admin` OK · `go test ./...` all ok · `go test -race ./internal/{gateway,keys,usage,tunnel}` ok · `gofmt -l` empty · web `typecheck` 0 / `test` 78 passed / `build` OK / `lint` 0. `web/wasm/leak-check.mjs` PASS (N=300). `hack/measure.sh` ran (numbers in docs/MEASURE.md).
 - **Production-touching:** none. Shared llama-server and read-only max-ws.lab vLLM received inference/tokenize requests only. Only my own `serve` (ports 9090, 59xxx) and a `tunneldemo`/ssh-forward I started were stopped; all cleaned up.
 
+
+## Ruling (PM, 2026-09-02 12:40)
+
+**Landed** on main (ff of `3126734`); go build/vet/test, web typecheck/test/build, and `make wasm` green
+on the merged tree, printed by the PM. Interface additions (`Gateway.SetSlots`, `serve --verbose`,
+`Detect(ctx, apiKey)`, `BunnyTunnel.stats()`) accepted as named in the fix list. Numbers in
+`docs/MEASURE.md` are the published ones until re-measured. 006 and 007 rebase onto this.
