@@ -95,4 +95,42 @@ All times 2026-09-02, EDT, laptop.
   from a failed request; the phone's undo toast exists and sits under the drawer's backdrop
   (`07b-after-delete-tap.png`). No contest.
 
+- 17:2x — Reducers first, in the order the ticket names. Three readings taken, each to keep one
+  model rather than two, and each flagged for the ruling:
+  (i) **Promise 1 is a per-turn rule in the store, not a render.** `send()` marks exactly the turn it
+  sends; `settlePending()` (storage.ts) clears a mark whose next message is a delivered reply — run
+  after every stream ends and on every load, so a transcript 014 marked repairs itself the moment it
+  is read. The pause branch's rollback-to-composer (014) is gone: a paused send now stays in the
+  thread as the one marked turn with the banner and a disabled composer, exactly the shape the
+  ticket's test describes ("exactly one bubble marked, and it clears on resume") and the same shape
+  as every other undelivered turn — one model, not two. Rule against me if you want the rollback back.
+  (ii) **Promise 4 also moves "Reconnect" into the machine.** Chat's `broken` flag is deleted; a
+  request that got no answer (`host_asleep`, a broken transport) makes the session's snapshot
+  history (`meOk: false`) and the thread offers Reconnect exactly while `!live.meOk` — the next /me
+  that gets through changes the word to Try again. `settle()` only calls the engine unhealthy on a
+  /me that got through, so "llama.cpp is not answering" can never sit above a Reconnect.
+  (iii) **Promise 5 generalises `Live.paused` to `Live.key`** (`active | paused | revoked | invalid`),
+  so revoke is the same `degraded('key')` as pause with different copy and one different action.
+  `FriendlyError` gains `code` so the reducer can tell the two dead codes apart; the never-dispatched
+  `revoked` session event is deleted. On the connect screen a fatal failure disables Connect (the
+  reviewer pressed it and reproduced the error) and hides "Invite from your link is ready".
+- 17:2x — Promise 2: `chatEvents` takes a `probe` (Chat passes `refreshMe`, so the /me it asks is
+  also dispatched into the session — one health source even mid-reply). The idle clock arms at the
+  response head and re-arms on every event including `: queued`; on 15 s of silence the probe is
+  asked, and only a host that is unreachable or unhealthy ends the reply (`host_stalled`); a healthy
+  host is a slow one and the clock re-arms. `aborted` events carry a `why` when the app, not the
+  reader, aborted (promise 6's take-over) — "You stopped this reply" is now reserved for Stop.
+  Promise 3: `replyEnding()` in stream.ts; the cap wins when both walls are true (Continue still
+  helps); slack is `max(8, ctx/64)`; the ending copy avoids the possessive ("the 4.1k memory on
+  Max's laptop") for the same reason as promise 9's nit. Promise 6: `electStore()` in storage.ts
+  mirrors `claimTunnelIdentity` with two more moves — a follower queues (promoted when the leader's
+  tab closes) and "Use this tab instead" steals; a leader that loses the lock mid-reply aborts with
+  the reason; `loadChats` no longer marks a streaming reply interrupted (another tab may be writing
+  it) — `reopenChats` does, and only the leader calls it; /me is shared under `bn.me.<scope>`.
+- 17:3x — Rebased onto `origin/main` `002e67a` (019 landed; keys default 4096) at the PM's request:
+  Go only, no conflict. Founder ruling received: promise 3 is the classification only. Typecheck,
+  lint, 218 vitests (190 → 218), build green; the two harnesses updated for auto-connect (promise 8:
+  nothing in a harness clicks Connect for a code in the URL any more) and extended with the six
+  real-host scenarios the ticket names; both running.
+
 ## Report

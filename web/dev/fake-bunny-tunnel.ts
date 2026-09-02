@@ -61,20 +61,22 @@ export class FakeSession implements Session {
     if (this.closed) throw new Error('the tunnel session is closed');
     if (port !== 80) throw new Error(`nothing is listening on tunnel port ${port}`);
     await sleep(this.opts.dialMs ?? 12); // a dial over a live session is cheap, not free
-    const conn = new FakeConn(this.opts);
+    const conn = new FakeConn(this.opts, this.host);
     this.dialled.push(conn);
     return conn;
   }
 
   private pings = 0;
+  /** The host behind this session, once it has gone to sleep (014 promise 1): nothing on this
+   *  session answers again — not a request, not a ping, not /me — exactly as measured against a
+   *  real host killed mid-send. A session dialled afresh (Reconnect) starts awake. */
+  private readonly host = { asleep: false };
 
   async ping(): Promise<PingResult> {
     await sleep(6);
     const n = ++this.pings;
     if (this.opts.pingFails) throw new Error('no reply from the relay');
-    // A host that goes to sleep answered once, on the way in: that is what makes the failure a
-    // surprise mid-session rather than a connect error.
-    if (this.opts.hostAsleep && n > 1) throw new Error('no reply from the relay');
+    if (this.host.asleep) throw new Error('no reply from the relay');
     if (this.opts.pingFailsAfter !== undefined && n > this.opts.pingFailsAfter) {
       throw new Error('no reply from the relay');
     }
@@ -97,7 +99,7 @@ export class FakeConn implements Conn {
   private serving = false;
   private closed = false;
 
-  constructor(private readonly opts: FakeOptions) {}
+  constructor(private readonly opts: FakeOptions, private readonly host: { asleep: boolean } = { asleep: false }) {}
 
   async write(data: Uint8Array): Promise<void> {
     if (this.closed) throw new Error('write on a closed conn');
@@ -141,7 +143,11 @@ export class FakeConn implements Conn {
     // A sleeping host does not refuse a request, it says nothing at all. That is exactly what makes
     // the raw failure ("the connection closed inside the response") useless to a friend, and why
     // 014 promise 1 exists. The conn simply never writes.
-    if (this.opts.hostAsleep && req.path.split('?')[0] === '/v1/chat/completions') return;
+    if (this.host.asleep) return;
+    if (this.opts.hostAsleep && req.path.split('?')[0] === '/v1/chat/completions') {
+      this.host.asleep = true; // it answered on the way in; it fell asleep as the friend pressed Send
+      return;
+    }
     const res = handleFake(req, this.opts);
     const lines = [`HTTP/1.1 ${res.status} ${STATUS_TEXT[res.status] ?? 'Status'}`];
     for (const [name, value] of Object.entries(res.headers)) lines.push(`${name}: ${value}`);
