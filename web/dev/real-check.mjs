@@ -1,13 +1,16 @@
-// Real-stack evidence for tickets 014 and 020: the built bundle, over the real relay, against a
-// real `bunny-network serve` that this script starts, kills and restarts. The fakes cannot prove
+// Real-stack evidence for tickets 014, 020 and 022: the built bundle, over the real relay, against
+// a real `bunny-network serve` that this script starts, kills and restarts. The fakes cannot prove
 // what this proves — what a send costs the friend's meter, what a host going to sleep looks like,
-// that a broken session is replaced rather than retried (014), and (020) that a paused invite marks
+// that a broken session is replaced rather than retried (014), (020) that a paused invite marks
 // exactly one turn, that a host dying mid-reply ends the reply on its own, that the context wall
-// says "context", that a revoked invite stays in the thread, that a second tab follows, and that
-// the phone drawer's delete is undoable.
+// says "context", that a revoked invite stays in the thread, that a second tab follows, that the
+// phone drawer's delete is undoable, and (022) that a session heals by itself once the host is
+// back, that a turn's mark clears when a later send carries it (ZEBRA), that the wall's copy is
+// what happens next, that the phone header fits and its Disconnect is reachable and durable, and
+// that a revoked invite's card keeps every chat.
 //
-//   BN_BIN=/path/bunny-network BN_DATA_DIR=/path/data GW=http://127.0.0.1:6670 PREVIEW_PORT=6671 \
-//     UPSTREAM=http://127.0.0.1:18080 node dev/real-check.mjs [cost|asleep|reconnect|paused|wall|stall|tabs|phone|revoke|all]
+//   BN_BIN=/path/bunny-network BN_DATA_DIR=/path/data GW=http://127.0.0.1:6720 PREVIEW_PORT=6721 \
+//     UPSTREAM=http://127.0.0.1:18080 node dev/real-check.mjs [cost|asleep|reconnect|heal|paused|wall|stall|tabs|phone|revoke|all]
 //
 // Keys are minted in BN_DATA_DIR (alice for everything, bob for the revoke) unless INVITE is set.
 // It only ever kills processes it started itself.
@@ -95,6 +98,10 @@ async function connected(browser, invite, viewport = { width: 1280, height: 860 
 }
 const shot = (page, name, prefix = '14-real') => page.screenshot({ path: join(shots, `${prefix}-${name}.png`) });
 const shot20 = (page, name) => shot(page, name, '20-real');
+const shot22 = (page, name) => shot(page, name, '22-real');
+const secs = (since) => ((Date.now() - since) / 1000).toFixed(0);
+/** The header's two lines, in one string. */
+const header = async (page) => `${await page.locator('.path').innerText()} · ${(await page.locator('.meters').innerText()).replace(/\n/g, ' · ')}`;
 async function ask(page, text) {
   await page.locator('.composer textarea').fill(text);
   await page.getByRole('button', { name: 'Send' }).click();
@@ -170,7 +177,11 @@ async function reconnect(page) {
   await waitFor(`${GW}/healthz`, 'the host coming back');
   await sleep(2000);
   const t0 = Date.now();
-  await page.getByRole('button', { name: 'Reconnect' }).click();
+  // 022 promise 1: the session may already have healed by itself in those 2 s; then there is no
+  // Reconnect to press, and the measurement below is of the self-probe.
+  const button = page.getByRole('button', { name: 'Reconnect' });
+  if (await button.count()) await button.click();
+  else console.log('  (healed by itself before Reconnect could be pressed — 022 promise 1)');
   await page.waitForSelector('.composer textarea', { timeout: 120_000 });
   await page.waitForFunction(() => !document.querySelector('.path')?.textContent?.includes('not answering'), { timeout: 60_000 });
   const s = (Date.now() - t0) / 1000;
@@ -184,7 +195,45 @@ async function reconnect(page) {
   return host;
 }
 
+// --- 022 promise 1: the host went away and came back; the session heals by itself ---------------
+async function heal(browser, key, host) {
+  const page = await connected(browser, key.invite);
+  await ask(page, 'Reply with the single word: pong.');
+  await answered(page, 1);
+  killHost(host);
+  const dead = Date.now();
+  await ask(page, 'Are you still there?');
+  await page.waitForSelector('.row.assistant .ended', { timeout: 60_000 });
+  console.log(`\nHOST KILLED · the send failed at ${secs(dead)} s: ${JSON.stringify(await page.locator('.row.assistant .ended').last().innerText())}`);
+  await page.waitForSelector('button:has-text("Reconnect")', { timeout: 20_000 });
+  await page.waitForFunction(() => document.querySelector('.path')?.textContent?.includes('not answering'), null, { timeout: 20_000 });
+  console.log(`  ${await header(page)} · action: Reconnect`);
+  await sleep(Math.max(0, 40_000 - (Date.now() - dead))); // dead for 40 s in all, as the ticket's test says
+  host = startHost();
+  await waitFor(`${GW}/healthz`, 'the host coming back');
+  const back = Date.now();
+  console.log(`HOST BACK after ${secs(dead)} s dead — waiting; nothing is clicked`);
+  await page.waitForFunction(() => document.querySelector('.path')?.textContent?.includes('relayed via'), null, { timeout: 90_000 });
+  const healS = (Date.now() - back) / 1000;
+  await sleep(500);
+  const action = await page.locator('.row.assistant .actions button').last().innerText();
+  console.log(`  healed by itself ${healS.toFixed(0)} s after the host came back · ${await header(page)}`);
+  console.log(`  action on the failed exchange: ${JSON.stringify(action)} · marked: ${await marks(page)} · degraded lines: ${await page.locator('.degraded').count()}`);
+  check(healS <= 35, `the session took ${healS.toFixed(0)} s to heal after the host came back (promise 1: within one backoff step)`);
+  check(action === 'Try again', `the healed exchange still offers ${JSON.stringify(action)}, not Try again`);
+  check((await page.locator('.degraded').count()) === 0, 'a degraded line is still up after the heal');
+  await shot22(page, 'healed-by-itself');
+  await page.locator('.row.assistant .actions button:has-text("Try again")').click();
+  await answered(page, 2);
+  await sleep(300);
+  console.log(`  Try again → delivered over the healed session · marks left: ${await marks(page)}`);
+  check((await marks(page)) === 0, 'the turn is still marked after it was delivered');
+  await page.context().close();
+  return host;
+}
+
 // --- 020 promise 1: three answered turns, a pause, a fourth send: exactly one mark ----------------
+// --- 022 promise 2: the ZEBRA test — the mark clears when a later send carries the turn ----------
 async function paused(browser, key) {
   const page = await connected(browser, key.invite);
   for (let n = 1; n <= 3; n++) {
@@ -197,7 +246,7 @@ async function paused(browser, key) {
   await sleep(1500);
   keys('pause', key.name);
   await sleep(1500); // the host re-reads keys.json at most once a second
-  await ask(page, 'Are you still with me?');
+  await ask(page, 'Please remember the secret word ZEBRA.');
   await page.waitForSelector('.degraded.key', { timeout: 30_000 });
   await sleep(500);
   const marked = await marks(page);
@@ -219,13 +268,20 @@ async function paused(browser, key) {
   const afterReload = await marks(page);
   console.log(`  after reload: ${afterReload} marked`);
   check(afterReload === 1, `${afterReload} bubbles marked after reload, not exactly 1 (promise 1)`);
-  await page.locator('.row.assistant .actions button:has-text("Try again")').click();
+  // 022 promise 2: not Try again — the next question. Its history carries ZEBRA, so the model
+  // recalls it, and nothing on that turn may still say it was not delivered.
+  await ask(page, 'What was the secret word I asked you to remember? Reply with just the word.');
   await answered(page, 4);
   await sleep(300);
   const after = await marks(page);
-  console.log(`  Try again → delivered · marks left: ${after}`);
-  check(after === 0, `${after} marks left after the turn was delivered (promise 1)`);
-  await shot20(page, 'paused-resumed');
+  const recalled = (await page.locator('.row.assistant > .md').last().innerText()).toUpperCase().includes('ZEBRA');
+  const rows = await page.locator('.row.assistant .meta-text').allInnerTexts();
+  const notPart = rows.filter((r) => r.includes('not part of the next question')).length;
+  console.log(`  next send → the model recalls ZEBRA: ${recalled} · marks left: ${after} · "not part of the next question" lines: ${notPart}`);
+  check(recalled, 'the model did not recall ZEBRA (was the turn in the history?)');
+  check(after === 0, `${after} marks left after a later send carried the turn (promise 2)`);
+  check(notPart === 0, '"not part of the next question" still under a turn the next question carried (promise 2)');
+  await shot22(page, 'zebra-recalled');
   await page.context().close();
 }
 
@@ -233,9 +289,9 @@ async function paused(browser, key) {
 async function wall(browser, key) {
   const page = await connected(browser, key.invite);
   await ask(page, 'Write an exhaustive 5000-word essay on the history of the internet, with many detailed sections. Do not summarise; be as long as you possibly can.');
-  await page.waitForSelector('.ended.capped', { timeout: 300_000 });
+  await page.waitForSelector('.ended.wall', { timeout: 300_000 });
   await sleep(500);
-  const line = await page.locator('.ended.capped').innerText();
+  const line = await page.locator('.ended.wall').innerText();
   const meta = await page.locator('.row.assistant .meta-text').last().innerText();
   const meters = await page.locator('.meters').innerText();
   console.log(`\nLONG ANSWER ended: ${JSON.stringify(line)}`);
@@ -246,9 +302,23 @@ async function wall(browser, key) {
   check(/filled the .* memory on/.test(line), `the ending does not say the context filled: ${line}`);
   check(!line.includes('reply limit'), 'the ending still blames the reply limit (promise 3)');
   check((await page.getByRole('button', { name: 'New chat' }).count()) >= 2, 'no New chat button on the context wall');
-  check((await page.locator('.ended.capped button:has-text("Continue")').count()) === 0, 'Continue offered at the context wall');
+  check((await page.locator('.ended button:has-text("Continue")').count()) === 0, 'Continue offered at the context wall');
   check(/context/.test(meters), 'no context meter in the header');
+  // 022 promise 3: the copy says what happens next, and the composer is not disabled: the next
+  // message goes out; the host keeps every visible turn (nothing is trimmed) and shrinks the reply.
+  check(/no longer fits/.test(line), `the ending does not say what happens next: ${line}`);
+  check(!(await page.locator('.composer textarea').isDisabled()), 'the composer is disabled at the context wall');
   await shot20(page, 'context-wall');
+  await shot22(page, 'context-wall');
+  await ask(page, 'Reply with the single word: pong.');
+  await page.waitForFunction(() => { const rows = document.querySelectorAll('.row.assistant'); const last = rows[rows.length - 1]; return rows.length >= 2 && (last.querySelector('.ended') || last.querySelector('.meta-text')?.textContent?.includes('out')); }, null, { timeout: 180_000 });
+  await sleep(500);
+  const next = await page.locator('.row.assistant .meta-text').last().innerText();
+  const [, nin] = /(\d+) tokens in/.exec(next) ?? [];
+  console.log(`  next send after the wall → footer ${JSON.stringify(next)} · meters ${JSON.stringify((await page.locator('.meters').innerText()).replace(/\n/g, ' · '))}`);
+  console.log(`  (prompt ${nin} tokens: the whole visible thread went back; the thinking never does)`);
+  check(/tokens in/.test(next), `the chat did not go on after the wall: ${next}`);
+  await shot22(page, 'after-wall-send');
   await page.context().close();
 }
 
@@ -311,11 +381,47 @@ async function tabs(browser, key) {
   await a.context().close();
 }
 
+/** No horizontal overflow, and nothing in the header past the right edge (022 promise 4). */
+async function fits(page, label) {
+  const r = await page.evaluate(() => ({
+    over: document.documentElement.scrollWidth - window.innerWidth,
+    edge: Math.max(0, ...[...document.querySelectorAll('.topbar, .truth, .meters, .meter, .path')].map((e) => Math.ceil(e.getBoundingClientRect().right - window.innerWidth))),
+    labels: [...document.querySelectorAll('.meter-label')].map((e) => e.textContent),
+  }));
+  console.log(`  ${label}: horizontal overflow ${r.over} px · header past the edge ${r.edge} px · ${r.labels.join(' · ')}`);
+  check(r.over <= 0, `${label}: the page scrolls sideways by ${r.over} px`);
+  check(r.edge <= 0, `${label}: the header runs ${r.edge} px past the edge`);
+}
+
 // --- 020 promise 7: the phone drawer's delete is undoable ---------------------------------------
+// --- 022 promise 4/5: the header fits, the drawer's Disconnect is reachable, and it sticks -------
 async function phone(browser, key) {
   const page = await connected(browser, key.invite, { width: 390, height: 844 });
   await ask(page, 'Reply with the single word: pong.');
   await answered(page, 1);
+  await sleep(2500); // the post-request /me: the meters carry numbers, the longest labels there are
+  console.log('\nPHONE 390 px');
+  await fits(page, 'after one answer');
+  await shot22(page, 'phone-header');
+  await page.getByRole('button', { name: 'Conversations' }).click();
+  await sleep(400);
+  const foot = await page.evaluate(() => { const b = document.querySelector('.sidebar-foot')?.getBoundingClientRect(); return b ? { y: b.y, bottom: b.bottom, vv: window.visualViewport?.height ?? window.innerHeight } : null; });
+  console.log(`  drawer: Disconnect at y=${foot?.y.toFixed(0)}–${foot?.bottom.toFixed(0)} · visual viewport ${foot?.vv}`);
+  check(foot !== null && foot.bottom <= foot.vv, 'the drawer\'s Disconnect is below the visible viewport (promise 4)');
+  await shot22(page, 'phone-drawer');
+  await page.getByRole('button', { name: 'Disconnect' }).click();
+  await page.waitForSelector('.connect-card', { timeout: 10_000 });
+  await page.reload();
+  await sleep(4000); // long enough for an auto-connect to have shown "Connecting to…" if it were going to
+  const face = { card: await page.locator('.connect-card').count(), connecting: await page.locator('.pitch:has-text("Connecting")').count(), composer: await page.locator('.composer').count(), pitch: await page.locator('.pitch').innerText().catch(() => '') };
+  console.log(`  Disconnect → reload: card ${face.card} · connecting ${face.connecting} · composer ${face.composer} · ${JSON.stringify(face.pitch)}`);
+  check(face.card === 1 && face.connecting === 0 && face.composer === 0, 'a reload after Disconnect dialled the host again (promise 5)');
+  check(/Welcome back\. Your 1 chat with .* is still on this device\./.test(face.pitch), `the returning card's sentence is ${JSON.stringify(face.pitch)}`);
+  await shot22(page, 'phone-after-disconnect-reload');
+  await page.getByRole('button', { name: 'Reconnect' }).click();
+  await page.waitForSelector('.composer textarea', { timeout: 120_000 });
+  check((await page.locator('.row.assistant').count()) === 1, 'the chat did not come back after Reconnect');
+  console.log('  Reconnect → the chat is back');
   await page.getByRole('button', { name: 'Conversations' }).click();
   await sleep(400);
   await page.locator('.conv.current .conv-del').click();
@@ -347,13 +453,22 @@ async function revoke(browser, key) {
   check((await page.locator('.connect-card').count()) === 0, 'revoke ejected to the connect screen (promise 5)');
   check(await page.locator('.composer textarea').isDisabled(), 'the composer is enabled after a revoke');
   await shot20(page, 'revoked-in-thread');
+  const before = await page.evaluate(() => Object.keys(window.localStorage).filter((k) => k.startsWith('bn.conversations.')).sort());
   await page.getByRole('button', { name: 'Paste a new code' }).click();
   await page.waitForSelector('.connect-card', { timeout: 10_000 });
   const field = await page.locator('.connect textarea').inputValue();
   console.log(`  Paste a new code → fresh card, field ${JSON.stringify(field)}, notice: ${await page.locator('.notice').count()}, welcome back: ${await page.locator('.pitch:has-text("Welcome back")').count()}`);
   check(field === '', 'the new-code card still holds the revoked code');
   check((await page.locator('.notice').count()) === 0, '"Invite from your link is ready" above a revoked code');
+  // 022 promise 6: the card destroyed nothing. The chats and the tunnel identity are exactly where
+  // they were; only the dead code is gone, so a reload does not dial it again.
+  const after = await page.evaluate(() => ({ chats: Object.keys(window.localStorage).filter((k) => k.startsWith('bn.conversations.')).sort(), identity: window.localStorage.getItem('bn.privateKey') !== null, lastHost: window.localStorage.getItem('bn.lastHost') !== null, invite: window.localStorage.getItem('bn.invite') !== null }));
+  console.log(`  storage: chat keys before ${before.length} → after ${after.chats.length} · identity kept ${after.identity} · last host kept ${after.lastHost} · dead code kept ${after.invite}`);
+  check(before.length > 0 && after.chats.join() === before.join(), 'Paste a new code removed chats (promise 6)');
+  check(after.identity && after.lastHost, 'Paste a new code removed the identity or the last host (promise 6)');
+  check(!after.invite, 'the revoked code is still remembered: a reload would dial it again');
   await shot20(page, 'revoked-new-code');
+  await shot22(page, 'revoked-card-keeps-chats');
   await page.context().close();
 }
 
@@ -384,6 +499,7 @@ async function main() {
     const page = await asleep(browser, alice, host);
     if (want('reconnect')) host = await reconnect(page);
   }
+  if (want('heal')) host = await heal(browser, alice, host);
   if (want('tabs')) await tabs(browser, alice);
   if (want('phone')) await phone(browser, alice);
   if (want('revoke') && bob) await revoke(browser, bob);

@@ -91,4 +91,36 @@ All times 2026-09-02, EDT, laptop.
   not, at 2 min): probing now — decides whether the self-probe is a /me over the session it has,
   or a fresh dial when that /me cannot get through.
 
+- 19:00 — (ii) answered: **a session whose host restarted behind it never answers again.** Probe
+  on the real host: killed at 3.7 s, back at 23.9 s, the pill read "not answering" from the poll's
+  first timed-out /me (43.9 s) through 184 s — four 30 s polls, nothing — and a send over it at
+  184 s was still "Waiting for the first token…". The reviewer's `57-same-tab-recovered.png` shows
+  the same at 2 min. So promise 1's probe is a /me over the session it has only when that session
+  reached the host (engine down, path unmeasurable); when the host stopped answering (`!meOk`) the
+  probe is a fresh dial — what Reconnect does by hand — and the reducer adopts the candidate the
+  moment the invite verifies over it (`verified` from `degraded`, old transport closed by
+  `dropped()`). The bridge's `connect()` retries the handshake every 5 s for 60 s
+  (`web/wasm/main_js.go pingUntil`), so a dial that starts while the host is still dead finds it
+  within ~5 s of its return.
+- 19:05 — Design, in the order the ticket names:
+  (1) `Live.probed` counts misses; `probeDelay(n)` = 5 → 10 → 20 → 30 s cap; one event `probed`;
+  one effect `useProbe` in App.tsx, armed on the miss count and on whether the session is degraded
+  at all — never on the poll's other news, so a 30 s poll cannot keep resetting a 30 s probe; the
+  `probing()` rule: every degradation but `key` (a pause heals on the poll; a revoke cannot heal).
+  `dialAgain()` is the one dial shared by Reconnect and the probe.
+  (2) `Message.pending` deleted with `settlePending`; `undelivered(messages)` walks back from the
+  end and marks the user turns after the last reply that got through (`delivered`: any ended reply
+  but `interrupted` — a model that only thought was still asked). Chat derives the set once; the
+  mark and the action's name read it. "not part of the next question" is said only of text that is
+  on screen. (3) Copy as logged at 18:50; `.ended.wall` promoted (own block, accent, text colour);
+  the sheet sentence matches. (4) CSS: `.meters` wraps at ≤760 px; the drawer is `height: 100dvh`
+  with `bottom: auto` — measured in the phone emulation: layout viewport 927 px, visual 844, the
+  foot was at 878–927. (5) `LastHost.left`, written by Disconnect (`rememberLeft`), cleared by the
+  next verify; `dialsOnArrival(last, viaLink)`: a link always dials. (6) `pasteNewCode` (thread and
+  card) forgets the dead code only — a reload must not dial it again — and nothing else; "Forget
+  this invite" is the one remover and says so under the button. (8) "Regenerate" on every reply
+  that got through, "Try again" only when the last exchange failed; the returning sentence reads
+  as one; Copy already showed "Copied" (2 s). Promise 7 does not fit: 363 of 400 source lines at
+  the WIP commit. No new state, no new concept.
+
 ## Report

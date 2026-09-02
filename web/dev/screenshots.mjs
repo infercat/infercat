@@ -85,6 +85,20 @@ async function connectViaTunnel(page, extra = '') {
 async function shot20(page, name) {
   return write(page, `20-${name}`);
 }
+async function shot22(page, name) {
+  return write(page, `22-${name}`);
+}
+/** No horizontal overflow, and nothing in the header past the right edge, at this width (022 promise 4). */
+async function fits(page, label) {
+  const r = await page.evaluate(() => ({
+    over: document.documentElement.scrollWidth - window.innerWidth,
+    edge: Math.max(0, ...[...document.querySelectorAll('.topbar, .truth, .meters, .meter, .path')].map((e) => Math.ceil(e.getBoundingClientRect().right - window.innerWidth))),
+    width: window.innerWidth,
+  }));
+  if (r.over > 0) problems.push(`${label}: page scrolls horizontally by ${r.over}px at ${r.width}px`);
+  if (r.edge > 0) problems.push(`${label}: the header runs ${r.edge}px past the edge at ${r.width}px`);
+  console.log(`  ${label}: no horizontal overflow at ${r.width} px (header edge ${r.edge <= 0 ? 'inside' : `${r.edge}px out`})`);
+}
 /** Every page here shares one host and one browser, so only the newest tab writes (020 promise 6):
  *  a page that is about to start a thread takes the store over the way a reader would. */
 async function lead(page) {
@@ -217,13 +231,15 @@ async function main() {
   await m.getByRole('button', { name: 'Send' }).click();
   await m.waitForSelector('.meta-text:has-text("out")', { timeout: 60_000 });
   await shot(m, 'mobile-chat');
+  await sleep(1200); // the post-request /me fills the meters: the longest labels there are
+  await fits(m, 'mobile: 360 px with three meters'); // 022 promise 4
+  await shot22(m, 'phone-360-header');
   await m.getByRole('button', { name: 'Conversations' }).click();
   await sleep(400);
   await shot(m, 'mobile-drawer');
 
   // No horizontal scrolling at 360 px, ever.
-  const overflow = await m.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
-  if (overflow > 0) problems.push(`mobile: page scrolls horizontally by ${overflow}px at 360px`);
+  await fits(m, 'mobile: 360 px with the drawer open');
 
   // --- ticket 007: the states that used to lie ---------------------------------------------
   const FAST = 'fake&connectMs=200&tokenDelay=25';
@@ -314,6 +330,9 @@ async function main() {
   watch(rev, '07-revoked');
   await rev.goto(`${BASE}/?${FAST}&invite=${encodeURIComponent(INVITE)}&autoconnect`);
   await rev.waitForSelector('.composer textarea', { timeout: 20_000 });
+  await ask(rev, 'A chat worth keeping.');
+  await rev.waitForSelector('.meta-text:has-text("out")', { timeout: 60_000 });
+  const kept = await rev.evaluate(() => Object.keys(window.localStorage).filter((k) => k.startsWith('bn.conversations.')).sort());
   await rev.locator('.composer textarea').fill('/403 revoke me');
   await rev.getByRole('button', { name: 'Send' }).click();
   // 020 promise 5: like pause — the thread stays, the header says, the composer is off.
@@ -326,7 +345,13 @@ async function main() {
   await rev.waitForSelector('.connect-card', { timeout: 10_000 });
   if ((await rev.locator('.connect textarea').inputValue()) !== '') problems.push('revoked: the new-code card holds the old code');
   if (await rev.locator('.notice').count()) problems.push('revoked: "Invite from your link is ready" above a revoked code');
+  // 022 promise 6: the card destroyed nothing — the chats and the identity are where they were.
+  const still = await rev.evaluate(() => ({ chats: Object.keys(window.localStorage).filter((k) => k.startsWith('bn.conversations.')).sort(), identity: window.localStorage.getItem('bn.privateKey') !== null, invite: window.localStorage.getItem('bn.invite') !== null }));
+  if (kept.length === 0 || still.chats.join() !== kept.join()) problems.push(`revoked: Paste a new code changed the chats on disk (${kept.length} → ${still.chats.length})`);
+  if (!still.identity) problems.push('revoked: Paste a new code removed the tunnel identity');
+  if (still.invite) problems.push('revoked: the dead code is still remembered');
   await shot20(rev, 'revoked-new-code');
+  await shot22(rev, 'revoked-card-keeps-chats');
 
 
   // --- ticket 014: the two failures a friend will hit, and the honest meters ------------------
@@ -434,12 +459,18 @@ async function main() {
   if (phoneOverflow > 0) problems.push(`touch: page scrolls horizontally by ${phoneOverflow}px at 390px`);
 
 
-  // Promise 13 (blocker). A session that broke must be replaced, not retried: the action on the
-  // dead exchange is Reconnect, and pressing it puts a live session back without a reload.
+  // 022 promise 1. The dead session is replaced by itself: the self-probe dials afresh 5 s after
+  // the failure (the fake's next session starts awake, as a restarted host does), the header flips
+  // to live values and the failed exchange offers Try again — nothing is clicked. Promise 13's
+  // Reconnect is the same move by hand, for a reader who does not want to wait the step.
   await lead(gone); // other tabs have taken the store since; the action is the leader's
-  await gone.getByRole('button', { name: 'Reconnect' }).click();
-  await gone.waitForSelector('.composer textarea', { timeout: 60_000 });
+  await gone.waitForFunction(() => document.querySelector('.path')?.textContent?.includes('relayed via'), null, { timeout: 30_000 });
+  await sleep(300);
+  if (await gone.getByRole('button', { name: 'Reconnect' }).count()) problems.push('healed: Reconnect still offered after the session healed');
+  if (!(await gone.getByRole('button', { name: 'Try again' }).count())) problems.push('healed: no Try again on the failed exchange');
+  if (await gone.locator('.meter-label:has-text("—")').count()) problems.push('healed: the meters still read "—"');
   if (await gone.locator('.connect-card .failure').count()) problems.push('reconnect: ended on the connect screen');
+  await shot22(gone, 'healed-by-itself');
   await shot14(gone, 'reconnected');
 
   // Promise 14 (blocker). A reply that stopped at the invite's cap says so, and offers the only
@@ -455,13 +486,17 @@ async function main() {
   // 020 promise 3. The other wall: the sum filled the model, the output did not reach the cap.
   const walled = await chatting('', '20-context-wall');
   await ask(walled, '/wall Write me something very long.');
-  await walled.waitForSelector('.ended.capped', { timeout: 30_000 });
-  const wallCopy = await walled.locator('.ended.capped').innerText();
+  await walled.waitForSelector('.ended.wall', { timeout: 30_000 });
+  const wallCopy = await walled.locator('.ended.wall').innerText();
   if (!/filled the .* memory on/.test(wallCopy)) problems.push(`context wall: copy is ${wallCopy}`);
-  if (await walled.locator('.ended.capped button:has-text("Continue")').count()) problems.push('context wall: Continue offered');
-  if (!(await walled.locator('.ended.capped button:has-text("New chat")').count())) problems.push('context wall: no New chat');
+  // 022 promise 3: the copy says what happens next, and nothing is disabled.
+  if (!/no longer fits/.test(wallCopy)) problems.push(`context wall: the copy does not say what happens next (${wallCopy})`);
+  if (await walled.locator('.ended button:has-text("Continue")').count()) problems.push('context wall: Continue offered');
+  if (!(await walled.locator('.ended.wall button:has-text("New chat")').count())) problems.push('context wall: no New chat');
+  if (await walled.locator('.composer textarea').isDisabled()) problems.push('context wall: the composer is disabled');
   if (!/8\.2k\/8\.2k context/.test(await walled.locator('.meters').innerText())) problems.push(`context wall: meter reads ${await walled.locator('.meters').innerText()}`);
   await shot20(walled, 'context-wall');
+  await shot22(walled, 'context-wall');
 
   // 020 promise 6. A second tab of the same browser follows the first, and can take over.
   const tabA = await chatting('', '20-tab-a');
@@ -488,6 +523,29 @@ async function main() {
   if (!toastBox || toastBox.y + toastBox.height > 844) problems.push('phone drawer: the undo toast is off screen');
   await shot20(ph, 'phone-drawer-undo');
   await ph.getByRole('button', { name: 'Undo' }).click();
+  await sleep(300);
+
+  // 022 promise 4. The header fits at 390 px with three counters showing numbers, and the drawer's
+  // Disconnect is inside the visible viewport, not under the browser bar.
+  await fits(ph, 'phone: 390 px with three meters');
+  await shot22(ph, 'phone-390-header');
+  await ph.getByRole('button', { name: 'Conversations' }).click();
+  await sleep(400);
+  const foot = await ph.evaluate(() => { const b = document.querySelector('.sidebar-foot')?.getBoundingClientRect(); return b ? { bottom: b.bottom, vv: window.visualViewport?.height ?? window.innerHeight } : null; });
+  if (!foot || foot.bottom > foot.vv) problems.push(`phone drawer: Disconnect at ${foot?.bottom}px, below the ${foot?.vv}px viewport`);
+  await shot22(ph, 'phone-drawer-disconnect');
+  // 022 promise 5. Disconnect outlives a reload: the card, with the returning sentence, and no dial.
+  await ph.getByRole('button', { name: 'Disconnect' }).click();
+  await ph.waitForSelector('.connect-card', { timeout: 10_000 });
+  await ph.reload();
+  await sleep(2500);
+  if (await ph.locator('.pitch:has-text("Connecting")').count()) problems.push('disconnect: a reload dialled the host again');
+  if (await ph.locator('.composer').count()) problems.push('disconnect: a reload landed in the chat');
+  const returning = await ph.locator('.pitch').innerText().catch(() => '');
+  if (!/Welcome back\. Your \d+ chats? with .* (is|are) still on this device\./.test(returning)) problems.push(`disconnect: the returning sentence is ${JSON.stringify(returning)}`);
+  await shot22(ph, 'phone-after-disconnect-reload');
+  await ph.getByRole('button', { name: 'Reconnect' }).click();
+  await ph.waitForSelector('.composer textarea', { timeout: 20_000 });
 
   // Promise 16. Editing replaces the answer — and says so — but does not throw the old one away.
   const edited = await chatting('', '14-previous-answer');
@@ -566,7 +624,7 @@ async function main() {
     for (const p of problems) console.error(`  ${p}`);
     process.exit(1);
   }
-  console.log('No console errors, no page errors, no horizontal overflow at 360 px.');
+  console.log('No console errors, no page errors, no horizontal overflow at 360 px or 390 px.');
 }
 
 main().catch((err) => {
