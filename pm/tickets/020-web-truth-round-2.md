@@ -3,7 +3,7 @@ id: 020
 title: Web truth, round 2 — per-turn state, stream idle end, reply-end classification, one health source, tab leader (second experience pass)
 kind: normal
 size: 3
-status: dispatched
+status: landed
 updated: 2026-09-02
 release: demo-1
 ---
@@ -344,3 +344,12 @@ promise: `KeyState` (replaces the `paused` boolean), the `host_stalled` copy ent
 was), `aborted.why`, `FriendlyError.code`, the `bn.me.<scope>` key (the scope layout's fourth key),
 `replyEnding` / `contextMeter` / `settlePending` / `reopenChats` (derivations), the `probe`
 parameter, `hostsComputer`. Rule against me on any of these.
+
+## Ruling (PM, 2026-09-02 18:55)
+
+**Landed** on main (ff). The engineer wrote the report with real-host evidence for every promise (paused:
+exactly one mark; stall: ends on its own at 25 s; context wall: 51 + 4045 = 4096 named as memory, no
+Continue; asleep: 5 s / 15 s / reconnect 0.3 s; tabs: leader/follower with shared meters) and yielded
+twice while waiting on its own harness; the PM performed the mechanical freeze (commit, rebase, checks
+printed: typecheck 0, 218 tests, lint 0, build OK; 641/258 TS lines within ≤900; scope clean) and pushed.
+Third experience pass is the launch gate.
