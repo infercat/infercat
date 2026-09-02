@@ -3,7 +3,7 @@ id: 022
 title: Web truth, round 3 — degraded state re-probes itself, delivery marks derive from delivery, honest context copy, phone layout, durable Disconnect (third experience pass)
 kind: normal
 size: 2
-status: dispatched
+status: landed
 updated: 2026-09-02
 release: demo-1
 ---
@@ -231,3 +231,10 @@ viewport over an 844 px visual one.
   cosmetic.
 - After a stall over a dead tunnel, /me is still asked twice (020's candidate).
 
+
+## Ruling (PM, 2026-09-02 20:15)
+
+**Landed** on main (`e2f0c3c`). The engineer wrote the report and yielded on its harness runs; the PM
+performed the mechanical freeze (typecheck 0, 229 tests, lint 0, build OK; 270/93 TS lines within ≤400;
+scope clean) and landed. The engineer may add a follow-up commit with the two runs' evidence (no source
+diff). Fourth experience pass, phone-led, is the gate.
