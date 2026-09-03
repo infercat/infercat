@@ -3,7 +3,7 @@ id: 035
 title: tailcat.Client.Close() hangs for minutes when the client is relay-only (UDP disabled)
 kind: defect
 size: 2
-status: draft
+status: dispatched
 updated: 2026-09-03
 release: demo-1
 found_by: 028 (load test)

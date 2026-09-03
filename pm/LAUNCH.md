@@ -30,6 +30,8 @@ gates the public ones (BELIEFS: Authority). Nothing ships while a line in **Foun
 
 - [x] 030 launch readiness landed (05:00): web meta/OG/manifest/icons/About, README as landing page with a real chat GIF, GitHub description + 13 topics, SECURITY/CONTRIBUTING/CoC/issue forms/PR template, CI green on GitHub, release workflow (draft, tag-only), Homebrew cask generated and installed from a local tap, `docs/RENAME.md` inventory, `make launch-check`. Manual: social-preview upload (no API). Unsigned macOS binaries for now (034).
 
+- [x] 028 load test landed (06:10): four layers, N to 30 (inference) / 100 (sessions), both engines, our relay vs Tailscale's; **no layer below launch-day need**; `docs/LIMITS.md` published; stateless stays; engine recommendation for the demo: vLLM, `--slots` = max-num-seqs, ctx ≥32K. Two defects (035 connect shutdown bound, 036 context pre-check) dispatched.
+
 ## Launch-day operations
 
 - [ ] Host: the workstation serves with `--name`, `--web-url`, a self-hosted relay, and a handful of

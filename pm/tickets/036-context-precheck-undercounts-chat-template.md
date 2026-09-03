@@ -3,7 +3,7 @@ id: 036
 title: Context pre-check undercounts the chat-template prompt, so a near-ceiling request is rejected by the engine as a raw 400 instead of the gateway's 422 context_too_long
 kind: defect
 size: 3
-status: draft
+status: dispatched
 updated: 2026-09-03
 release: demo-1
 found_by: 028 (load test, vLLM)

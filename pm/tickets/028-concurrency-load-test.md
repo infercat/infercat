@@ -3,7 +3,7 @@ id: 028
 title: Load test every layer — relay, tunnels per host, gateway, engine — and publish the limits with numbers
 kind: investigation
 size: 3
-status: dispatched
+status: landed
 updated: 2026-09-03
 release: demo-1
 ---
@@ -162,3 +162,13 @@ failed, 0 skipped. Manual: 413 and leak checks reproduced against a fresh 029 ho
 - **Measurement caveat:** the workstation vLLM is shared/read-only; its global prefix-cache counter is
   reliable only at N=2 (idle box). llama.cpp on :18080 is shared with the founder's demo host, so its
   global prefill counter can include a little of that host's traffic (slot-cache % is a floor).
+
+## Ruling (PM, 2026-09-03 06:10)
+
+**Landed** on main (merge of `6f22489`; zero product files touched; go build/vet/test green, printed).
+The 1029-line instrument against a 900 budget is tooling, accepted. Headline accepted and carried to
+`pm/LAUNCH.md`: no layer's ceiling is below launch-day need; the engine is the binding limit by design;
+the gateway's promise held exactly in every run (in_flight ≤ S, waiting ≤ 2S, zero past a deadline in
+~9,000 requests). **Stateless conversation API stays** (uplink ≈5 KB/s/friend; engine caches recover
+prefill; privacy untouched) — DECLINED entry stands with these numbers. Public demo engine: vLLM with
+`--slots` = its real `max-num-seqs`, context ≥32K. Defects 035 and 036 dispatched as one lane.
