@@ -63,7 +63,7 @@ func (t realTunnel) Status() tunnelStatus {
 	return tunnelStatus{Addr: st.Addr, Region: st.RegionName, Started: st.Started, Clients: st.Clients}
 }
 func (t realTunnel) Peers() []admin.Session {
-	var out []admin.Session
+	out := []admin.Session{} // never null on the wire: 028 reads this shape
 	for _, p := range t.s.Peers() {
 		out = append(out, admin.Session{Key: p.Addr.String(), Path: "unknown", Conns: p.Conns, RxBytes: p.RxBytes, TxBytes: p.TxBytes,
 			Since: p.Since, LastByte: p.LastByte, Active: time.Since(p.LastByte) < 2*time.Minute})

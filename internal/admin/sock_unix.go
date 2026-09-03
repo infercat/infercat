@@ -53,9 +53,11 @@ func dial(dataDir string) (*http.Client, string, string, error) {
 	if _, err := os.Stat(path); err != nil {
 		return nil, "", "", ErrNoDaemon
 	}
+	// One connection per call, closed with it: a long-lived caller such as `status --watch` makes
+	// a client per poll, and a kept-alive socket would sit on the host as one goroutine per poll.
 	hc := &http.Client{
 		Timeout: 5 * time.Second,
-		Transport: &http.Transport{DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
+		Transport: &http.Transport{DisableKeepAlives: true, DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
 			return (&net.Dialer{}).DialContext(ctx, "unix", path)
 		}},
 	}
