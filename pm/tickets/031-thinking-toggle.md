@@ -58,5 +58,74 @@ builder, Message.tsx); read-only in `internal/gateway`.
   - `/me` carries no "this model thinks" field, so the control's only evidence is `reasoning_content`
     seen in this chat — or a setting already in force (otherwise a friend who turned thinking off could
     never turn it back on in a new chat).
+- **03:28 Built.** `thinkingFields()` and `tokensSaved()` in `stream.ts`, the setting on `Settings`,
+  `thinking` on the reply, the sheet row and the footer marks. 5 vitests. Committed as `b6f9717`, 79
+  source lines.
+- **03:33 First real-relay run** (`dev/footer-check.mjs`, host on 6840, preview 6841): the two 031
+  scenarios held; the run died at the 032 queued scenario on a harness bug (the `--json` key output
+  carries the invite, not the secret; fixed as busy-check does).
+- **03:36 Second run: every promise held**, no console or page errors, exit 0. Evidence below.
 
 ## Report
+
+### The core, shown working
+
+Production bundle over the real New York relay against a real `bunny-network serve --slots 1` on the
+shared llama-server b9553 (Gemma 4 E2B), started and stopped by `web/dev/footer-check.mjs` on ports
+6840–6841 with keys it minted; printed:
+
+```
+SETTINGS before any reply   "Thinking · model default" · switch present: 0            31-settings-default.png
+REPLY 1 (model default)     Thinking block: 1 · "29 tokens in · 137 out"
+SETTINGS after that reply   switch present: 1 · Model default | On — better answers on hard questions |
+                            Off — faster, shorter, fewer of your tokens                31-settings-thinking.png
+REPLY 2 (thinking off)      Thinking blocks: 0 · "52 tokens in · 8 out · thinking off ·
+                            129 fewer tokens than the previous reply"
+                            host usage.jsonl completion_tokens 137 → 8                31-real-thinking-off.png
+```
+
+**What is sent, and why it is not what the ticket named.** The switch is one field for every engine
+kind: `chat_template_kwargs: {"enable_thinking": false|true}`, absent for the model default. Verified
+before coding (Log 03:24): on llama-server b9553 it turns Gemma 4's thinking off (0 reasoning chars, 7
+deltas, 35 ms of generation instead of 800); the ticket's `reasoning_budget` is that server's
+`--reasoning-budget` **flag**, not a request option — sent per request it changed nothing (529 reasoning
+chars either way), so the request builder does not send it and the vitest says so. On the founder's vLLM
+0.25 the field is accepted; that host's model never emits `reasoning_content` and `enable_thinking=true`
+leaks a literal `thought\n` into content — so on that host the control never appears (nothing has been
+seen) and nothing is sent, which is the truthful outcome.
+
+**The control's evidence.** `/me` has no "this model thinks" field, so the switch appears once this
+chat holds a reply with `reasoning_content`, or when a choice is already in force (a friend who turned
+thinking off must be able to turn it back on in a new chat that, being off, never shows reasoning).
+Until then the row reads "Thinking · model default" and says when the switch will appear.
+
+### Edge awareness, one line
+
+Handled: a settings object stored by a build that had no `thinking` (merged over the defaults); the
+switch in a new chat after Off (a choice in force keeps it visible); an engine that thinks despite Off
+(the block shows what happened, the footer says "thought despite thinking off", no saving is claimed);
+a saving said only when both counts are known, the previous reply thought and the count went down; a
+host whose model never thinks (no control, nothing sent).
+
+### Judgment calls
+
+- **One field, not a per-kind table.** Both engines I could reach take the same switch; a table with
+  one row is a claim about engines I did not run. Ollama and LM Studio get the same field, which they
+  ignore if unknown, and the Thinking block still shows what they did.
+- **The reply records what it was asked** (`Message.thinking`), so the footer's "thinking off" survives
+  a reload and a saving is compared like with like: completion tokens against the previous assistant
+  reply, which must have thought.
+- **The switch is per host scope**, beside model, system prompt and temperature, as the ticket asks —
+  the evidence for showing it is per chat.
+
+### Not verified
+
+Ollama and LM Studio (not running here); a model whose template does not read `enable_thinking`
+(Jinja ignores an unknown variable, so the model's default happens — the surface stays truthful, the
+setting does nothing); a thinking *budget* (b9553 has none per request).
+
+### Candidates (not fixed here)
+
+- `/me.host.upstream` could say whether the loaded model's template reads `enable_thinking` — llama-server's
+  `/props` chat template contains the variable — so the control could appear before the first reply.
+  Gateway work, one field.
