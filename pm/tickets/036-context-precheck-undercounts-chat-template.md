@@ -3,7 +3,7 @@ id: 036
 title: Context pre-check undercounts the chat-template prompt, so a near-ceiling request is rejected by the engine as a raw 400 instead of the gateway's 422 context_too_long
 kind: defect
 size: 3
-status: dispatched
+status: landed
 updated: 2026-09-03
 release: demo-1
 found_by: 028 (load test, vLLM)
@@ -135,3 +135,7 @@ template off:  --- FAIL: TestCountTokensUnderTheChatTemplate   chat count = 5, w
 **Adjacent, not fixed.** (1) The floor-at-ceiling candidate above. (2) The web client's copy for `invalid_request` ("The host could not read that request") has no shortening hint; with the mapping it no longer needs one for this case. (3) `hack/load`'s friend retries a 400 on the same turn — instrument behaviour, unchanged.
 
 **Freeze.** Base `a69ec2a` (`origin/main` at freeze, unmoved since dispatch) · lane `t035-defects`, code commit `e52f563` · patch SHA-256 (`git diff a69ec2a..HEAD -- internal/upstream internal/gateway | shasum -a 256`): `31c39ab85b77a1fd84a3b3b421a6f559242c8b42256378a42606276b02cd8c76` · source 140 raw of ≤250 · concepts 0 of 0 · contests 0 · bought beyond the ticket: nothing.
+
+## Ruling (PM, 2026-09-03 07:00)
+
+**Landed.** `Engine.CountTokens` is messages-aware and counts under the chat template on both engines (equal to the engine's own prompt_tokens); engine context-overflow 400s map to 422 `context_too_long`. Contract updated by the PM.

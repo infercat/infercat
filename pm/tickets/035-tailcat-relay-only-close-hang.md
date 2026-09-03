@@ -3,7 +3,7 @@ id: 035
 title: tailcat.Client.Close() hangs for minutes when the client is relay-only (UDP disabled)
 kind: defect
 size: 2
-status: dispatched
+status: landed
 updated: 2026-09-03
 release: demo-1
 found_by: 028 (load test)
@@ -103,3 +103,7 @@ shutting down                             ← exited 0.03 s later
 **Adjacent, not fixed.** (1) `hack/load` could hold `tunnel.Session` instead of its own `tailcat.Client` and drop its 15 s guard and `os.Exit` (~20 lines). (2) `hack/load/main.go` is not gofmt-clean at base.
 
 **Freeze.** Base `a69ec2a` (`origin/main` at freeze, unmoved since dispatch) · lane `t035-defects`, code commit `e52f563` · patch SHA-256 (`git diff a69ec2a..HEAD -- internal/tunnel cmd/bunny-network/connect.go cmd/bunny-network/serve.go cmd/bunny-network/connect_test.go | shasum -a 256`): `128c5fe3049d5adf000ab3e70344ce8f366172205850b7d2e98b9d4d7fa756ef` · source 70 raw of ≤150 · concepts 0 of 0 · contests 0 · bought beyond the ticket: the host's `Server.Close` bound (the PM's "so both `connect` and the host benefit"), 3 source lines.
+
+## Ruling (PM, 2026-09-03 07:00)
+
+**Landed.** Bounded `Close` (3 s) in `internal/tunnel` for both Session and Server; `connect` exits in 0.03 s relay-only. Root cause in magicsock (rebind without closing the old conn under ALWAYS_USE_DERP) recorded as an upstream-issue candidate — file it against tailscale/tailscale after launch.

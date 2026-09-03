@@ -1,6 +1,6 @@
 # HANDOFF — state of the work (succession document)
 
-Updated: 2026-09-03 06:15 EDT. All eight post-reset tickets landed except 027 QR (waits on the URL). 028 found two defects → 035+036 dispatched as one lane. Waiting on the founder: name → URL → 027; relay switch (our relay measured fine; engine is the binding limit); public repo + tag; social preview upload.
+Updated: 2026-09-03 07:05 EDT. Every post-reset ticket is landed except 027 QR (waits on the URL). Nothing is running. Waiting on the founder: name → URL → 027; relay switch; public repo + tag; social preview upload. Founder's demo host runs the current build.
 
 ## What this is
 
