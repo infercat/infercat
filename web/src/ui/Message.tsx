@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { modelLabel } from '../api';
 import { compact } from '../session';
 import { isAnswer, type Message } from '../storage';
-import { replyEnding } from '../stream';
+import { replyEnding, speed, speedLine } from '../stream';
 import type { ThreadAction } from './Chat';
 import Markdown from './Markdown';
 
@@ -103,6 +103,9 @@ export default function MessageView({
   // Which wall a complete-but-cut reply hit is one function over four numbers (020 promise 3), so
   // this line and the context meter in the header can never disagree.
   const ending = !live && m.status === 'complete' ? replyEnding(m.capped, m.tokens, limits.maxOutputTokens, limits.modelContext) : null;
+  // How fast it was, from this device (032): said the moment the first token lands, and no sooner.
+  const measured = speed(m);
+  const pace = measured ? speedLine(measured) : null;
   return (
     <div className="row assistant">
       {m.previous !== undefined && m.previous !== '' && (
@@ -183,6 +186,7 @@ export default function MessageView({
               not called quiet. */}
           {m.thinking === 'off' ? (m.reasoning ? ' · thought despite thinking off' : ' · thinking off') : ''}
           {saved !== null ? ` · ${saved} fewer tokens than the previous reply` : ''}
+          {pace && <span className="speed" title={pace.title}>{` · ${pace.text}`}</span>}
           {/* Said only of text that is on screen: a reply with nothing in it is not "part" of anything,
               and under a turn that was never answered it read as a claim about the turn (022 promise 2). */}
           {!isAnswer(m) && m.content.trim() !== '' ? ' · not part of the next question' : ''}

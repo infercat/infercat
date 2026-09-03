@@ -37,6 +37,21 @@ export interface Message {
   previous?: string;
   /** The thinking switch this reply was asked for, when it was not the model's default (031). */
   thinking?: 'on' | 'off';
+  /** When this reply was asked for and when its tokens arrived, by this device's clock (032). */
+  timing?: Timing;
+}
+
+/**
+ * Milliseconds since the epoch on the reader's device: when the request was sent, when the first
+ * and the latest token (thinking or answer) arrived, and — when the host said the request was in
+ * line for a slot — the last time it said so. Raw moments rather than derived numbers, so what is
+ * said about them can change without rewriting a chat.
+ */
+export interface Timing {
+  sent: number;
+  first?: number;
+  last?: number;
+  queued?: number;
 }
 
 export interface Conversation {
