@@ -4,7 +4,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { describeError, getMe, hostName, logsPrompts, type FriendlyError, type Me } from '../api';
 import { decodeInvite, inviteFromHash, InviteError, maskInvite } from '../invite';
-import { PRODUCT_NAME, privacyLine } from '../product';
+import { PRODUCT_NAME, privacyLine, SOURCE_URL, VERSION } from '../product';
 import { boundHandshake, handshakeFailure, type Live, type SessionEvent, type SessionState } from '../session';
 import {
   countChats,
@@ -289,6 +289,7 @@ export default function Connect({ state, dispatch }: Props) {
             </button>
           </div>
           <p className="privacy">{privacyLine(who, false)}</p>
+          <About />
         </div>
       </main>
     );
@@ -407,6 +408,7 @@ export default function Connect({ state, dispatch }: Props) {
         )}
 
         <p className="privacy">{privacyLine(who, false)}</p>
+        <About />
 
         {dev && (
           <label className="devmode">
@@ -416,6 +418,15 @@ export default function Connect({ state, dispatch }: Props) {
         )}
       </div>
     </main>
+  );
+}
+
+/** The page's own small print: which build this is, under what licence, and where the code is. */
+function About() {
+  return (
+    <p className="about">
+      Version {VERSION} · MIT · <a href={SOURCE_URL}>Source on GitHub</a>
+    </p>
   );
 }
 

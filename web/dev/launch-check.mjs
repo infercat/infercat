@@ -1,0 +1,398 @@
+// What a stranger's browser sees on the built app (web/dist), checked and photographed. Two modes:
+//
+//   pnpm launch-check                                  # the connect screen, from a vite preview it starts
+//   INVITE=bn1.… APP=http://127.0.0.1:6831 pnpm launch-check
+//                                                      # + the chat against a real host: the README recording
+//
+// Checks — any failure exits 1: nothing on the console at load (warnings included); title,
+// description, Open Graph and Twitter metas, theme-color, manifest and apple-touch-icon links; the
+// manifest parses and carries the product name; every icon and og.png is served; every control in
+// the accessibility tree has a name; text contrast is 4.5:1 or better (3:1 for large text) in light
+// and dark; Tab lands on the invite field first; no horizontal overflow at 390 px. Screenshots go to
+// dev/screenshots/30-*.png; with INVITE, the recording goes to ../docs/media/friend-chat.gif (+ .png)
+// and must stay under 2 MB. The GIF needs a full ffmpeg (`brew install ffmpeg`, or FFMPEG=path to
+// one — Playwright's own ffmpeg records WebM and cannot write GIF).
+import { spawn, spawnSync } from 'node:child_process';
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { chromium } from 'playwright';
+
+const here = dirname(fileURLToPath(import.meta.url));
+const web = join(here, '..');
+const shots = join(here, 'screenshots');
+const media = join(web, '..', 'docs', 'media');
+const PORT = Number(process.env.CHECK_PORT ?? 6833);
+const APP = (process.env.APP ?? `http://127.0.0.1:${PORT}`).replace(/\/+$/, '');
+const INVITE = process.env.INVITE ?? '';
+const NAME = /PRODUCT_NAME = '([^']+)'/.exec(readFileSync(join(web, 'src/product.ts'), 'utf8'))?.[1] ?? 'app';
+const QUESTION = 'Why is the sky blue? Answer in three sentences.';
+
+const problems = [];
+const say = (s) => console.log(`  ${s}`);
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+
+function watch(page, label) {
+  page.on('console', (m) => {
+    if (m.type() === 'warning' || m.type() === 'error') problems.push(`${label}: console.${m.type()} ${m.text()}`);
+  });
+  page.on('pageerror', (e) => problems.push(`${label}: pageerror ${e.message}`));
+}
+
+async function waitFor(url) {
+  for (let i = 0; i < 100; i++) {
+    try {
+      if ((await fetch(url)).ok) return;
+    } catch {
+      /* not up yet */
+    }
+    await sleep(200);
+  }
+  throw new Error(`nothing answered at ${url}`);
+}
+
+function shot(file) {
+  const kb = Math.round(statSync(file).size / 1024);
+  say(`${file.replace(`${web}/`, '')}  ${kb} KB`);
+  if (file.endsWith('.gif') && kb > 2048) problems.push(`${file} is ${kb} KB, over the 2 MB budget`);
+}
+
+/** The page's head, as served: what a crawler, a social card and a phone's Add to Home Screen read. */
+async function metas(label) {
+  const html = await (await fetch(`${APP}/`)).text();
+  for (const [needle, what] of [
+    [`<title>${NAME}</title>`, 'the title'],
+    ['name="description"', 'a description'],
+    ['property="og:title"', 'og:title'],
+    ['property="og:description"', 'og:description'],
+    ['property="og:image"', 'og:image'],
+    ['name="twitter:card"', 'twitter:card'],
+    ['name="theme-color"', 'theme-color'],
+    ['rel="manifest"', 'the manifest link'],
+    ['rel="apple-touch-icon"', 'the apple-touch-icon link'],
+    ['rel="icon" href="/favicon.svg"', 'the SVG favicon'],
+  ]) {
+    if (!html.includes(needle)) problems.push(`${label}: index.html lacks ${what}`);
+  }
+  if (html.includes('%PRODUCT') || html.includes('%WEB_URL%')) problems.push(`${label}: an unfilled placeholder is in index.html`);
+  const res = await fetch(`${APP}/manifest.webmanifest`);
+  if (!res.ok) {
+    problems.push(`${label}: /manifest.webmanifest → ${res.status}`);
+    return;
+  }
+  const manifest = await res.json();
+  if (manifest.name !== NAME) problems.push(`${label}: the manifest names "${manifest.name}", not "${NAME}"`);
+  if (manifest.display !== 'standalone') problems.push(`${label}: manifest display is ${manifest.display}`);
+  const files = new Set(['favicon.svg', 'favicon.png', 'apple-touch-icon.png', 'og.png', ...manifest.icons.map((i) => i.src.replace(/^\//, ''))]);
+  for (const f of files) {
+    const r = await fetch(`${APP}/${f}`);
+    if (!r.ok) problems.push(`${label}: /${f} → ${r.status}`);
+  }
+  say(`${label}: title, description, OG/Twitter metas, theme-color, manifest "${manifest.name}" (${manifest.icons.length} icons), ${files.size} assets served`);
+}
+
+/** Every control the accessibility tree lists has a name — what a screen reader would say. */
+async function names(page, label) {
+  const snap = await page.locator('body').ariaSnapshot();
+  const control = /^\s*-\s+(button|link|textbox|combobox|slider|checkbox|switch|menuitem|tab|radio|searchbox|spinbutton)\b(.*)$/;
+  let n = 0;
+  const unnamed = [];
+  for (const line of snap.split('\n')) {
+    const m = control.exec(line);
+    if (!m) continue;
+    n++;
+    if (!/"[^"]+"/.test(m[2])) unnamed.push(line.trim());
+  }
+  for (const u of unnamed) problems.push(`${label}: control without an accessible name: ${u}`);
+  say(`${label}: ${n} controls in the accessibility tree, ${unnamed.length} unnamed`);
+}
+
+/** Every visible run of text against the ground it actually sits on, WCAG AA. Disabled controls are exempt. */
+async function contrast(page, label) {
+  const rows = await page.evaluate(() => {
+    const parse = (c) => {
+      const m = /rgba?\(([\d.]+),\s*([\d.]+),\s*([\d.]+)(?:,\s*([\d.]+))?\)/.exec(c);
+      return m ? [+m[1], +m[2], +m[3], m[4] === undefined ? 1 : +m[4]] : null;
+    };
+    const lum = ([r, g, b]) => {
+      const f = (v) => ((v /= 255) <= 0.03928 ? v / 12.92 : ((v + 0.055) / 1.055) ** 2.4);
+      return 0.2126 * f(r) + 0.7152 * f(g) + 0.0722 * f(b);
+    };
+    const over = (top, bottom) => [0, 1, 2].map((i) => top[i] * top[3] + bottom[i] * (1 - top[3])).concat([1]);
+    const ratio = (a, b) => {
+      const x = lum(a), y = lum(b);
+      return (Math.max(x, y) + 0.05) / (Math.min(x, y) + 0.05);
+    };
+    const groundOf = (el) => {
+      const chain = [];
+      for (let e = el; e; e = e.parentElement) chain.push(e);
+      let bg = [255, 255, 255, 1];
+      for (const e of chain.reverse()) {
+        const p = parse(window.getComputedStyle(e).backgroundColor);
+        if (p && p[3] > 0) bg = over(p, bg);
+      }
+      return bg;
+    };
+    const opacityOf = (el) => {
+      let o = 1;
+      for (let e = el; e; e = e.parentElement) o *= Number(window.getComputedStyle(e).opacity);
+      return o;
+    };
+    const out = [];
+    const seen = new Set();
+    const walker = document.createTreeWalker(document.body, window.NodeFilter.SHOW_TEXT);
+    for (let n = walker.nextNode(); n; n = walker.nextNode()) {
+      const text = n.textContent.trim();
+      const el = n.parentElement;
+      if (!text || !el || seen.has(el)) continue;
+      seen.add(el);
+      const cs = window.getComputedStyle(el);
+      if (cs.visibility === 'hidden' || cs.display === 'none') continue;
+      const r = el.getBoundingClientRect();
+      if (r.width === 0 || r.height === 0) continue;
+      if (el.matches(':disabled') || el.closest(':disabled')) continue;
+      const fg0 = parse(cs.color);
+      if (!fg0) continue;
+      const bg = groundOf(el);
+      const fg = over([fg0[0], fg0[1], fg0[2], fg0[3] * opacityOf(el)], bg);
+      const size = parseFloat(cs.fontSize);
+      const weight = Number(cs.fontWeight) || 400;
+      const large = size >= 24 || (size >= 18.66 && weight >= 700);
+      const cls = String(el.className || '').split(' ')[0];
+      out.push({ text: text.slice(0, 36), sel: `${el.tagName.toLowerCase()}${cls ? `.${cls}` : ''}`, ratio: +ratio(fg, bg).toFixed(2), need: large ? 3 : 4.5, size });
+    }
+    return out;
+  });
+  const bad = rows.filter((r) => r.ratio < r.need);
+  for (const b of bad) problems.push(`${label}: ${b.sel} "${b.text}" is ${b.ratio}:1, needs ${b.need}:1 at ${b.size}px`);
+  const lowest = rows.reduce((m, r) => (r.ratio < m.ratio ? r : m), { ratio: 99 });
+  say(`${label}: ${rows.length} text runs, lowest ${lowest.ratio}:1 (${lowest.sel}) — ${bad.length ? `${bad.length} below AA` : 'AA met'}`);
+}
+
+/** Where Tab goes, in order. */
+async function tabOrder(page, label, max = 12) {
+  // Start from the top of the document, not from wherever the page put its focus on mount.
+  await page.evaluate(() => {
+    document.body.tabIndex = -1;
+    document.body.focus();
+    document.body.removeAttribute('tabindex');
+  });
+  const order = [];
+  for (let i = 0; i < max; i++) {
+    await page.keyboard.press('Tab');
+    const d = await page.evaluate(() => {
+      const a = document.activeElement;
+      if (!a || a === document.body) return null;
+      const name = a.getAttribute('aria-label') || a.labels?.[0]?.textContent || a.textContent || a.getAttribute('placeholder') || '';
+      return `${a.tagName.toLowerCase()}[${name.trim().replace(/\s+/g, ' ').slice(0, 26)}]`;
+    });
+    if (!d || order.includes(d)) break;
+    order.push(d);
+  }
+  say(`${label}: Tab → ${order.join(' → ')}`);
+  return order;
+}
+
+async function noOverflow(page, label) {
+  const r = await page.evaluate(() => ({ over: document.documentElement.scrollWidth - window.innerWidth, w: window.innerWidth }));
+  if (r.over > 0) problems.push(`${label}: the page scrolls horizontally by ${r.over}px at ${r.w}px`);
+  else say(`${label}: no horizontal overflow at ${r.w}px`);
+}
+
+/** How the link looks pasted into a timeline: the served og.png under the served title and description. */
+async function ogPreview(browser) {
+  const html = await (await fetch(`${APP}/`)).text();
+  const title = /<title>([^<]*)<\/title>/.exec(html)?.[1] ?? '';
+  const desc = /property="og:description" content="([^"]*)"/.exec(html)?.[1] ?? '';
+  const ctx = await browser.newContext({ viewport: { width: 640, height: 480 }, deviceScaleFactor: 2, colorScheme: 'light' });
+  const page = await ctx.newPage();
+  await page.setContent(`<!doctype html><meta charset="utf-8"><style>
+    body { margin: 0; background: #e9ecef; display: grid; place-items: center; height: 100vh; font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+    .card { width: 520px; border: 1px solid #cfd4da; border-radius: 16px; overflow: hidden; background: #fff; }
+    .card img { display: block; width: 100%; aspect-ratio: 1200 / 630; object-fit: cover; }
+    .meta { padding: 12px 14px 14px; }
+    .domain { color: #6c757d; font-size: 13px; }
+    .title { font-weight: 600; font-size: 15px; margin: 2px 0; color: #111; }
+    .desc { color: #495057; font-size: 14px; line-height: 1.35; }
+  </style>
+  <div class="card"><img src="${APP}/og.png" alt=""><div class="meta">
+    <div class="domain">TODO(F3) web app URL</div><div class="title">${title}</div><div class="desc">${desc}</div>
+  </div></div>`);
+  await page.waitForFunction(() => document.images[0]?.complete);
+  const file = join(shots, '30-og-preview.png');
+  await page.screenshot({ path: file });
+  shot(file);
+  await ctx.close();
+}
+
+/** A mock of a phone home screen with the app's icon on it: the tile a phone makes from apple-touch-icon.png. */
+async function homeScreen(browser) {
+  const ctx = await browser.newContext({ viewport: { width: 390, height: 300 }, deviceScaleFactor: 2 });
+  const page = await ctx.newPage();
+  const tile = (src, label) => `<div class="tile"><img src="${src}"><span>${label}</span></div>`;
+  await page.setContent(`<!doctype html><meta charset="utf-8"><style>
+    body { margin: 0; height: 100vh; background: linear-gradient(160deg, #2b3a55, #0f1622); display: flex; gap: 22px; justify-content: center; align-items: center;
+           font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+    .tile { display: grid; justify-items: center; gap: 7px; width: 76px; }
+    .tile img { width: 60px; height: 60px; border-radius: 13.5px; box-shadow: 0 2px 6px rgba(0,0,0,.35); }
+    .tile span { color: #fff; font-size: 11px; text-align: center; text-shadow: 0 1px 2px rgba(0,0,0,.6); white-space: nowrap; }
+    .blank img { background: #6b7280; }
+  </style>
+  ${tile(`${APP}/apple-touch-icon.png`, NAME)}
+  <div class="tile blank"><img src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"><span>Photos</span></div>
+  <div class="tile blank"><img src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"><span>Notes</span></div>`);
+  await page.waitForFunction(() => [...document.images].every((i) => i.complete));
+  const file = join(shots, '30-home-screen-icon.png');
+  await page.screenshot({ path: file });
+  shot(file);
+  await ctx.close();
+}
+
+async function connectScreen(browser) {
+  await metas('connect');
+  for (const [name, viewport, scheme] of [
+    ['30-connect-desktop', { width: 1280, height: 800 }, 'light'],
+    ['30-connect-dark', { width: 1280, height: 800 }, 'dark'],
+    ['30-connect-phone', { width: 390, height: 844 }, 'light'],
+  ]) {
+    const ctx = await browser.newContext({ viewport, colorScheme: scheme, deviceScaleFactor: viewport.width < 500 ? 2 : 1 });
+    const page = await ctx.newPage();
+    watch(page, name);
+    await page.goto(`${APP}/`);
+    await page.waitForSelector('.connect-card');
+    await page.waitForTimeout(300);
+    await names(page, name);
+    await contrast(page, name);
+    const order = await tabOrder(page, name, 6);
+    if (!order[0]?.startsWith('textarea[Invite code]')) problems.push(`${name}: Tab lands on ${order[0] ?? 'nothing'} first, not the invite field`);
+    if (viewport.width < 500) await noOverflow(page, name);
+    const file = join(shots, `${name}.png`);
+    await page.screenshot({ path: file });
+    shot(file);
+    await ctx.close();
+  }
+  await ogPreview(browser);
+  await homeScreen(browser);
+}
+
+function ffmpeg() {
+  const bin = process.env.FFMPEG ?? 'ffmpeg';
+  const probe = spawnSync(bin, ['-hide_banner', '-muxers'], { encoding: 'utf8' });
+  if (probe.status !== 0) throw new Error(`no ffmpeg at "${bin}": brew install ffmpeg, or set FFMPEG=/path/to/ffmpeg`);
+  if (!/^\s*E\s+gif\b/m.test(probe.stdout)) throw new Error(`the ffmpeg at "${bin}" cannot write GIF (Playwright's cannot); set FFMPEG to a full build`);
+  return bin;
+}
+
+/** A friend's first chat, against a real host, recorded. Then the same on a phone and in the dark. */
+async function chat(browser) {
+  mkdirSync(media, { recursive: true });
+  const tmp = mkdtempSync(join(tmpdir(), 'bn-launch-'));
+  const size = { width: 880, height: 640 };
+  const ctx = await browser.newContext({ viewport: size, colorScheme: 'light', recordVideo: { dir: tmp, size } });
+  const page = await ctx.newPage();
+  watch(page, 'chat');
+  const t0 = Date.now();
+  await page.goto(`${APP}/#${INVITE}`);
+  await page.waitForSelector('.composer textarea', { timeout: 90_000 });
+  say(`chat: connected in ${((Date.now() - t0) / 1000).toFixed(1)} s (${await page.locator('.path').innerText().catch(() => '?')})`);
+  await page.waitForTimeout(900);
+  const box = page.locator('.composer textarea');
+  await box.click();
+  await box.pressSequentially(QUESTION, { delay: 30 });
+  await page.waitForTimeout(400);
+  await page.keyboard.press('Enter');
+  const stop = page.getByRole('button', { name: 'Stop' });
+  await stop.waitFor({ timeout: 30_000 });
+  await stop.waitFor({ state: 'detached', timeout: 180_000 });
+  await page.waitForTimeout(1800);
+  const png = join(media, 'friend-chat.png');
+  await page.screenshot({ path: png });
+  shot(png);
+  await names(page, 'chat');
+  await contrast(page, 'chat (light)');
+  await tabOrder(page, 'chat', 10);
+  const desktop = join(shots, '30-chat-desktop.png');
+  await page.screenshot({ path: desktop });
+  shot(desktop);
+  const video = page.video();
+  await ctx.close();
+  const webm = await video.path();
+  const gif = join(media, 'friend-chat.gif');
+  const r = spawnSync(
+    ffmpeg(),
+    ['-y', '-loglevel', 'error', '-i', webm, '-vf',
+      'fps=8,scale=720:-1:flags=lanczos,split[a][b];[a]palettegen=max_colors=128:stats_mode=diff[p];[b][p]paletteuse=dither=bayer:bayer_scale=4:diff_mode=rectangle',
+      '-loop', '0', gif],
+    { stdio: 'inherit' },
+  );
+  if (r.status !== 0) problems.push(`ffmpeg exited ${r.status}`);
+  else shot(gif);
+  rmSync(tmp, { recursive: true, force: true });
+
+  // The phone: a touch keyboard's Return is a newline, so Send is the button (014 promise 6).
+  const phone = await browser.newContext({ viewport: { width: 390, height: 844 }, deviceScaleFactor: 2, isMobile: true, hasTouch: true, colorScheme: 'light' });
+  const pp = await phone.newPage();
+  watch(pp, 'chat-phone');
+  await pp.goto(`${APP}/#${INVITE}`);
+  await pp.waitForSelector('.composer textarea', { timeout: 90_000 });
+  await pp.locator('.composer textarea').fill(QUESTION);
+  await pp.getByRole('button', { name: 'Send' }).click();
+  const stop2 = pp.getByRole('button', { name: 'Stop' });
+  await stop2.waitFor({ timeout: 30_000 });
+  await stop2.waitFor({ state: 'detached', timeout: 180_000 });
+  await pp.waitForTimeout(1200);
+  await names(pp, 'chat-phone');
+  await contrast(pp, 'chat-phone');
+  await noOverflow(pp, 'chat-phone');
+  const pf = join(shots, '30-chat-phone.png');
+  await pp.screenshot({ path: pf });
+  shot(pf);
+  await phone.close();
+
+  // Dark, desktop, the empty chat: the other palette's contrast.
+  const dark = await browser.newContext({ viewport: { width: 1280, height: 800 }, colorScheme: 'dark' });
+  const dp = await dark.newPage();
+  watch(dp, 'chat-dark');
+  await dp.goto(`${APP}/#${INVITE}`);
+  await dp.waitForSelector('.composer textarea', { timeout: 90_000 });
+  await dp.waitForTimeout(900);
+  await contrast(dp, 'chat-dark');
+  const df = join(shots, '30-chat-dark.png');
+  await dp.screenshot({ path: df });
+  shot(df);
+  await dark.close();
+}
+
+async function main() {
+  mkdirSync(shots, { recursive: true });
+  let preview = null;
+  if (!process.env.APP) {
+    preview = spawn(process.execPath, ['node_modules/vite/bin/vite.js', 'preview', '--port', String(PORT), '--strictPort'], {
+      cwd: web,
+      stdio: ['ignore', 'ignore', 'inherit'],
+    });
+  }
+  const browser = await chromium.launch();
+  try {
+    await waitFor(`${APP}/`);
+    console.log(`launch-check on ${APP}`);
+    await connectScreen(browser);
+    if (INVITE) await chat(browser);
+    else say('no INVITE: the chat was not exercised (set INVITE=bn1.… APP=… against a running host)');
+  } finally {
+    await browser.close();
+    preview?.kill('SIGTERM');
+  }
+  if (problems.length) {
+    console.error(`\n${problems.length} problem(s):`);
+    for (const p of problems) console.error(`  - ${p}`);
+    process.exit(1);
+  }
+  console.log('\nlaunch-check: OK');
+}
+
+main().catch((err) => {
+  console.error(err);
+  process.exit(1);
+});

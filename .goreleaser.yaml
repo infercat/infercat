@@ -1,11 +1,14 @@
-# Release engineering for the host binary (ticket 017). This file PUBLISHES NOTHING: there is no
-# `release:`, `brews:`, or any other publisher section, and `make release-dry` runs goreleaser with
-# --snapshot --skip=publish. The founder gates distribution and licence (pm/LAUNCH.md F4/F5); a
-# later ticket adds a publisher once those are decided.
+# Release engineering for the host binary (ticket 017; publishing wired by 030). What this file can
+# publish, and when:
+#   - `make release-dry` runs goreleaser with --snapshot --skip=publish: every artifact is built into
+#     dist/, the Homebrew formula is written to dist/homebrew/, and nothing leaves the machine.
+#   - `make release-publish` (only from .github/workflows/release.yml, only on a v* tag) creates the
+#     GitHub Release with the archives and the checksums file. The formula is still not pushed
+#     anywhere until `brews[].skip_upload` below is flipped (docs/RELEASE.md, rename day).
 #
-# Run it through `make release-dry`, never bare: the Makefile is what reads CLI_NAME and
-# PRODUCT_VERSION out of internal/product/product.go, because the product name and version live in
-# one constant (pm/BELIEFS.md) and this file must not become a second copy of them.
+# Run it through the Makefile, never bare: the Makefile is what reads CLI_NAME and PRODUCT_VERSION
+# out of internal/product/product.go, because the product name and version live in one constant
+# (pm/BELIEFS.md) and this file must not become a second copy of them.
 version: 2
 
 snapshot:
@@ -66,4 +69,43 @@ checksum:
   name_template: "{{ .Env.CLI_NAME }}_{{ .Version }}_checksums.txt"
   algorithm: sha256
 
-report_sizes: true
+release:
+  # The GitHub Release a v* tag produces (release.yml). Draft, so the founder reads the generated
+  # notes and the CHANGELOG entry side by side before anyone sees it; prerelease decided by the tag.
+  github:
+    owner: 2185Lab
+    name: bunny-network
+  draft: true
+  prerelease: auto
+  name_template: "{{ .Env.CLI_NAME }} {{ .Version }}"
+
+homebrew_casks:
+  # The Homebrew cask (goreleaser 2.18 deprecates `brews` for pre-built binaries in favour of casks):
+  # `brew install 2185Lab/tap/<CLI_NAME>`. Written to dist/homebrew/ on every run so it can be read
+  # and installed locally (docs/RELEASE.md); committed to the tap repository only when skip_upload is
+  # flipped to "auto" on the day the tap exists (rename day), with a PAT in HOMEBREW_TAP_GITHUB_TOKEN.
+  # "auto" then still skips prereleases and snapshots.
+  - name: "{{ .Env.CLI_NAME }}"
+    ids: [cli]
+    binaries: ["{{ .Env.CLI_NAME }}"]
+    repository:
+      owner: 2185Lab
+      name: homebrew-tap
+      branch: main
+      token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
+    directory: Casks
+    skip_upload: true
+    commit_author:
+      name: goreleaser
+      email: noreply@2185lab.com
+    homepage: https://github.com/2185Lab/bunny-network # TODO(rename day): the web app URL (F3)
+    description: "Share the model on your machine with friends: one binary, one invite code, a browser"
+    # The binaries are not signed yet (pm/tickets/034-notarization.md): Homebrew quarantines what it
+    # downloads, and macOS refuses to run a quarantined unsigned binary. This is the hook goreleaser
+    # documents for exactly that case; delete it when 034 lands.
+    hooks:
+      post:
+        install: |
+          if OS.mac?
+            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/{{ .Env.CLI_NAME }}"]
+          end
