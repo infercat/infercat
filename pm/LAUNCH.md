@@ -34,7 +34,7 @@ gates the public ones (BELIEFS: Authority). Nothing ships while a line in **Foun
 - [ ] Host: the workstation serves with `--name`, `--web-url`, a self-hosted relay, and a handful of
       pre-minted keys with tight limits for strangers (`--rpm 6 --daily-tokens 50000`).
 - [ ] `status` and `usage` watched during the post; a revoke rehearsed once.
-- [ ] Support line: what to say when "my invite doesn't connect" (host asleep? rotated? relay down?).
+- [ ] Support line: what to say when "my invite doesn't connect" (host asleep? rotated? relay down?) — and the one known limitation from 023: if a friend pressed Reconnect while the host was still restarting, the app heals by itself within ~40 s; a reload also fixes it.
 - [ ] The post's claims come from `docs/MEASURE.md` and nothing else.
 
 ## After launch (already ticketed)

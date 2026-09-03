@@ -3,7 +3,7 @@ id: 023
 title: Reconnect joins the in-flight self-probe dial instead of starting a second one
 kind: normal
 size: 1
-status: dispatched
+status: landed
 updated: 2026-09-02
 release: demo-1
 ---
@@ -242,3 +242,12 @@ llama-server only received requests; max-ws.lab untouched.
 **Concepts: 0 budgeted, 0 used.** `connecting.redial` / `verifying.redial` are fields on states that
 exist; `redialTarget`, `sameHost`, `dialFresh` are derivations of things that exist; the `reconnecting`
 prop is a rendering of `redialTarget`. Rule against me on any of these.
+
+## Ruling (PM, 2026-09-02 23:40)
+
+**Landed** on main (`41d2565`); typecheck 0, 232 tests, lint 0, build OK, go build OK, printed. The
+163/150 overrun accepted (evidence-forced mount continuity). Two causes fixed, including 022's own
+Reconnect breakage. **Known limitation accepted for launch:** Reconnect pressed while the host is still
+down, with the host restarting under the same identity, can fail to adopt a session (the host's relay
+re-registration takes ~31 s); the escape is that the self-probe heals it, or a reload. Recorded in
+`pm/LAUNCH.md` launch-day operations as a support-line answer.
