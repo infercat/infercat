@@ -60,7 +60,7 @@ export type SessionState =
   /** `redial` (023): the session Reconnect is replacing, carried through the attempt so it adopts
    *  whichever dial verifies for that host — its own or the self-probe's, which it joins — and falls
    *  back to that session, degraded, if the dial fails, never to the connect screen. */
-  | { name: 'connecting'; redial?: Live }
+  | { name: 'connecting'; redial?: Live; slow?: boolean }
   | { name: 'verifying'; transport: Transport; redial?: Live }
   | { name: 'connected'; live: Live }
   | { name: 'degraded'; live: Live; reason: Degradation }
@@ -72,6 +72,8 @@ export type SessionEvent =
   | { t: 'wasmProgress'; pct: number | null }
   | { t: 'wasmLoaded' }
   | { t: 'sessionUp'; transport: Transport }
+  /** The handshake has run past the point a wait reads as alive by itself (033): say so. */
+  | { t: 'slow' }
   /** The first /me answered: this is the transition that makes a connection real. */
   | { t: 'verified'; live: Live }
   /** A later /me answered; only the snapshot changes. */
@@ -102,6 +104,8 @@ export function reduce(s: SessionState, e: SessionEvent): SessionState {
       // Out of `connecting` this is a superseded attempt; the state is unchanged and dropped()
       // hands the orphan to the closer.
       return s.name === 'connecting' ? { name: 'verifying', transport: e.transport, ...(s.redial ? { redial: s.redial } : {}) } : s;
+    case 'slow':
+      return s.name === 'connecting' && !s.slow ? { ...s, slow: true } : s;
     case 'verified':
       if (s.name === 'verifying' && s.transport === e.live.transport) return settle(e.live);
       // A redial that joined the self-probe's dial (023) verifies straight from `connecting`, for
@@ -269,6 +273,48 @@ export function scheduleProbe(
   return () => {
     armed = false;
     clearTimeout(timer);
+  };
+}
+
+// ---- the handshake bound (033) ---------------------------------------------------------------
+
+export const HANDSHAKE_SLOW_MS = 8_000;
+export const HANDSHAKE_MS = 20_000;
+
+/**
+ * Bounds one attempt's handshake: `slow` at 8 s so the wait is visibly alive, `fail` at 20 s — the
+ * bridge's own `connect` retries for 60 s, and a stranger reads a spinner that long as broken. Armed
+ * on entering `connecting`; the returned stop runs on the way out, so 19 s is never failed at 20.
+ */
+export function boundHandshake(dispatch: (e: SessionEvent) => void, fail: () => void): () => void {
+  const slow = setTimeout(() => dispatch({ t: 'slow' }), HANDSHAKE_SLOW_MS);
+  const dead = setTimeout(fail, HANDSHAKE_MS);
+  return () => {
+    clearTimeout(slow);
+    clearTimeout(dead);
+  };
+}
+
+/**
+ * What a handshake that never came up says, from the only witness: the bridge's log. A relay map it
+ * could not fetch is this network, not the host; every other line is the host not answering the
+ * meow — a sleeping machine's shape and (measured) a blocked relay's too. Last line → Details.
+ */
+export function handshakeFailure(log: string[], host: string): FriendlyError {
+  const last = log[log.length - 1] ?? '';
+  const said = last === '' ? {} : { hostSaid: last };
+  const map = /fetching DERPMap for region (\S+): Get "https?:\/\/([^/"]+)/.exec(last);
+  if (map) {
+    return {
+      title: 'Can’t reach the relay from this network',
+      detail: `The relay directory at ${map[2]} (region ${map[1]}) did not answer, so nothing left this device — the invite itself is fine. Check the connection, or try another network.`,
+      ...said,
+    };
+  }
+  return {
+    title: `${host.trim() || 'The host'} didn’t answer`,
+    detail: 'It’s probably asleep or offline. Ask them to check that the host is running, then try again.',
+    ...said,
   };
 }
 
