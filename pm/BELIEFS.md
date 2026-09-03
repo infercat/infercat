@@ -74,6 +74,11 @@ Polish is judged experientially — a stranger's first ten minutes on each side 
   interstitial. **The direct (p2p) path stays the differentiator and the destination:** the relay sees
   ciphertext, and direct traffic costs us nothing per byte while relayed traffic scales with our bill —
   the product always nudges toward direct as clients grow. Pricing follows that economics.
+- **The relay is never metered or charged per byte.** Reason (founder, 2026-09-03): the audience runs
+  its own models to avoid paying per use; a metered connection "isn't the vibe of our product" — there
+  are other ways to monetize, this is not one. Relay abuse is prevented by admission (only registered
+  host keys are relayed, tier 1), not by counting. Consequence: relay cost is a cost of the product,
+  bounded by nudging traffic to the direct path, not recovered from hosts.
 - **The client runs the agent loop; the host runs tools.** Reason (founder, 2026-09-02): each client may
   carry a different agent implementation, and the host cannot and should not dictate it. The host's job
   is capabilities behind the gateway (metered tool routes), never orchestration. Consequence: tool calls
