@@ -484,6 +484,7 @@ type fakeTunnel struct{}
 func (fakeTunnel) Listener() net.Listener { return nil }
 func (fakeTunnel) Addr() string           { return fakeAddr }
 func (fakeTunnel) Status() tunnelStatus   { return tunnelStatus{Addr: fakeAddr, Region: "Testville"} }
+func (fakeTunnel) Peers() []admin.Session { return nil }
 func (fakeTunnel) Close() error           { return nil }
 
 // Ticket 005 fixes 10b and 10d through the real serve command: the tunnel engine's log lands
@@ -960,7 +961,7 @@ func TestKeyWritesPokeTheRunningHost(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	adm, err := admin.Serve(dir, func() admin.Status { return admin.Status{} }, store.Reload)
+	adm, err := admin.Serve(dir, func() admin.Status { return admin.Status{} }, store.Reload, nil)
 	if err != nil {
 		t.Fatal(err)
 	}

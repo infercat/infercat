@@ -1,14 +1,19 @@
 package main
 
 import (
+	"bufio"
 	"context"
 	"errors"
 	"flag"
 	"fmt"
+	"io"
 	"log"
+	"net/http"
 	"os"
 	"path/filepath"
+	"strconv"
 	"strings"
+	"sync/atomic"
 	"time"
 
 	"github.com/2185Lab/bunny-network/internal/admin"
@@ -55,6 +60,7 @@ func (e *env) cmdServe(ctx context.Context, pre string, args []string) error {
 	name := fs.String("name", cfg.Name, "host display name your friends see; defaults to this machine's hostname")
 	webURLFlag := fs.String("web-url", cfg.WebURL, "where your friends open the web app; invites print as <url>#<invite>")
 	verbose := fs.Bool("verbose", false, "print the tunnel engine's log on the terminal instead of tunnel.log (not remembered)")
+	logRequests := fs.Bool("log-requests", false, "print one line per completed request on this terminal (not remembered; never prompt content)")
 	if err := e.parse(fs, serveHelp, args); err != nil {
 		return err
 	}
@@ -93,6 +99,7 @@ func (e *env) cmdServe(ctx context.Context, pre string, args []string) error {
 		return err
 	}
 	defer rec.Close()
+	events := admin.NewEvents(rec) // the live copy of every event (029); rec keeps the file
 
 	tunLogf, closeTunLog, err := tunnelLogf(dataDir, *verbose, e.logf)
 	if err != nil {
@@ -112,15 +119,20 @@ func (e *env) cmdServe(ctx context.Context, pre string, args []string) error {
 		HostName:    hostName,
 		RelayRegion: func() string { return tun.Status().Region },
 		DataDir:     dataDir, // today's counters are seeded from usage.jsonl there
-	}, up, store, rec, e.logf)
+	}, up, store, events, e.logf)
 	if err != nil {
 		return fmt.Errorf("gateway: %w", err)
 	}
 
+	tele := &telemetry{events: events, name: hostName}
+	go tele.sample(ctx, gw, tun)
+	if *logRequests {
+		go printRequests(ctx, events, e.out, keyNamer(ctx, store))
+	}
 	started := time.Now()
 	adm, err := admin.Serve(dataDir, func() admin.Status {
-		return buildStatus(ctx, started, tun, up, gw, store)
-	}, store.Reload)
+		return buildStatus(ctx, started, tun, up, gw, store, tele)
+	}, store.Reload, events)
 	if err != nil {
 		return fmt.Errorf("admin API: %w", err)
 	}
@@ -323,16 +335,132 @@ func (e *env) printStartup(ctx context.Context, s startup) {
 // engine, so the sentence names the three routes that reach it.
 const friendRoutes = "/v1/models, /v1/chat/completions and /v1/embeddings"
 
-func buildStatus(ctx context.Context, started time.Time, tun tunnelServer, up upstream.Upstream, gw gatewayServer, store keys.Store) admin.Status {
+// telemetry is what the admin status reads beyond the seams' own snapshots (029): the event hub
+// for tokens per second, the sampled slot peak, and the host's display name.
+type telemetry struct {
+	events *admin.Events
+	name   string
+	peak   atomic.Int32
+}
+
+// sample runs once a second: the slot peak (the queue reports an exact now; a high-water mark
+// inside it would be a gateway change beyond a read-only accessor, so the peak is sampled and
+// says so in its name) and a Peers call, which is what stamps a new client's first-seen time.
+func (t *telemetry) sample(ctx context.Context, gw gatewayServer, tun tunnelServer) {
+	tick := time.NewTicker(time.Second)
+	defer tick.Stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case <-tick.C:
+			if n, _ := gw.Queue(); int32(n) > t.peak.Load() {
+				t.peak.Store(int32(n))
+			}
+			tun.Peers()
+		}
+	}
+}
+
+// printRequests is `serve --log-requests`: the request line on the host's terminal, from the
+// same stream `status --watch` reads.
+func printRequests(ctx context.Context, events *admin.Events, w io.Writer, name func(string) string) {
+	ch, stop := events.Subscribe()
+	defer stop()
+	for {
+		select {
+		case <-ctx.Done():
+			return
+		case ev := <-ch:
+			fmt.Fprintln(w, requestLine(ev, name(ev.KeyID)))
+		}
+	}
+}
+
+// keyNamer resolves key ids to names for the request line, re-reading the store only for an id
+// it has not seen (a key minted while the host runs).
+func keyNamer(ctx context.Context, store keys.Store) func(string) string {
+	names := map[string]string{}
+	return func(id string) string {
+		if _, ok := names[id]; !ok {
+			if list, err := store.List(ctx); err == nil {
+				for _, k := range list {
+					names[k.ID] = k.Name
+				}
+			}
+		}
+		if n, ok := names[id]; ok {
+			return n
+		}
+		return id
+	}
+}
+
+// engineMetrics reads the engine's own /metrics through the seam (a probe-bounded GET, cut at one
+// second so a stalled engine cannot stall `status`): a map of every sample by name, labels
+// dropped and labelled series summed, so `vllm:x{engine="0"}` and `llamacpp:x` read alike.
+func engineMetrics(ctx context.Context, up upstream.Engine) (map[string]float64, bool) {
+	ctx, cancel := context.WithTimeout(ctx, time.Second)
+	defer cancel()
+	resp, err := up.Do(ctx, http.MethodGet, "/metrics", nil, false)
+	if err != nil {
+		return nil, false
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return nil, false
+	}
+	return parseMetrics(io.LimitReader(resp.Body, 1<<20)), true
+}
+
+func parseMetrics(r io.Reader) map[string]float64 {
+	m := map[string]float64{}
+	sc := bufio.NewScanner(r)
+	for sc.Scan() {
+		line := sc.Text()
+		if line == "" || line[0] == '#' {
+			continue
+		}
+		name, rest := line, ""
+		if i := strings.LastIndexByte(line, '}'); i >= 0 {
+			name, rest = line[:strings.IndexByte(line, '{')], line[i+1:]
+		} else if i := strings.IndexByte(line, ' '); i >= 0 {
+			name, rest = line[:i], line[i:]
+		}
+		if f := strings.Fields(rest); len(f) > 0 {
+			if v, err := strconv.ParseFloat(f[0], 64); err == nil {
+				m[name] += v
+			}
+		}
+	}
+	return m
+}
+
+func buildStatus(ctx context.Context, started time.Time, tun tunnelServer, up upstream.Upstream, gw gatewayServer, store keys.Store, tele *telemetry) admin.Status {
 	ts := tun.Status()
 	info := up.Info()
 	inFlight, waiting := gw.Queue()
 	st := admin.Status{
 		UptimeS:  int64(time.Since(started).Seconds()),
-		Tunnel:   admin.Tunnel{Addr: ts.Addr, Region: ts.Region, Clients: ts.Clients},
+		Mode:     "host",
+		Name:     tele.name,
+		Tunnel:   admin.Tunnel{Addr: ts.Addr, Region: ts.Region, Clients: ts.Clients, Sessions: tun.Peers()},
 		Upstream: admin.Upstream{Kind: string(info.Kind), URL: info.URL, Healthy: info.Health.OK, Since: info.Health.Since, ModelContext: info.ModelContext, Slots: info.Slots},
 		Queue:    admin.Queue{InFlight: inFlight, Waiting: waiting},
+		Engine:   admin.Engine{SlotsPeak: int(tele.peak.Load()), TokensPerS: tele.events.TokensPerSecond()},
+		Process:  admin.ProcessStats(),
 		Keys:     []admin.Key{},
+	}
+	for _, p := range st.Tunnel.Sessions {
+		st.Tunnel.RxBytes += p.RxBytes
+		st.Tunnel.TxBytes += p.TxBytes
+	}
+	if m, ok := engineMetrics(ctx, up); ok && info.Health.OK {
+		st.Engine.Metrics = true
+		st.Engine.Busy = int(m["llamacpp:requests_processing"] + m["vllm:num_requests_running"])
+		st.Engine.Waiting = int(m["llamacpp:requests_deferred"] + m["vllm:num_requests_waiting"])
+		st.Engine.MemoryBytes = int64(m["process_resident_memory_bytes"])
+		st.Engine.KVCachePct = 100 * (m["vllm:kv_cache_usage_perc"] + m["vllm:gpu_cache_usage_perc"] + m["llamacpp:kv_cache_usage_ratio"])
 	}
 	list, err := store.List(ctx)
 	if err != nil {
@@ -402,6 +530,8 @@ Flags:
   --ephemeral             never write the host key; a new address every run (not remembered)
   --verbose               print the tunnel engine's log on the terminal instead of
                           <data-dir>/tunnel.log (not remembered)
+  --log-requests          print one line per completed request: who, what, tokens, timings,
+                          how it ended — never the prompt (not remembered)
   --data-dir DIR          where this host's files live:
                             host.key.json  your host identity — every invite points at it.
                                            Back it up; don't sync it; deleting it kills every invite.
@@ -410,6 +540,7 @@ Flags:
                             config.json    the flags above, remembered
                             tunnel.log     the tunnel engine's own log, truncated at every start
                             admin.sock     how keys, status and usage talk to a running host
+                                           (GET /status, GET /events, POST /reload)
 
 There is no daemon mode: run it under your supervisor of choice (launchd, systemd, tmux).
 `

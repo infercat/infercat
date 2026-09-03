@@ -26,9 +26,11 @@ import (
 	"sync/atomic"
 	"time"
 
+	"github.com/2185Lab/bunny-network/internal/admin"
 	"github.com/2185Lab/bunny-network/internal/invite"
 	"github.com/2185Lab/bunny-network/internal/product"
 	"github.com/2185Lab/bunny-network/internal/tunnel"
+	"github.com/2185Lab/bunny-network/internal/usage"
 )
 
 const connectListen = "127.0.0.1:11435"
@@ -62,10 +64,12 @@ func (s tunnelSession) Redial(ctx context.Context) (session, error) {
 	return tunnelSession{n}, nil
 }
 
-func (e *env) cmdConnect(ctx context.Context, _ string, args []string) error {
+func (e *env) cmdConnect(ctx context.Context, pre string, args []string) error {
 	fs := flag.NewFlagSet("connect", flag.ContinueOnError)
 	listen := fs.String("listen", connectListen, "loopback address to serve the API on")
 	verbose := fs.Bool("verbose", false, "print the tunnel engine's log on the terminal")
+	logRequests := fs.Bool("log-requests", false, "print one line per request on this terminal (never prompt content)")
+	dd := fs.String("data-dir", pre, "serve an admin socket there, so `status --data-dir` can watch this bridge")
 	if err := e.parse(fs, connectHelp, args); err != nil {
 		return err
 	}
@@ -88,12 +92,14 @@ func (e *env) cmdConnect(ctx context.Context, _ string, args []string) error {
 	}
 	e.logf("connecting to the host through its relay…")
 	dctx, cancel := context.WithTimeout(ctx, connectTimeout)
+	t0 := time.Now()
 	sess, err := e.plat.dialTunnel(dctx, inv.Addr, tunLogf)
 	cancel()
 	if err != nil {
 		return fmt.Errorf("%s (%v)", (&connector{}).words("host_asleep", ""), err)
 	}
-	c := &connector{secret: inv.Secret, sess: sess, out: e.out, logf: e.logf, wake: make(chan struct{}, 1)}
+	c := &connector{secret: inv.Secret, sess: sess, out: e.out, logf: e.logf, wake: make(chan struct{}, 1), handshake: time.Since(t0),
+		logRequests: *logRequests, events: admin.NewEvents(nil), addr: inv.Addr, local: "http://" + ln.Addr().String(), started: time.Now()}
 	defer func() { c.mu.Lock(); c.sess.Close(); c.mu.Unlock() }()
 	me, herr := c.me(ctx)
 	if herr != nil && (herr.Code == "invalid_key" || herr.Code == "key_revoked" || herr.Status == 0) {
@@ -101,6 +107,14 @@ func (e *env) cmdConnect(ctx context.Context, _ string, args []string) error {
 	}
 	c.host, c.relayName = me.Host.Name, me.Host.Relay.Region
 	p, _ := c.path(ctx)
+	c.setPath(p)
+	if *dd != "" { // a bridge with a data dir is watchable like a host (029 promise 5)
+		adm, err := admin.Serve(*dd, c.status, nil, c.events)
+		if err != nil {
+			return fmt.Errorf("admin API: %w", err)
+		}
+		defer adm.Close()
+	}
 	fmt.Fprintf(e.out, "%s %s\n", product.Name, product.Version)
 	fmt.Fprintf(e.out, "host      %s  ·  %s\n", orDash(me.Host.Name), modelList(me.Host.Models))
 	if herr != nil {
@@ -146,10 +160,51 @@ type connector struct {
 	out       io.Writer
 	logf      func(string, ...any)
 
-	mu   sync.Mutex
-	sess session
-	down bool          // the session is being replaced: requests fail fast instead of dialling a corpse
-	wake chan struct{} // a request that found the session dead asks the keeper to look now
+	mu        sync.Mutex
+	sess      session
+	down      bool          // the session is being replaced: requests fail fast instead of dialling a corpse
+	wake      chan struct{} // a request that found the session dead asks the keeper to look now
+	last      tunnel.Path   // the path as last measured, for status
+	handshake time.Duration // how long the relay handshake took, at start or the last reconnect
+
+	// Observability (029): the request line on the terminal when asked, and the same events on
+	// the admin socket when a data dir was given.
+	logRequests bool
+	events      *admin.Events
+	addr, local string // the host's tunnel address; this bridge's URL
+	started     time.Time
+	inFlight    atomic.Int32
+}
+
+func (c *connector) setPath(p tunnel.Path) {
+	c.mu.Lock()
+	c.last = p
+	c.mu.Unlock()
+}
+
+// status is the bridge's admin status: the one session it holds, described the host's way —
+// with the path, RTT and handshake time a host cannot see but a client measures.
+func (c *connector) status() admin.Status {
+	c.mu.Lock()
+	p, down, hs := c.last, c.down, c.handshake
+	c.mu.Unlock()
+	path := "unknown"
+	switch {
+	case p.Direct:
+		path = "direct"
+	case p != (tunnel.Path{}):
+		path = "relayed"
+	}
+	return admin.Status{
+		Mode: "bridge", Name: c.host, UptimeS: int64(time.Since(c.started).Seconds()),
+		Tunnel: admin.Tunnel{Addr: c.addr, Region: c.relayName, Sessions: []admin.Session{
+			{Key: "host", Path: path, Via: p.Via, RTTMS: float64(p.RTT) / float64(time.Millisecond), HandshakeMS: hs.Milliseconds(),
+				Since: c.started, Active: !down, Conns: int(c.inFlight.Load())}}},
+		Upstream: admin.Upstream{Kind: "bridge", URL: c.local, Healthy: !down},
+		Queue:    admin.Queue{InFlight: int(c.inFlight.Load())},
+		Process:  admin.ProcessStats(),
+		Keys:     []admin.Key{},
+	}
 }
 
 // hostError is one failure the app sees: the gateway's status and code, the friend's sentence.
@@ -196,15 +251,27 @@ func (c *connector) asleep() hostError {
 
 func (c *connector) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	start := time.Now()
+	c.inFlight.Add(1)
+	defer c.inFlight.Add(-1)
+	sw := &statusWriter{ResponseWriter: w, status: http.StatusOK}
 	var code, msg string
 	if r.URL.Path == "/me" || strings.HasPrefix(r.URL.Path, "/v1/") {
-		code, msg = c.relay(w, r)
+		code, msg = c.relay(sw, r)
 	} else {
-		code, msg = c.reply(w, hostError{Status: http.StatusNotFound, Code: "not_found", Type: "invalid_request_error",
+		code, msg = c.reply(sw, hostError{Status: http.StatusNotFound, Code: "not_found", Type: "invalid_request_error",
 			Message: fmt.Sprintf("no route for %s %s — this endpoint serves /v1/* and /me", r.Method, r.URL.Path)})
 	}
-	c.log(r, start, code, msg)
+	c.log(r, start, sw.status, code, msg)
 }
+
+// statusWriter remembers the status the app was sent, for the request line and the event.
+type statusWriter struct {
+	http.ResponseWriter
+	status int
+}
+
+func (s *statusWriter) WriteHeader(code int)        { s.status = code; s.ResponseWriter.WriteHeader(code) }
+func (s *statusWriter) Unwrap() http.ResponseWriter { return s.ResponseWriter }
 
 // relay forwards one request over a fresh tunnel conn and streams the answer back. It returns
 // what the log line says: the code the request ended with, if any, and the sentence.
@@ -357,14 +424,20 @@ func (c *connector) reply(w http.ResponseWriter, he hostError) (string, string) 
 	return he.Code, he.Message
 }
 
-// log is one line per request on the terminal: method, path, how it ended, how long — never a
-// prompt, never the key (Protection 3, Protection 2).
-func (c *connector) log(r *http.Request, start time.Time, code, msg string) {
-	line := fmt.Sprintf("%s  %s %s  %.1fs", time.Now().Format("15:04:05"), r.Method, r.URL.Path, time.Since(start).Seconds())
-	if code != "" {
-		line += "  " + code
+// log records one event per request — never a prompt, never the key (Protection 3, Protection
+// 2) — for the admin socket's stream, and with --log-requests prints the shared request line
+// (the other party being the host) with the friend's sentence when the request failed.
+func (c *connector) log(r *http.Request, start time.Time, status int, code, msg string) {
+	ev := usage.Event{TS: start, Endpoint: r.URL.Path, Status: status, Code: code, TotalMS: time.Since(start).Milliseconds()}
+	if code == "client_closed" {
+		ev.Status = 499
 	}
-	if msg != "" {
+	c.events.Record(r.Context(), ev)
+	if !c.logRequests {
+		return
+	}
+	line := requestLine(ev, cmp.Or(c.host, "host"))
+	if msg != "" && code != "" {
 		line += " — " + msg
 	}
 	fmt.Fprintln(c.out, line)
@@ -555,6 +628,7 @@ func (c *connector) keep(ctx context.Context, last tunnel.Path) {
 		if err == nil {
 			fails = 0
 			t.Reset(pathEvery)
+			c.setPath(p)
 			if p.Direct != last.Direct || p.Via != last.Via {
 				fmt.Fprintf(c.out, "path      %s\n", c.describe(p))
 				last = p
@@ -577,13 +651,15 @@ func (c *connector) reconnect(ctx context.Context) tunnel.Path {
 	fmt.Fprintf(c.out, "path      lost — the host stopped answering; reconnecting\n")
 	for wait := time.Second; ; wait = min(2*wait, 30*time.Second) {
 		rctx, cancel := context.WithTimeout(ctx, connectTimeout)
+		t0 := time.Now()
 		n, err := s.Redial(rctx)
 		cancel()
 		if err == nil {
 			c.mu.Lock()
-			c.sess, c.down = n, false
+			c.sess, c.down, c.handshake = n, false, time.Since(t0)
 			c.mu.Unlock()
 			p, _ := c.path(ctx)
+			c.setPath(p)
 			fmt.Fprintf(c.out, "path      reconnected · %s\n", c.describe(p))
 			return p
 		}
@@ -618,6 +694,9 @@ found each other — and is re-checked every 30s. When the host stops answering,
 reconnects on its own.
 
 Flags:
-  --listen ADDR   loopback address to serve on (default 127.0.0.1:11435); other addresses are refused
-  --verbose       print the tunnel engine's log on the terminal
+  --listen ADDR    loopback address to serve on (default 127.0.0.1:11435); other addresses are refused
+  --log-requests   print one line per request: when, what, how long, how it ended — never the prompt
+  --data-dir DIR   also serve an admin socket there, so "status --data-dir DIR [--watch]" shows this
+                   bridge: the path, what is in flight, and the request stream
+  --verbose        print the tunnel engine's log on the terminal
 `

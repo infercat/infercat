@@ -54,6 +54,16 @@ func TestSessionOpenPathRedial(t *testing.T) {
 		}
 		t.Logf("GET %d: %v (no re-handshake)", i, time.Since(t1).Round(time.Millisecond))
 	}
+	// The host's side of the same session (029 promise 3): one peer under the client's tunnel
+	// address, bytes both ways, a last byte, a first-seen time that does not move between calls.
+	peers := s.Peers()
+	if len(peers) != 1 || !peers[0].Addr.IsValid() || peers[0].RxBytes == 0 || peers[0].TxBytes == 0 || peers[0].LastByte.IsZero() {
+		t.Fatalf("Peers = %+v; want one with an address, bytes both ways and a last byte", peers)
+	}
+	if again := s.Peers(); !again[0].Since.Equal(peers[0].Since) || again[0].Addr != peers[0].Addr {
+		t.Fatalf("Peers again = %+v; want the same Since and address", again)
+	}
+	t.Logf("Peer as the host sees it: %+v", peers[0])
 	p, err := cl.Path(ctx)
 	if err != nil {
 		t.Fatalf("Path: %v", err)
