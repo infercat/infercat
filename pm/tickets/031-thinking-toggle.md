@@ -59,12 +59,17 @@ builder, Message.tsx); read-only in `internal/gateway`.
     seen in this chat — or a setting already in force (otherwise a friend who turned thinking off could
     never turn it back on in a new chat).
 - **03:28 Built.** `thinkingFields()` and `tokensSaved()` in `stream.ts`, the setting on `Settings`,
-  `thinking` on the reply, the sheet row and the footer marks. 5 vitests. Committed as `b6f9717`, 79
-  source lines.
+  `thinking` on the reply, the sheet row and the footer marks. 5 vitests. Committed as `b6f9717` (rebased
+  at the freeze to `4fe22ba`), 79 source lines.
 - **03:33 First real-relay run** (`dev/footer-check.mjs`, host on 6840, preview 6841): the two 031
   scenarios held; the run died at the 032 queued scenario on a harness bug (the `--json` key output
   carries the invite, not the secret; fixed as busy-check does).
 - **03:36 Second run: every promise held**, no console or page errors, exit 0. Evidence below.
+- **03:41 The PM's session committed this lane's working tree mid-flight** (`1670a28`: the Reports as
+  written so far, `footer-check.mjs`, the re-shot screenshots; source 0). **03:44** rebased onto
+  `ebc1146` (033's ticket file only) → `4fe22ba` / `14218c3` / `6572d10`; the Verified and Freeze
+  sections below land in the commit after. Fake-driven suite re-shot on 6842–6843: 101 screenshots,
+  no console or page errors, no horizontal overflow at 360 px or 390 px with the longer footer.
 
 ## Report
 
@@ -129,3 +134,43 @@ setting does nothing); a thinking *budget* (b9553 has none per request).
 - `/me.host.upstream` could say whether the loaded model's template reads `enable_thinking` — llama-server's
   `/props` chat template contains the variable — so the control could appear before the first reply.
   Gateway work, one field.
+
+### Verified (printed, at the freeze commit on base `ebc1146`)
+
+```
+$ pnpm install --frozen-lockfile  → Done in 1.3s using pnpm v11.13.0                          exit 0
+$ pnpm typecheck                  → tsc --noEmit, no output                                    exit 0
+$ pnpm test                       → Test Files 10 passed (10) | Tests 252 passed (252)         exit 0
+                                    0 failed, 0 skipped   (base 239; +5 for 031, +8 for 032)
+$ pnpm lint                       → eslint ., no output                                        exit 0
+$ pnpm build                      → index 231.40 kB (gzip 74.51); Chat 362.96 kB (gzip 111.24);
+                                    css 13.76 kB                                               exit 0
+$ node dev/footer-check.mjs       → every promise above held, and no console or page errors    exit 0
+$ node dev/screenshots.mjs        → 101 screenshots (PROD=0); no console or page errors;
+  (WEB_PORT=6842)                   no horizontal overflow at 360 px or 390 px                  exit 0
+```
+
+`package.json` and `pnpm-lock.yaml` unchanged: **no new dependencies.** Processes stopped: only the
+host, preview, fake gateway, vite and browsers the harnesses started (ports 6840–6843). The shared
+llama-server and the vLLM behind the read-only tunnel only received requests; the founder's demo host
+(9091) and its data dir were not touched.
+
+## Freeze
+
+- **Base:** `3eb9033` at dispatch, rebased at the freeze onto `ebc1146` (public main; 033's ticket file
+  only). **Lane:** `t031-web-footer`, shared with 032; pushed, not merged. **Commit:** `4fe22ba`.
+- **Patch SHA-256:** of `git diff origin/main...HEAD --binary` at the lane's freeze commit, reported
+  with the freeze message (recording it here would change it).
+
+| Bucket | Budget | Measured (raw added / deleted, commit `4fe22ba`) | Verdict |
+|---|---|---|---|
+| Source TS/TSX (`web/src/**`, tests excluded) | ≤150 lines of change | +72 / −7 = **79** | inside |
+| Web tests (`web/src/**/*.test.ts`) | not budgeted | +40 / −1 | 5 tests (239 → 244) |
+| Stylesheet | not source | 0 | — |
+| Screenshots | ≤500 KB each | 3 new `31-*` (largest 96 KB) | inside |
+| Dependencies | none | **0 added**, lockfile unchanged | — |
+| Gateway | read-only | 0 | — |
+
+**Concepts: 0 budgeted, 0 used.** `Settings.thinking` is the setting the ticket names ("a setting");
+`Message.thinking` is a property of the reply; `thinkingFields` and `tokensSaved` are derivations;
+`Thinking` is a type alias. Rule against me on any of these.

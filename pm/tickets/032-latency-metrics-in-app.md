@@ -46,11 +46,12 @@ the sheet; tests. Same lane as 031 (same footer).
   — no second store, nothing to keep in step.
 - **03:30 Built.** `startReply()`, the clock on `reduceReply`, `speed()` / `speedLine()` / `chatSpeed()`
   in `stream.ts`, `Timing` on the message, the footer span with its hover sentence, the sheet paragraph.
-  8 vitests. Committed as `a23fbfb`, 140 source lines.
+  8 vitests. Committed as `a23fbfb` (rebased at the freeze to `14218c3`), 140 source lines.
 - **03:33 / 03:36 Real-relay runs** (`dev/footer-check.mjs`; see 031's Log): the first run's engine was
   idle, the second run's shared llama-server was carrying ticket 028's concurrency load test (both
   engine slots busy, five hosts and a `load` process on it — checked with `/slots` and `lsof` mid-run),
   which turned out to be the better cross-check: it shows where the time went. Evidence below.
+- **03:41 / 03:44** The PM's mid-flight commit and the rebase, as in 031's Log.
 
 ## Report
 
@@ -137,3 +138,48 @@ keepalive, near 0 — truthful, unhelpful).
   `queued()`) would make the wait exact and the split honest on both sides; gateway scope, not this
   ticket's.
 - `footer-check.mjs` reads the sheet's paragraph with a regex that stops at the first `.`; cosmetic.
+
+### Verified (printed, at the freeze commit on base `ebc1146`)
+
+```
+$ pnpm install --frozen-lockfile  → Done in 1.3s using pnpm v11.13.0                          exit 0
+$ pnpm typecheck                  → tsc --noEmit, no output                                    exit 0
+$ pnpm test                       → Test Files 10 passed (10) | Tests 252 passed (252)         exit 0
+                                    0 failed, 0 skipped   (base 239; +5 for 031, +8 for 032)
+$ pnpm lint                       → eslint ., no output                                        exit 0
+$ pnpm build                      → index 231.40 kB (gzip 74.51); Chat 362.96 kB (gzip 111.24);
+                                    css 13.76 kB                                               exit 0
+$ node dev/footer-check.mjs       → every promise above held, and no console or page errors    exit 0
+$ node dev/screenshots.mjs        → 101 screenshots (PROD=0); no console or page errors;
+  (WEB_PORT=6842)                   no horizontal overflow at 360 px or 390 px                  exit 0
+```
+
+`package.json` and `pnpm-lock.yaml` unchanged: **no new dependencies.** Processes stopped: only the
+host, preview, fake gateway, vite and browsers the harnesses started (ports 6840–6843). The shared
+llama-server and the vLLM behind the read-only tunnel only received requests; the founder's demo host
+(9091) and its data dir were not touched.
+
+## Freeze
+
+- **Base:** `3eb9033` at dispatch, rebased at the freeze onto `ebc1146`. **Lane:** `t031-web-footer`,
+  shared with 031 (031 lands first); pushed, not merged. **Commit:** `14218c3`; evidence commit
+  `6572d10` (source 0) and the freeze commit after it (records only).
+- **Patch SHA-256:** of `git diff origin/main...HEAD --binary` at the lane's freeze commit, reported
+  with the freeze message.
+
+| Bucket | Budget | Measured (raw added / deleted, commit `14218c3`) | Verdict |
+|---|---|---|---|
+| Source TS/TSX (`web/src/**`, tests excluded) | ≤150 lines of change | +129 / −11 = **140** | inside, 10 to spare |
+| Web tests (`web/src/**/*.test.ts`) | not budgeted | +95 / −2 | 8 tests (244 → 252) |
+| Dev harness (`web/dev/**`) | not budgeted | +196 / −0 | `footer-check.mjs` (serves 031 too) |
+| Stylesheet | not source | 0 | — |
+| Screenshots | ≤500 KB each | 4 new `32-*`; 44 re-shot by the suite (largest 176 KB) | inside |
+| Dependencies | none | **0 added**, lockfile unchanged | — |
+| Gateway | read-only | 0 | — |
+
+**Lane total** (both tickets vs `origin/main`): source +199 / −16 = 215 of ≤300; tests +134 / −2;
+scope clean (nothing outside `web/` and `pm/tickets/`).
+
+**Concepts: 0 budgeted, 0 used.** `Message.timing` / `Timing` is a property of the reply (raw moments);
+`startReply`, `speed`, `speedLine`, `chatSpeed`, `msText`, `rateText` are derivations; the clock
+parameter on `reduceReply` is an argument with a default. Rule against me on any of these.
