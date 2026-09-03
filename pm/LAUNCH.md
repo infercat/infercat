@@ -28,6 +28,8 @@ gates the public ones (BELIEFS: Authority). Nothing ships while a line in **Foun
       (F4's path), serve DeepSeek V4 flash from the workstation, mint an invite, chat from a phone.
 - [x] Protections re-read against the shipped build (18:55): `TestListenerServesPort80Only`, `TestOnTCPGate`, `TestProtection1Config` pass (tunnel exposes only port 80 → the gateway); the gateway `TestMain` gate asserts every error code was exercised and the secret never reached a log or body; 429/503 fixtures pass (I7/I8). Prompts not logged by default (`--log-prompts` per-run, disclosed to friends).
 
+- [ ] 030 launch readiness: every public surface finished with the working name; rename-day inventory produced.
+
 ## Launch-day operations
 
 - [ ] Host: the workstation serves with `--name`, `--web-url`, a self-hosted relay, and a handful of
