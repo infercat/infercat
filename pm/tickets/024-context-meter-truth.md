@@ -1,6 +1,6 @@
 ---
 id: 024
-title: Context meter measures the last exchange, not the chat — make it what the next question will carry
+title: Final launch items — host-keyed chats, honest oversized-turn wall, delivered-turn rows, empty-answer death note, context meter (fourth pass, last)
 kind: normal
 size: 1
 status: dispatched
@@ -42,3 +42,30 @@ Cut to two promises: (a) the context meter shows what the next request will carr
 derivation, no streaming estimate; (b) a refused oversized turn is dropped from the history the client
 sends, with the ended-line copy saying so. Promise 3's five items and the streaming estimate → backlog
 (ticket 012 list). Sent to the engineer with 023.
+
+## Final ruling (PM, 2026-09-03 00:10 — fourth pass complete, both personas; this ticket is the last)
+
+Synthesis: not launch-ready — one blocker, three screenshot-worthy frames; everything else ordinary
+polish. Ranked once. **This ticket's promises are now exactly:**
+1. **Chats are keyed to the host, not the invite (blocker).** A new code from the same host (revoke +
+   re-issue, or `keys rotate`) opens the same drawer. Scope by the tunnel address (host identity), and
+   migrate any existing invite-id-scoped chats into the host scope once on load. The revoked card gets the
+   sibling card's sentence: "Your N chats with <host> are still on this device."
+2. **An oversized turn never kills the thread.** When the previous turn alone exceeds the context, drop
+   that turn from the history the client sends and say so in the ended line ("The essay was too long for
+   <host>'s memory and was left out of this question."); a nine-word question after a refused paste is
+   answered.
+3. **Delivered turns lose their failure line.** The same derivation that clears the bubble's mark clears
+   the assistant row's "Not sent — your invite is paused." (or softens it to grey "Carried into the next
+   question."). Both actions for a rate-limited turn share one countdown state.
+4. **Empty-answer death note.** If the host died before any answer text, the note reads "…stopped
+   answering mid-reply — nothing of the answer had arrived yet, only its thinking." and renders outside
+   the Thinking rule.
+5. **Context meter** = what the next request will carry (never decreasing; agrees with the wall).
+6. Tests for 1–3 and 5; one real-host screenshot each for 1, 2, 4. Checks printed.
+
+**Backlog (ruled non-blocking, appended to 012):** the "host is back" line and the 32 s heal latency;
+composer keeps its height after send; "0 messages left" while sends still work; follower composer
+placeholder; the card right after Disconnect; Escape/focus/refill items already listed.
+
+Size re-priced to **2** (≤400 lines); concept budget 0 (host scope replaces invite scope).

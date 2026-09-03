@@ -31,3 +31,6 @@ client-side between polls · self-probe backoff cap 10 s + probe on `visibilityc
 looks like it holds a long draft after a refused paste · the first ~15 s after a host kill still show the
 last live path reading · context meter estimate while streaming. Gateway: `/v1/models` refused at the RPM
 ceiling (one line in `limits.go`).
+- Fourth pass, final ruling: a "host is back" line in the thread and a faster heal (≤30 s) · composer
+  height resets after send · per-minute meter "0 left" while sends still work (refill between polls) ·
+  follower-tab composer placeholder · the card right after Disconnect · context-meter story around the wall.
