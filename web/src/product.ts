@@ -2,6 +2,12 @@
 // The Go side's copy is internal/product/product.go; keep the two in step by hand.
 export const PRODUCT_NAME = 'Bunny Network';
 export const INVITE_PREFIX = 'bn1';
+// What the page says about itself to a search engine or a social card (index.html and the web app
+// manifest are filled from this line by vite.config.ts). Same words as the connect screen.
+export const DESCRIPTION =
+  'Chat with a friend’s GPU. They send you one code; you paste it here. No account, no install.';
+// Where the code lives: the About line links here. MIT (LICENSE at the repo root).
+export const SOURCE_URL = 'https://github.com/2185Lab/bunny-network';
 // The build stamps VITE_APP_VERSION from internal/product/product.go (see the Makefile), so the
 // app and the host binary report the same version and a bug report can name both halves. A bare
 // `vite build` or `vite dev` has no stamp and says so by falling back to the source default.

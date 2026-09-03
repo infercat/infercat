@@ -12,7 +12,7 @@ import {
   type FriendlyError,
   type Me,
 } from '../api';
-import { privacyLine, VERSION } from '../product';
+import { privacyLine, SOURCE_URL, VERSION } from '../product';
 import {
   ago,
   compact,
@@ -780,6 +780,7 @@ function Composer({
           ref={ref}
           value={text}
           rows={1}
+          aria-label="Message"
           placeholder="Message the host’s model…"
           disabled={disabled}
           onChange={(e) => {
@@ -888,7 +889,9 @@ function SettingsSheet({
           {live.pathOk ? '' : ` The path last measured ${ago(Date.now() - live.pathAt)}.`}
         </p>
         {/* The app's half of a bug report; the host's half is `bunny-network version`. */}
-        <p className="dim small-print">App version {VERSION}</p>
+        <p className="dim small-print">
+          App version {VERSION} · MIT · <a href={SOURCE_URL}>Source on GitHub</a>
+        </p>
         <div className="sheet-actions">
           <button className="ghost" onClick={onClose}>
             Cancel

@@ -263,7 +263,7 @@ func (e *env) parse(fs *flag.FlagSet, help string, args []string) error {
 }
 
 // dataDirUsage is the one description of --data-dir every subcommand shows.
-const dataDirUsage = "where keys, usage, and the host key live"
+const dataDirUsage = "where keys, usage, config, and the host key live"
 
 func (e *env) logf(format string, a ...any) {
 	fmt.Fprintf(e.errw, format+"\n", a...)

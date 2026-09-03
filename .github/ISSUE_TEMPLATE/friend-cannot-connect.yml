@@ -1,0 +1,39 @@
+name: A friend cannot connect
+description: They pasted the invite and the web app did not reach your host, or it stopped working.
+labels: [connect]
+body:
+  - type: textarea
+    id: friend
+    attributes:
+      label: What the friend's screen says
+      description: The exact title and sentence on the connect card (for example "Max didn't answer" or "This invite was revoked"), or the header pill in the chat. Never paste the invite itself — it is a secret.
+    validations:
+      required: true
+  - type: textarea
+    id: status
+    attributes:
+      label: bunny-network status, on the host, at the time
+      description: Shows whether the host is up, its tunnel address, the relay, and each key's state (active / paused / revoked) and last-seen. No secrets.
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: version
+    attributes:
+      label: bunny-network version (host) and App version (friend, in Settings)
+      render: text
+    validations:
+      required: true
+  - type: input
+    id: networks
+    attributes:
+      label: Networks
+      placeholder: "host on home Wi-Fi; friend on phone, cellular / office network / a VPN"
+  - type: checkboxes
+    id: checked
+    attributes:
+      label: Already checked
+      options:
+        - label: The host was running (`serve` had not been stopped, the machine was awake)
+        - label: The invite had not been rotated or revoked since it was sent (`keys list`)
+        - label: The friend reloaded the page once
