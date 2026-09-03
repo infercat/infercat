@@ -2,8 +2,8 @@
 id: 026
 title: `connect` — the host binary as a client: local OpenAI-compatible endpoint over the tunnel
 kind: normal
-size: 2
-status: dispatched
+size: 3
+status: landed
 updated: 2026-09-03
 release: demo-1 (founder: queue it; in the launch if it lands before the post)
 ---
@@ -110,3 +110,13 @@ local     http://127.0.0.1:11435
 **Declared.** Live actions: own host started/stopped on 6810 with data dir `…/tmp/bn026-data` (key `friend` minted; its invite in `…/tmp/bn026.invite`, mode 0600); `connect` on 11435, stopped; `pip install openai` into `…/tmp/bn026-venv`. Nothing else was started, stopped, or reconfigured. Intended, not bugs: the head of a *non-stream* request is waited for as long as `/me` keeps answering (a non-stream reply of 4096 tokens takes minutes and the gateway writes its head last); the banner prints `path unknown — the host did not answer a ping` rather than guessing when the first disco ping fails; `tunnel.Dial` takes the address, not the invite, so the secret never enters the tunnel package.
 
 **Adjacent, not fixed.** (1) `hack/measure.sh` prints `Terminated: 15` from the trap killing `tailcat socks` at exit (pre-existing). (2) The gateway's `/me` reports `host.relay.region` as the DERP map's name ("New York City") while the web client translates codes ("New York"); the CLI shows the host's word. (3) A `serve` on loopback with `--dev-listen` and a `connect` on the same machine both work; nothing stops a friend from running `connect` twice on two ports under two identities — the host counts two clients, as the web app's second tab does.
+
+## Ruling (PM, 2026-09-03 04:30)
+
+**Contest accepted; re-priced to 3; landed** on main (merge of `044d80d`; build/vet/test green, three
+cross-compiles OK, printed). Four promises including reconnect-with-backoff and full error mapping were
+never a size-2; the pricing was wrong, not the work. Concepts 1/1 (`host_asleep`/`host_stalled` are the
+web client's codes reused, not new). Design note accepted: silence is probed (`/me`, 10 s) rather than
+assumed, because the gateway writes a stream's head only at the engine's first byte and long prefill
+would otherwise read as asleep — this is the honest behaviour and matches 018/020. Adjacent candidates
+→ backlog 012.

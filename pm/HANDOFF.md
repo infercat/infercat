@@ -1,6 +1,6 @@
 # HANDOFF — state of the work (succession document)
 
-Updated: 2026-09-03 03:16 EDT (alarm fired; session limit refilled). Four lanes dispatched on Fable engineers: 026 connect, 028 load test, 030 launch readiness, 031+032 web footer. 029 follows 026; 027 waits on the web URL (name). PM seat: Claude Fable.
+Updated: 2026-09-03 04:30 EDT. Since the alarm: landed 033 (handshake bound), 031+032 (thinking toggle, TTFT/tok-per-s footer), 026 (`connect` — host binary as client; re-priced to 3). Running: 028 load test, 030 launch readiness, 029 observability (dispatched now on 026). Waiting on the founder: name → URL → 027 QR; relay switch; public repo/tag.
 
 ## What this is
 

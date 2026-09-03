@@ -3,7 +3,7 @@ id: 029
 title: CLI observability — status --watch, a per-request stream on the terminal, tunnel/engine counters
 kind: normal
 size: 2
-status: queued
+status: dispatched
 updated: 2026-09-03
 release: demo-1
 ---
