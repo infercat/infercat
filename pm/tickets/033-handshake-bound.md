@@ -3,7 +3,7 @@ id: 033
 title: Bound the relay handshake — a dead host resolves into the honest "didn't answer" state, never a spinner forever
 kind: normal
 size: 1
-status: dispatched
+status: landed
 updated: 2026-09-03
 release: demo-1
 ---
@@ -183,3 +183,7 @@ $ node probe.mjs       (job tmp)  → the four network conditions above
 **Concepts: 0 budgeted, 0 used.** `connecting.slow` is a field on a state that exists; `slow` is an internal event;
 `boundHandshake` / `handshakeFailure` are helpers; no new CLI verb, flag, error code, config key or file. The two copy
 strings replace one.
+
+## Ruling (PM, 2026-09-03 04:20)
+
+**Landed** (merge `d63a16b`). Promise 2 partial by evidence: relay-unreachable vs host-absent is indistinguishable from the bridge's current `onLog`; the relay-map-unreachable case is named, the rest reads as asleep. The Go-side fix (route tailcat's connect failures to `onLog` in `main_js.go`) → backlog 012. Superseded-attempt close accepted.

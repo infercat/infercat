@@ -3,7 +3,7 @@ id: 031
 title: Web app — toggle thinking on/off per chat
 kind: normal
 size: 1
-status: dispatched
+status: landed
 updated: 2026-09-03
 release: demo-1
 ---
@@ -174,3 +174,7 @@ llama-server and the vLLM behind the read-only tunnel only received requests; th
 **Concepts: 0 budgeted, 0 used.** `Settings.thinking` is the setting the ticket names ("a setting");
 `Message.thinking` is a property of the reply; `thinkingFields` and `tokensSaved` are derivations;
 `Thinking` is a type alias. Rule against me on any of these.
+
+## Ruling (PM, 2026-09-03 04:20)
+
+**Landed** (in merge `f2a38ac`). Ticket premise corrected by the engineer and accepted: `reasoning_budget` is a server flag, not a request field; `chat_template_kwargs.enable_thinking` is the switch and works on Gemma 4 (137 → 8 tokens). vLLM host model never thinks; the control correctly never appears there.

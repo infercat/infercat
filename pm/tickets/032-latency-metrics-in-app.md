@@ -3,7 +3,7 @@ id: 032
 title: Web app — show TTFT and time-per-output-token on each reply, honestly attributed
 kind: normal
 size: 1
-status: dispatched
+status: landed
 updated: 2026-09-03
 release: demo-1
 ---
@@ -183,3 +183,7 @@ scope clean (nothing outside `web/` and `pm/tickets/`).
 **Concepts: 0 budgeted, 0 used.** `Message.timing` / `Timing` is a property of the reply (raw moments);
 `startReply`, `speed`, `speedLine`, `chatSpeed`, `msText`, `rateText` are derivations; the clock
 parameter on `reduceReply` is an argument with a default. Rule against me on any of these.
+
+## Ruling (PM, 2026-09-03 04:20)
+
+**Landed** (in merge `f2a38ac`). Cross-check vs host usage accepted (device +54–80 ms = the relay hop). Queued attribution as a floor accepted for launch; a `: served` comment from the gateway to make it exact → backlog 012.

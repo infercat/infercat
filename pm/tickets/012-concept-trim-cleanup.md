@@ -38,3 +38,4 @@ ceiling (one line in `limits.go`).
   host behind the invite did not exist (the PM's host had failed to start). The relay handshake needs a
   bound (the bridge's 60 s is too long and today it never resolves into the honest "host didn't answer"
   state); target: ~20 s, then the asleep/offline copy with Try again. Web, size 1.
+- From 031/032/033 (2026-09-03): gateway emits one `: served` SSE comment at slot grant so the client can split queue wait from TTFT exactly · `main_js.go` routes tailcat relay-connect failures to `onLog` so the connect screen can say "can't reach the relay" vs "host asleep" · card's verify-time `/me` gets a bound · a redial's dial should not ride the bridge's 60 s.
