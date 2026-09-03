@@ -2,18 +2,29 @@
 // says. The rule it exists to enforce is that a reply is finished only when the host says it is —
 // running out of tokens is not an ending, and must never render as one (pm/BELIEFS.md, "Surfaces
 // tell the truth").
-import type { ChatMessage, StreamEvent } from './api';
-import { isAnswer, type Message, type MessageStatus, type Settings } from './storage';
+import type { ChatMessage, ChatRequest, StreamEvent } from './api';
+import { isAnswer, type Message, type MessageStatus, type Settings, type Thinking, type Timing } from './storage';
 
 /** The parts of a Message this machine owns. `status` is undefined while it is still streaming. */
 export type Reply = Pick<
   Message,
-  'content' | 'reasoning' | 'tokens' | 'status' | 'note' | 'waiting' | 'queued' | 'details' | 'capped'
+  'content' | 'reasoning' | 'tokens' | 'status' | 'note' | 'waiting' | 'queued' | 'details' | 'capped' | 'timing'
 >;
 
 export const NEW_REPLY: Reply = { content: '', reasoning: '' };
 
-export function reduceReply(r: Reply, e: StreamEvent): Reply {
+/** A reply about to be asked for: its clock starts now (032). */
+export function startReply(now = Date.now()): Reply {
+  return { ...NEW_REPLY, timing: { sent: now } };
+}
+
+/**
+ * `now` is when the event arrived, by the device's clock. It only ever lands on a reply that was
+ * started with one (startReply); a reply without a clock is never given one half way.
+ */
+export function reduceReply(r: Reply, e: StreamEvent, now = Date.now()): Reply {
+  const timed = (next: Reply, fn: (t: Timing) => Timing): Reply => (next.timing ? { ...next, timing: fn(next.timing) } : next);
+  const token = (t: Timing): Timing => ({ ...t, first: t.first ?? now, last: now });
   switch (e.kind) {
     // Not an ending: a reply that has produced nothing for long enough that saying nothing would
     // itself be a lie. It clears on the first token and on every terminal event.
@@ -23,13 +34,13 @@ export function reduceReply(r: Reply, e: StreamEvent): Reply {
     case 'waiting':
       return r.status === undefined ? { ...r, waiting: true, queued: false } : r;
     case 'queued':
-      return r.status === undefined ? { ...r, queued: true, waiting: false } : r;
+      return r.status === undefined ? timed({ ...r, queued: true, waiting: false }, (t) => ({ ...t, queued: now })) : r;
     case 'capped':
       return { ...r, capped: true };
     case 'reasoning':
-      return { ...r, reasoning: (r.reasoning ?? '') + e.text, waiting: false, queued: false };
+      return timed({ ...r, reasoning: (r.reasoning ?? '') + e.text, waiting: false, queued: false }, token);
     case 'content':
-      return { ...r, content: r.content + e.text, waiting: false, queued: false };
+      return timed({ ...r, content: r.content + e.text, waiting: false, queued: false }, token);
     case 'usage':
       return { ...r, tokens: { in: e.in, out: e.out } };
     case 'done':
@@ -195,4 +206,103 @@ export function contextCarried(
 
 function contextSlack(modelContext: number): number {
   return Math.max(8, Math.floor(modelContext / 64));
+}
+
+// ---- thinking on or off (031) ------------------------------------------------------------------
+
+/**
+ * The engine's own switch for thinking, sent only when the reader chose. One field for every engine
+ * kind: verified live on llama-server b9553 (Gemma 4: `enable_thinking=false` → no reasoning, 35 ms
+ * of generation instead of 800) and on vLLM 0.25 (accepted; that host's model never thinks). The
+ * ticket's `reasoning_budget` is a llama-server *flag*, not a request field — sent per request it is
+ * ignored (measured), so it is not sent.
+ */
+export function thinkingFields(thinking: Thinking): Pick<ChatRequest, 'chat_template_kwargs'> {
+  return thinking === 'default' ? {} : { chat_template_kwargs: { enable_thinking: thinking === 'on' } };
+}
+
+/**
+ * How many fewer completion tokens a reply asked not to think used than the reply before it, which
+ * did think — when both counts are known (031 promise 2). Null otherwise: a saving nobody measured
+ * is not shown, and a reply that thought anyway saved nothing.
+ */
+export function tokensSaved(messages: readonly Message[], i: number): number | null {
+  const m = messages[i];
+  if (!m || m.thinking !== 'off' || m.reasoning || !m.tokens) return null;
+  for (let j = i - 1; j >= 0; j--) {
+    const p = messages[j] as Message;
+    if (p.role !== 'assistant') continue;
+    return p.tokens && p.reasoning && p.tokens.out > m.tokens.out ? p.tokens.out - m.tokens.out : null;
+  }
+  return null;
+}
+
+// ---- how fast it was, from where the reader sits (032) -------------------------------------------
+
+/**
+ * What this device measured about one reply. `ttftMs` is Send to the first token, thinking or
+ * answer. `queuedMs` is how long the host had said "in line for a slot" by its last keepalive — a
+ * floor, because the gateway says `: queued` every 5 s and nothing at the moment the slot comes, so
+ * the split between the wait and the model is not something this device can see and is never
+ * invented. `tokPerS` is completion tokens over first-to-last token, thinking included because it
+ * streamed. The relay hop and this app are inside every number; the host's usage log times the same
+ * reply from its side.
+ */
+export interface Speed {
+  ttftMs: number;
+  queuedMs?: number;
+  tokPerS?: number;
+}
+
+export function speed(m: Pick<Message, 'timing' | 'tokens'>): Speed | null {
+  const t = m.timing;
+  if (!t || t.first === undefined) return null;
+  const s: Speed = { ttftMs: t.first - t.sent };
+  if (t.queued !== undefined) s.queuedMs = t.queued - t.sent;
+  if (m.tokens && m.tokens.out > 0 && t.last !== undefined && t.last > t.first) s.tokPerS = (m.tokens.out * 1000) / (t.last - t.first);
+  return s;
+}
+
+/** The footer's words for a reply's speed, and the fuller sentence behind them. */
+export function speedLine(s: Speed): { text: string; title: string } {
+  const wait = s.queuedMs === undefined ? '' : ` (≥${msText(s.queuedMs)} of it in line for a slot)`;
+  const rate = s.tokPerS === undefined ? '' : ` · ${rateText(s.tokPerS)}`;
+  return {
+    text: `ttft ${msText(s.ttftMs)}${wait}${rate}`,
+    title:
+      `Measured on this device. Time to first token: from Send to the first token, thinking or answer, with the relay hop and this app inside it.` +
+      (s.queuedMs === undefined ? '' : ` The host said this request was in line for a slot for at least ${msText(s.queuedMs)} of that; it says so every 5 s and nothing when the slot comes, so the rest is not all the model's.`) +
+      (s.tokPerS === undefined ? '' : ` ${rateText(s.tokPerS)} is ${msText(1000 / s.tokPerS)} per token: completion tokens over first-to-last token, thinking included.`),
+  };
+}
+
+/**
+ * The chat's typical numbers: medians over its timed replies. A reply that waited for a slot is
+ * left out of the first-token median — the wait was the host's, not the model's — and counts for
+ * tokens per second, which it measures the same as any other.
+ */
+export function chatSpeed(messages: readonly Message[]): { ttftMs?: number; tokPerS?: number; n: number } {
+  const all = messages.filter((m) => m.role === 'assistant').map(speed).filter((s): s is Speed => s !== null);
+  return {
+    ttftMs: median(all.filter((s) => s.queuedMs === undefined).map((s) => s.ttftMs)),
+    tokPerS: median(all.map((s) => s.tokPerS).filter((v): v is number => v !== undefined)),
+    n: all.length,
+  };
+}
+
+function median(xs: number[]): number | undefined {
+  if (xs.length === 0) return undefined;
+  const s = [...xs].sort((a, b) => a - b);
+  const mid = s.length >> 1;
+  return s.length % 2 === 1 ? (s[mid] as number) : ((s[mid - 1] as number) + (s[mid] as number)) / 2;
+}
+
+/** "61 ms" under a second, "4.3 s" from there. */
+export function msText(ms: number): string {
+  return ms < 1000 ? `${Math.round(ms)} ms` : `${(ms / 1000).toFixed(1)} s`;
+}
+
+/** "42 tok/s"; a decimal only when there is little else. */
+export function rateText(tokPerS: number): string {
+  return `${tokPerS >= 10 ? Math.round(tokPerS) : tokPerS.toFixed(1)} tok/s`;
 }

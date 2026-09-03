@@ -35,6 +35,23 @@ export interface Message {
   capped?: boolean;
   /** The answer this one replaced, kept rather than thrown away when a turn is edited (promise 16). */
   previous?: string;
+  /** The thinking switch this reply was asked for, when it was not the model's default (031). */
+  thinking?: 'on' | 'off';
+  /** When this reply was asked for and when its tokens arrived, by this device's clock (032). */
+  timing?: Timing;
+}
+
+/**
+ * Milliseconds since the epoch on the reader's device: when the request was sent, when the first
+ * and the latest token (thinking or answer) arrived, and — when the host said the request was in
+ * line for a slot — the last time it said so. Raw moments rather than derived numbers, so what is
+ * said about them can change without rewriting a chat.
+ */
+export interface Timing {
+  sent: number;
+  first?: number;
+  last?: number;
+  queued?: number;
 }
 
 export interface Conversation {
@@ -45,13 +62,17 @@ export interface Conversation {
   messages: Message[];
 }
 
+/** Whether the model is asked to think (031): its own default, on, or off. */
+export type Thinking = 'default' | 'on' | 'off';
+
 export interface Settings {
   model: string | null;
   systemPrompt: string;
   temperature: number;
+  thinking: Thinking;
 }
 
-export const DEFAULT_SETTINGS: Settings = { model: null, systemPrompt: '', temperature: 0.7 };
+export const DEFAULT_SETTINGS: Settings = { model: null, systemPrompt: '', temperature: 0.7, thinking: 'default' };
 
 export const KEYS = {
   invite: 'bn.invite',
