@@ -249,8 +249,9 @@ async function race(browser, key, host) {
   await waitFor(`${GW}/healthz`, 'the host coming back');
   const back = Date.now();
   console.log(`HOST BACK at ${secs(dead)} s — waiting`);
-  await page.waitForSelector('.composer textarea', { timeout: 60_000 });
-  await page.waitForFunction(() => document.querySelector('.path')?.textContent?.includes('relayed via'), null, { timeout: 60_000 });
+  // Waits long enough to print the number (a host's own relay re-registration after a kill can
+  // take ~30 s, and an in-flight bridge dial has a 60 s bound); the ≤ 30 s check below is the promise.
+  await page.waitForFunction(() => document.querySelector('.path')?.textContent?.includes('relayed via'), null, { timeout: 120_000 });
   const s = (Date.now() - back) / 1000;
   await sleep(300);
   console.log(`  connected ${s.toFixed(0)} s after the host came back · ${await header(page)} · action: ${JSON.stringify(await page.locator('.row.assistant .actions button').last().innerText())}`);
