@@ -27,13 +27,14 @@ const testSecret = "s3cr3t-s3cr3t-s3cr3t-s3cr3t-s3cr3t-s3cr3t-0"
 // fakeSession is a tunnel session over loopback TCP to a fake gateway. `dead` makes Open hang
 // until its context expires, which is what a dial over a session to a sleeping host does.
 type fakeSession struct {
-	addr    string
-	dead    atomic.Bool
-	dials   atomic.Int32
-	redials atomic.Int32
-	mu      sync.Mutex
-	path    tunnel.Path
-	pathErr error
+	addr     string
+	dead     atomic.Bool
+	dials    atomic.Int32
+	redials  atomic.Int32
+	mu       sync.Mutex
+	path     tunnel.Path
+	pathErr  error
+	closeErr error // what Close answers: ErrCloseTimeout is a relay-only close that parked (035)
 }
 
 func (f *fakeSession) Open(ctx context.Context) (net.Conn, error) {
@@ -65,7 +66,7 @@ func (f *fakeSession) Redial(ctx context.Context) (session, error) {
 	return f, nil
 }
 
-func (f *fakeSession) Close() error { return nil }
+func (f *fakeSession) Close() error { return f.closeErr }
 
 // fakeHost speaks the gateway's HTTP API well enough for the relay to be judged: it records the
 // bearer it saw, answers /me, and drives each case from the query string.
@@ -485,6 +486,7 @@ func TestConnectCommandBannerAndRefusals(t *testing.T) {
 	g := newFakeHost(t)
 	sess := &fakeSession{addr: g.Listener.Addr().String()}
 	sess.setPath(tunnel.Path{Via: "nyc", RTT: 27 * time.Millisecond}, nil)
+	sess.closeErr = tunnel.ErrCloseTimeout // the shutdown's close parks (035): connect says so and still exits 0
 	plat := testPlatform(fakeAddr, nil)
 	plat.dialTunnel = func(ctx context.Context, addr string, logf func(string, ...any)) (session, error) {
 		if addr != fakeAddr {
@@ -542,6 +544,9 @@ func TestConnectCommandBannerAndRefusals(t *testing.T) {
 		}
 	case <-time.After(10 * time.Second):
 		t.Fatal("connect did not stop after Ctrl-C")
+	}
+	if !strings.Contains(errw.String(), "tunnel close timed out; continuing") {
+		t.Fatalf("a close that timed out must be said on the way out:\n%s", errw.String())
 	}
 
 	// A revoked invite: /me says so, connect says it in the friend's words and exits 1.

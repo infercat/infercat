@@ -7,6 +7,7 @@ package tunnel
 import (
 	"cmp"
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"sync"
@@ -17,6 +18,30 @@ import (
 	"tailscale.com/types/logger"
 )
 
+// closeTimeout bounds every Close in this package (ticket 035). A relay-only client — UDP off,
+// which is what TS_DEBUG_ALWAYS_USE_DERP and a network that never yields a direct path both come
+// to — can park for minutes inside tailcat's Close: magicsock swaps a fresh blockForeverConn in on
+// every rebind without closing the one before, wireguard's BindClose then waits on a receive
+// goroutine nobody wakes (tailscale wgengine/magicsock/magicsock.go bindSocket, the ALWAYS_USE_DERP
+// branch). A shutdown must not inherit that: past the bound the caller goes on and the process
+// may exit with the close still running. A variable so a test can hurry it.
+var closeTimeout = 3 * time.Second
+
+// ErrCloseTimeout is Close's answer when the tunnel did not shut down within closeTimeout.
+var ErrCloseTimeout = errors.New("tunnel close timed out; continuing")
+
+// closeWithin runs fn and waits for it at most d; fn keeps running past the bound.
+func closeWithin(d time.Duration, fn func() error) error {
+	done := make(chan error, 1)
+	go func() { done <- fn() }()
+	select {
+	case err := <-done:
+		return err
+	case <-time.After(d):
+		return ErrCloseTimeout
+	}
+}
+
 // ClientOptions is what a client may choose; the address comes from the invite.
 type ClientOptions struct {
 	Logf func(string, ...any) // nil = silent
@@ -25,11 +50,13 @@ type ClientOptions struct {
 // Session is a client's tunnel to one host. Open dials the gateway over it; Path measures it;
 // Redial replaces it after the host went away, under the same identity.
 type Session struct {
-	cl   *tailcat.Client
-	addr string
-	key  key.NodePrivate
-	o    ClientOptions
-	once sync.Once
+	cl       *tailcat.Client
+	addr     string
+	key      key.NodePrivate
+	o        ClientOptions
+	once     sync.Once
+	closeFn  func() error // the client's Close; a test parks it to prove the bound
+	closeErr error
 }
 
 // Path is how the session reaches the host right now.
@@ -54,6 +81,7 @@ func dial(ctx context.Context, addr string, k key.NodePrivate, o ClientOptions) 
 		logf = quiet(o.Logf)
 	}
 	s := &Session{cl: &tailcat.Client{Server: tailcat.ConnBlob(addr), Key: k, Logf: logf}, addr: addr, key: k, o: o}
+	s.closeFn = s.cl.Close
 	// The first meows can be lost while either side's relay connection is still coming up
 	// (tunnel_test.go pingUntil, the wasm bridge): retry until ctx says stop.
 	for {
@@ -94,17 +122,20 @@ func (s *Session) Path(ctx context.Context) (Path, error) {
 
 // Redial closes this session and brings up a new one to the same host under the same identity
 // (the host keeps seeing one client). tailcat registers a client with the host once, at the
-// first meowed ack, so a host that restarted needs a new client, not a new ping.
+// first meowed ack, so a host that restarted needs a new client, not a new ping. A close that
+// times out is logged and does not hold the redial up.
 func (s *Session) Redial(ctx context.Context) (*Session, error) {
-	s.Close()
+	if err := s.Close(); err != nil && s.o.Logf != nil {
+		s.o.Logf("%v", err)
+	}
 	return dial(ctx, s.addr, s.key, s.o)
 }
 
 func (s *Session) Addr() string { return s.addr }
 
-// Close shuts the client down; every open connection breaks. Idempotent.
+// Close shuts the client down; every open connection breaks. Idempotent, and bounded by
+// closeTimeout: ErrCloseTimeout means the shutdown is still running in the background.
 func (s *Session) Close() error {
-	var err error
-	s.once.Do(func() { err = s.cl.Close() })
-	return err
+	s.once.Do(func() { s.closeErr = closeWithin(closeTimeout, s.closeFn) })
+	return s.closeErr
 }

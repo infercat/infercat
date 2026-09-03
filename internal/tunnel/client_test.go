@@ -7,8 +7,11 @@ import (
 	"net"
 	"net/http"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
+
+	"tailscale.com/envknob"
 )
 
 // Ticket 026 promise 1 at the tunnel level: one Dial is one handshake; Open reuses it for every
@@ -111,4 +114,76 @@ func TestSessionOpenPathRedial(t *testing.T) {
 		t.Fatalf("Dial to a stopped host took %v; the bound was 3s", took)
 	}
 	t.Logf("Dial to a stopped host: %v (%v)", err, time.Since(t2).Round(time.Millisecond))
+}
+
+// Ticket 035: a relay-only client (UDP off — TS_DEBUG_ALWAYS_USE_DERP, the browser's shape and
+// connect's on a network that never yields a direct path) can park for minutes inside tailcat's
+// Close. Session.Close is bounded whatever happens underneath: a close that parks answers
+// ErrCloseTimeout at the bound and the caller goes on; a second Close answers at once; and a real
+// relay-only session against a host on the local relay closes within the bound.
+func TestSessionCloseIsBounded(t *testing.T) {
+	prev := closeTimeout
+	closeTimeout = 300 * time.Millisecond
+	parked := &Session{closeFn: func() error { select {} }}
+	t0 := time.Now()
+	err := parked.Close()
+	took := time.Since(t0)
+	if !errors.Is(err, ErrCloseTimeout) || took > 2*closeTimeout {
+		t.Fatalf("a parked close: %v after %v; want ErrCloseTimeout at ~%v", err, took, closeTimeout)
+	}
+	t1 := time.Now()
+	if err := parked.Close(); !errors.Is(err, ErrCloseTimeout) || time.Since(t1) > 50*time.Millisecond {
+		t.Fatalf("second Close = %v after %v; want the same answer at once", err, time.Since(t1))
+	}
+	t.Logf("parked close returned %q after %v", err, took.Round(time.Millisecond))
+	closeTimeout = prev
+
+	// Live: the host has UDP, the client does not (the knob is read at the client's bind).
+	mapURL := localDERP(t)
+	s := startOK(t, Options{DataDir: t.TempDir(), DERPMapURL: mapURL, Region: "1", Logf: mkLogf(t, "server")})
+	mux := http.NewServeMux()
+	mux.HandleFunc("/healthz", func(w http.ResponseWriter, r *http.Request) { io.WriteString(w, `{"ok":true}`) })
+	go http.Serve(s.Listener(), mux)
+	envknob.SetenvForTest(t, "TS_DEBUG_ALWAYS_USE_DERP", "true")
+	var udpOff atomic.Bool
+	clientLog := mkLogf(t, "client")
+	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
+	defer cancel()
+	cl, err := Dial(ctx, s.Addr(), ClientOptions{Logf: func(f string, a ...any) {
+		if strings.Contains(f, "TS_DEBUG_ALWAYS_USE_DERP") {
+			udpOff.Store(true)
+		}
+		clientLog(f, a...)
+	}})
+	if err != nil {
+		t.Fatalf("Dial relay-only: %v", err)
+	}
+	hc := &http.Client{Transport: &http.Transport{DialContext: func(ctx context.Context, _, _ string) (net.Conn, error) {
+		return cl.Open(ctx)
+	}, DisableKeepAlives: true}, Timeout: 15 * time.Second}
+	for i := range 3 {
+		resp, err := hc.Get("http://tunnel/healthz")
+		if err != nil {
+			t.Fatalf("GET %d over the relay-only session: %v", i, err)
+		}
+		resp.Body.Close()
+	}
+	if !udpOff.Load() {
+		t.Fatal("the client never logged that UDP was disabled; the knob did not take")
+	}
+	if p, err := cl.Path(ctx); err == nil && p.Direct {
+		t.Fatalf("a relay-only client reports a direct path: %+v", p)
+	} else {
+		t.Logf("relay-only path: %+v (%v)", p, err)
+	}
+	t2 := time.Now()
+	err = cl.Close()
+	took = time.Since(t2)
+	t.Logf("relay-only Close: %v after %v (bound %v)", err, took.Round(time.Millisecond), closeTimeout)
+	if took > closeTimeout+2*time.Second {
+		t.Fatalf("relay-only Close took %v; the bound is %v", took, closeTimeout)
+	}
+	if err != nil && !errors.Is(err, ErrCloseTimeout) {
+		t.Fatalf("Close: %v", err)
+	}
 }
