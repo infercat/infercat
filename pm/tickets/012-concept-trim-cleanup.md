@@ -34,3 +34,7 @@ ceiling (one line in `limits.go`).
 - Fourth pass, final ruling: a "host is back" line in the thread and a faster heal (≤30 s) · composer
   height resets after send · per-minute meter "0 left" while sends still work (refill between polls) ·
   follower-tab composer placeholder · the card right after Disconnect · context-meter story around the wall.
+- Founder found 2026-09-03: the connect screen sat on "Connecting to the relay…" indefinitely when the
+  host behind the invite did not exist (the PM's host had failed to start). The relay handshake needs a
+  bound (the bridge's 60 s is too long and today it never resolves into the honest "host didn't answer"
+  state); target: ~20 s, then the asleep/offline copy with Try again. Web, size 1.
