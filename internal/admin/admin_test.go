@@ -95,6 +95,31 @@ func TestSocketIsPrivate(t *testing.T) {
 	}
 }
 
+// A watcher polls once a second for as long as it runs; each poll must leave nothing behind on
+// the host. Found live (029): `status --watch` grew the host by one goroutine per poll — a
+// kept-alive socket per throwaway client — until the watch was stopped.
+func TestFetchLeavesNothingBehind(t *testing.T) {
+	dir := shortDir(t)
+	s, err := Serve(dir, sample, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	ctx := context.Background()
+	Fetch(ctx, dir)
+	time.Sleep(50 * time.Millisecond)
+	before := runtime.NumGoroutine()
+	for range 30 {
+		if _, err := Fetch(ctx, dir); err != nil {
+			t.Fatal(err)
+		}
+	}
+	time.Sleep(100 * time.Millisecond)
+	if after := runtime.NumGoroutine(); after > before+3 {
+		t.Fatalf("goroutines %d → %d after 30 polls; each poll left a connection behind", before, after)
+	}
+}
+
 func TestFetchWithoutADaemon(t *testing.T) {
 	if _, err := Fetch(context.Background(), t.TempDir()); err != ErrNoDaemon {
 		t.Errorf("Fetch with nothing running = %v, want ErrNoDaemon", err)

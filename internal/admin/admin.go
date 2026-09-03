@@ -198,7 +198,7 @@ func Serve(dataDir string, status func() Status, reload func() error, events *Ev
 		enc.SetIndent("", "  ")
 		enc.Encode(s)
 	})
-	srv := &http.Server{Handler: mux, ReadHeaderTimeout: 5 * time.Second}
+	srv := &http.Server{Handler: mux, ReadHeaderTimeout: 5 * time.Second, IdleTimeout: 30 * time.Second}
 	s := &Server{l: l, srv: srv, clean: clean, done: done}
 	go srv.Serve(l)
 	return s, nil
