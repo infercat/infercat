@@ -38,7 +38,8 @@ a public social-media launch soon after, likely serving DeepSeek v4 flash from t
 - **Founder decisions still open (pm/LAUNCH.md):** F1 name (round 2 pending), F3 web URL (Vercel;
   domain with the name), F4 distribution (recommend public repo + Releases + brew tap), F5 license,
   F6 history rewrite (needed if public). F2 relay = the test above.
-- **Two Reddit tabs may still be open in the founder's Chrome** from the LM Link read; harmless.
+- **Browser tool:** works on THIS laptop's Chrome ("Browser 1" in /chrome); "Browser 2" is the founder's other laptop, where localhost is a different machine — the earlier "Chrome blocks plain HTTP" diagnosis was wrong. Verified 02:45: the extension renders the web app and a full page load with `#bn1…` auto-connects (relayed via New York · 74 ms, 33k context meter). A hash-only navigation from an already-open page does not reconnect (not a bug: no phone or link click does that).
+- The founder's demo host (`bn-founder` data dir, dev-listen 9091) and the static server on 59090 are still up for the founder's own look; stop them when asked.
 - **Rate-limit protocol:** commit worktrees as WIP, push, resume the same agent with a pointer.
 
 ## Standing decisions tonight
