@@ -5,10 +5,10 @@
 ```
 ~/Desktop/repos/2185Lab/bunny-kit/binaries/llama-server/b9553/llama-server \
   -m ~/.cache/bunny-network/models/gemma-4-E2B-it-Q4_K_M.gguf \
-  --host 127.0.0.1 --port 18080 -np 2 -c 8192 --no-mmproj --metrics
+  --host 127.0.0.1 --port 18080 -np 2 -c 65536 --no-mmproj --metrics   # 32K per request
 ```
 
-Note: llama.cpp divides `-c` across `-np` slots; with `-c 8192 -np 2` the engine reports `n_ctx` 4096 **per slot**, and that is the effective context the gateway must enforce.
+Note: llama.cpp divides `-c` across `-np` slots; with `-c 8192 -np 2` the engine reports `n_ctx` 4096 **per slot**, and that is the effective context the gateway must enforce. **Since 2026-09-03 02:05 the laptop engine runs `-c 65536 -np 2` (32K per request; the model's native context is 128K).** The host picked the change up on its own refresh (no restart). All numbers above this line were taken at 4K; 028 re-measures with realistic prompt sizes.
 
 ## Numbers (fill from ticket reports; date + command + result)
 
