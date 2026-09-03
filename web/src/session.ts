@@ -57,12 +57,9 @@ export type Degradation = 'path' | 'engine' | 'both' | 'key';
 export type SessionState =
   | { name: 'idle' }
   | { name: 'loadingWasm'; pct: number | null }
-  /**
-   * `redial` is the session being dialled again (023): Reconnect's target, carried through the
-   * attempt so it can adopt whichever dial verifies for that host — its own, or the self-probe's,
-   * which it joins rather than starting a second one under the same identity — and fall back to
-   * that session, degraded, when the dial fails, instead of to the connect screen.
-   */
+  /** `redial` (023): the session Reconnect is replacing, carried through the attempt so it adopts
+   *  whichever dial verifies for that host — its own or the self-probe's, which it joins — and falls
+   *  back to that session, degraded, if the dial fails, never to the connect screen. */
   | { name: 'connecting'; redial?: Live }
   | { name: 'verifying'; transport: Transport; redial?: Live }
   | { name: 'connected'; live: Live }
@@ -183,11 +180,8 @@ export function dropped(prev: SessionState, e: SessionEvent, next: SessionState)
   const out: Transport[] = [];
   const before = transportOf(prev);
   const after = transportOf(next);
-  // The session being redialled (023) is kept alive across the whole attempt: closing it while the
-  // fresh, same-identity session is still handshaking poisons the relay's routing for both — /me
-  // gets through and every later request breaks. So it is not closed at `redial`, only when the new
-  // session is adopted, or the attempt is abandoned (disconnect) — the timing a self-probe heal
-  // already uses, and the one measured to work.
+  // The session being redialled (023) stays open across the attempt and is closed when the new one
+  // is adopted, or the attempt is abandoned — never at `redial`: the timing a self-probe heal uses.
   const keep = redialTarget(next)?.transport;
   if (before && before !== after && before !== keep) out.push(before);
   const stale = redialTarget(prev)?.transport;

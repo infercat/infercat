@@ -64,12 +64,11 @@ function shut(t: Transport): void {
 const dialling = new Map<string, Promise<Live>>();
 
 /**
- * The same host, dialled again: a new transport to the same address, verified with the same invite,
- * carrying everything the old session knew. What Reconnect does by hand (014 promise 13) and the
- * self-probe does by itself (022 promise 1). A second ask while a dial is in flight gets that
- * dial (023): two sessions under one tunnel identity leave one of them deaf at the relay. `onOpened`
- * sees the transport before /me is asked (only when this call is the one dialling); a transport
- * the invite does not verify over — or that does not answer /me within its bound — is closed here.
+ * The same host, dialled again, carrying everything the old session knew: Reconnect by hand (014
+ * promise 13) and the self-probe by itself (022 promise 1). A second ask while a dial is in flight
+ * joins it (023) — two sessions under one identity leave one deaf at the relay. `onOpened` sees the
+ * transport before /me (only for the call that dials); one the invite does not verify over, or
+ * that does not answer /me within its bound, is closed here.
  */
 function dialAgain(from: Live, onOpened?: (t: Transport) => void): Promise<Live> {
   const joined = dialling.get(from.addr);
@@ -108,16 +107,12 @@ async function dialFresh(from: Live, onOpened?: (t: Transport) => void): Promise
 }
 
 /**
- * Dialling the same host again after its session broke (014 promise 13).
- *
- * A tunnel session that has failed stays failed, so retrying a request over it costs the reader
- * another 30 s and tells them nothing. `redial` drops the session — the reducer returns to
- * `connecting`, carrying the session as its target, and the one closer above closes what it
- * dropped — and this effect does what a reload plus Connect would do, without the reload: open a
- * new transport to the same address and re-verify the same invite. Its lifetime is the target's
- * (023): it spans `connecting` and `verifying`, it joins the self-probe's dial when one is in
- * flight, and a failure hands the target back to the reducer as a degraded session rather than
- * the connect screen. The card's own attempts carry no target, so they are never raced by it.
+ * Dialling the same host again after its session broke (014 promise 13): a failed tunnel session
+ * stays failed, so `redial` carries it into `connecting` as the target and this effect opens a new
+ * transport and re-verifies the same invite. Its lifetime is the target's (023): it spans
+ * `connecting` and `verifying`, joins the self-probe's dial when one is in flight, and a failure
+ * hands the target back as a degraded session, not the connect screen. The card's own attempts
+ * carry no target, so they are never raced by it.
  */
 function useRedial(state: SessionState, dispatch: (e: SessionEvent) => void): void {
   const from = state.name === 'connecting' || state.name === 'verifying' ? (state.redial ?? null) : null;
@@ -184,11 +179,9 @@ export default function App() {
   const [state, dispatch] = useSession();
   useRedial(state, dispatch);
   useProbe(state, dispatch);
-  // During a redial the machine has no live session, but the chat screen stays mounted, rendered
-  // from the session being redialled (023): its host and key are the same, so the React key does
-  // not change and the store, the leader election and — crucially — the tunnel session are not
-  // torn down and rebuilt. A chat remount mid-reconnect leaves the fresh session unusable; a
-  // self-probe heal never remounts, and now neither does Reconnect.
+  // During a redial the chat stays mounted, rendered from the session being redialled (023): same
+  // host and key, same React key, nothing torn down. A chat remount mid-reconnect leaves the fresh
+  // tunnel session unusable (measured); a self-probe heal never remounts, and now nor does Reconnect.
   const reconnecting = redialTarget(state);
   const l = live(state) ?? reconnecting;
 
