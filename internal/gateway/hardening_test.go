@@ -448,6 +448,31 @@ func TestUpstream4xxIsTheFriends(t *testing.T) {
 	// Stream requests too: the 4xx arrives before any SSE byte, so it is a plain error response.
 	r = h.post("/v1/chat/completions", chatBody("m1", 1, `"stream":true`))
 	h.expectErr(r, CodeInvalidRequest)
+
+	// 036: the one 400 that is the gateway's own case — the engine's context check, which the
+	// pre-check can still miss by a token at the ceiling — is 422 context_too_long in the gateway's
+	// words: the friend shortens instead of retrying and never reads the engine's sentence (which
+	// goes to the host's log). Both engines' shapes as read on 2026-09-03, stream and not.
+	h.up.setInfo(func(i *upstream.Info) { i.ModelContext = 8192 })
+	for _, shape := range []string{
+		`{"error":{"code":400,"message":"request (8201 tokens) exceeds the available context size (8192 tokens), try increasing it","type":"exceed_context_size_error","n_prompt_tokens":8201,"n_ctx":8192}}`,
+		`{"error":{"message":"This model's maximum context length is 8192 tokens. However, you requested 16 output tokens and your prompt contains at least 8185 input tokens, for a total of at least 8201 tokens. Please reduce the length of the input prompt or the number of requested output tokens. (parameter=input_tokens, value=8185)","type":"BadRequestError","param":"input_tokens","code":400}}`,
+	} {
+		h.up.set("status:400", shape)
+		for _, extra := range []string{"", `"stream":true`} {
+			r := h.post("/v1/chat/completions", chatBody("m1", 3, extra))
+			h.expectErr(r, CodeContextTooLong)
+			if !strings.Contains(r.message, "context (8192)") || strings.Contains(r.message, "maximum context length") || strings.Contains(r.message, "exceeds the available") {
+				t.Fatalf("the friend must get the gateway's sentence, not the engine's: %s", r.message)
+			}
+		}
+	}
+	if c := h.gw.Counters("k_alice1"); c.TPMUsed != 0 || c.InFlight != 0 {
+		t.Fatalf("an engine 400 mapped to 422 is the engine's row — counted, charged 0: %+v", c)
+	}
+	// vLLM's other 400 about lengths — max_tokens alone over max_model_len — is the friend's request, not its length.
+	h.up.set("status:400", `{"error":{"message":"max_tokens=9000 cannot be greater than max_model_len=max_total_tokens=8192. Please request fewer output tokens. (parameter=max_tokens, value=9000)","type":"BadRequestError","param":"max_tokens","code":400}}`)
+	h.expectErr(h.post("/v1/chat/completions", chatBody("m1", 3, "")), CodeInvalidRequest)
 	// The host's problems stay 502: 5xx, 401, 404, and an unparseable error body.
 	for _, c := range []struct{ mode, body string }{
 		{"status:500", `{"error":{"message":"engine exploded"}}`},

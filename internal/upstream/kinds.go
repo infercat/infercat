@@ -2,6 +2,7 @@ package upstream
 
 import (
 	"context"
+	"encoding/json"
 	"strings"
 	"time"
 )
@@ -178,37 +179,63 @@ func (c *client) refreshOpenAI(ctx context.Context, in *Info) error {
 }
 
 // CountTokens is exact where the engine offers /tokenize (llama.cpp and vLLM) and an estimate of
-// ceil(len/4) otherwise. A failed exact count silently degrades to the estimate: the gateway's
+// ceil(len/4) otherwise. A chat (messages != nil) is counted the way the chat endpoint counts it:
+// under the chat template — roles, turn markers, BOS, the generation prompt — which a bare count
+// misses (036: +14 on llama.cpp, +17 on vLLM for two short messages) and which at the ceiling is
+// the difference between the gateway's own 422 and the engine's 400. llama.cpp renders the
+// template (/apply-template) and tokenizes the result with its special tokens and BOS
+// (add_special; equals usage.prompt_tokens, checked on b9553); vLLM's /tokenize takes the messages
+// itself (equals usage.prompt_tokens, checked on 0.25.0); an estimating engine adds
+// TemplateAllowance. A failed exact count silently degrades to the estimate: the gateway's
 // context pre-check must not turn a tokenizer hiccup into a 5xx.
-func (c *client) CountTokens(ctx context.Context, text string) (int, bool, error) {
-	switch c.Info().Kind {
+func (c *client) CountTokens(ctx context.Context, text string, messages []byte) (int, bool, error) {
+	info := c.Info()
+	switch info.Kind {
 	case LlamaCPP:
+		content, special := text, false
+		if messages != nil {
+			var tpl struct {
+				Prompt string `json:"prompt"`
+			}
+			if err := c.doJSON(ctx, "POST", "/apply-template", map[string]any{"messages": json.RawMessage(messages)}, &tpl); err != nil || tpl.Prompt == "" {
+				break
+			}
+			content, special = tpl.Prompt, true
+		}
 		var out struct {
 			Tokens []int `json:"tokens"`
 		}
-		if err := c.doJSON(ctx, "POST", "/tokenize", map[string]any{"content": text}, &out); err == nil {
+		if err := c.doJSON(ctx, "POST", "/tokenize", map[string]any{"content": content, "add_special": special}, &out); err == nil {
 			return len(out.Tokens), true, nil
 		}
 	case VLLM:
-		model := ""
-		if ms := c.Info().Models; len(ms) > 0 {
-			model = ms[0]
-		}
-		if model != "" {
+		if len(info.Models) > 0 {
+			req := map[string]any{"model": info.Models[0], "prompt": text}
+			if messages != nil {
+				req = map[string]any{"model": info.Models[0], "messages": json.RawMessage(messages), "add_generation_prompt": true}
+			}
 			var out struct {
 				Count  int   `json:"count"`
 				Tokens []int `json:"tokens"`
 			}
-			if err := c.doJSON(ctx, "POST", "/tokenize", map[string]any{"model": model, "prompt": text}, &out); err == nil {
-				if out.Count > 0 {
-					return out.Count, true, nil
-				}
-				return len(out.Tokens), true, nil
+			if err := c.doJSON(ctx, "POST", "/tokenize", req, &out); err == nil {
+				return max(out.Count, len(out.Tokens)), true, nil
 			}
 		}
 	}
-	return EstimateTokens(text), false, nil
+	return EstimateTokens(text) + TemplateAllowance(messages), false, nil
 }
 
 // EstimateTokens is the ceil(chars/4) fallback docs/ARCHITECTURE.md specifies.
 func EstimateTokens(text string) int { return (len(text) + 3) / 4 }
+
+// TemplateAllowance is what an estimate adds for a chat template: 4 tokens a message and 16 for
+// the chat (roles, turn markers, BOS, the generation prompt; 13–17 measured on Gemma 4). 0 when
+// messages is nil or not an array.
+func TemplateAllowance(messages []byte) int {
+	var ms []json.RawMessage
+	if messages == nil || json.Unmarshal(messages, &ms) != nil {
+		return 0
+	}
+	return 4*len(ms) + 16
+}

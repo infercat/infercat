@@ -102,6 +102,9 @@ func normalize(kind endpoint, body map[string]any, k *keys.Key, engineModels []s
 	case chatEndpoint:
 		n.stream, _ = body["stream"].(bool)
 		n.text = messagesText(body["messages"])
+		if v, ok := body["messages"]; ok {
+			n.messages, _ = json.Marshal(v)
+		}
 		n.maxTok = clampMaxTokens(body, k.Limits)
 		if n.stream {
 			setIncludeUsage(body)
@@ -156,15 +159,16 @@ func inputText(v any) string {
 	return ""
 }
 
-// countTokens asks the engine, which bounds the call itself (upstream.ProbeTimeout).
-func (q *request) countTokens(text string) int {
+// countTokens asks the engine, which bounds the call itself (upstream.ProbeTimeout); a chat is
+// counted under the engine's template (036), so the count is the one the engine will enforce.
+func (q *request) countTokens(text string, messages []byte) int {
 	if text == "" {
 		return 0
 	}
-	n, _, err := q.g.up.CountTokens(q.r.Context(), text)
+	n, _, err := q.g.up.CountTokens(q.r.Context(), text, messages)
 	if err != nil {
 		q.g.logf("gateway: count tokens failed, estimating: %v", err)
-		return (len(text) + 3) / 4
+		return upstream.EstimateTokens(text) + upstream.TemplateAllowance(messages)
 	}
 	return n
 }
@@ -228,10 +232,7 @@ func clampMaxTokens(body map[string]any, lim keys.Limits) int {
 // shrinks to what remains (floor minOutputTokens), as llama.cpp does itself, instead of a
 // rejection (ticket 005 fix 10c). Embeddings carry no cap: only the first rule applies.
 func (q *request) fitContext() *gwError {
-	eff := q.g.up.Info().ModelContext
-	if k := q.key.Limits.MaxContext; k > 0 && (eff == 0 || k < eff) {
-		eff = k
-	}
+	eff := q.effContext()
 	if eff == 0 {
 		return nil
 	}
@@ -242,6 +243,15 @@ func (q *request) fitContext() *gwError {
 		q.setMaxTok(max(eff-q.prompt, minOutputTokens))
 	}
 	return nil
+}
+
+// effContext is the context in force: min(key.MaxContext, the engine's), ignoring zeros; 0 = unknown.
+func (q *request) effContext() int {
+	eff := q.g.up.Info().ModelContext
+	if k := q.key.Limits.MaxContext; k > 0 && (eff == 0 || k < eff) {
+		eff = k
+	}
+	return eff
 }
 
 // setMaxTok rewrites the cap in force: whichever cap field(s) the request carries, max_tokens when
@@ -290,7 +300,8 @@ func (q *request) models() {
 	}
 	q.resp = resp
 	if resp.StatusCode/100 != 2 { // a GET carries nothing of the friend's: any failure is the host's
-		q.fail(errf(CodeUpstreamError, 0, "upstream returned HTTP %d for /v1/models: %s", resp.StatusCode, upstreamMessage(resp.Body)))
+		msg, _ := upstreamMessage(resp.Body)
+		q.fail(errf(CodeUpstreamError, 0, "upstream returned HTTP %d for /v1/models: %s", resp.StatusCode, msg))
 		return
 	}
 	var list struct {
@@ -398,38 +409,61 @@ func snippet(r io.Reader) string {
 	return strings.TrimSpace(string(b))
 }
 
-// upstreamMessage is the engine's own sentence when its error body has one (llama.cpp:
-// {"error":{"message":…}}; vLLM: {"message":…}), else the raw snippet.
-func upstreamMessage(r io.Reader) string {
+// upstreamMessage is the engine's own sentence and error type when its error body has them
+// (llama.cpp and vLLM 0.25: {"error":{"message":…,"type":…}}; older vLLM: {"message":…,"type":…}),
+// else the raw snippet and "".
+func upstreamMessage(r io.Reader) (msg, typ string) {
 	s := snippet(r)
 	var e struct {
 		Message string `json:"message"`
+		Type    string `json:"type"`
 		Error   struct {
 			Message string `json:"message"`
+			Type    string `json:"type"`
 		} `json:"error"`
 	}
 	if json.Unmarshal([]byte(s), &e) == nil {
 		if e.Error.Message != "" {
-			return e.Error.Message
+			return e.Error.Message, e.Error.Type
 		}
 		if e.Message != "" {
-			return e.Message
+			return e.Message, e.Type
 		}
 	}
-	return s
+	return s, ""
 }
 
 // upstreamStatusErr maps a non-2xx status from a proxied POST (006 promise 8). 400 and 422 are about
 // the friend's own request (a schema the model cannot follow, an image it cannot take, a field it
 // rejects): 400 invalid_request carrying the engine's sentence, so their client does not retry
-// against a "broken host". Everything else — 5xx, a redirect the gateway refused to follow, 401/404
-// from a misconfigured upstream — is the host's problem: 502 upstream_error.
-func upstreamStatusErr(resp *http.Response) *gwError {
-	msg := upstreamMessage(resp.Body)
+// against a "broken host" — except the one 400 that is the gateway's own case, the prompt not
+// fitting the context (036: the engine's count and the pre-check's can still differ by a token at
+// the ceiling, and the floor of 16 output tokens overshoots it by design), which is 422
+// context_too_long in the gateway's words, the engine's kept for the host's log. Everything else —
+// 5xx, a redirect the gateway refused to follow, 401/404 from a misconfigured upstream — is the
+// host's problem: 502 upstream_error.
+func (q *request) upstreamStatusErr(resp *http.Response) *gwError {
+	msg, typ := upstreamMessage(resp.Body)
 	if resp.StatusCode == http.StatusBadRequest || resp.StatusCode == http.StatusUnprocessableEntity {
+		if contextOverflow(typ, msg) {
+			q.g.logf("gateway: the engine rejected a prompt the pre-check counted at %d tokens as over its context: %s", q.prompt, msg)
+			if eff := q.effContext(); eff > 0 {
+				return errf(CodeContextTooLong, 0, "the prompt (%d tokens) leaves no room in the model's context (%d) for a reply; shorten the conversation", q.prompt, eff)
+			}
+			return errf(CodeContextTooLong, 0, "the prompt does not fit the model's context; shorten the conversation")
+		}
 		return errf(CodeInvalidRequest, 0, "the host's engine rejected this request (HTTP %d): %s", resp.StatusCode, msg)
 	}
 	return errf(CodeUpstreamError, 0, "upstream returned HTTP %d: %s", resp.StatusCode, msg)
+}
+
+// contextOverflow is the engine saying the prompt (plus the output it was asked for) does not fit
+// its context, in the engines' own words as read on 2026-09-03: llama.cpp b9553 answers type
+// "exceed_context_size_error" ("request (N tokens) exceeds the available context size (M tokens),
+// try increasing it"); vLLM 0.25 "This model's maximum context length is M tokens. However, …".
+// Anything else a 400 says is about the friend's request, not its length.
+func contextOverflow(typ, msg string) bool {
+	return typ == "exceed_context_size_error" || strings.Contains(msg, "exceeds the available context size") || strings.Contains(msg, "maximum context length is")
 }
 
 // ---- relays ----
