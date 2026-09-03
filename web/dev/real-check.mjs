@@ -255,9 +255,14 @@ async function race(browser, key, host) {
   await sleep(300);
   console.log(`  connected ${s.toFixed(0)} s after the host came back · ${await header(page)} · action: ${JSON.stringify(await page.locator('.row.assistant .actions button').last().innerText())}`);
   check(s <= 30, `Reconnect pressed inside the probe's dial took ${s.toFixed(0)} s to connect after the host came back (023: ≤ 30 s)`);
+  // Confirmation, not the promise: the healed session carries a request. A slow model must not sink
+  // the run, so this waits for the last row to reach any terminal state and reports what it was.
   await page.locator('.row.assistant .actions button:has-text("Try again")').click();
-  await answered(page, 2);
-  console.log('  Try again → delivered');
+  await page.waitForFunction(() => { const rows = document.querySelectorAll('.row.assistant'); const last = rows[rows.length - 1]; return rows.length >= 2 && last && (last.querySelector('.ended') || last.querySelector('.meta-text')?.textContent?.includes('out')); }, null, { timeout: 120_000 }).catch(() => {});
+  await sleep(300);
+  const delivered = (await marks(page)) === 0;
+  console.log(`  Try again over the healed session → marks left: ${await marks(page)} · last row: ${JSON.stringify((await page.locator('.row.assistant .meta-text').last().innerText().catch(() => '')).slice(0, 60))}`);
+  check(delivered, 'Try again over the healed session did not deliver the turn');
   await page.context().close();
   return host;
 }
