@@ -1,6 +1,6 @@
 # HANDOFF — state of the work (succession document)
 
-Updated: 2026-09-03 05:05 EDT. Since the alarm: landed 033, 031+032, 026 (`connect`), 030 (launch readiness; CI green on GitHub; README/metadata/templates/cask/rename inventory). Running: 028 load test, 029 observability. Waiting on the founder: name → URL → 027 QR; relay switch; public repo + tag; social-preview upload (manual).
+Updated: 2026-09-03 05:35 EDT. Since the alarm: landed 033, 031+032, 026 (`connect`), 030 (launch readiness), 029 (observability). Running: 028 load test only. Waiting on the founder: name → URL → 027 QR; relay switch; public repo + tag; social-preview upload. Founder's demo host on 9091 runs the pre-alarm binary (restart on this build to see the new `status` fields).
 
 ## What this is
 
