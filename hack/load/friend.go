@@ -244,7 +244,10 @@ func (s *session) runChat(loop, grace context.Context, r *run) {
 		s.turn++
 		spec := turnFor(s.friend, s.turn)
 		if r.bodyBytes > 0 && s.turn == 1 {
-			spec = turnSpec{content: prose(int64(s.friend), int(float64(r.bodyBytes)/4.7)), maxTokens: 64}
+			// A message of exactly bodyBytes characters, so the HTTP body clears the gateway's cap
+			// when bodyBytes > 4 MiB (413 body_too_large) and lands just under it otherwise. maxTokens
+			// is small: this run tests the uplink and the cap, not generation.
+			spec = turnSpec{content: strings.Repeat("lorem ipsum dolor sit amet ", r.bodyBytes/27+1)[:r.bodyBytes], maxTokens: 64}
 		}
 		messages := append(slices.Clone(s.history), msg{"user", spec.content})
 		rec, reply, retryAfter := s.chat(grace, r.model, messages, spec.maxTokens, !r.noRead(s))
