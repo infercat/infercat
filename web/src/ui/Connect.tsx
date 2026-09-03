@@ -151,7 +151,7 @@ export default function Connect({ state, dispatch }: Props) {
       save(KEYS.invite, raw);
       // What the connect screen may say next time before it has reconnected: a name and a scope,
       // both public. Never the secret (014 promise 9).
-      save(KEYS.lastHost, { name: hostName(me), scope: hostScope(addr, me.key.id) } as LastHost);
+      save(KEYS.lastHost, { name: hostName(me), scope: hostScope(addr) } as LastHost);
       if (exclusive && opened.privateKeyJSON) save(KEYS.privateKey, opened.privateKeyJSON);
       setRemembered(raw);
       dropLegacyHistory();
@@ -230,6 +230,9 @@ export default function Connect({ state, dispatch }: Props) {
   // A returning reader with history on this device gets their own face (014 promise 9). A code
   // that arrived by link is new news and takes precedence over "welcome back".
   const returning = !busy && !pasting && HASH_INVITE === '' && remembered !== '' && text === remembered && chats > 0;
+  // The card after a revoke, or the empty one for the next code, says what the returning card says
+  // (024 promise 1): the chats are keyed to the host, so a new code from it opens the same drawer.
+  const kept = !busy && !returning && lastHost !== null && chats > 0;
   const who = lastHost?.name?.trim() ?? '';
   // A revoked or unrecognised invite cannot be retried; the only move is a new code from the host.
   const needsNewCode = failure?.fatal === true;
@@ -275,6 +278,11 @@ export default function Connect({ state, dispatch }: Props) {
           <p className="pitch">
             <strong>Welcome back.</strong> Your {chats} {chats === 1 ? 'chat' : 'chats'} with {who || 'your host'}{' '}
             {chats === 1 ? 'is' : 'are'} still on this device.
+          </p>
+        ) : kept ? (
+          <p className="pitch">
+            Your {chats} {chats === 1 ? 'chat' : 'chats'} with {who || 'your host'} {chats === 1 ? 'is' : 'are'} still on
+            this device.
           </p>
         ) : (
           <p className="pitch">

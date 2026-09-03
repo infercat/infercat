@@ -29,6 +29,8 @@ import {
   type SessionState,
 } from '../session';
 import {
+  adoptInviteScope,
+  carriedAfter,
   chatsChanged,
   deleteChat,
   DEFAULT_SETTINGS,
@@ -73,6 +75,8 @@ interface Props {
 export interface ThreadAction {
   label: string;
   run: () => void;
+  /** A wait the reader has to sit out (024 promise 3): the same countdown the banner shows. */
+  disabled?: boolean;
 }
 
 /** How long "Chat deleted · Undo" stays up before the deletion is really a deletion. */
@@ -85,7 +89,7 @@ const TAKEN_OVER = 'Another tab took over this chat — what is above is only pa
 
 export default function Chat({ state, live, dispatch, onRedial, reconnecting = false }: Props) {
   // Conversations and settings belong to this host and this invite, never to "the browser".
-  const scope = hostScope(live.addr, live.me.key.id);
+  const scope = hostScope(live.addr);
   const keys = scopedKeys(scope);
   const me = live.me;
   const host = hostName(me);
@@ -93,7 +97,10 @@ export default function Chat({ state, live, dispatch, onRedial, reconnecting = f
 
   const [listed, setListed] = useState<string[]>([]);
   const [settings, setSettings] = useState<Settings>(() => load(keys.settings, DEFAULT_SETTINGS));
-  const [convs, setConvs] = useState<Conversation[]>(() => orNew(loadChats(scope)));
+  const [convs, setConvs] = useState<Conversation[]>(() => {
+    adoptInviteScope(live.addr, live.me.key.id); // an earlier build's invite-scoped chats, once (024)
+    return orNew(loadChats(scope));
+  });
   const [currentId, setCurrentId] = useState('');
   const [streaming, setStreaming] = useState(false);
   const [draft, setDraft] = useState('');
@@ -422,6 +429,9 @@ export default function Chat({ state, live, dispatch, onRedial, reconnecting = f
   // and by the action's name. Non-empty means the last exchange failed, and Try again resends all
   // of them at once, because the history it sends holds every one.
   const lost = undelivered(conv.messages);
+  const softened = carriedAfter(conv.messages);
+  // One countdown for both Try agains (024 promise 3): the banner's and the thread's.
+  const cooling = waiting > 0;
   // One action on the last exchange, named for what it will actually do. Reconnect is offered
   // exactly while this session has not reached the host since it last tried (a request that got
   // no answer, a /me that timed out): retrying over a session we have not proved alive is the
@@ -432,7 +442,7 @@ export default function Chat({ state, live, dispatch, onRedial, reconnecting = f
       : !live.meOk
         ? { label: 'Reconnect', run: () => onRedial(live) }
         : lost.size > 0
-          ? { label: 'Try again', run: regenerate }
+          ? { label: cooling ? `Try again in ${waitText(waiting)}` : 'Try again', run: regenerate, disabled: cooling }
           : { label: 'Regenerate', run: regenerate };
   const degraded = state.name === 'degraded' ? degradedLine(state.reason, live) : null;
   const unknown = metersUnknown(live);
@@ -550,6 +560,7 @@ export default function Chat({ state, live, dispatch, onRedial, reconnecting = f
                   busy={streaming}
                   answering={conv.messages[i + 1]?.role === 'assistant' && conv.messages[i + 1]?.status === undefined}
                   undelivered={lost.has(m.id)}
+                  carried={softened.has(m.id)}
                   readOnly={readOnly}
                   last={i >= lastUser && i >= conv.messages.length - 2}
                   action={action}

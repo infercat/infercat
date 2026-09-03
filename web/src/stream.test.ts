@@ -281,3 +281,19 @@ describe('a reply that ran out of allowance', () => {
     expect(r.note).toBeUndefined();
   });
 });
+
+// 024 promise 4: a host that died before any of the answer had arrived says so, not "what arrived is above".
+describe('a host that died before the answer began', () => {
+  const stalled: StreamEvent = { kind: 'error', code: 'host_stalled', error: { title: 'desk stopped answering mid-reply', detail: 'What arrived is above. Try again — if it keeps happening, their machine may have gone to sleep.', code: 'host_stalled' } };
+
+  it('names the thinking that did arrive', () => {
+    const r = reduceReply(reduceReply(NEW_REPLY, { kind: 'reasoning', text: 'hmm' }), stalled);
+    expect(r.status).toBe('interrupted');
+    expect(r.note).toBe('desk stopped answering mid-reply — nothing of the answer had arrived yet, only its thinking. Try again — if it keeps happening, their machine may have gone to sleep.');
+  });
+
+  it('says nothing arrived when nothing did, and keeps the ordinary line once the answer had started', () => {
+    expect(reduceReply(NEW_REPLY, stalled).note).toBe('desk stopped answering mid-reply — nothing of the answer had arrived yet. Try again — if it keeps happening, their machine may have gone to sleep.');
+    expect(reduceReply(reduceReply(NEW_REPLY, { kind: 'content', text: 'Part of' }), stalled).note).toBe('desk stopped answering mid-reply. What arrived is above. Try again — if it keeps happening, their machine may have gone to sleep.');
+  });
+});

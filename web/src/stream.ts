@@ -49,10 +49,16 @@ export function reduceReply(r: Reply, e: StreamEvent): Reply {
       // with its countdown, so the message only says it did not go; everything else is explained
       // where it happened. Either way the host's own sentence is evidence, not primary copy: it
       // goes to `details`, which the surface hides behind a disclosure (014 promise 1).
+      // A host that died before any of the answer had arrived must not say "what arrived is
+      // above" (024 promise 4): it says what did arrive — its thinking, or nothing.
       return finish(
         r,
         'interrupted',
-        saidInBanner(e.code) ? SHORT[e.code] : `${e.error.title}. ${e.error.detail}`,
+        saidInBanner(e.code)
+          ? SHORT[e.code]
+          : e.code === 'host_stalled' && r.content.trim() === ''
+            ? `${e.error.title} — nothing of the answer had arrived yet${(r.reasoning ?? '').trim() !== '' ? ', only its thinking' : ''}. Try again — if it keeps happening, their machine may have gone to sleep.`
+            : `${e.error.title}. ${e.error.detail}`,
         e.error.hostSaid,
       );
   }

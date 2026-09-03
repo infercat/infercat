@@ -10,7 +10,7 @@
 // that a revoked invite's card keeps every chat.
 //
 //   BN_BIN=/path/bunny-network BN_DATA_DIR=/path/data GW=http://127.0.0.1:6720 PREVIEW_PORT=6721 \
-//     UPSTREAM=http://127.0.0.1:18080 node dev/real-check.mjs [cost|asleep|reconnect|heal|race|paused|wall|stall|tabs|phone|revoke|meter|all]
+//     UPSTREAM=http://127.0.0.1:18080 node dev/real-check.mjs [cost|asleep|reconnect|heal|race|paused|wall|stall|tabs|phone|revoke|meter|emptydeath|all]
 //
 // Keys are minted in BN_DATA_DIR (alice for everything, bob for the revoke) unless INVITE is set.
 // It only ever kills processes it started itself.
@@ -540,7 +540,44 @@ async function revoke(browser, key) {
   check(!after.invite, 'the revoked code is still remembered: a reload would dial it again');
   await shot20(page, 'revoked-new-code');
   await shot22(page, 'revoked-card-keeps-chats');
+  // 024 promise 1: the card says the chats are still here, and a new code from the same host — a
+  // re-issue after the revoke — opens the same drawer, because chats are keyed to the host.
+  const pitch = await page.locator('.pitch').innerText();
+  console.log(`  card: ${JSON.stringify(pitch)}`);
+  check(/Your 1 chat with .* is still on this device\./.test(pitch), `the revoked card does not say the chats are still here: ${JSON.stringify(pitch)}`);
+  const reissued = mint('bob-again');
+  await page.locator('.connect textarea').fill(reissued.invite);
+  await page.getByRole('button', { name: 'Connect' }).click();
+  await page.waitForSelector('.composer textarea', { timeout: 120_000 });
+  await sleep(500);
+  const titles = await page.locator('.conv-open').allInnerTexts();
+  console.log(`  new code from the same host → drawer: ${JSON.stringify(titles)}`);
+  check(titles.some((t) => t.startsWith('Write three short paragraphs')), 'the re-issued code did not open the same drawer (promise 1)');
+  await shot(page, 'rekeyed-same-chats', '24-real');
   await page.context().close();
+}
+
+// --- 024 promise 4: the host dies while the model is still thinking — the note says so --------------
+async function emptydeath(browser, key, host) {
+  const page = await connected(browser, key.invite);
+  await ask(page, 'Write an exhaustive 3000-word essay on TCP congestion control, section by section.');
+  await page.waitForSelector('.thinking', { timeout: 120_000 }); // thinking has begun; no answer text yet
+  await sleep(800);
+  const answerStarted = (await page.locator('.row.assistant > .md p').count()) > 0;
+  killHost(host);
+  console.log(`\nHOST KILLED while thinking (answer text on screen: ${answerStarted}); waiting for the reply to end on its own…`);
+  await page.waitForSelector('.row.assistant .ended', { timeout: 90_000 });
+  const note = await page.locator('.row.assistant .ended').last().innerText();
+  const inside = await page.locator('.thinking .ended').count();
+  console.log(`  note: ${JSON.stringify(note)} · inside the Thinking block: ${inside}`);
+  if (!answerStarted) {
+    check(/nothing of the answer had arrived yet, only its thinking/.test(note), `the empty-answer death note is ${JSON.stringify(note)}`);
+    check(!/What arrived is above/.test(note), 'the note claims an answer arrived');
+    check(inside === 0, 'the note is inside the Thinking block (promise 4: outside)');
+  } else console.log('  (the answer had started before the kill: the ordinary stall note applies; rerun to catch the thinking phase)');
+  await shot(page, 'empty-death', '24-real');
+  await page.context().close();
+  return startHost();
 }
 
 async function main() {
@@ -576,6 +613,7 @@ async function main() {
   if (want('phone')) await phone(browser, alice);
   if (want('revoke') && bob) await revoke(browser, bob);
   if (want('meter')) await meter(browser, alice);
+  if (want('emptydeath')) host = await emptydeath(browser, alice, host);
 
   await browser.close();
   kids.forEach((c) => c.kill('SIGTERM'));
