@@ -10,9 +10,9 @@ gates the public ones (BELIEFS: Authority). Nothing ships while a line in **Foun
 | F1 | **Name** | Invite prefix, binary name, web title, social post all carry it; renaming after launch breaks copied invites | Decide before the post. "Bunny Network" is do-not-ship (bunny.net); "taillama" collides with Meta's Llama mark. |
 | F2 | **Relay** | Public tailcat relays are rate-limited and revocable at any time | One DigitalOcean VM + hostname running `derper`; bake into the host key at generation (`--region`); zero Tailscale infra in the product. |
 | F3 | **Web app URL** | `keys add` prints a link only when `product.WebURL` is set; strangers need a destination | Vercel (founder's choice); set `product.WebURL`; the app is a static bundle. |
-| F4 | **Distribution** | Strangers need a download, not a Go toolchain | GitHub Releases (darwin/linux/windows) + a Homebrew tap; decide public repo vs private repo with public releases. |
-| F5 | **License** | No LICENSE file; third-party notices are required by tailcat/tailscale (BSD-3) regardless | Decide before any public artifact; ship `THIRD_PARTY_NOTICES` with every binary (ticket 017). |
-| F6 | **History** | A 28 MB binary sits in git history (`ff` commits before `e5b0a11`) | Rewrite once before any public mirror or collaborator clone; never after. |
+| F4 | **Distribution** | Strangers need a download, not a Go toolchain | **DECIDED 2026-09-03:** public repo, GitHub Releases (5 targets + web zip, already built by 017) + a Homebrew tap. Walkthrough in docs/RELEASE.md. |
+| F5 | **License** | No LICENSE file; third-party notices are required by tailcat/tailscale (BSD-3) regardless | **DECIDED 2026-09-03: MIT.** LICENSE file lands with the rename (needs the copyright holder name: "2185 Lab" vs the founder — confirm). Notices already ship (017). |
+| F6 | **History** | A 28 MB binary sits in git history (`ff` commits before `e5b0a11`) | Rewrite once before the repo goes public (now required by F4); never after. PM runs it the day the repo is made public. |
 
 ## Engineering gates
 

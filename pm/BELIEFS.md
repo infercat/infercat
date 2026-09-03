@@ -74,6 +74,13 @@ Polish is judged experientially — a stranger's first ten minutes on each side 
   interstitial. **The direct (p2p) path stays the differentiator and the destination:** the relay sees
   ciphertext, and direct traffic costs us nothing per byte while relayed traffic scales with our bill —
   the product always nudges toward direct as clients grow. Pricing follows that economics.
+- **MIT, everything, at launch.** Reason (founder, 2026-09-03): "the commercial angle is not in the
+  code itself — AI makes the code easy to replicate; our moat has to be speed to market and
+  distribution. This is a protocol play: we don't own the OpenAI API protocol, but everything that
+  signifies capabilities, signifies trust, or lives in the client we can own." For an audience that reads
+  code, a license they recognize is part of the trust argument; a source-available license nobody knows
+  costs exactly that trust. Consequence: public repo at launch, MIT (tailcat itself is BSD-3, ollama and
+  llama.cpp are MIT), GitHub Releases + Homebrew tap, history rewritten once before going public.
 - **The relay is never metered or charged per byte.** Reason (founder, 2026-09-03): the audience runs
   its own models to avoid paying per use; a metered connection "isn't the vibe of our product" — there
   are other ways to monetize, this is not one. Relay abuse is prevented by admission (only registered
