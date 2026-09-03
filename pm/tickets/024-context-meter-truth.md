@@ -55,6 +55,65 @@ All times 2026-09-02, EDT, laptop.
 
 ## Report
 
+### The core, shown working
+
+<!-- TRANSCRIPT -->
+
+Vitests (stream.test.ts, +2 for 024; the `contextUsed` test replaced): the meter counts the system
+prompt and every answer — never thinking, never a cut-off or empty reply — and never decreases
+across six growing turns; a 20 000-character paste is carried by its own request (the host is the
+one to refuse it), left out of the next question with the turn named, absent from the meter the
+moment it is refused, and never left out by a host that has not said how big its memory is. 233.
+
+### Edge awareness, one line
+
+Handled: a host with no `model_context` (nothing left out, meter absent as before); an empty
+system prompt (not counted); a reply that only thought (`no_answer`, not carried, not counted); a
+turn edited shorter (the meter goes down — honestly, the chat shrank); two oversized turns (both
+left out, the note counts them); the wall reply itself (its content is carried, its thinking is
+not); a follower tab (derives the same number from the same store).
+
+### Verified (printed)
+
+<!-- VERIFIED -->
+
+### Skipped by ruling (backlog, not started)
+
+Composer focus on mount; Escape closing the sheets; the returning card immediately after
+Disconnect; the per-minute meter refilling between polls; the probe cap at 10 s and a probe on
+`visibilitychange`; the streaming estimate. None touched.
+
+### Judgment calls
+
+- **The meter at the wall reads ~3.3k, not ≥ 4.1k.** The ruling's parenthetical ("agrees with the
+  wall — ≥ 4.1k when the wall shows") would require counting the model's thinking, which is never
+  sent; the wall probe measured a 4 096-token wall (51 in + 4 045 out) followed by a next question
+  that carried 3 458 tokens. The meter now shows that second number — what the next question will
+  carry — and the wall row above it says the reply stopped short and replies will keep getting
+  shorter. The two say different, both-true things, and the sheet's sentence says which one the
+  meter is. Counting thinking would put back the quantity the fourth pass rejected.
+- **The oversized turn's own request still goes to the host.** The ruling says "a *refused*
+  oversized turn": the host refuses it once, in its own words ("This conversation no longer fits
+  the model"), and only later questions leave it out. Dropping it before sending would answer an
+  empty question with a note about a paste the host never saw.
+- **The estimate is chars ÷ 4 plus 4 per message**, the same for the meter and the rule (one
+  function), measured against the gateway's count at 3 339 tokens for a 13k-character essay. The
+  sheet calls it "what the next message will carry"; the label is unchanged.
+- **Copy: "One earlier message was too long for the 4.1k memory on Max's laptop and was left out
+  of this question."** The ruling's sentence said "the essay" and "<host>'s memory"; the turn is
+  not always an essay, and the possessive is 020's own nit, so the sentence keeps its shape and
+  loses both.
+- **The note rides on the reply** (a `note` a complete reply may now carry, shown the way an ending
+  is shown). No new field, no new state.
+
+### Not verified
+
+- Chars ÷ 4 on code, CJK or heavily tokenised text: the gateway's count is the truth, the meter is
+  an estimate, and the sheet says so.
+- A paste between 4.1k and the memory minus the reply floor: it is carried (it fits alone) and the
+  host shrinks the reply to fit, as before; not driven here.
+
+
 ## Ruling (PM, 2026-09-02 22:58 — founder: fourth pass is the last)
 
 Cut to two promises: (a) the context meter shows what the next request will carry, simplest truthful

@@ -18,6 +18,8 @@ interface Props {
   answering: boolean;
   /** (User turns) no request carrying this turn has succeeded yet (022 promise 2). Derived by Chat, never stored. */
   undelivered: boolean;
+  /** (Failed replies) a later question carried this row's turn anyway (024 promise 3): "Not sent" is no longer the last word. */
+  carried: boolean;
   /** A follower tab (020 promise 6): nothing here may start a request or edit the thread. */
   readOnly: boolean;
   /** Actions only appear on the last exchange, the way ChatGPT does it. */
@@ -39,6 +41,7 @@ export default function MessageView({
   busy,
   answering,
   undelivered,
+  carried,
   readOnly,
   last,
   action,
@@ -91,7 +94,9 @@ export default function MessageView({
   const ended = m.status !== undefined && m.status !== 'complete';
   // When the reply is all thinking and no answer, the explanation belongs inside the collapsed
   // Thinking block — there is nothing else for it to sit under. Otherwise it goes under the text.
-  const inThinking = ended && m.content.trim() === '' && Boolean(m.reasoning);
+  // Only a reply the model chose to spend on thinking explains itself inside the Thinking block; a
+  // reply the host cut off before any answer says so under the row (024 promise 4).
+  const inThinking = m.status === 'no_answer' && Boolean(m.reasoning);
   // Which wall a complete-but-cut reply hit is one function over four numbers (020 promise 3), so
   // this line and the context meter in the header can never disagree.
   const ending = !live && m.status === 'complete' ? replyEnding(m.capped, m.tokens, limits.maxOutputTokens, limits.modelContext) : null;
@@ -126,7 +131,13 @@ export default function MessageView({
       {!live && m.status === undefined && <p className="waiting">Arriving in another tab…</p>}
       {/* The reply did not simply stop, or something was left out of its question (024): said
           under the text it kept. */}
-      {m.note && !inThinking && <p className={`ended ${m.status ?? ''}`}>{m.note}</p>}
+      {m.note && !inThinking && (
+        carried ? (
+          <p className="ended carried">Your message was carried into the next question.</p>
+        ) : (
+          <p className={`ended ${m.status ?? ''}`}>{m.note}</p>
+        )
+      )}
       {/* Running out of allowance is not finishing (014 promise 14): the reader is told where it
           stopped and offered the only thing that helps — more of the same reply, or, when the
           model's memory is what filled, a new chat (020 promise 3). */}
@@ -172,7 +183,7 @@ export default function MessageView({
         <span className="actions">
           {!live && m.content !== '' && <CopyButton text={m.content} />}
           {last && !busy && action && (
-            <button className="ghost tiny" onClick={action.run}>
+            <button className="ghost tiny" onClick={action.run} disabled={action.disabled === true}>
               {action.label}
             </button>
           )}

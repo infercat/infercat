@@ -113,17 +113,56 @@ export function dialsOnArrival(last: LastHost | null, viaLink: boolean): boolean
 }
 
 /**
- * A stable, non-secret name for "this host, this invite": the tunnel address (public — it is the
- * address, not the secret) and the key id, hashed to keep the storage key short. Two hosts, or the
- * same host with two invites, never see each other's conversations or settings.
+ * A stable, non-secret name for "this host": the tunnel address (public — it is the address, not
+ * the secret), hashed to keep the storage key short. Two hosts never see each other's conversations
+ * or settings; a new code from the same host — a revoke and a re-issue, a rotation — opens the same
+ * drawer (024 promise 1, ruling: the host scope replaces the invite scope).
  */
-export function hostScope(addr: string, keyId: string): string {
+export function hostScope(addr: string): string {
+  return fnv(addr);
+}
+
+/** Where a build before 024 kept this host's chats: the address and the key id together. */
+function inviteScope(addr: string, keyId: string): string {
+  return fnv(`${addr} ${keyId}`);
+}
+
+function fnv(text: string): string {
   let h = 0x811c9dc5;
-  for (const ch of `${addr} ${keyId}`) {
+  for (const ch of text) {
     h ^= ch.codePointAt(0) ?? 0;
     h = Math.imul(h, 0x01000193) >>> 0;
   }
   return h.toString(36);
+}
+
+/**
+ * Moves what an earlier build kept under the invite scope into the host scope, once (024 promise
+ * 1): the conversations (merged by id, the invite scope's order first, nothing duplicated), the
+ * settings and the shared /me when the host scope has none. The invite-scoped keys are then gone,
+ * so this runs exactly once per invite. Safe to call on every mount.
+ */
+export function adoptInviteScope(addr: string, keyId: string): void {
+  const from = scopedKeys(inviteScope(addr, keyId));
+  const to = scopedKeys(hostScope(addr));
+  const ids = load<string[]>(from.index, []);
+  if (ids.length === 0 && load(from.settings, null) === null) return;
+  const have = new Set(load<string[]>(to.index, []));
+  const moved: string[] = [];
+  for (const id of ids) {
+    const c = load<Conversation | null>(from.conv(id), null);
+    if (c && !have.has(id)) {
+      save(to.conv(id), c);
+      moved.push(id);
+    }
+    forget(from.conv(id));
+  }
+  if (moved.length > 0) save(to.index, [...moved, ...load<string[]>(to.index, [])].slice(0, 50));
+  if (load(to.settings, null) === null) {
+    const settings = load(from.settings, null);
+    if (settings !== null) save(to.settings, settings);
+  }
+  forget(from.index, from.settings, from.me);
 }
 
 /** The pre-scope keys held one host's history under a global name; it is nobody's now. */
@@ -221,6 +260,22 @@ export function undelivered(messages: readonly Message[]): Set<string> {
     const m = messages[i] as Message;
     if (delivered(m)) break;
     if (m.role === 'user') out.add(m.id);
+  }
+  return out;
+}
+
+/**
+ * The failed replies whose turn a later request carried anyway (024 promise 3): the same
+ * derivation that clears the bubble's mark, read for the row under it — "Not sent" stops being the
+ * last word once the next question has carried the turn.
+ */
+export function carriedAfter(messages: readonly Message[]): Set<string> {
+  const lost = undelivered(messages);
+  const out = new Set<string>();
+  let turn: Message | null = null;
+  for (const m of messages) {
+    if (m.role === 'user') turn = m;
+    else if (m.status === 'interrupted' && turn && !lost.has(turn.id)) out.add(m.id);
   }
   return out;
 }

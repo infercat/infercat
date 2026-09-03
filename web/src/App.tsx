@@ -191,7 +191,7 @@ export default function App() {
     <Suspense fallback={<div className="booting">Opening…</div>}>
       {/* Remounting per host is what makes the host-scoped store load cleanly for the new one. */}
       <Chat
-        key={`${l.addr}/${l.me.key.id}`}
+        key={l.addr}
         state={state}
         live={l}
         reconnecting={reconnecting !== null}

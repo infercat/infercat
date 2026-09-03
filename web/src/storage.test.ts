@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   KEYS,
+  adoptInviteScope,
+  carriedAfter,
   chatsChanged,
   countChats,
   deleteChat,
@@ -109,28 +111,27 @@ describe('conversation helpers', () => {
 
 // Promise 7: two hosts, or two invites on one host, never see each other's history or settings.
 describe('host-scoped storage', () => {
-  const A = hostScope('tcHOSTA', 'k_1');
-  const B = hostScope('tcHOSTB', 'k_1');
-  const A2 = hostScope('tcHOSTA', 'k_2');
 
-  it('gives every host+invite pair its own namespace, stably', () => {
-    expect(A).not.toBe(B);
-    expect(A).not.toBe(A2);
-    expect(hostScope('tcHOSTA', 'k_1')).toBe(A);
-    expect(A).toMatch(/^[0-9a-z]+$/); // short and safe in a storage key
+  it('gives every host its own namespace, stably — and one host one drawer, whatever the code (024)', () => {
+    expect(hostScope('tcHOST')).toBe(hostScope('tcHOST'));
+    expect(hostScope('tcHOST')).not.toBe(hostScope('tcOTHER'));
+    // A revoke and a re-issue, or a rotation, is the same host: the same chats.
+    const keys = scopedKeys(hostScope('tcHOST'));
+    saveChat(hostScope('tcHOST'), { id: 'c1', title: 't', createdAt: 1, updatedAt: 1, messages: [{ id: 'm', role: 'user', content: 'x' }] });
+    expect(load<string[]>(keys.index, [])).toEqual(['c1']);
+    expect(countChats(hostScope('tcHOST'))).toBe(1);
   });
 
   it('keeps the address out of the key while still keying on it', () => {
-    expect(scopedKeys(A).index).toBe(`${KEYS.conversations}.${A}`);
-    expect(scopedKeys(A).index).not.toContain('tcHOSTA');
-    expect(scopedKeys(A).conv('c1')).not.toContain('tcHOSTA');
+    const scope = hostScope('tcSECRETLOOKINGADDRESS');
+    expect(scope).not.toContain('tcSECRET');
+    expect(scope.length).toBeLessThan(12);
   });
 
-  it('connecting to a different host starts with that host\u2019s own empty list', () => {
-    saveChat(A, { id: 'c1', title: 'mine', createdAt: 0, updatedAt: 0, messages: [{ id: 'm', role: 'user', content: 'hi' }] });
-    expect(loadChats(A)).toHaveLength(1);
-    expect(loadChats(B)).toHaveLength(0);
-    expect(loadChats(A2)).toHaveLength(0);
+  it('connecting to a different host starts with that host’s own empty list', () => {
+    saveChat(hostScope('tcHOST'), { id: 'c1', title: 'mine', createdAt: 1, updatedAt: 1, messages: [{ id: 'm', role: 'user', content: 'x' }] });
+    expect(loadChats(hostScope('tcOTHER'))).toHaveLength(0);
+    expect(loadChats(hostScope('tcHOST'))).toHaveLength(1);
   });
 
   it('drops the pre-scope history rather than handing it to whichever host connects first', () => {
@@ -164,7 +165,7 @@ describe('what counts as context for the next message', () => {
 // 014 promise 4: one conversation is one key, so two tabs cannot overwrite each other's history,
 // and the reload rule folded in from 013.
 describe('multi-tab conversation storage', () => {
-  const S = hostScope('tcHOST', 'k_1');
+  const S = hostScope('tcHOST');
   const msg = (id: string, content: string): Message => ({ id, role: 'user', content });
   const chat = (id: string, at: number, ...ms: Message[]): Conversation => ({
     id,
@@ -419,5 +420,55 @@ describe('naming an empty conversation', () => {
     expect(newConversation().title).toBe('Untitled chat');
     expect(titleFrom('   ')).toBe('Untitled chat');
     expect(titleFrom('Ask me about tunnels')).toBe('Ask me about tunnels');
+  });
+});
+
+// 024 promise 1: chats an earlier build kept under the invite move into the host scope, once.
+describe('adopting an earlier build’s invite-scoped chats', () => {
+  const conv = (id: string, at: number): Conversation => ({ id, title: id, createdAt: at, updatedAt: at, messages: [{ id: `${id}m`, role: 'user', content: id }] });
+  // What a pre-024 build wrote: FNV over "addr keyId" — reproduced here so the fixture is real-shaped.
+  const invite = (addr: string, keyId: string) => {
+    let h = 0x811c9dc5;
+    for (const ch of `${addr} ${keyId}`) { h ^= ch.codePointAt(0) ?? 0; h = Math.imul(h, 0x01000193) >>> 0; }
+    return h.toString(36);
+  };
+
+  it('moves the chats and the settings over, merges with what the host scope has, and runs once', () => {
+    const old = invite('tcHOST', 'k_old');
+    saveChat(old, conv('a', 1));
+    saveChat(old, conv('b', 2));
+    save(scopedKeys(old).settings, { model: 'm', systemPrompt: 'be brief', temperature: 0.5 });
+    saveChat(hostScope('tcHOST'), conv('b', 3)); // already there under the host: kept, not duplicated
+    adoptInviteScope('tcHOST', 'k_old');
+    const ids = loadChats(hostScope('tcHOST')).map((c) => c.id);
+    expect(ids.sort()).toEqual(['a', 'b']);
+    expect(loadChats(hostScope('tcHOST')).find((c) => c.id === 'b')?.updatedAt).toBe(3);
+    expect(load(scopedKeys(hostScope('tcHOST')).settings, null)).toEqual({ model: 'm', systemPrompt: 'be brief', temperature: 0.5 });
+    expect(load(scopedKeys(old).index, null)).toBeNull();
+    expect(load(scopedKeys(old).conv('a'), null)).toBeNull();
+    adoptInviteScope('tcHOST', 'k_old'); // nothing left to move: nothing changes
+    expect(loadChats(hostScope('tcHOST')).map((c) => c.id).sort()).toEqual(['a', 'b']);
+  });
+
+  it('is a no-op for a host this build has always known', () => {
+    saveChat(hostScope('tcHOST'), conv('a', 1));
+    adoptInviteScope('tcHOST', 'k_new');
+    expect(loadChats(hostScope('tcHOST')).map((c) => c.id)).toEqual(['a']);
+  });
+});
+
+// 024 promise 3: the row under a turn a later question carried stops saying "Not sent".
+describe('a failed reply whose turn was carried anyway', () => {
+  const turn = (id: string): Message => ({ id, role: 'user', content: id });
+  const failed = (id: string): Message => ({ id, role: 'assistant', content: '', status: 'interrupted', note: 'Not sent — your invite is paused.' });
+  const answer = (id: string): Message => ({ id, role: 'assistant', content: 'a', status: 'complete' });
+
+  it('is softened once the next question got through, and not before', () => {
+    expect([...carriedAfter([turn('zebra'), failed('r')])]).toEqual([]);
+    expect([...carriedAfter([turn('zebra'), failed('r'), turn('q'), answer('a')])]).toEqual(['r']);
+  });
+
+  it('never touches a reply that answered, or a failure with nothing delivered after it', () => {
+    expect([...carriedAfter([turn('u1'), answer('a1'), turn('u2'), failed('r2')])]).toEqual([]);
   });
 });
