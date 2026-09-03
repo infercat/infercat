@@ -81,3 +81,20 @@ error, not the relay's). Address embeds `derp.2185lab.com` (`tailcat parse` show
 Verdict for the founder's decision: **our relay performs the same as Tailscale's NYC relay from this
 location** (65 ms vs 64–79 ms browser RTT; CLI paths go direct either way). The remaining comparison is
 operational (uptime, regions, cost), not latency. No switch made.
+
+### `connect` — the host binary as a client (ticket 026, 2026-09-03 03:41 EDT)
+
+Test host on this laptop (`serve --dev-listen 127.0.0.1:6810 --data-dir …/bn026-data`, relay `nyc`),
+`bunny-network connect <invite>` on the same laptop at `127.0.0.1:11435`, engine as above (`-c 65536 -np 2`).
+
+| Path | Command | Result |
+|---|---|---|
+| connect startup | `bunny-network connect <invite>` | banner in ~1.5 s from the handshake: `host t026 host · gemma-4-E2B-it-Q4_K_M.gguf`, `path direct · 0.2 ms` (same machine: the first disco ping already found the loopback endpoint), `local http://127.0.0.1:11435` |
+| CLI, until direct | `tailcat ping --until-direct --timeout=30s <addr>` | `pong in 540µs via 192.168.199.132:53267` — direct on the first pong |
+| curl, streamed chat | `curl -sN http://127.0.0.1:11435/v1/chat/completions -d '{"stream":true,…}'` | TTFT 24 ms, `[DONE]` at 3641 ms, usage `prompt 22 / completion 566` in the final chunk |
+| OpenAI Python SDK 2.48 | `OpenAI(base_url="http://127.0.0.1:11435/v1", api_key="any-key")`, `chat.completions.create(stream=True, stream_options={"include_usage":true})` | first content delta 927 ms (the model thinks first), 5 deltas, total 959 ms, `finish_reason=stop`, usage `27 / 147`; `models.list()` and a non-stream `create` also complete |
+| `hack/measure.sh`, N=3, three modes in one run | `DIRECT=127.0.0.1:6810 CONNECT=127.0.0.1:11435 MODES="direct tunnel connect" ADDR=… SECRET=… sh hack/measure.sh` | direct 35 ms TTFT / 168.3 tok/s · tunnel (`tailcat socks`) 37 ms / 164.7 · **connect 36 ms / 164.5** (runs 37/36/36 ms · 165.7/163.2/164.5) |
+
+The `connect` path costs the same as `tailcat socks` — one tunnel TCP dial per request over a session
+that is already direct — and is within 2 % of loopback on token rate.
+
