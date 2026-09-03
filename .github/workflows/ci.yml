@@ -1,0 +1,81 @@
+# Every push and PR: the Go checks, the web checks, the notices gate, and a full release dry run —
+# all from this fresh checkout, which is the "green from nothing" law (pm/BELIEFS.md). Nothing here
+# publishes; release.yml is the only workflow that can, and only on a tag.
+name: CI
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+permissions:
+  contents: read
+
+env:
+  GOTOOLCHAIN: auto
+
+jobs:
+  check:
+    name: check · web · notices · release-dry
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # goreleaser reads the commit and its date for the version stamp
+
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+          cache-dependency-path: web/pnpm-lock.yaml
+
+      - name: Go — build, vet, test
+        run: |
+          go build ./...
+          make check
+
+      - name: Web — install, typecheck, test, lint
+        working-directory: web
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm typecheck
+          pnpm test
+          pnpm lint
+
+      - name: go-licenses
+        run: go install github.com/google/go-licenses@latest
+
+      - name: Third-party notices are current
+        run: make notices-check
+
+      - uses: goreleaser/goreleaser-action@v6
+        with:
+          install-only: true
+
+      - name: Release dry run (every artifact, nothing published)
+        run: make release-dry
+
+      - name: Every artifact has a checksum
+        run: |
+          cd dist
+          shasum -a 256 -c *_checksums.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: release-dry-${{ github.sha }}
+          path: |
+            dist/*.tar.gz
+            dist/*.zip
+            dist/*_checksums.txt
+            dist/homebrew/**
+          retention-days: 7

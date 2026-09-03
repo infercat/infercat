@@ -83,4 +83,33 @@ are the founder's and the PM's on rename day.
 
 ## Log
 
+- **2026-09-03 03:21 EDT** — ACK. Base `3eb9033` (= origin/main; the worktree sat one commit behind and
+  was fast-forwarded), lane `t030-launch`. Read BELIEFS, LAUNCH, this ticket, README, `.goreleaser.yaml`,
+  `hack/notices.sh`, Makefile, `web/index.html`, both product constants, MARKET-LMLINK, NAME, and the
+  017/009 reports. Environment facts: `security find-identity -v -p codesigning` lists **one** identity,
+  `Apple Development: Yuanping Song (R32T2KFMTK)` — no `Developer ID Application`, and neither
+  `bunny-kit/docs` nor `bunny-screenshot/docs` documents a notarytool profile (bunny-screenshot's ADR-0012
+  uses ad-hoc `codesign --sign -`; its LAUNCH_CHECKLIST lists notarization as future). So: no signing
+  tonight; README documents the right-click-Open path; ticket 034 drafted. `gh repo view`: description,
+  homepage, and topics all empty; `.github/` absent. Playwright 1.56 (web devDependency) launches
+  Chromium 151 headless; Playwright's bundled ffmpeg will make the GIF. Founder's host (pid 13765 on
+  :9090, pid 43556 on :9091) and the shared llama-server on :18080 are left alone; my host uses
+  `tmp/bn030-data`, ports 6830–6839.
+- **2026-09-03 03:38 EDT** — Web surfaces done and checked. `index.html` carries title, description,
+  OG/Twitter metas, two `theme-color`s, the icon set and the manifest link; all filled from
+  `src/product.ts` by the vite plugin, which now also emits `manifest.webmanifest` (build) and serves
+  it (dev) — no second copy of the name. `web/dev/brand.mjs` renders the five PNG icons from
+  `favicon.svg` and the OG/social-preview cards from the name, the sentence and a screenshot of the
+  real connect card (`make brand`). `web/dev/launch-check.mjs` (`make launch-check`) checks the served
+  head, the manifest and every asset, console warnings, accessible names (aria snapshot), contrast
+  against the real ground (WCAG AA), Tab order and 390 px overflow, and with `INVITE`/`APP` records
+  the friend's chat against a real host. First run found the class defect: `--faint` was 2.87:1
+  light / 3.85:1 dark on every hint, meter label and the privacy line → two token values changed
+  (`#716c65` / `#8e8981`), now 4.74:1 at the lowest across connect and chat, light and dark. Second
+  run: OK end to end; GIF 1.1 MB, 12 s, from my own host (`bn030-data`, :6830) through the New York
+  relay. Composer textarea got an `aria-label` (its only name was the placeholder). goreleaser 2.18
+  deprecates `brews` (`goreleaser check` fails on it) → `homebrew_casks`, with the documented
+  post-install quarantine hook because the binaries are unsigned. Go: 247 passed / 0 failed / 2
+  skipped (the two opt-in live probes); web: 239 passed, typecheck and lint clean.
+
 ## Report

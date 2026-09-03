@@ -1,0 +1,38 @@
+name: Host will not start
+description: "`serve` fails, finds the wrong inference server, or prints something you did not expect."
+labels: [host]
+body:
+  - type: textarea
+    id: output
+    attributes:
+      label: The full output of `bunny-network serve`
+      description: Everything from the first line to the error. The banner never prints a secret.
+      render: text
+    validations:
+      required: true
+  - type: textarea
+    id: version
+    attributes:
+      label: bunny-network version
+      render: text
+    validations:
+      required: true
+  - type: input
+    id: engine
+    attributes:
+      label: Inference server and how it is listening
+      placeholder: "llama-server on 127.0.0.1:18080 / vLLM in Docker on :8000 / Ollama default"
+    validations:
+      required: true
+  - type: input
+    id: platform
+    attributes:
+      label: Host platform
+      placeholder: "macOS 15 arm64 / Ubuntu 24.04 amd64 / Windows 11"
+    validations:
+      required: true
+  - type: textarea
+    id: status
+    attributes:
+      label: bunny-network status (if the host got that far)
+      render: text

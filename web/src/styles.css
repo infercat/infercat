@@ -5,7 +5,7 @@
   --raised: #ffffff;
   --text: #1b1a18;
   --muted: #6f6b64;
-  --faint: #9b968d;
+  --faint: #716c65; /* small print; 4.5:1 or better on --bg, --panel and --raised */
   --line: #e6e2dc;
   --accent: #b0522b;
   --accent-ink: #ffffff;
@@ -24,7 +24,7 @@
     --raised: #201f1c;
     --text: #eceae5;
     --muted: #a39e95;
-    --faint: #75706a;
+    --faint: #8e8981;
     --line: #2d2b28;
     --accent: #e9926a;
     --accent-ink: #241a14;
@@ -115,6 +115,8 @@ textarea:focus-visible, input[type='text']:focus-visible, select:focus-visible {
   margin: 0 0 20px;
 }
 .privacy { color: var(--faint); font-size: 13px; margin-top: 32px; line-height: 1.6; }
+.about { color: var(--faint); font-size: 12px; margin: 10px 0 0; }
+.about a, .small-print a { color: inherit; }
 .devmode {
   display: flex; gap: 8px; align-items: center;
   margin-top: 20px; padding-top: 14px; border-top: 1px dashed var(--line);
