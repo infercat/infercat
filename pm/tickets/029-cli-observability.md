@@ -43,4 +43,10 @@ counters it already has (read-only accessors), tests. Coordinate with 028 (share
 
 ## Log
 
+All times 2026-09-03, EDT, laptop.
+
+- 12:05 — ACK. Lane `t029-observability` on main `0e3f64c` (= origin/main; 026 `connect` landed). Read BELIEFS, ARCHITECTURE, 029, the 026/028/003/009 records, and the seam code. Own host will run on `--dev-listen 127.0.0.1:6860` under `…/tmp/bn029-data`; the founder's host (9091, `…/tmp/bn-founder`) is read-only for a transcript.
+- Premise check before editing (no contest on shape): the gateway already exposes `Queue()` exact and `AllCounters()`; the tunnel's `tailcat.Server.Status()` (tailcat.go:1929) returns an `ipnstate.Status` with one `PeerStatus` per client key — `Relay` (region code), `CurAddr` (set only on a direct path), `RxBytes`/`TxBytes`, `LastHandshake`, `Active` — so sessions need no tailcat change. Engine telemetry reaches the engine through the existing seam (`Engine.Do` GET `/metrics`, probe-bounded), so `internal/upstream` stays untouched. Live `/metrics` today: llama.cpp b9553 offers `requests_processing`, `requests_deferred`, `predicted_tokens_seconds` and **no memory metric**; vLLM 0.25 offers `process_resident_memory_bytes`, `num_requests_running/waiting`, `kv_cache_usage_perc`. Memory will show where offered and `—` where not.
+- Two things the ticket words cannot be measured on the host side, said now rather than faked: (1) "handshake ms" as a latency — tailcat registers a client at its meow (`onMeow`, tailcat.go:1362) without a timestamp and answers at once; the host can only see when the current WireGuard handshake happened (`LastHandshake`), so the session line shows that age (what `tailscale status` shows too) and the latency stays with the side that measures it (`connect`'s dial, 028's instrument). (2) Peak slot occupancy: the queue has no high-water mark and the ticket forbids more than a read-only accessor, so the peak is sampled at 1 Hz beside the queue's exact `now` — a burst shorter than a second can pass under it; the JSON says `slots_peak_sampled`.
+
 ## Report
