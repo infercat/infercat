@@ -54,8 +54,9 @@ import {
   type Conversation,
   type Message,
   type Settings,
+  type Thinking,
 } from '../storage';
-import { carried, contextCarried, NEW_REPLY, reduceReply, saidInBanner, type Reply } from '../stream';
+import { carried, contextCarried, NEW_REPLY, reduceReply, saidInBanner, thinkingFields, tokensSaved, type Reply } from '../stream';
 import { composing } from './composing';
 import MessageView from './Message';
 import { coarsePointer } from './pointer';
@@ -96,7 +97,8 @@ export default function Chat({ state, live, dispatch, onRedial, reconnecting = f
   const touch = coarsePointer();
 
   const [listed, setListed] = useState<string[]>([]);
-  const [settings, setSettings] = useState<Settings>(() => load(keys.settings, DEFAULT_SETTINGS));
+  // Merged over the defaults: a build that did not know a setting stored none of it.
+  const [settings, setSettings] = useState<Settings>(() => ({ ...DEFAULT_SETTINGS, ...load(keys.settings, DEFAULT_SETTINGS) }));
   const [convs, setConvs] = useState<Conversation[]>(() => {
     adoptInviteScope(live.addr, live.me.key.id); // an earlier build's invite-scoped chats, once (024)
     return orNew(loadChats(scope));
@@ -297,7 +299,7 @@ export default function Chat({ state, live, dispatch, onRedial, reconnecting = f
       patch(convId, (c) => ({
         ...c,
         updatedAt: Date.now(),
-        messages: [...history, { id: replyId, role: 'assistant', content: '', model, ...(previous ? { previous } : {}), ...(note ? { note } : {}) }],
+        messages: [...history, { id: replyId, role: 'assistant', content: '', model, ...(previous ? { previous } : {}), ...(note ? { note } : {}), ...(settings.thinking !== 'default' ? { thinking: settings.thinking } : {}) }],
       }));
       setBanner(null);
       setRetryUntil(0);
@@ -311,7 +313,7 @@ export default function Chat({ state, live, dispatch, onRedial, reconnecting = f
         for await (const ev of chatEvents(
           live.transport,
           live.secret,
-          { model, messages, temperature: settings.temperature },
+          { model, messages, temperature: settings.temperature, ...thinkingFields(settings.thinking) },
           ac.signal,
           undefined,
           host,
@@ -565,6 +567,7 @@ export default function Chat({ state, live, dispatch, onRedial, reconnecting = f
                   last={i >= lastUser && i >= conv.messages.length - 2}
                   action={action}
                   limits={limits}
+                  saved={tokensSaved(conv.messages, i)}
                   onContinue={() => send('Continue from where you stopped.')}
                   onNewChat={startNew}
                   onResend={resend}
@@ -640,6 +643,7 @@ export default function Chat({ state, live, dispatch, onRedial, reconnecting = f
           settings={settings}
           models={models}
           live={live}
+          thinks={settings.thinking !== 'default' || conv.messages.some((m) => Boolean(m.reasoning))}
           onChange={setSettings}
           onClose={() => setSheet(false)}
         />
@@ -825,12 +829,15 @@ function SettingsSheet({
   settings,
   models,
   live,
+  thinks,
   onChange,
   onClose,
 }: {
   settings: Settings;
   models: string[];
   live: Live;
+  /** The model has shown its thinking in this chat, or a choice is already in force (031 promise 2). */
+  thinks: boolean;
   onChange: (s: Settings) => void;
   onClose: () => void;
 }) {
@@ -872,6 +879,20 @@ function SettingsSheet({
             onChange={(e) => setDraft({ ...draft, temperature: Number(e.target.value) })}
           />
           <span className="field-hint">Lower is more predictable, higher is more surprising.</span>
+        </label>
+        {/* Truthful surface (031): a switch for something this model has never done is a claim, so
+            until it has thought here the row only says what is in force. */}
+        <label className="field">
+          <span className="field-label">Thinking{thinks ? '' : ' · model default'}</span>
+          {thinks ? (
+            <select value={draft.thinking} onChange={(e) => setDraft({ ...draft, thinking: e.target.value as Thinking })}>
+              <option value="default">Model default</option>
+              <option value="on">On — better answers on hard questions</option>
+              <option value="off">Off — faster, shorter, fewer of your tokens</option>
+            </select>
+          ) : (
+            <span className="field-hint">The switch appears once the model has shown its thinking in this chat.</span>
+          )}
         </label>
         <p className="dim small-print">
           {privacyLine(hostName(me), logsPrompts(me))} Your invite is <code>{me.key.name}</code> (
