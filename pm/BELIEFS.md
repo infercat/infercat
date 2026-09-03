@@ -76,6 +76,7 @@ Polish is judged experientially — a stranger's first ten minutes on each side 
   wrong shape for a static client and a one-binary host, but its ~250 packages and the community's tools
   are a large, high-quality menu of tool implementations and loop designs to borrow from, one at a time,
   under our own seams.
+- **Iteration has a stop.** Reason (founder, 2026-09-02): four experiential passes on the web client were enough; "make the fourth pass the last." A review loop that keeps finding smaller items is a cost, not a safeguard; the PM ends it when the remaining items are ordinary polish a launch can carry, and says so.
 - **Fix classes, not instances.** When a review finds three or more defects with one cause, the fix is
   the missing structure (a pipeline with one exit, a state machine, a stateful upstream), never N
   patches. Reason (founder, 2026-09-02): the demo-1 reviews produced ~30 confirmed defects that cluster
