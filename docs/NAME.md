@@ -46,3 +46,51 @@ Token Torrent (founder: many-to-many metaphor, negative association, names the t
 the message to the founder of 2026-09-03. Both need: a trademark knock-out search in Classes 9/42 (US
 + EU), a domain decision (buy guestroom.app/.ai, or a path on an owned domain), and the CLI binary name
 (`guestroom`, alias `gr`).
+
+---
+
+# Round 2 (2026-09-03): names in the audience's own vocabulary
+
+The founder rejected round 1 ("none of the names describe the product"). Round 2 generated from the
+LM Link market vocabulary (docs/MARKET-LMLINK.md: "use my local models remotely", "my model", "API key",
+"access", "remote client", "self-hosted"; the audience never says "friend"/"invite"/"guest"), then
+collision-checked every candidate individually (15 agents; journal `wf_9f974100-bcd`). Legibility =
+"a LocalLLaMA reader knows what it does from the name".
+
+## Shortlist
+
+| Name | Binary | Legibility | Availability (verified 2026-09-03) | The catch |
+|---|---|---|---|---|
+| **Model Key** | `modelkey` | 5 | npm/PyPI/brew/Docker free; **github.com/modelkey free**; .app/.io unregistered; .com for sale (BuyDomains); .ai/.dev held by an unknown party (GoDaddy placeholder, "coming soon", paid to 2028) | Under-describes (says key-to-a-model, not local/shared); copy must say "invite code" not "key"; a live US Class 28 (toys) MODELKEY mark; likely a weak (descriptive) mark |
+| Model Access | `modelaccess` | 5 | .ai FREE; github org free; registries free; .com parked | AWS Bedrock's console page is literally "Model access"; reads as provider-side entitlement — the intermediary the audience refuses; SEO unwinnable |
+| Lendmodel | `lendmodel` | 4 | Cleanest sheet: USPTO zero (with a working control), .ai free, .app free, all registries free; .com $2,995 | "lend" is owned by finance; "lending model" is a credit-risk term; SEO lands in fintech |
+| Model Remote | `modelremote` | 4 | Everything free incl. .com | "remote model" is a term of art for the opposite (Ollama cloud, ML Kit RemoteModel) |
+| Sharemodel | `sharemodel` | 5 | registries free; **github.com/sharemodel is a squatted org** | "share a model" means publish the weights (Hugging Face, `ollama push`) — wrong about the one fact that defines the product |
+
+## Rejected, with the collision
+
+Modelshare (modelshare.ai, since 2022) · Sharellm (one letter from SharedLLM, a live self-hostable
+per-user-key product) · Model Pass (modelpass.ai, a live OpenAI-compatible gateway with per-key quotas)
+· Myllm (shipping iOS app + host binary) · Model Line (modelline.dev, private preview, E2EE model
+calls) · Local Pass (`pass` = the Unix password store) · Model Seat (seat = per-seat licensing, i.e.
+accounts) · Modelport (Archicad add-on) · Modelhost / Hostpass (reads as web hosting) · Localshare /
+Localkey (LAN file transfer) · Guestkey (says nothing about AI).
+
+## What round 2 established
+
+- The audience's frame is **"my model", "access", "remote", "key"** — not hospitality. Every
+  legibility-5 name is a `Model ___` compound; the noun after it is the whole decision.
+- **Sharing-the-weights collision is structural:** any name with "share" in it reads as uploading
+  weights to this audience. Out.
+- **Under-description is the acceptable failure mode**; misdirection is not. Model Key's misread ("a
+  keyring for my API keys") is a subset of the product; Model Access's ("Bedrock IAM") and Model
+  Remote's ("cloud model") are its opposite.
+- No trademark clearance was performed on any name; the MODELKEY Class 28 finding rests on one
+  TMview session with positive controls. The holder of modelkey.ai/.dev is the biggest unknown.
+
+## PM recommendation (round 2)
+
+**Model Key** (`modelkey`), tagline carrying what the name omits: "Give friends a key to the model on
+your machine." Fallbacks: Model Access if a free .ai outranks the Bedrock collision; Lendmodel if the
+cleanest legal sheet outranks a legibility point. Before the post: a knock-out trademark search in
+Classes 9/42 (US + EU) on the chosen name; a decision on modelkey.app vs. buying .com.
