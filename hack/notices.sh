@@ -39,10 +39,19 @@ module=$(go list -m)
 # --- the Go tree -------------------------------------------------------------------------------
 # Our own packages carry no third-party obligation, so they are ignored rather than reported as
 # "Unknown", which is what go-licenses calls a package with no LICENSE of its own.
+#
+# The tree differs by target — dbus and netlink only on Linux, certstore only on macOS — so the
+# report is the union over every platform the release builds (.goreleaser.yaml), never the
+# platform this script happens to run on: a file generated on a laptop must verify in CI on Linux.
+TARGETS="darwin/arm64 darwin/amd64 linux/amd64 linux/arm64 windows/amd64"
 printf '{{ range . }}{{ .Name }}\t{{ .Version }}\t{{ .LicenseName }}\t{{ .LicenseURL }}\t{{ .LicensePath }}\n{{ end }}' >"$tmp/go.tmpl"
-go-licenses report ./cmd/bunny-network --ignore "$module" --template "$tmp/go.tmpl" 2>"$tmp/go.err" |
-  LC_ALL=C sort >"$tmp/go.tsv" ||
-  { cat "$tmp/go.err" >&2; echo "notices: go-licenses report failed" >&2; exit 1; }
+: >"$tmp/go.all"
+for target in $TARGETS; do
+  GOOS=${target%/*} GOARCH=${target#*/} go-licenses report ./cmd/bunny-network --ignore "$module" --template "$tmp/go.tmpl" \
+    >>"$tmp/go.all" 2>>"$tmp/go.err" ||
+    { cat "$tmp/go.err" >&2; echo "notices: go-licenses report failed for $target" >&2; exit 1; }
+done
+LC_ALL=C sort -u "$tmp/go.all" >"$tmp/go.tsv"
 [ -s "$tmp/go.tsv" ] || { cat "$tmp/go.err" >&2; echo "notices: go-licenses reported nothing" >&2; exit 1; }
 
 # --- the web tree ------------------------------------------------------------------------------
@@ -80,7 +89,8 @@ fi
   echo "\`make notices-check\`, which fails if this file is stale or if a dependency's licence is"
   echo "not one of: $ALLOWED."
   echo
-  echo "Two trees ship: the host binary (Go) and the web app bundle (npm, production only)."
+  echo "Two trees ship: the host binary (Go — the union over every release platform: $TARGETS)"
+  echo "and the web app bundle (npm, production only)."
   echo "Full licence texts live at the URLs below; the two the tunnel is built on are reproduced"
   echo "verbatim at the end of this file."
   echo
