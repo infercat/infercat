@@ -122,7 +122,7 @@ Auth: `Authorization: Bearer <secret>` on every route except `/healthz`.
 | `GET /healthz` | `{"ok":true}` always; no auth; no other info |
 | `GET /me` | `{key:{id,name,status}, limits:Limits, usage:{rpm_used, tpm_used, today_tokens, in_flight}, host:{name, upstream:{kind,healthy,model_context}, models:[ids], relay:{region}, log_prompts:bool}}`. `kind` is `"unknown"` until an engine answered a signature probe; `healthy` reflects the last probe; the client discloses `log_prompts`. |
 | `GET /v1/models` | engine list filtered by the key's allowed models; per-key concurrency applies; **not counted against RPM** (ruled 2026-09-02, ticket 014: the friend's meter counts messages) |
-| `POST /v1/chat/completions` | stream and non-stream. Gateway MUST: flush every SSE chunk immediately; inject `stream_options.include_usage=true` when streaming; normalize the body once (strip engine-override aliases such as `n_predict`/`n`/`best_of`/`priority`, fill `model`, clamp `max_tokens` to the key's cap and shrink it to fit the context and the TPM/daily windows, floor 16); pass `reasoning_content` through untouched. An engine 400/422 caused by the request maps to 400 `invalid_request` with the engine's message; 5xx → 502 |
+| `POST /v1/chat/completions` | stream and non-stream. Gateway MUST: flush every SSE chunk immediately; inject `stream_options.include_usage=true` when streaming; normalize the body once (strip engine-override aliases such as `n_predict`/`n`/`best_of`/`priority`, fill `model`, clamp `max_tokens` to the key's cap and shrink it to fit the context and the TPM/daily windows, floor 16); pass `reasoning_content` through untouched. An engine 400/422 caused by the request maps to 400 `invalid_request` with the engine's message — except a context overflow (llama.cpp `exceed_context_size_error`, vLLM "maximum context length"), which maps to 422 `context_too_long` so clients never retry it (036); 5xx → 502 |
 | `POST /v1/embeddings` | pass-through with auth + limits |
 | anything else | 404 in error format |
 
@@ -162,7 +162,8 @@ probe; `serve` polls it every 10 s and logs health transitions. Consumers **read
 decide (health at request entry, models/context at normalization, slots at slot acquire/release); nothing
 is pushed. The gateway depends only on
 ```go
-type Engine interface { Info() Info; CountTokens(ctx, text) (n int, exact bool, err error); Do(ctx, method, path string, body []byte, stream bool) (*http.Response, error) }
+type Engine interface { Info() Info; CountTokens(ctx, text, messages) (n int, exact bool, err error); Do(ctx, method, path string, body []byte, stream bool) (*http.Response, error) }
+// CountTokens counts under the engine's chat template when messages are given (llama.cpp /apply-template → /tokenize; vLLM /tokenize {messages}); estimates add 4/message + 16. (036)
 ```
 `Do` owns the bearer, refuses redirects, applies the first-byte deadline (120 s) and the probe bound (3 s)
 on GETs; the engine's URL never crosses the seam (compile-time: the gateway names only `Engine`).
