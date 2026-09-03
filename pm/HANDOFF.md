@@ -29,16 +29,12 @@ a public social-media launch soon after, likely serving DeepSeek v4 flash from t
   agent on LM Link market vocabulary. On resume: read both journals; if killed, resume the workflow from
   cache (`Workflow({scriptPath, resumeFromRunId})`); the founder wants a recommendation in the
   audience's words (see docs/MARKET-LMLINK.md), not the Guestroom-style list (docs/NAME.md).
-- **Relay (droplet 206.189.207.168, `derp-server-1`, Ubuntu 24.04, ssh as root with this Mac's key):**
-  derper built at /usr/local/bin/derper; systemd unit `derper.service` written for
-  `derp.2185lab.com` (:443 LE, :80, STUN 3478), NOT enabled; ufw rules for 22/80/443/3478 staged, NOT
-  enabled. **Blocked on the founder saying "apply"** for the Cloudflare A record `derp → 206.189.207.168`
-  (unproxied, TTL 300) — wrangler 4.128 installed and authenticated via CLOUDFLARE_API_TOKEN in the
-  env; the exact call is in ~/.claude/jobs/12b4a99c/tmp/cf/dns-change.json. After apply: enable ufw,
-  start derper, confirm the cert, generate a TEST host key pinned to the relay in a throwaway data dir,
-  run hack/measure.sh through it vs Tailscale's public relay. **Founder ruling: do not switch the demo
-  host to our relay without an explicit green light** — Tailscale's own relays may be the better
-  option; the business case is open (their blog invites this use).
+- **Relay: LIVE.** `derp.2185lab.com` → 206.189.207.168 (A record created by the founder; unproxied).
+  derper 1.102.3 under systemd (`derper.service`, enabled), ufw 22/80/443/3478, Let's Encrypt cert to
+  2026-12-02, DERP probe 200, STUN verified with tailscale's client. Test host pinned to it measured equal
+  to Tailscale NYC (docs/MEASURE.md). **Demo host NOT switched — founder green light required.** The
+  CLOUDFLARE_API_TOKEN in the env is read-only (record creation returned auth error 10000); wrangler
+  4.128 installed; `wrangler login` (browser OAuth) would grant DNS write if ever needed.
 - **Founder decisions still open (pm/LAUNCH.md):** F1 name (round 2 pending), F3 web URL (Vercel;
   domain with the name), F4 distribution (recommend public repo + Releases + brew tap), F5 license,
   F6 history rewrite (needed if public). F2 relay = the test above.

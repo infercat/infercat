@@ -63,3 +63,21 @@ render), still well under the "feels instant" bar. Connect (`BunnyTunnel.connect
 475 SSE data lines, usage `prompt_tokens:32 completion_tokens:472`. Exact `/tokenize` counting is
 used, not `ceil(chars/4)`: vLLM `/tokenize` with the chat template returns 32, matching the engine's
 own `prompt_tokens:32` (the gateway's `CountTokens` posts to `/tokenize`, internal/upstream/kinds.go:187).
+
+### Self-hosted relay test (2026-09-03 01:05–01:20 EDT) — derp.2185lab.com, DigitalOcean NYC, 2 vCPU / 4 GB
+
+Test host only (`--data-dir …/bn-relaytest --region derp.2185lab.com`); the demo host stayed on Tailscale's
+public relays per the founder's ruling. Relay: derper 1.102.3 from source, Let's Encrypt cert (Sep 3 →
+Dec 2), DERP `/derp/probe` 200, STUN answers tailscale's own client (a hand-rolled probe did not — our
+error, not the relay's). Address embeds `derp.2185lab.com` (`tailcat parse` shows the node hostname).
+
+| Path | Command | Result |
+|---|---|---|
+| CLI, until direct | `tailcat ping --until-direct <addr>` | first pong 29.8 ms **via our relay**, then 0.8 ms **direct** (hole-punched; same LAN) |
+| CLI tunnel vs loopback, N=3 | `hack/measure.sh` | direct 33 ms TTFT / 173.8 tok/s · tunnel 33 ms / 173.4 tok/s (identical: traffic went direct after rendezvous) |
+| Browser (wasm, relay-only) | `web/dev/real-check.mjs reconnect` from the relay-pinned data dir | connect by link 5.9 s (first run; relay cold for a new key); reconnect 10.6 s; path pill **"relayed via derp.2185lab.com · 65 ms"**; relay `derp_accepts` 1 → 6 during the run |
+| Browser via Tailscale NYC (reference, earlier today) | same harness | 64–79 ms, connect ~1 s warm |
+
+Verdict for the founder's decision: **our relay performs the same as Tailscale's NYC relay from this
+location** (65 ms vs 64–79 ms browser RTT; CLI paths go direct either way). The remaining comparison is
+operational (uptime, regions, cost), not latency. No switch made.
