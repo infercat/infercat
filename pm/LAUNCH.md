@@ -13,6 +13,7 @@ gates the public ones (BELIEFS: Authority). Nothing ships while a line in **Foun
 | F4 | **Distribution** | Strangers need a download, not a Go toolchain | **DECIDED 2026-09-03:** public repo, GitHub Releases (5 targets + web zip, already built by 017) + a Homebrew tap. Walkthrough in docs/RELEASE.md. |
 | F5 | **License** | No LICENSE file; third-party notices are required by tailcat/tailscale (BSD-3) regardless | **DONE 2026-09-03: MIT**, copyright Yuanping Song; LICENSE at the repo root and in every archive; notices already ship (017). |
 | F6 | **History** | A 28 MB binary sits in git history (`ff` commits before `e5b0a11`) | Rewrite once before the repo goes public (now required by F4); never after. PM runs it the day the repo is made public. |
+| F7 | **Umbrella** | Decides the domain (F3), the GitHub location, and the footer attribution | Raised by the founder 2026-09-03 07:40. PM recommendation: legal and commercial entity stays 2185 Lab (no new entity before a paid signal); the product stands on its own name with its own domain and its own GitHub org (`github.com/<name>/<name>`, the canonical open-source shape; transfer is one click and GitHub redirects the old URL); "by 2185 Lab" in the footer and the post; not a Bunny-family app (cross-platform, CLI-first, MIT, GitHub-first audience), but the Local AI for Mac directory on bunnysoft.app is a launch channel. Revisit the entity only on a trigger: a paid signal or an outside party that needs the product separable. |
 
 ## Engineering gates
 
