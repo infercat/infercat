@@ -10,9 +10,11 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"sync"
 	"time"
 
 	"github.com/2185Lab/bunny-network/internal/product"
+	"github.com/2185Lab/bunny-network/internal/usage"
 )
 
 // File names inside the data dir.
@@ -25,21 +27,74 @@ const (
 // ErrNoDaemon means nothing is listening: `serve` is not running for this data dir.
 var ErrNoDaemon = errors.New("no running host found for this data dir")
 
-// Status is the admin API's single response (docs/ARCHITECTURE.md §Admin API).
+// Status is the admin API's single response (docs/ARCHITECTURE.md §Admin API). Mode is "host"
+// for `serve` and "bridge" for a `connect` given a data dir (ticket 029 promise 5): a bridge has
+// one session, its local endpoint under Upstream, and no keys.
 type Status struct {
 	Product  string   `json:"product"`
 	Version  string   `json:"version"`
 	UptimeS  int64    `json:"uptime_s"`
+	Mode     string   `json:"mode"`
+	Name     string   `json:"name"` // the host's display name; for a bridge, the host it reaches
 	Tunnel   Tunnel   `json:"tunnel"`
 	Upstream Upstream `json:"upstream"`
 	Queue    Queue    `json:"queue"`
+	Engine   Engine   `json:"engine"`
+	Process  Process  `json:"process"`
 	Keys     []Key    `json:"keys"`
 }
 
 type Tunnel struct {
-	Addr    string `json:"addr"`
-	Region  string `json:"region"`
-	Clients int    `json:"clients"`
+	Addr     string    `json:"addr"`
+	Region   string    `json:"region"`
+	Clients  int       `json:"clients"` // open port-80 connections right now
+	Sessions []Session `json:"sessions"`
+	RxBytes  int64     `json:"rx_bytes"` // over every session: received from friends
+	TxBytes  int64     `json:"tx_bytes"` // sent to friends
+}
+
+// Session is one client as this process has met it (ticket 029 promise 3). On a host it is
+// keyed by the client's tunnel address — tailcat derives it from the client's node key, so it is
+// the client's identity — and carries what a host can see: connections, bytes, activity. Path,
+// handshake and RTT are the client's to measure (tailcat 0.4.0 keeps WireGuard peer state on the
+// client side only), so a host says Path "unknown" and a bridge (connect) fills them in for its
+// one session.
+type Session struct {
+	Key         string    `json:"key"`
+	Path        string    `json:"path"` // "direct", "relayed", or "unknown"
+	Via         string    `json:"via,omitempty"`
+	RTTMS       float64   `json:"rtt_ms,omitempty"`
+	HandshakeMS int64     `json:"handshake_ms,omitempty"`
+	Conns       int       `json:"conns"`
+	RxBytes     int64     `json:"rx_bytes"`
+	TxBytes     int64     `json:"tx_bytes"`
+	Since       time.Time `json:"since"`
+	LastByte    time.Time `json:"last_byte"`
+	Active      bool      `json:"active"` // a byte in the last two minutes
+}
+
+// Engine is what the queue and the engine's own /metrics say (ticket 029 promise 4). Queue keeps
+// the exact now; SlotsPeak is sampled once a second (the queue has no high-water mark and a
+// read-only accessor cannot add one), so a burst shorter than that can pass under it. Busy,
+// Waiting, MemoryBytes and KVCachePct come from /metrics when the engine offers it (Metrics
+// true): llama.cpp with --metrics says busy and waiting and no memory; vLLM says all four.
+type Engine struct {
+	SlotsPeak   int     `json:"slots_peak_sampled"`
+	TokensPerS  float64 `json:"tokens_per_s_1m"` // completion tokens of requests finished in the last minute, over the minute
+	Metrics     bool    `json:"metrics"`
+	Busy        int     `json:"busy"`
+	Waiting     int     `json:"waiting"`
+	MemoryBytes int64   `json:"memory_bytes"`
+	KVCachePct  float64 `json:"kv_cache_pct"`
+}
+
+// Process is the host process for a before/after leak check (028). RSSBytes is 0 where the
+// kernel does not publish it without cgo (everything but Linux).
+type Process struct {
+	Goroutines int    `json:"goroutines"`
+	HeapBytes  uint64 `json:"heap_bytes"`
+	SysBytes   uint64 `json:"sys_bytes"`
+	RSSBytes   int64  `json:"rss_bytes"`
 }
 
 type Upstream struct {
@@ -71,18 +126,52 @@ type Server struct {
 	l     net.Listener
 	srv   *http.Server
 	clean func()
+	done  chan struct{} // closed by Close: every /events stream ends
+	once  sync.Once
 }
 
 // Serve starts the admin endpoint for dataDir. status is called per GET /status; reload is called
 // per POST /reload and must make an external edit to keys.json visible at once (ticket 009
-// promise 9). Both are the host's own, over the unix socket only — never the tunnel (Protection 1).
-func Serve(dataDir string, status func() Status, reload func() error) (*Server, error) {
+// promise 9); events, when non-nil, feeds GET /events (029), one JSON event per line for as long
+// as the client reads. All the host's own, over the unix socket only — never the tunnel
+// (Protection 1).
+func Serve(dataDir string, status func() Status, reload func() error, events *Events) (*Server, error) {
 	l, token, clean, err := listen(dataDir)
 	if err != nil {
 		return nil, err
 	}
+	done := make(chan struct{})
 	authed := func(r *http.Request) bool { return token == "" || r.Header.Get("Authorization") == "Bearer "+token }
 	mux := http.NewServeMux()
+	mux.HandleFunc("GET /events", func(w http.ResponseWriter, r *http.Request) {
+		if !authed(r) {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		if events == nil {
+			http.Error(w, "this process has no event stream", http.StatusServiceUnavailable)
+			return
+		}
+		ch, stop := events.Subscribe()
+		defer stop()
+		w.Header().Set("Content-Type", "application/x-ndjson")
+		w.WriteHeader(http.StatusOK)
+		rc := http.NewResponseController(w)
+		_ = rc.Flush()
+		enc := json.NewEncoder(w)
+		for {
+			select {
+			case <-r.Context().Done():
+				return
+			case <-done:
+				return
+			case e := <-ch:
+				if enc.Encode(e) != nil || rc.Flush() != nil {
+					return
+				}
+			}
+		}
+	})
 	mux.HandleFunc("POST /reload", func(w http.ResponseWriter, r *http.Request) {
 		if !authed(r) {
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
@@ -110,7 +199,7 @@ func Serve(dataDir string, status func() Status, reload func() error) (*Server, 
 		enc.Encode(s)
 	})
 	srv := &http.Server{Handler: mux, ReadHeaderTimeout: 5 * time.Second}
-	s := &Server{l: l, srv: srv, clean: clean}
+	s := &Server{l: l, srv: srv, clean: clean, done: done}
 	go srv.Serve(l)
 	return s, nil
 }
@@ -120,6 +209,7 @@ func (s *Server) Addr() string { return s.l.Addr().String() }
 
 // Close stops serving and removes the socket / port files.
 func (s *Server) Close() error {
+	s.once.Do(func() { close(s.done) })
 	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 	defer cancel()
 	err := s.srv.Shutdown(ctx)
@@ -182,4 +272,41 @@ func Fetch(ctx context.Context, dataDir string) (Status, error) {
 		return Status{}, err
 	}
 	return st, nil
+}
+
+// Watch tails the running process's event stream, calling fn for each event, until ctx ends or
+// the stream does (a host that stopped: nil, so a watcher may wait for it to come back).
+// ErrNoDaemon means nothing is listening.
+func Watch(ctx context.Context, dataDir string, fn func(usage.Event)) error {
+	hc, base, token, err := dial(dataDir)
+	if err != nil {
+		return err
+	}
+	hc.Timeout = 0 // a stream, not a call
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, base+"/events", nil)
+	if err != nil {
+		return err
+	}
+	if token != "" {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+	resp, err := hc.Do(req)
+	if err != nil {
+		return ErrNoDaemon
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode != http.StatusOK {
+		return errors.New("admin API: " + resp.Status)
+	}
+	dec := json.NewDecoder(resp.Body)
+	for {
+		var e usage.Event
+		if err := dec.Decode(&e); err != nil {
+			if ctx.Err() != nil || errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF) {
+				return nil
+			}
+			return err
+		}
+		fn(e)
+	}
 }

@@ -14,6 +14,7 @@ import (
 	"errors"
 	"fmt"
 	"net"
+	"net/netip"
 	"os"
 	"path/filepath"
 	"slices"
@@ -54,6 +55,19 @@ type Status struct {
 	// Clients counts distinct clients with an open connection on Port right now; tailcat
 	// exposes no peer list, so a browser between requests counts as zero.
 	Clients int
+}
+
+// Peer is one client this server has met (ticket 029), as far as a host can see it: tailcat
+// 0.4.0 keeps WireGuard peer state — the path, the handshake — on the client side, so what the
+// host meters is the TCP payload on Port per client tunnel address (which tailcat derives from
+// the client's node key: it is the client's identity), its open connections, and its activity.
+type Peer struct {
+	Addr     netip.Addr
+	Conns    int   // open connections right now
+	RxBytes  int64 // received from the client
+	TxBytes  int64 // sent to the client
+	Since    time.Time
+	LastByte time.Time // zero: none yet
 }
 
 // Server is a running tunnel. Listener accepts its connections; Close stops it.
@@ -185,6 +199,11 @@ func (s *Server) Addr() string { return s.addr }
 func (s *Server) Status() Status {
 	return Status{Addr: s.addr, RegionName: regionName(s.region), Started: s.started, Clients: s.ln.clients()}
 }
+
+// Peers lists every client that ever reached Port, oldest first. A client is never forgotten
+// (a browser that reconnects under a fresh identity is a new peer), so the list grows with
+// distinct identities, not with traffic.
+func (s *Server) Peers() []Peer { return s.ln.peers() }
 
 // Close stops accepting and shuts the tailcat server down, closing every tunnel connection.
 func (s *Server) Close() error {

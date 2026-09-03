@@ -18,6 +18,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/2185Lab/bunny-network/internal/admin"
 	"github.com/2185Lab/bunny-network/internal/tunnel"
 )
 
@@ -171,7 +172,7 @@ func (g *fakeHost) lastAuth(t *testing.T) string {
 func serveConnector(t *testing.T, sess session) (*connector, string, *bytes.Buffer) {
 	t.Helper()
 	var out bytes.Buffer
-	c := &connector{secret: testSecret, host: "Testhost", relayName: "Testville", sess: sess, out: &out,
+	c := &connector{secret: testSecret, host: "Testhost", relayName: "Testville", sess: sess, out: &out, logRequests: true, events: admin.NewEvents(nil),
 		logf: func(f string, a ...any) { fmt.Fprintf(&out, f+"\n", a...) }, wake: make(chan struct{}, 1)}
 	srv := httptest.NewServer(c)
 	t.Cleanup(srv.Close)
@@ -311,7 +312,7 @@ func TestConnectStreamsEachEventAsItArrives(t *testing.T) {
 	if _, err := br.ReadByte(); err != io.EOF {
 		t.Fatalf("stream did not end after [DONE]: %v", err)
 	}
-	if !strings.Contains(out.String(), "POST /v1/chat/completions") || !strings.Contains(out.String(), "queue_timeout") {
+	if !strings.Contains(out.String(), "Testhost  chat") || !strings.Contains(out.String(), "queue_timeout — Testhost is busy") {
 		t.Fatalf("the terminal line does not say how the request ended:\n%s", out.String())
 	}
 }

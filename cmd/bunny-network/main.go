@@ -16,6 +16,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/2185Lab/bunny-network/internal/admin"
 	"github.com/2185Lab/bunny-network/internal/keys"
 	"github.com/2185Lab/bunny-network/internal/product"
 	"github.com/2185Lab/bunny-network/internal/upstream"
@@ -37,6 +38,7 @@ type tunnelServer interface {
 	Listener() net.Listener
 	Addr() string
 	Status() tunnelStatus
+	Peers() []admin.Session // every client key met, for status (029); polled once a second by serve
 	Close() error
 }
 

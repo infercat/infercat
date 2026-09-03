@@ -5,7 +5,9 @@ package main
 import (
 	"context"
 	"net"
+	"time"
 
+	"github.com/2185Lab/bunny-network/internal/admin"
 	"github.com/2185Lab/bunny-network/internal/gateway"
 	"github.com/2185Lab/bunny-network/internal/invite"
 	"github.com/2185Lab/bunny-network/internal/keys"
@@ -59,4 +61,12 @@ func (t realTunnel) Close() error           { return t.s.Close() }
 func (t realTunnel) Status() tunnelStatus {
 	st := t.s.Status()
 	return tunnelStatus{Addr: st.Addr, Region: st.RegionName, Started: st.Started, Clients: st.Clients}
+}
+func (t realTunnel) Peers() []admin.Session {
+	var out []admin.Session
+	for _, p := range t.s.Peers() {
+		out = append(out, admin.Session{Key: p.Addr.String(), Path: "unknown", Conns: p.Conns, RxBytes: p.RxBytes, TxBytes: p.TxBytes,
+			Since: p.Since, LastByte: p.LastByte, Active: time.Since(p.LastByte) < 2*time.Minute})
+	}
+	return out
 }

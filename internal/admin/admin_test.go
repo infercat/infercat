@@ -37,7 +37,7 @@ func sample() Status {
 
 func TestServeAndFetchRoundTrip(t *testing.T) {
 	dir := t.TempDir()
-	s, err := Serve(dir, sample, nil)
+	s, err := Serve(dir, sample, nil, nil)
 	if err != nil {
 		t.Fatalf("Serve: %v", err)
 	}
@@ -51,7 +51,7 @@ func TestServeAndFetchRoundTrip(t *testing.T) {
 		t.Errorf("product/version = %q %q, want the constants", got.Product, got.Version)
 	}
 	want := sample()
-	if got.UptimeS != want.UptimeS || got.Tunnel != want.Tunnel || got.Upstream != want.Upstream || got.Queue != want.Queue {
+	if got.UptimeS != want.UptimeS || got.Tunnel.Addr != want.Tunnel.Addr || got.Tunnel.Clients != want.Tunnel.Clients || got.Upstream != want.Upstream || got.Queue != want.Queue {
 		t.Errorf("status = %+v", got)
 	}
 	if len(got.Keys) != 1 || got.Keys[0].ID != "k_1" || got.Keys[0].TodayTokens != 12004 {
@@ -66,7 +66,7 @@ func TestServeAndFetchRoundTrip(t *testing.T) {
 // socket only the host's own user can open.
 func TestSocketIsPrivate(t *testing.T) {
 	dir := t.TempDir()
-	s, err := Serve(dir, sample, nil)
+	s, err := Serve(dir, sample, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -103,7 +103,7 @@ func TestFetchWithoutADaemon(t *testing.T) {
 
 func TestCloseRemovesTheSocket(t *testing.T) {
 	dir := t.TempDir()
-	s, err := Serve(dir, sample, nil)
+	s, err := Serve(dir, sample, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -125,7 +125,7 @@ func TestTooLongDataDirSaysWhy(t *testing.T) {
 		t.Skip("no sun_path limit on the windows fallback")
 	}
 	dir := filepath.Join(shortDir(t), strings.Repeat("x", 120))
-	if _, err := Serve(dir, sample, nil); err == nil || !strings.Contains(err.Error(), "too long") {
+	if _, err := Serve(dir, sample, nil, nil); err == nil || !strings.Contains(err.Error(), "too long") {
 		t.Errorf("err = %v, want a clear complaint about the path length", err)
 	}
 }
@@ -139,7 +139,7 @@ func TestStaleSocketIsReplaced(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(dir, SockName), nil, 0o600); err != nil {
 		t.Fatal(err)
 	}
-	s, err := Serve(dir, sample, nil)
+	s, err := Serve(dir, sample, nil, nil)
 	if err != nil {
 		t.Fatalf("Serve over a stale socket: %v", err)
 	}
@@ -155,12 +155,12 @@ func TestSecondHost(t *testing.T) {
 		t.Skip("the windows fallback has no socket to collide on")
 	}
 	dir := shortDir(t)
-	s, err := Serve(dir, sample, nil)
+	s, err := Serve(dir, sample, nil, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
 	defer s.Close()
-	if _, err := Serve(dir, sample, nil); err == nil {
+	if _, err := Serve(dir, sample, nil, nil); err == nil {
 		t.Error("a second Serve on the same data dir succeeded")
 	}
 }
@@ -171,7 +171,7 @@ func TestSecondHost(t *testing.T) {
 func TestReloadCallsTheHook(t *testing.T) {
 	dir := shortDir(t)
 	var called int
-	s, err := Serve(dir, sample, func() error { called++; return nil })
+	s, err := Serve(dir, sample, func() error { called++; return nil }, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -185,7 +185,7 @@ func TestReloadCallsTheHook(t *testing.T) {
 	}
 	// A hook that fails is reported, not swallowed.
 	s.Close()
-	s2, err := Serve(dir, sample, func() error { return errors.New("keys.json is corrupt") })
+	s2, err := Serve(dir, sample, func() error { return errors.New("keys.json is corrupt") }, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
