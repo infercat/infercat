@@ -56,7 +56,7 @@ import {
   type Settings,
   type Thinking,
 } from '../storage';
-import { carried, contextCarried, NEW_REPLY, reduceReply, saidInBanner, thinkingFields, tokensSaved, type Reply } from '../stream';
+import { carried, chatSpeed, contextCarried, msText, rateText, reduceReply, saidInBanner, startReply, thinkingFields, tokensSaved, type Reply } from '../stream';
 import { composing } from './composing';
 import MessageView from './Message';
 import { coarsePointer } from './pointer';
@@ -307,7 +307,7 @@ export default function Chat({ state, live, dispatch, onRedial, reconnecting = f
       abort.current = ac;
       setStreaming(true);
 
-      let reply: Reply = NEW_REPLY;
+      let reply: Reply = startReply(); // the clock behind the footer's numbers starts at Send (032)
       let failed: { code: string; error: FriendlyError } | null = null;
       try {
         for await (const ev of chatEvents(
@@ -648,7 +648,7 @@ export default function Chat({ state, live, dispatch, onRedial, reconnecting = f
           onClose={() => setSheet(false)}
         />
       )}
-      {limitsSheet && <LimitsSheet me={me} onClose={() => setLimitsSheet(false)} />}
+      {limitsSheet && <LimitsSheet live={live} messages={conv.messages} onClose={() => setLimitsSheet(false)} />}
     </div>
   );
 }
@@ -678,9 +678,11 @@ function Meters({ live, used, onOpen }: { live: Live; used: number | null; onOpe
 }
 
 /** One sheet, one sentence each: the whole explanation of the numbers in the header. */
-function LimitsSheet({ me, onClose }: { me: Live['me']; onClose: () => void }) {
+function LimitsSheet({ live, messages, onClose }: { live: Live; messages: readonly Message[]; onClose: () => void }) {
+  const me = live.me;
   const { rpm, daily_tokens: daily } = me.limits;
   const context = me.host.upstream.model_context;
+  const pace = chatSpeed(messages);
   return (
     <div className="sheet-wrap" onClick={onClose}>
       <div className="sheet" onClick={(e) => e.stopPropagation()}>
@@ -699,6 +701,22 @@ function LimitsSheet({ me, onClose }: { me: Live['me']; onClose: () => void }) {
             the next message will carry — the chat so far, minus thinking, minus anything left out to
             fit. As it fills, replies get shorter; a message that alone is too long for the memory is
             left out of the next question; a new chat starts empty.
+          </p>
+        )}
+        {/* Speed, from where the reader sits (032): this chat's medians and what is inside them. The
+            relay round trip is quoted only when there is one: direct mode has no hop. */}
+        {pace.n > 0 && (
+          <p>
+            <strong>
+              {pace.ttftMs !== undefined ? `${msText(pace.ttftMs)} to the first token` : 'Every reply so far waited for a slot first'}
+              {pace.tokPerS !== undefined ? ` · ${rateText(pace.tokPerS)}, ${msText(1000 / pace.tokPerS)} per token` : ''}.
+            </strong>{' '}
+            The median over {pace.n === 1 ? 'the one reply' : `the ${pace.n} replies`} in this chat, measured on this device:
+            Send to the first token, thinking or answer; completion tokens over first-to-last token, thinking included.
+            {live.mode === 'tunnel' && live.pathOk && live.path
+              ? ` The relay hop is inside both — the ${Math.round(live.path.rttMs)} ms round trip in the header right now.`
+              : ''}{' '}
+            A reply that waited for a free slot says so on the reply and is left out of the first-token median.
           </p>
         )}
         <button className="primary small" onClick={onClose}>

@@ -2,8 +2,25 @@
 // finished answer (promises 1 and 2).
 import { describe, expect, it } from 'vitest';
 import type { StreamEvent } from './api';
-import { carried, contextCarried, estimateTokens, NEW_REPLY, reduceReply, replyEnding, saidInBanner, thinkingFields, tokensSaved, type Reply } from './stream';
-import type { Message } from './storage';
+import {
+  carried,
+  chatSpeed,
+  contextCarried,
+  estimateTokens,
+  msText,
+  NEW_REPLY,
+  rateText,
+  reduceReply,
+  replyEnding,
+  saidInBanner,
+  speed,
+  speedLine,
+  startReply,
+  thinkingFields,
+  tokensSaved,
+  type Reply,
+} from './stream';
+import type { Message, Timing } from './storage';
 
 function play(...events: StreamEvent[]): Reply {
   return events.reduce(reduceReply, NEW_REPLY);
@@ -334,5 +351,81 @@ describe('tokens saved by not thinking', () => {
   it('claims no saving for a reply that thought anyway, or used more', () => {
     expect(tokensSaved([user, thought, user, { ...quiet, reasoning: 'still thinking' }], 3)).toBeNull();
     expect(tokensSaved([user, thought, user, { ...quiet, tokens: { in: 20, out: 400 } }], 3)).toBeNull();
+  });
+});
+
+// ---- 032: how fast it was, from where the reader sits --------------------------------------------
+
+describe('a reply keeps the moments its tokens arrived', () => {
+  /** Plays events against a clock: each at its own millisecond after a Send at t = 1000. */
+  function at(...steps: [number, StreamEvent][]): Reply {
+    return steps.reduce((r, [ms, ev]) => reduceReply(r, ev, 1000 + ms), startReply(1000));
+  }
+  const usage = (out: number): StreamEvent => ({ kind: 'usage', in: 9, out });
+
+  it('stamps Send, the last keepalive, the first token and the latest — and nothing on a reply without a clock', () => {
+    const r = at([0, { kind: 'queued' }], [61, think('h')], [500, say('P')], [2061, say('aris')], [2100, usage(84)], [2100, { kind: 'done' }]);
+    expect(r.timing).toEqual({ sent: 1000, queued: 1000, first: 1061, last: 3061 });
+    expect(play(say('x'), { kind: 'done' })).not.toHaveProperty('timing');
+  });
+
+  it('measures ttft to the first token, thinking or answer, and tok/s over first-to-last token, thinking included', () => {
+    const r = at([61, think('h')], [500, say('P')], [2061, say('aris')], [2100, usage(84)], [2100, { kind: 'done' }]);
+    expect(speed(r)).toEqual({ ttftMs: 61, tokPerS: 42 });
+    expect(speedLine(speed(r) as NonNullable<ReturnType<typeof speed>>).text).toBe('ttft 61 ms · 42 tok/s');
+    expect(speedLine(speed(r) as NonNullable<ReturnType<typeof speed>>).title).toContain('24 ms per token');
+  });
+
+  // The gateway says `: queued` on joining and every 5 s, and nothing when the slot comes: the wait
+  // is a floor, and the rest is not called the model's.
+  it('says how long the host had it in line, as a floor, and never invents the split', () => {
+    const r = at([0, { kind: 'queued' }], [5000, { kind: 'queued' }], [7100, say('Paris')], [9100, say('.')], [9100, usage(84)], [9100, { kind: 'done' }]);
+    const s = speed(r) as NonNullable<ReturnType<typeof speed>>;
+    expect(s).toEqual({ ttftMs: 7100, queuedMs: 5000, tokPerS: 42 });
+    expect(speedLine(s).text).toBe('ttft 7.1 s (≥5.0 s of it in line for a slot) · 42 tok/s');
+    expect(speedLine(s).title).toMatch(/at least 5\.0 s/);
+  });
+
+  it('times a reply that only thought: its tokens streamed like any other', () => {
+    const r = at([200, think('a')], [1200, think('b')], [1200, usage(50)], [1200, { kind: 'done' }]);
+    expect(r.status).toBe('no_answer');
+    expect(speed(r)).toEqual({ ttftMs: 200, tokPerS: 50 });
+  });
+
+  it('keeps ttft for a stopped reply, claims no rate without a count, and says nothing before the first token', () => {
+    const stopped = at([90, say('as far')], [400, say(' as')], [400, { kind: 'aborted' }]);
+    expect(speed(stopped)).toEqual({ ttftMs: 90 });
+    expect(speedLine(speed(stopped) as NonNullable<ReturnType<typeof speed>>).text).toBe('ttft 90 ms');
+    expect(speed(at([0, { kind: 'waiting' }], [15000, { kind: 'aborted' }]))).toBeNull();
+    expect(speed({ timing: { sent: 0 } })).toBeNull();
+  });
+
+  it('claims no rate from a single token', () => {
+    expect(speed(at([50, say('Hi')], [50, usage(1)], [50, { kind: 'done' }]))).toEqual({ ttftMs: 50 });
+  });
+});
+
+describe('the chat’s medians', () => {
+  const reply = (id: string, timing: Timing | undefined, out = 100): Message => ({ id, role: 'assistant', content: 'x', timing, tokens: { in: 1, out } });
+
+  it('is the median first-token time over replies that did not wait, and tok/s over all of them', () => {
+    const msgs: Message[] = [
+      { id: 'u', role: 'user', content: '?' },
+      reply('a', { sent: 0, first: 100, last: 1100 }), // 100 ms · 100 tok/s
+      reply('b', { sent: 0, first: 300, last: 2300 }), // 300 ms · 50 tok/s
+      reply('c', { sent: 0, queued: 5000, first: 7000, last: 8000 }), // waited: out of the ttft median · 100 tok/s
+      reply('d', { sent: 0 }), // never answered: not timed
+      reply('e', undefined), // an older build's reply
+    ];
+    expect(chatSpeed(msgs)).toEqual({ ttftMs: 200, tokPerS: 100, n: 3 });
+    expect(chatSpeed([reply('c', { sent: 0, queued: 5000, first: 7000, last: 8000 })])).toEqual({ tokPerS: 100, n: 1 });
+    expect(chatSpeed([])).toEqual({ n: 0 });
+  });
+
+  it('formats under a second in ms, from a second on in seconds, and rates as whole numbers', () => {
+    expect(msText(61)).toBe('61 ms');
+    expect(msText(4260)).toBe('4.3 s');
+    expect(rateText(42.4)).toBe('42 tok/s');
+    expect(rateText(7.25)).toBe('7.3 tok/s');
   });
 });

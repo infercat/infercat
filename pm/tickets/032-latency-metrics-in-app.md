@@ -35,4 +35,14 @@ the sheet; tests. Same lane as 031 (same footer).
 
 ## Log
 
+- **2026-09-03 03:22 ACK.** Base `3eb9033`, lane `t031-web-footer` (shared with 031; 031 lands first,
+  one commit each).
+- **03:26 Read before edit.** The gateway writes `: queued` on joining the slot queue and every 5 s
+  (`internal/gateway/request.go:317`, `defaultQueuedEvery`) and **nothing when the slot is granted**, so
+  from the device the wait for a slot is a lower bound (send → last keepalive) at 5 s granularity, while
+  send → first delta is exact. The footer will say the exact number and the bound, never a split it
+  cannot see. Timestamps go on the reply as it is reduced (`reduceReply` takes a clock, default
+  `Date.now()`), persist with the message, and the sheet's medians are derived from the chat's messages
+  — no second store, nothing to keep in step.
+
 ## Report
