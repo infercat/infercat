@@ -432,12 +432,15 @@ describe('the header meters', () => {
 // 014 promise 13: a tunnel session that has broken stays broken. Retrying a request over it is
 // what made three Regenerates cost 30 s each against a host that was up.
 describe('redialling a host whose session broke', () => {
-  it('drops the dead session so a new one can be dialled', () => {
+  it('leaves the connect screen and carries the dead session as the redial target', () => {
     const t = fakeTransport();
     const connected: SessionState = { name: 'connected', live: liveOn(t) };
     const s = run([{ t: 'redial' }], connected);
     expect(s.name).toBe('connecting');
-    expect(t.closes).toBe(1); // the dead transport is closed, exactly once, by the one closer
+    // The dead transport is kept as the redial target, not closed here (023): it is closed once the
+    // fresh session is adopted, so a same-identity dial is never poisoned by an early close.
+    expect(s.name === 'connecting' && s.redial?.transport).toBe(t);
+    expect(t.closes).toBe(0);
   });
 
   it('re-verifying puts a live session back without touching the connect screen', () => {
@@ -580,11 +583,18 @@ describe('reconnect joins the dial in flight', () => {
     const s = run([{ t: 'redial' }], degraded(old));
     expect(s.name).toBe('connecting');
     expect(s.name === 'connecting' && s.redial?.transport).toBe(old);
-    expect(old.closes).toBe(1); // the broken session goes at once
+    // Kept alive until the new session is adopted (023): closing it now, while the fresh
+    // same-identity session is handshaking, poisons the relay for both.
+    expect(old.closes).toBe(0);
     expect(reduce(s, { t: 'redial' })).toBe(s);
     const fresh = fakeTransport();
     const v = reduce(s, { t: 'sessionUp', transport: fresh });
     expect(v.name === 'verifying' && v.redial?.transport).toBe(old);
+    // Adoption is when the old one finally goes — exactly once, and never the new one.
+    const done = run([{ t: 'verified', live: liveOn(fresh) }], v);
+    expect(done.name).toBe('connected');
+    expect(old.closes).toBe(1);
+    expect(fresh.closes).toBe(0);
   });
 
   it('adopts the self-probe\'s dial straight from connecting, for the host it is redialling only', () => {
@@ -598,6 +608,7 @@ describe('reconnect joins the dial in flight', () => {
     expect(next.name).toBe('connected');
     expect(live(next)?.transport).toBe(joined);
     expect(joined.closes).toBe(0);
+    expect(old.closes).toBe(1); // the joined dial's session takes over; the old one is closed at adoption
     // The card's own attempt carries no target: a stray candidate is never adopted there.
     const stray = fakeTransport();
     expect(run([{ t: 'verified', live: liveOn(stray) }], { name: 'connecting' })).toEqual({ name: 'connecting' });

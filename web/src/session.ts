@@ -183,10 +183,24 @@ export function dropped(prev: SessionState, e: SessionEvent, next: SessionState)
   const out: Transport[] = [];
   const before = transportOf(prev);
   const after = transportOf(next);
-  if (before && before !== after) out.push(before);
+  // The session being redialled (023) is kept alive across the whole attempt: closing it while the
+  // fresh, same-identity session is still handshaking poisons the relay's routing for both — /me
+  // gets through and every later request breaks. So it is not closed at `redial`, only when the new
+  // session is adopted, or the attempt is abandoned (disconnect) — the timing a self-probe heal
+  // already uses, and the one measured to work.
+  const keep = redialTarget(next)?.transport;
+  if (before && before !== after && before !== keep) out.push(before);
+  const stale = redialTarget(prev)?.transport;
+  if (stale && !redialTarget(next) && stale !== after && !out.includes(stale)) out.push(stale);
   const carried = e.t === 'sessionUp' ? e.transport : e.t === 'verified' ? e.live.transport : null;
   if (carried && carried !== after && !out.includes(carried)) out.push(carried);
   return out;
+}
+
+/** The session a `connecting`/`verifying` attempt is redialling (023), if it is one. Rendered by
+ * App so the chat screen stays mounted across a redial — the way it does across a self-probe heal. */
+export function redialTarget(s: SessionState): Live | null {
+  return (s.name === 'connecting' || s.name === 'verifying') && s.redial ? s.redial : null;
 }
 
 export function transportOf(s: SessionState): Transport | null {

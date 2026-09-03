@@ -1,6 +1,5 @@
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { describeError, getMe, hostName, ME_TIMEOUT_MS, timeoutSignal } from './api';
-import { PRODUCT_NAME } from './product';
 import Connect from './ui/Connect';
 import {
   dropped,
@@ -8,6 +7,7 @@ import {
   live,
   probing,
   reduce,
+  redialTarget,
   scheduleProbe,
   transportOf,
   type Live,
@@ -184,26 +184,27 @@ export default function App() {
   const [state, dispatch] = useSession();
   useRedial(state, dispatch);
   useProbe(state, dispatch);
-  const l = live(state);
-  const redialling = (state.name === 'connecting' || state.name === 'verifying') && state.redial !== undefined;
+  // During a redial the machine has no live session, but the chat screen stays mounted, rendered
+  // from the session being redialled (023): its host and key are the same, so the React key does
+  // not change and the store, the leader election and — crucially — the tunnel session are not
+  // torn down and rebuilt. A chat remount mid-reconnect leaves the fresh session unusable; a
+  // self-probe heal never remounts, and now neither does Reconnect.
+  const reconnecting = redialTarget(state);
+  const l = live(state) ?? reconnecting;
 
-  if (!l) {
-    return redialling ? (
-      <main className="connect">
-        <div className="connect-card">
-          <h1>{PRODUCT_NAME}</h1>
-          <p className="pitch">Opening a fresh connection to your host…</p>
-        </div>
-      </main>
-    ) : (
-      <Connect state={state} dispatch={dispatch} />
-    );
-  }
+  if (!l) return <Connect state={state} dispatch={dispatch} />;
 
   return (
     <Suspense fallback={<div className="booting">Opening…</div>}>
       {/* Remounting per host is what makes the host-scoped store load cleanly for the new one. */}
-      <Chat key={`${l.addr}/${l.me.key.id}`} state={state} live={l} dispatch={dispatch} onRedial={() => dispatch({ t: 'redial' })} />
+      <Chat
+        key={`${l.addr}/${l.me.key.id}`}
+        state={state}
+        live={l}
+        reconnecting={reconnecting !== null}
+        dispatch={dispatch}
+        onRedial={() => dispatch({ t: 'redial' })}
+      />
     </Suspense>
   );
 }

@@ -66,6 +66,9 @@ interface Props {
   dispatch: (e: SessionEvent) => void;
   /** Throw this session away and dial the same host again (014 promise 13). */
   onRedial: (l: Live) => void;
+  /** A redial is in flight (023): this screen is rendered from the session being replaced, so it
+   *  stays mounted and the fresh tunnel is never torn down by a remount. Nothing can be sent yet. */
+  reconnecting?: boolean;
 }
 
 /** What the last exchange offers the reader, when the reply did not simply work. */
@@ -82,7 +85,7 @@ const CHECKPOINT_MS = 2000;
 const POLL_MS = 30_000;
 const TAKEN_OVER = 'Another tab took over this chat — what is above is only part of it.';
 
-export default function Chat({ state, live, dispatch, onRedial }: Props) {
+export default function Chat({ state, live, dispatch, onRedial, reconnecting = false }: Props) {
   // Conversations and settings belong to this host and this invite, never to "the browser".
   const scope = hostScope(live.addr, live.me.key.id);
   const keys = scopedKeys(scope);
@@ -118,7 +121,7 @@ export default function Chat({ state, live, dispatch, onRedial }: Props) {
   const model = modelFor(settings.model, models) ?? models[0] ?? '';
   const waiting = Math.max(0, retryUntil - now);
   // Nothing can be sent while the invite is off, or from a tab that does not own the store.
-  const locked = live.key !== 'active';
+  const locked = live.key !== 'active' || reconnecting;
   const readOnly = leader !== true;
 
   const patch = useCallback((id: string, fn: (c: Conversation) => Conversation) => {
@@ -173,6 +176,7 @@ export default function Chat({ state, live, dispatch, onRedial }: Props) {
   // line and the pill can never be older than that (020 promise 4). A failure says so rather than
   // leaving the last number on screen as if it were current.
   useEffect(() => {
+    if (reconnecting) return; // the session on screen is the one being replaced: nothing to ask it
     const tick = () => {
       void live.transport
         .ping()
@@ -182,14 +186,14 @@ export default function Chat({ state, live, dispatch, onRedial }: Props) {
     };
     const timer = setInterval(tick, POLL_MS);
     return () => clearInterval(timer);
-  }, [live.transport, dispatch, refreshMe]);
+  }, [live.transport, dispatch, refreshMe, reconnecting]);
 
   // The moment a cooldown reaches zero the numbers it was about have changed: ask, rather than
   // showing "0 messages left" above an enabled Try again (promise 4).
   const cooled = retryUntil > 0 && now >= retryUntil;
   useEffect(() => {
-    if (cooled) void refreshMe();
-  }, [cooled, refreshMe]);
+    if (cooled && !reconnecting) void refreshMe();
+  }, [cooled, refreshMe, reconnecting]);
 
   // /v1/models is a fallback, not a routine (014 promise 5): /me already carries the models this
   // invite may use, so asking again spends one of the friend's own requests for an answer we
