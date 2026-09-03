@@ -22,3 +22,12 @@ Not scheduled; dispatched after the public launch.
 ## Log
 
 ## Report
+
+## Backlog appended 2026-09-02 (fourth experience pass, ruled non-blocking)
+
+Web: composer focus on chat mount · Escape/click-outside closes Settings and Limits sheets · the
+returning card shows immediately after Disconnect (not only after reload) · per-minute meter refills
+client-side between polls · self-probe backoff cap 10 s + probe on `visibilitychange` · composer that
+looks like it holds a long draft after a refused paste · the first ~15 s after a host kill still show the
+last live path reading · context meter estimate while streaming. Gateway: `/v1/models` refused at the RPM
+ceiling (one line in `limits.go`).

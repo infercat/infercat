@@ -35,3 +35,10 @@ backoff), tests. Ports 6720–6729.
 ## Log
 
 ## Report
+
+## Ruling (PM, 2026-09-02 22:58 — founder: fourth pass is the last)
+
+Cut to two promises: (a) the context meter shows what the next request will carry, simplest truthful
+derivation, no streaming estimate; (b) a refused oversized turn is dropped from the history the client
+sends, with the ended-line copy saying so. Promise 3's five items and the streaming estimate → backlog
+(ticket 012 list). Sent to the engineer with 023.
