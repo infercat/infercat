@@ -178,6 +178,8 @@ type fakeUpstream struct {
 	countErr   error
 	countGate  chan struct{} // when set, CountTokens blocks until it is closed
 	countPanic bool          // when set, CountTokens panics (the handler's panic path)
+	tplPerMsg  int           // a chat's template overhead the count adds per message (036); 0 = none
+	tplBase    int           // … and per chat
 	mode       string        // sse | json | usage | 500 | garbage | hang | redirect | status:NNN
 	events     []string      // sse: data payloads; json and status:NNN: events[0] is the body
 	gap        time.Duration // sse: between events
@@ -191,6 +193,7 @@ type fakeUpstream struct {
 	finished  atomic.Bool   // set when an sse handler wrote [DONE]
 	wrote     bytes.Buffer  // exact bytes an sse handler wrote
 	lastBody  []byte
+	lastMsgs  []byte // the messages the last CountTokens was given; nil = a text-only count
 	lastPath  string
 	lastAuth  string
 	requests  atomic.Int32
@@ -377,11 +380,13 @@ func (f *fakeUpstream) set(mode string, events ...string) {
 	}
 }
 
-// CountTokens: one token per whitespace-separated word, exact — so tests can build a prompt of N tokens.
+// CountTokens: one token per whitespace-separated word, exact — so tests can build a prompt of N tokens
+// — plus, for a chat, the template overhead the test set (tplPerMsg a message, tplBase a chat).
 // It tracks how many calls run at once and, with countGate set, parks callers until the gate closes.
-func (f *fakeUpstream) CountTokens(_ context.Context, text string) (int, bool, error) {
+func (f *fakeUpstream) CountTokens(_ context.Context, text string, messages []byte) (int, bool, error) {
 	f.mu.Lock()
-	err, gate, boom := f.countErr, f.countGate, f.countPanic
+	err, gate, boom, perMsg, base := f.countErr, f.countGate, f.countPanic, f.tplPerMsg, f.tplBase
+	f.lastMsgs = messages
 	f.mu.Unlock()
 	if err != nil {
 		return 0, false, err
@@ -396,7 +401,13 @@ func (f *fakeUpstream) CountTokens(_ context.Context, text string) (int, bool, e
 	if gate != nil {
 		<-gate
 	}
-	return len(strings.Fields(text)), true, nil
+	count := len(strings.Fields(text))
+	if messages != nil {
+		var ms []json.RawMessage
+		_ = json.Unmarshal(messages, &ms)
+		count += perMsg*len(ms) + base
+	}
+	return count, true, nil
 }
 
 // gateTokenize makes CountTokens block until the returned func is called.

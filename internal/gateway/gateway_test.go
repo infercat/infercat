@@ -350,12 +350,69 @@ func TestContextTooLongBoundary(t *testing.T) {
 		t.Fatalf("no context known: %d %s", r.status, r.body)
 	}
 	// Tokenizer failure degrades to an estimate, never a rejection of the whole request.
-	h.up.setInfo(func(i *upstream.Info) { i.ModelContext = 10 })
+	h.up.setInfo(func(i *upstream.Info) { i.ModelContext = 30 })
 	h.up.mu.Lock()
 	h.up.countErr = errors.New("tokenize down")
 	h.up.mu.Unlock()
-	if r := post(2, ""); r.status != 200 { // "w w" = 3 chars → 1 token
+	if r := post(2, ""); r.status != 200 { // "w w" = 3 chars → 1 token, + the template allowance of 20 for one message (036)
 		t.Fatalf("estimate path: %d %s", r.status, r.body)
+	}
+}
+
+// 036: the pre-check counts what the engine will count — the prompt under the chat template, not
+// its bare text. The fake's template costs 4 a message and 16 a chat (the estimate's allowance);
+// a system prompt and 20 turns is 21 messages, 100 tokens of template. Context 300: 200 words of
+// text fill it exactly (admitted, the floor), 201 do not (422 with the templated number, and the
+// engine is never asked), and the shrink-to-fit leaves room for the template too.
+func TestContextPrecheckCountsTheChatTemplate(t *testing.T) {
+	h := newHarness(t, Config{}, nil)
+	h.up.setInfo(func(i *upstream.Info) { i.ModelContext = 300 })
+	h.up.mu.Lock()
+	h.up.tplPerMsg, h.up.tplBase = 4, 16
+	h.up.mu.Unlock()
+	h.setKey(func(k *keys.Key) { k.Limits.MaxOutputTokens = 40 })
+	body := func(words int) string { // a one-word system prompt and 20 turns sharing the rest
+		var sb strings.Builder
+		sb.WriteString(`{"model":"m1","messages":[{"role":"system","content":"w"}`)
+		left := words - 1
+		for i := 0; i < 20; i++ {
+			role := "user"
+			if i%2 == 1 {
+				role = "assistant"
+			}
+			n := left / (20 - i)
+			left -= n
+			fmt.Fprintf(&sb, `,{"role":%q,"content":%q}`, role, strings.TrimSpace(strings.Repeat("w ", n)))
+		}
+		sb.WriteString("]}")
+		return sb.String()
+	}
+	post := func(words int) resp { return h.post("/v1/chat/completions", body(words)) }
+	maxTok := func() string { return fmt.Sprint(h.up.body(t)["max_tokens"]) }
+	// 200 + 100 = 300: the templated prompt fills the context; the floor still lets the engine answer.
+	if r := post(200); r.status != 200 || maxTok() != "16" {
+		t.Fatalf("200 words + 100 of template must fill the context: %d %s max_tokens=%s", r.status, r.body, maxTok())
+	}
+	asked := h.up.requests.Load()
+	// 201 + 100 = 301: over — while the bare text, 201, is far under. The message carries the templated number.
+	r := post(201)
+	h.expectErr(r, CodeContextTooLong)
+	if !strings.Contains(r.message, "301 tokens") || !strings.Contains(r.message, "context is 300") {
+		t.Fatalf("the 422 must carry the templated count: %s", r.message)
+	}
+	if h.up.requests.Load() != asked {
+		t.Fatal("the engine was asked for a prompt the pre-check should have refused")
+	}
+	// 170 + 100 = 270, + 40 > 300: shrink to the 30 that remain under the templated count (the bare text would leave 90).
+	if r := post(170); r.status != 200 || maxTok() != "30" {
+		t.Fatalf("170 words + 100 of template + 40 must shrink to 30: %d %s max_tokens=%s", r.status, r.body, maxTok())
+	}
+	// The count was given the messages, so the engine's template is what was counted; embeddings are not a chat.
+	if h.up.lastMsgs == nil {
+		t.Fatal("the chat count was not given the messages")
+	}
+	if r := h.post("/v1/embeddings", `{"model":"m1","input":"w w w"}`); r.status != 200 || h.up.lastMsgs != nil {
+		t.Fatalf("embeddings: %d, count given messages %v", r.status, h.up.lastMsgs != nil)
 	}
 }
 

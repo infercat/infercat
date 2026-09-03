@@ -54,6 +54,7 @@ type normalized struct {
 	model    string
 	stream   bool
 	text     string   // the prompt text the count is over
+	messages []byte   // a chat's messages array as JSON, for the count under the template (036); nil otherwise
 	maxTok   int      // output cap in force after every shrink; 0 = none in force
 	stripped []string // override keys removed, for the host's log
 }
@@ -261,7 +262,7 @@ func (q *request) normalize() *gwError {
 // count tokenizes the prompt through the engine (an estimate when it cannot). The provisional
 // prompt count on the event is replaced by the engine's usage when the response carries one.
 func (q *request) count() *gwError {
-	q.prompt = q.countTokens(q.n.text)
+	q.prompt = q.countTokens(q.n.text, q.n.messages)
 	q.ev.PromptTokens = q.prompt
 	return nil
 }
@@ -372,7 +373,7 @@ func (q *request) callUpstream() *gwError {
 	q.resp = resp
 	if resp.StatusCode/100 != 2 {
 		q.outcome = outcomeEngineErr
-		return upstreamStatusErr(resp)
+		return q.upstreamStatusErr(resp)
 	}
 	return nil
 }

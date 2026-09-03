@@ -3,6 +3,7 @@ package upstream
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -23,7 +24,8 @@ func llamaCPP(t *testing.T) *httptest.Server {
 		{"id":"gemma-4-E2B-it-Q4_K_M.gguf","object":"model","owned_by":"llamacpp"}]}`))
 	mux.HandleFunc("/tokenize", func(w http.ResponseWriter, r *http.Request) {
 		var body struct {
-			Content string `json:"content"`
+			Content    string `json:"content"`
+			AddSpecial bool   `json:"add_special"`
 		}
 		if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Content == "" {
 			// llama.cpp's shape is {"content": ...}; anything else must not produce a count.
@@ -31,7 +33,29 @@ func llamaCPP(t *testing.T) *httptest.Server {
 			return
 		}
 		toks := make([]int, len(strings.Fields(body.Content)))
+		if body.AddSpecial {
+			toks = append(toks, 2) // BOS
+		}
 		b, _ := json.Marshal(map[string]any{"tokens": toks})
+		w.Write(b)
+	})
+	// The chat template as b9553 renders it (Gemma's shape): a turn marker, the role, the content,
+	// a closing marker per message — three whitespace-separated fields of template — and the
+	// generation prompt, two more.
+	mux.HandleFunc("/apply-template", func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Messages []struct{ Role, Content string } `json:"messages"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil || len(body.Messages) == 0 {
+			http.Error(w, "bad apply-template body", http.StatusBadRequest)
+			return
+		}
+		var sb strings.Builder
+		for _, m := range body.Messages {
+			fmt.Fprintf(&sb, "<|turn> %s %s <turn|>\n", m.Role, m.Content)
+		}
+		sb.WriteString("<|turn> model\n")
+		b, _ := json.Marshal(map[string]string{"prompt": sb.String()})
 		w.Write(b)
 	})
 	return serve(t, mux)
@@ -44,15 +68,23 @@ func vllm(t *testing.T) *httptest.Server {
 		{"id":"entropy-v2-gemma4-12b-w4a16-group128","object":"model","owned_by":"vllm","max_model_len":8192}]}`))
 	mux.HandleFunc("/tokenize", func(w http.ResponseWriter, r *http.Request) {
 		var body struct {
-			Model  string `json:"model"`
-			Prompt string `json:"prompt"`
+			Model    string                           `json:"model"`
+			Prompt   string                           `json:"prompt"`
+			Messages []struct{ Role, Content string } `json:"messages"`
 		}
-		if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Model == "" || body.Prompt == "" {
-			// vLLM's shape is {"model": ..., "prompt": ...}.
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil || body.Model == "" || (body.Prompt == "" && len(body.Messages) == 0) {
+			// vLLM's shape is {"model": ..., "prompt": ...} or {"model": ..., "messages": [...]}.
 			http.Error(w, "bad tokenize body", http.StatusBadRequest)
 			return
 		}
-		b, _ := json.Marshal(map[string]any{"count": len(strings.Fields(body.Prompt)), "max_model_len": 8192})
+		n := len(strings.Fields(body.Prompt))
+		for _, m := range body.Messages { // the template: three tokens a message, three for BOS and the generation prompt
+			n += len(strings.Fields(m.Content)) + 3
+		}
+		if len(body.Messages) > 0 {
+			n += 3
+		}
+		b, _ := json.Marshal(map[string]any{"count": n, "max_model_len": 8192})
 		w.Write(b)
 	})
 	return serve(t, mux)
@@ -129,7 +161,7 @@ func TestOpenSniffsEveryKind(t *testing.T) {
 				t.Errorf("models = %v, want %v", got.Models, tc.info.Models)
 			}
 
-			n, exact, err := up.CountTokens(ctx, "one two three four five")
+			n, exact, err := up.CountTokens(ctx, "one two three four five", nil)
 			if err != nil {
 				t.Fatalf("CountTokens: %v", err)
 			}
@@ -304,7 +336,7 @@ func TestE1UnknownEngineHasNothingButOneSlot(t *testing.T) {
 		t.Fatalf("Unknown engine = %+v; want one slot, no context, no models", i)
 	}
 	// It still counts tokens, by estimate, so the gateway's pre-check works while it waits.
-	if n, exact, err := up.CountTokens(context.Background(), "abcd"); err != nil || exact || n != 1 {
+	if n, exact, err := up.CountTokens(context.Background(), "abcd", nil); err != nil || exact || n != 1 {
 		t.Errorf("CountTokens = %d %v %v", n, exact, err)
 	}
 }
@@ -471,9 +503,60 @@ func TestTokenizeFailureFallsBackToTheEstimate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	n, exact, err := up.CountTokens(context.Background(), "12345678")
+	n, exact, err := up.CountTokens(context.Background(), "12345678", nil)
 	if err != nil || exact || n != 2 {
 		t.Errorf("CountTokens = %d exact=%v err=%v, want 2 by estimate", n, exact, err)
+	}
+	// A chat degrades to the estimate plus the template allowance (036), never an error.
+	msgs := []byte(`[{"role":"user","content":"12345678"}]`)
+	if n, exact, err := up.CountTokens(context.Background(), "12345678\n", msgs); err != nil || exact || n != 3+TemplateAllowance(msgs) {
+		t.Errorf("CountTokens(chat) = %d exact=%v err=%v, want %d by estimate + allowance", n, exact, err, 3+TemplateAllowance(msgs))
+	}
+}
+
+// 036: a chat is counted under the engine's chat template — what its chat endpoint enforces —
+// which is more than its bare text: exactly, by the template, on llama.cpp (/apply-template, then
+// /tokenize with the special tokens and BOS) and on vLLM (/tokenize with the messages); by the
+// allowance on an engine that estimates. Without messages (embeddings) the count is the text's.
+func TestCountTokensUnderTheChatTemplate(t *testing.T) {
+	ctx := context.Background()
+	msgs := []byte(`[{"role":"system","content":"one two"},{"role":"user","content":"three four five"}]`)
+	text := "one two\nthree four five\n"
+	if TemplateAllowance(nil) != 0 || TemplateAllowance([]byte(`{"not":"an array"}`)) != 0 || TemplateAllowance(msgs) != 24 {
+		t.Fatalf("TemplateAllowance: nil %d, object %d, two messages %d", TemplateAllowance(nil), TemplateAllowance([]byte(`{"not":"an array"}`)), TemplateAllowance(msgs))
+	}
+	for _, tc := range []struct {
+		name  string
+		srv   *httptest.Server
+		exact bool
+	}{
+		{"llama.cpp", llamaCPP(t), true},
+		{"vllm", vllm(t), true},
+		{"ollama", ollama(t), false},
+		{"lmstudio", lmStudio(t), false},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			up, err := Open(ctx, tc.srv.URL, "")
+			if err != nil {
+				t.Fatal(err)
+			}
+			raw, exact, err := up.CountTokens(ctx, text, nil)
+			if err != nil || exact != tc.exact {
+				t.Fatalf("text count: %d exact=%v err=%v", raw, exact, err)
+			}
+			chat, exact, err := up.CountTokens(ctx, text, msgs)
+			if err != nil || exact != tc.exact {
+				t.Fatalf("chat count: %d exact=%v err=%v", chat, exact, err)
+			}
+			want := raw + 3*2 + 3 // the fakes' template: three tokens a message, BOS and the generation prompt
+			if !tc.exact {
+				want = raw + TemplateAllowance(msgs)
+			}
+			if chat != want || chat <= raw {
+				t.Fatalf("chat count = %d, want %d (text %d)", chat, want, raw)
+			}
+			t.Logf("%s: text %d tokens, under the chat template %d (exact %v)", tc.name, raw, chat, exact)
+		})
 	}
 }
 

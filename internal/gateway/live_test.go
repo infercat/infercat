@@ -71,7 +71,7 @@ func (l *liveLlama) Refresh(ctx context.Context) error {
 	return nil
 }
 
-func (l *liveLlama) CountTokens(ctx context.Context, text string) (int, bool, error) {
+func (l *liveLlama) CountTokens(ctx context.Context, text string, _ []byte) (int, bool, error) {
 	body, _ := json.Marshal(map[string]string{"content": text})
 	req, _ := http.NewRequestWithContext(ctx, http.MethodPost, l.base.String()+"/tokenize", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
