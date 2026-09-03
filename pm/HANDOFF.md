@@ -24,7 +24,7 @@ a public social-media launch soon after, likely serving DeepSeek v4 flash from t
 ## In flight (resume point written 2026-09-03 ~01:50 EDT, before a session-limit pause; alarm 03:15)
 
 - **Engineering launch gate: closed** (024 landed). Nothing product-side is running.
-- **Running when paused:** naming round 2 workflow `wf_9f974100-bcd` (descriptive names from the
+- **Naming:** rounds 1 and 2 done and rejected (docs/NAME.md); founder is choosing the name themself, decision expected 2026-09-04; **do not run another naming round**. (Was: naming round 2 workflow `wf_9f974100-bcd` (descriptive names from the
   audience's vocabulary; generate → per-candidate collision check → synthesis) and an Opus research
   agent on LM Link market vocabulary. On resume: read both journals; if killed, resume the workflow from
   cache (`Workflow({scriptPath, resumeFromRunId})`); the founder wants a recommendation in the

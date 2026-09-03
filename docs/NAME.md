@@ -94,3 +94,23 @@ Localkey (LAN file transfer) · Guestkey (says nothing about AI).
 your machine." Fallbacks: Model Access if a free .ai outranks the Bedrock collision; Lendmodel if the
 cleanest legal sheet outranks a legibility point. Before the post: a knock-out trademark search in
 Classes 9/42 (US + EU) on the chosen name; a decision on modelkey.app vs. buying .com.
+
+---
+
+# Status 2026-09-03 (founder): no name yet; two rounds rejected
+
+Round 1 (hospitality metaphors) described a feeling, not the product. Round 2 (audience vocabulary)
+described the product and was generic. A third round was declined. Founder's diagnosis of the PM's
+pattern: compounding two physical or descriptive words is not brandable — every result reads generic.
+The brandable names in this space are invented or repurposed single words (Ollama, Tailscale, ngrok).
+
+The social construct the product models (PM, 2026-09-03): one person's own machine working for their
+circle — capacity shared under the owner's control, out of goodwill and competence, not for money.
+Parallels: the Wi-Fi code (guest, code, use while here, owner can change it — the invite ritual); the
+neighbor with the well; the household with the dish; the ham operator relaying calls under a call sign
+(closest to the mechanism: a call sign, a rig); the home-lab operator running a service friends "get on";
+patronage. Not a marketplace, co-op, mesh, or utility: the resource stays personal, access is granted.
+
+**Founder is sleeping on it; decision expected 2026-09-04.** Until then: no naming rounds. When the
+founder names it, the rename is ~1 hour (product constants in Go and TS, invite prefix, binary, docs),
+then the F3 domain follows.
