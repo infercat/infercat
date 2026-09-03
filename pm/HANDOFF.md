@@ -1,6 +1,6 @@
 # HANDOFF — state of the work (succession document)
 
-Updated: 2026-09-03 04:30 EDT. Since the alarm: landed 033 (handshake bound), 031+032 (thinking toggle, TTFT/tok-per-s footer), 026 (`connect` — host binary as client; re-priced to 3). Running: 028 load test, 030 launch readiness, 029 observability (dispatched now on 026). Waiting on the founder: name → URL → 027 QR; relay switch; public repo/tag.
+Updated: 2026-09-03 05:05 EDT. Since the alarm: landed 033, 031+032, 026 (`connect`), 030 (launch readiness; CI green on GitHub; README/metadata/templates/cask/rename inventory). Running: 028 load test, 029 observability. Waiting on the founder: name → URL → 027 QR; relay switch; public repo + tag; social-preview upload (manual).
 
 ## What this is
 
