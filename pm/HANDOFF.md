@@ -1,6 +1,6 @@
 # HANDOFF — state of the work (succession document)
 
-Updated: 2026-09-02 18:15 EDT (machine clock; some earlier stamps in this file are +2 h) (machine clock; earlier stamps in this file were written from mixed clocks). MILESTONE 13:30: founder ran the demo end to end and declared the concept proven; next theme polish. PM seat: Claude Fable, session on Max's laptop.
+Updated: 2026-09-02 22:20 EDT (machine clock). MILESTONE 13:30: founder ran the demo end to end and declared the concept proven; theme since: polish toward a public launch. PM seat: Claude Fable, session on Max's laptop.
 
 ## What this is
 
@@ -23,22 +23,23 @@ a public social-media launch soon after, likely serving DeepSeek v4 flash from t
 
 ## In flight
 
-- **Landed on main (`9aefef2`):** 018 busy-host truth (queued keepalives; asleep / queued / queue-timeout distinguished), 014 web polish (17 promises; reconnect 0.3 s; connect-time /v1/models no longer counted), 001–011, 016 (seeded daily counters), 017 (goreleaser snapshot builds for 5 targets + web zip, `THIRD_PARTY_NOTICES.md` with `make notices-check`, version stamping; nothing published). `pm/LAUNCH.md` holds the launch gates. Earlier: 001–011 (011 engine state + `Engine` seam) and `docs/ARCHITECTURE.md` v1. Earlier: 001–010 (009 host polish incl. the first-run identity race; 010 settle table / FIFO queue / deadlines). Earlier: 001–008 (007 web state machines; 008 `docs/DESIGN.md` with three accepted decisions). Earlier: 001–006 (005 integration with fixes 10a–10n and measured numbers; 006 the gateway request pipeline). Founder verdict 13:30: demo works, concept proven, next theme polish. Earlier: 001–004 (tunnel/invite/wasm · gateway · CLI/store/upstream/usage/admin
-  with wiring flipped · web client). A stray 28 MB binary committed at the root during the flip was
-  removed at `e5b0a11`; it remains in history (private repo) — rewrite before any public mirror.
-- **Reviews done:** Claude adversarial workflows on 001 (36 agents), 002 (55), 003 (46); second-model
-  review (gpt-5.6-sol via ultracodex, 4 lenses, 39 findings) on integrated main. Summaries and rulings
-  are appended to each ticket; confirmed defects became tickets 005 (10a–10n), 006, 007.
-- **Running:** 020 web truth round 2 (Fable; resumed from a PM WIP commit after the third rate-limit kill). Landed since: 019 (`c0e1733`), 021 queue departure race at both the queue and the request record (`f8f43d7`; contest accepted, re-priced to 2). Default `max_output_tokens` raised to 4096 (`dce971d`) after the founder's nitpick ruling.
-- **Protocol when a rate limit kills an engineer:** commit its worktree as WIP on its branch, push, then resume the same agent with a pointer to the commit.
-- **Engineering gates (pm/LAUNCH.md):** 014 ✓ · 017 ✓ · 018 ✓ · second pass: pending · relay/web URL/live proof: wait on founder decisions F1–F6. (Opus; from the phone persona's report — host-asleep and paused handling, honest meters, multi-tab storage, messages-not-requests, touch, copy) · the desktop persona + synthesis of the experience workflow (re-run after the rate limit).
-- **Incident 2 (14:2x):** a second session rate limit (resets 15:30 EDT) killed the 010/011 engineer mid-rebase (after its push) and two workflow agents. Resumed at 14:34 on the founder's "please continue". Drafted: 012 concept trim + cleanup (after launch), 013 web follow-through. Done earlier today: truthful stream ends, session leaks, degraded
-  states, host-scoped storage, revoked mid-session, abort-during-dial, IME, two tabs, log-prompts copy.
-  008 architecture review (Fable): `docs/DESIGN.md` with debt inventory and proposed cleanup tickets.
-  CLI first-run experience workflow (three stranger personas from README only → ranked polish list).
-- **Decided today (founder):** vision reframed to "share an AI" (model + named, budgeted, isolated capabilities); the client runs the agent loop, the host runs tools; Docker-class isolation or nothing for host-side execution; DeepSeek Harness is a catalogue to borrow from, not a runtime (researched; pm/DECLINED.md). Ticket 015 (capability seam + web search as first host tool) drafted for after launch.
-- **Experience pass complete (both personas):** verdict "not launch-ready yet; everything wrong lives in the second minute and nothing wrong is architectural". All items are in 014 (web) and 016 (host).
-- **Landing order:** 016 → 014 → second experiential pass (both personas, same script, `wf_9e6581b7-630`) → launch checklist (founder decisions: name, relay VM, distribution, license, history rewrite, web app URL). After launch: 012 concept trim + cleanup, 015 capability seam. Founder decisions pending: name, relay VM, distribution, license, history rewrite, web app URL (needed by 009's invite link).
+- **Landed on main (`150e558`):** tickets 001–011, 014, 016–022 and the 022 evidence follow-up.
+  Highlights since the demo: gateway request pipeline + settle table + FIFO queue + engine-side
+  deadlines (006/010/021), engine state + `Engine` seam (011), web session/message state machines
+  (007) and three truth rounds (014/020/022), busy-host keepalives (018), host polish incl. the
+  first-run identity race (009), seeded counters (016), release engineering with notices (017),
+  `docs/DESIGN.md` (008), `docs/ARCHITECTURE.md` v1, `pm/LAUNCH.md`.
+- **Running:** 023 one dial per host (Reconnect joins the self-probe's dial) and 024 context meter
+  truth + five desktop items — same Fable engineer, branch `t023-one-dial`. Fourth experience pass:
+  desktop spot-check done (verdict: launch-ready but for the context meter); phone half + synthesis
+  re-running from cache after the fourth rate-limit kill (`wf_dc0cce6d-452`).
+- **Gate:** the phone half of the fourth pass (or a fifth pass after 023/024) reports no false state
+  and no embarrassing screenshot → engineering side done. Founder decisions F1–F6 in `pm/LAUNCH.md`
+  are the other half.
+- **Rate-limit protocol:** on every kill, commit the worktree as WIP on its branch, push, resume the
+  same agent with a pointer to the commit. Four kills today (05:40, 15:30, 19:30, 22:20 resets).
+- **After launch:** 012 concept trim + cleanup, 015 capability seam + web search (vision reframed to
+  "share an AI"), sandboxes (Docker-class, founder-gated).
 
 ## Standing decisions tonight
 
