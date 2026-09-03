@@ -3,7 +3,7 @@ id: 030
 title: Launch readiness — every public surface looks finished: web app, README, GitHub metadata, binaries, release
 kind: normal
 size: 3
-status: queued
+status: dispatched
 updated: 2026-09-03
 release: demo-1
 ---

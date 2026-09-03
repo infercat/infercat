@@ -1,6 +1,6 @@
 # HANDOFF — state of the work (succession document)
 
-Updated: 2026-09-03 01:50 EDT (resume point; session-limit pause expected; alarm 03:15). Engineering launch gate closed 2026-09-03 01:15. PM seat: Claude Fable, session on Max's laptop.
+Updated: 2026-09-03 03:16 EDT (alarm fired; session limit refilled). Four lanes dispatched on Fable engineers: 026 connect, 028 load test, 030 launch readiness, 031+032 web footer. 029 follows 026; 027 waits on the web URL (name). PM seat: Claude Fable.
 
 ## What this is
 

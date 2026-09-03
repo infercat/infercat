@@ -3,7 +3,7 @@ id: 028
 title: Load test every layer — relay, tunnels per host, gateway, engine — and publish the limits with numbers
 kind: investigation
 size: 3
-status: queued
+status: dispatched
 updated: 2026-09-03
 release: demo-1
 ---

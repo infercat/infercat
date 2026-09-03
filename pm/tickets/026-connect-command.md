@@ -3,7 +3,7 @@ id: 026
 title: `connect` — the host binary as a client: local OpenAI-compatible endpoint over the tunnel
 kind: normal
 size: 2
-status: queued
+status: dispatched
 updated: 2026-09-03
 release: demo-1 (founder: queue it; in the launch if it lands before the post)
 ---

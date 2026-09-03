@@ -3,7 +3,7 @@ id: 032
 title: Web app — show TTFT and time-per-output-token on each reply, honestly attributed
 kind: normal
 size: 1
-status: queued
+status: dispatched
 updated: 2026-09-03
 release: demo-1
 ---

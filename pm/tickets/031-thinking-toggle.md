@@ -3,7 +3,7 @@ id: 031
 title: Web app — toggle thinking on/off per chat
 kind: normal
 size: 1
-status: queued
+status: dispatched
 updated: 2026-09-03
 release: demo-1
 ---
