@@ -2,8 +2,8 @@
 // says. The rule it exists to enforce is that a reply is finished only when the host says it is —
 // running out of tokens is not an ending, and must never render as one (pm/BELIEFS.md, "Surfaces
 // tell the truth").
-import type { ChatMessage, StreamEvent } from './api';
-import { isAnswer, type Message, type MessageStatus, type Settings } from './storage';
+import type { ChatMessage, ChatRequest, StreamEvent } from './api';
+import { isAnswer, type Message, type MessageStatus, type Settings, type Thinking } from './storage';
 
 /** The parts of a Message this machine owns. `status` is undefined while it is still streaming. */
 export type Reply = Pick<
@@ -195,4 +195,33 @@ export function contextCarried(
 
 function contextSlack(modelContext: number): number {
   return Math.max(8, Math.floor(modelContext / 64));
+}
+
+// ---- thinking on or off (031) ------------------------------------------------------------------
+
+/**
+ * The engine's own switch for thinking, sent only when the reader chose. One field for every engine
+ * kind: verified live on llama-server b9553 (Gemma 4: `enable_thinking=false` → no reasoning, 35 ms
+ * of generation instead of 800) and on vLLM 0.25 (accepted; that host's model never thinks). The
+ * ticket's `reasoning_budget` is a llama-server *flag*, not a request field — sent per request it is
+ * ignored (measured), so it is not sent.
+ */
+export function thinkingFields(thinking: Thinking): Pick<ChatRequest, 'chat_template_kwargs'> {
+  return thinking === 'default' ? {} : { chat_template_kwargs: { enable_thinking: thinking === 'on' } };
+}
+
+/**
+ * How many fewer completion tokens a reply asked not to think used than the reply before it, which
+ * did think — when both counts are known (031 promise 2). Null otherwise: a saving nobody measured
+ * is not shown, and a reply that thought anyway saved nothing.
+ */
+export function tokensSaved(messages: readonly Message[], i: number): number | null {
+  const m = messages[i];
+  if (!m || m.thinking !== 'off' || m.reasoning || !m.tokens) return null;
+  for (let j = i - 1; j >= 0; j--) {
+    const p = messages[j] as Message;
+    if (p.role !== 'assistant') continue;
+    return p.tokens && p.reasoning && p.tokens.out > m.tokens.out ? p.tokens.out - m.tokens.out : null;
+  }
+  return null;
 }

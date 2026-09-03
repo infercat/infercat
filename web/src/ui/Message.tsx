@@ -29,6 +29,8 @@ interface Props {
   action: ThreadAction | null;
   /** The two walls a reply can hit (020 promise 3): the invite's reply cap and the model's context. */
   limits: { maxOutputTokens: number; modelContext: number };
+  /** Completion tokens this reply used fewer than the previous one by not thinking (031), or null. */
+  saved: number | null;
   onContinue: () => void;
   onNewChat: () => void;
   onResend: (text: string) => void;
@@ -46,6 +48,7 @@ export default function MessageView({
   last,
   action,
   limits,
+  saved,
   onContinue,
   onNewChat,
   onResend,
@@ -176,6 +179,10 @@ export default function MessageView({
           {m.tokens ? ` · ${m.tokens.in} tokens in · ${m.tokens.out} out` : ''}
           {/* A stopped reply never gets its usage chunk, but the host counted what it made. */}
           {!m.tokens && m.status === 'stopped' ? ' · still counted against today’s tokens' : ''}
+          {/* What was asked of the engine, and what it did (031): an engine that thought anyway is
+              not called quiet. */}
+          {m.thinking === 'off' ? (m.reasoning ? ' · thought despite thinking off' : ' · thinking off') : ''}
+          {saved !== null ? ` · ${saved} fewer tokens than the previous reply` : ''}
           {/* Said only of text that is on screen: a reply with nothing in it is not "part" of anything,
               and under a turn that was never answered it read as a claim about the turn (022 promise 2). */}
           {!isAnswer(m) && m.content.trim() !== '' ? ' · not part of the next question' : ''}

@@ -35,6 +35,8 @@ export interface Message {
   capped?: boolean;
   /** The answer this one replaced, kept rather than thrown away when a turn is edited (promise 16). */
   previous?: string;
+  /** The thinking switch this reply was asked for, when it was not the model's default (031). */
+  thinking?: 'on' | 'off';
 }
 
 export interface Conversation {
@@ -45,13 +47,17 @@ export interface Conversation {
   messages: Message[];
 }
 
+/** Whether the model is asked to think (031): its own default, on, or off. */
+export type Thinking = 'default' | 'on' | 'off';
+
 export interface Settings {
   model: string | null;
   systemPrompt: string;
   temperature: number;
+  thinking: Thinking;
 }
 
-export const DEFAULT_SETTINGS: Settings = { model: null, systemPrompt: '', temperature: 0.7 };
+export const DEFAULT_SETTINGS: Settings = { model: null, systemPrompt: '', temperature: 0.7, thinking: 'default' };
 
 export const KEYS = {
   invite: 'bn.invite',

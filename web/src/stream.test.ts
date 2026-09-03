@@ -2,7 +2,7 @@
 // finished answer (promises 1 and 2).
 import { describe, expect, it } from 'vitest';
 import type { StreamEvent } from './api';
-import { carried, contextCarried, estimateTokens, NEW_REPLY, reduceReply, replyEnding, saidInBanner, type Reply } from './stream';
+import { carried, contextCarried, estimateTokens, NEW_REPLY, reduceReply, replyEnding, saidInBanner, thinkingFields, tokensSaved, type Reply } from './stream';
 import type { Message } from './storage';
 
 function play(...events: StreamEvent[]): Reply {
@@ -295,5 +295,44 @@ describe('a host that died before the answer began', () => {
   it('says nothing arrived when nothing did, and keeps the ordinary line once the answer had started', () => {
     expect(reduceReply(NEW_REPLY, stalled).note).toBe('desk stopped answering mid-reply — nothing of the answer had arrived yet. Try again — if it keeps happening, their machine may have gone to sleep.');
     expect(reduceReply(reduceReply(NEW_REPLY, { kind: 'content', text: 'Part of' }), stalled).note).toBe('desk stopped answering mid-reply. What arrived is above. Try again — if it keeps happening, their machine may have gone to sleep.');
+  });
+});
+
+// ---- 031: thinking on or off --------------------------------------------------------------------
+
+describe('the thinking switch the request carries', () => {
+  it('sends nothing for the model default, so the engine decides', () => {
+    expect(thinkingFields('default')).toEqual({});
+  });
+
+  // One field for every engine kind: verified live on llama-server b9553 (Gemma 4) and vLLM 0.25.
+  // The ticket's `reasoning_budget` is a server flag; per request it was ignored, so it is not sent.
+  it('is the chat template switch, on llama.cpp and vLLM alike', () => {
+    expect(thinkingFields('off')).toEqual({ chat_template_kwargs: { enable_thinking: false } });
+    expect(thinkingFields('on')).toEqual({ chat_template_kwargs: { enable_thinking: true } });
+    expect(thinkingFields('off')).not.toHaveProperty('reasoning_budget');
+  });
+});
+
+describe('tokens saved by not thinking', () => {
+  const user: Message = { id: 'u', role: 'user', content: 'capital of France?' };
+  const thought: Message = { id: 'a', role: 'assistant', content: 'Paris.', reasoning: 'Thinking Process…', tokens: { in: 20, out: 160 } };
+  const quiet: Message = { id: 'b', role: 'assistant', content: 'Paris.', thinking: 'off', tokens: { in: 20, out: 8 } };
+
+  it('is the difference in completion tokens when the previous reply thought and this one was asked not to', () => {
+    expect(tokensSaved([user, thought, user, quiet], 3)).toBe(152);
+  });
+
+  it('is nothing to show when either count is unknown, the previous reply did not think, or thinking was the default', () => {
+    expect(tokensSaved([user, { ...thought, tokens: undefined }, user, quiet], 3)).toBeNull();
+    expect(tokensSaved([user, thought, user, { ...quiet, tokens: undefined }], 3)).toBeNull();
+    expect(tokensSaved([user, { ...thought, reasoning: '' }, user, quiet], 3)).toBeNull();
+    expect(tokensSaved([user, thought, user, { ...quiet, thinking: undefined }], 3)).toBeNull();
+    expect(tokensSaved([user, quiet], 1)).toBeNull();
+  });
+
+  it('claims no saving for a reply that thought anyway, or used more', () => {
+    expect(tokensSaved([user, thought, user, { ...quiet, reasoning: 'still thinking' }], 3)).toBeNull();
+    expect(tokensSaved([user, thought, user, { ...quiet, tokens: { in: 20, out: 400 } }], 3)).toBeNull();
   });
 });
