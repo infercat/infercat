@@ -40,8 +40,8 @@ Flags you pass to `serve` are remembered in `config.json`, so the next `serve` n
 | `--dev-listen ADDR` | also serve on loopback with permissive CORS, for web development |
 | `--log-prompts`, `--ephemeral`, `--verbose` | per-run: log message content; throwaway host identity; tunnel log on the terminal |
 
-What friends can reach through the tunnel: exactly `/v1/models` and `/v1/chat/completions` on your
-upstream — nothing else on your machine, no other port, no files.
+What friends can reach through the tunnel: exactly `/v1/models`, `/v1/chat/completions` and
+`/v1/embeddings` on your upstream — nothing else on your machine, no other port, no files.
 
 Manage friends: `keys list` · `keys pause alice` (she gets 403 until `keys resume`) · `keys revoke alice`
 (permanent; she needs a new invite) · `keys rotate alice` (new invite, old one stops) ·
@@ -57,6 +57,36 @@ python3 -m http.server 59080 --directory web/dist --bind 127.0.0.1   # any stati
 ```
 
 The header shows the path (`relayed via nyc · 64 ms`), the model, and your usage against the limits.
+
+## Quickstart (friend with an app)
+
+No browser needed: the same binary turns an invite into a local OpenAI-compatible endpoint, so
+Open WebUI, Cursor, Claude Code, the OpenAI SDKs or plain `curl` use your friend's model as if it
+were local. Between two machines the path goes direct once they find each other; the relay is
+only the rendezvous.
+
+```
+bin/bunny-network connect bn1.tc….…          # paste the invite
+```
+```
+Bunny Network 0.0.1-dev
+host      Max's laptop  ·  gemma-4-E2B-it-Q4_K_M.gguf
+path      relayed via New York City · 27 ms       # re-checked every 30 s, printed when it changes
+local     http://127.0.0.1:11435
+          set your app's base URL to http://127.0.0.1:11435/v1, any API key
+```
+
+The invite's key is added to every request; the app's own API key is ignored. `/v1/*` and `/me` are
+forwarded, nothing else. Errors keep the host's status and code and say what to do in your words
+(paused, revoked, asleep, rate limited with `Retry-After`, busy); when the host stops answering,
+`connect` says so and reconnects on its own.
+
+```
+OPENAI_BASE_URL=http://127.0.0.1:11435/v1 OPENAI_API_KEY=x python3 -c '
+from openai import OpenAI; c = OpenAI()
+for e in c.chat.completions.create(model=c.models.list().data[0].id, messages=[{"role":"user","content":"hi"}], stream=True):
+    print(e.choices[0].delta.content or "", end="", flush=True)'
+```
 
 ## Data directory
 
