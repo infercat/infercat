@@ -5,7 +5,7 @@ import { useEffect, useRef, useState } from 'react';
 import { describeError, getMe, hostName, logsPrompts, type FriendlyError, type Me } from '../api';
 import { decodeInvite, inviteFromHash, InviteError, maskInvite } from '../invite';
 import { PRODUCT_NAME, privacyLine } from '../product';
-import type { Live, SessionEvent, SessionState } from '../session';
+import { boundHandshake, handshakeFailure, type Live, type SessionEvent, type SessionState } from '../session';
 import {
   countChats,
   dialsOnArrival,
@@ -86,6 +86,8 @@ export default function Connect({ state, dispatch }: Props) {
   const [showCode, setShowCode] = useState(false);
   const [pasting, setPasting] = useState(false);
   const attempt = useRef(0);
+  /** The bridge's own progress lines for the attempt in flight: the witness the failure copy reads (033). */
+  const handshake = useRef<string[]>([]);
   const field = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
@@ -106,6 +108,17 @@ export default function Connect({ state, dispatch }: Props) {
     // Mount only: this is the entry point, not a reactive form.
   }, []);
 
+  // The handshake bound (033): 8 s to mark the wait, 20 s to end the attempt the way Cancel does —
+  // superseded, so what it opens later is closed. Auto-connect and Connect both pass through here.
+  const handshaking = state.name === 'connecting';
+  useEffect(() => {
+    if (!handshaking) return;
+    return boundHandshake(dispatch, () => {
+      attempt.current++;
+      dispatch({ t: 'abort', error: handshakeFailure(handshake.current, lastHost?.name ?? '') });
+    });
+  }, [handshaking, lastHost, dispatch]);
+
   async function connect(): Promise<void> {
     const raw = text.trim();
     let addr: string;
@@ -120,6 +133,7 @@ export default function Connect({ state, dispatch }: Props) {
     }
     setDisclosure(null);
     const mine = ++attempt.current;
+    handshake.current = [];
     const mode: 'direct' | 'tunnel' = direct ? 'direct' : 'tunnel';
     dispatch({ t: 'start', mode });
 
@@ -140,11 +154,19 @@ export default function Connect({ state, dispatch }: Props) {
           reached = 'connecting';
           if (mine === attempt.current) dispatch({ t: 'wasmLoaded' });
         },
+        // Only the last few lines: with the network down the bridge writes five a second.
+        onLog: (line) => {
+          if (mine === attempt.current) handshake.current = [...handshake.current.slice(-3), line];
+        },
       });
       transport = opened.transport;
       reached = 'verifying';
-      // From here the machine owns it: every path out of `verifying` closes it, including a newer
-      // attempt superseding this one — and a Cancel, which is a superseding attempt with no dial.
+      // Ended by the bound or Cancel meanwhile: closed here, never handed to a newer attempt.
+      if (mine !== attempt.current) {
+        transport.close();
+        return;
+      }
+      // From here the machine owns it: every path out of `verifying` closes it.
       dispatch({ t: 'sessionUp', transport });
       const me = await getMe(transport, secret);
       if (mine !== attempt.current) return; // cancelled while verifying; the machine closed it
@@ -182,7 +204,7 @@ export default function Connect({ state, dispatch }: Props) {
       dispatch(
         transport
           ? { t: 'meError', error: describeError(err, who) }
-          : { t: 'abort', error: describeConnectError(err, reached, who) },
+          : { t: 'abort', error: describeConnectError(err, reached, who, handshake.current) },
       );
     }
   }
@@ -250,7 +272,9 @@ export default function Connect({ state, dispatch }: Props) {
       <main className="connect">
         <div className="connect-card">
           <h1>{PRODUCT_NAME}</h1>
-          <p className="pitch">{who ? `Connecting to ${who}…` : 'Connecting…'}</p>
+          <p className="pitch">
+            {`${state.name === 'connecting' && state.slow ? 'Still connecting' : 'Connecting'}${who ? ` to ${who}` : ''}…`}
+          </p>
           <ol className="steps" aria-live="polite">
             {steps.map((step, i) => (
               <li key={step.at} className={i < at ? 'done' : i === at ? 'now' : 'next'}>
@@ -446,7 +470,7 @@ function inviteProblem(text: string): string | null {
 }
 
 /** The same failure means different things depending on how far we got; say the useful thing. */
-function describeConnectError(err: unknown, at: SessionState['name'], host: string): FriendlyError {
+function describeConnectError(err: unknown, at: SessionState['name'], host: string, log: string[]): FriendlyError {
   if (at === 'loadingWasm') {
     return {
       title: 'Could not load the tunnel',
@@ -455,12 +479,10 @@ function describeConnectError(err: unknown, at: SessionState['name'], host: stri
     };
   }
   if (at === 'connecting') {
-    return {
-      title: `${host.trim() || 'The host'} didn’t answer`,
-      detail:
-        'The invite looks well-formed, so either their machine is asleep or offline, or the relay could not be reached from this network. Ask them to check that the host is running.',
-      ...(err instanceof Error && err.message.trim() !== '' ? { hostSaid: err.message.trim() } : {}),
-    };
+    // The bridge gave up before the bound did (its own 60 s, or an address it could not read):
+    // its last word joins the log it wrote, and the copy is the one the bound would have used.
+    const said = err instanceof Error ? err.message.trim() : '';
+    return handshakeFailure(said === '' ? log : [...log, said], host);
   }
   return describeError(err, host);
 }

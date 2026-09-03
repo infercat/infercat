@@ -2,14 +2,16 @@
 // never left open, a stale measurement is never presented as current, and a revoked key is never
 // swallowed by a background refresh.
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import type { Me } from './api';
+import type { FriendlyError, Me } from './api';
 import {
   ago,
+  boundHandshake,
   compact,
   contextMeter,
   degradedLine,
   keyDead,
   dropped,
+  handshakeFailure,
   IDLE,
   live,
   meters,
@@ -632,5 +634,71 @@ describe('reconnect joins the dial in flight', () => {
     expect(fresh.closes).toBe(1);
     // A card attempt whose /me fails still ends on the connect screen, as before.
     expect(run([{ t: 'sessionUp', transport: fakeTransport() }, timedOut], { name: 'connecting' }).name).toBe('disconnected');
+  });
+});
+
+describe('the handshake bound (033)', () => {
+  afterEach(() => vi.useRealTimers());
+
+  /** The card's effect as it runs: armed in `connecting`, stopped on the way out, failing like Cancel. */
+  function card(log: string[]) {
+    let s: SessionState = run([{ t: 'start', mode: 'tunnel' }, { t: 'wasmLoaded' }]);
+    let stop = (): void => {};
+    const dispatch = (e: SessionEvent): void => {
+      s = run([e], s);
+      if (s.name !== 'connecting') stop();
+    };
+    stop = boundHandshake(dispatch, () => dispatch({ t: 'abort', error: handshakeFailure(log, 'desk') }));
+    return { dispatch, state: () => s, reason: (): FriendlyError | null => (s.name === 'disconnected' ? s.reason : null) };
+  }
+
+  it('no sessionUp for 20 s: the wait is marked at 8 s, and the attempt ends as the host not answering', async () => {
+    vi.useFakeTimers();
+    const c = card(['handshake attempt 3: context deadline exceeded']);
+    await vi.advanceTimersByTimeAsync(8_100);
+    expect(c.state()).toEqual({ name: 'connecting', slow: true });
+    await vi.advanceTimersByTimeAsync(11_800);
+    expect(c.state().name).toBe('connecting');
+    await vi.advanceTimersByTimeAsync(200);
+    expect(c.reason()).toEqual({ title: 'desk didn’t answer', detail: expect.stringMatching(/asleep or offline/), hostSaid: 'handshake attempt 3: context deadline exceeded' }); // no `fatal`: Try again, not a new code
+  });
+
+  it('sessionUp at 19 s: verifying, then connected, and nothing fails at 20', async () => {
+    vi.useFakeTimers();
+    const c = card([]);
+    const t = fakeTransport();
+    await vi.advanceTimersByTimeAsync(19_000);
+    c.dispatch({ t: 'sessionUp', transport: t });
+    await vi.advanceTimersByTimeAsync(5_000);
+    expect(c.state()).toEqual({ name: 'verifying', transport: t });
+    c.dispatch({ t: 'verified', live: liveOn(t) });
+    expect(c.state().name).toBe('connected');
+    expect(t.closes).toBe(0);
+  });
+
+  it('Cancel at 5 s stops the clock: no failure lands at 20', async () => {
+    vi.useFakeTimers();
+    const c = card([]);
+    await vi.advanceTimersByTimeAsync(5_000);
+    c.dispatch({ t: 'abort', error: null });
+    await vi.advanceTimersByTimeAsync(20_000);
+    expect(c.state()).toEqual({ name: 'disconnected', reason: null });
+  });
+
+  it('reads the bridge’s log: a relay map it could not fetch is this network, anything else is the host', () => {
+    const line = 'handshake attempt 12: fetching DERPMap for region 301: Get "https://tailcat.dev/derpmap.json": net/http: fetch() failed: TypeError: Failed to fetch';
+    const relay = handshakeFailure(['handshake attempt 11: context deadline exceeded', line], 'desk');
+    expect(relay).toMatchObject({ title: 'Can’t reach the relay from this network', hostSaid: line });
+    expect(relay.detail).toMatch(/tailcat\.dev.*region 301/);
+    const host = handshakeFailure(['handshake attempt 4: context deadline exceeded'], '  ');
+    expect(host).toMatchObject({ title: 'The host didn’t answer', hostSaid: 'handshake attempt 4: context deadline exceeded' });
+    expect(handshakeFailure([], 'desk')).toEqual({ title: 'desk didn’t answer', detail: expect.stringMatching(/asleep/) });
+  });
+
+  it('marks slow only while connecting, once', () => {
+    expect(reduce(IDLE, { t: 'slow' })).toBe(IDLE);
+    const slow = run([{ t: 'start', mode: 'direct' }, { t: 'slow' }]);
+    expect(slow).toEqual({ name: 'connecting', slow: true });
+    expect(reduce(slow, { t: 'slow' })).toBe(slow);
   });
 });
