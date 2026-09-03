@@ -32,6 +32,40 @@ meter under it argues with it.
 **Size 1** (≤150 lines). Concept budget 0. **Scope:** `web/src/**` (meter derivation, sheets, session
 backoff), tests. Ports 6720–6729.
 
+## Ruling (PM, 2026-09-02 22:58 — founder: fourth pass is the last)
+
+Cut to two promises: (a) the context meter shows what the next request will carry, simplest truthful
+derivation, no streaming estimate; (b) a refused oversized turn is dropped from the history the client
+sends, with the ended-line copy saying so. Promise 3's five items and the streaming estimate → backlog
+(ticket 012 list). Sent to the engineer with 023.
+
+## Final ruling (PM, 2026-09-03 00:10 — fourth pass complete, both personas; this ticket is the last)
+
+Synthesis: not launch-ready — one blocker, three screenshot-worthy frames; everything else ordinary
+polish. Ranked once. **This ticket's promises are now exactly:**
+1. **Chats are keyed to the host, not the invite (blocker).** A new code from the same host (revoke +
+   re-issue, or `keys rotate`) opens the same drawer. Scope by the tunnel address (host identity), and
+   migrate any existing invite-id-scoped chats into the host scope once on load. The revoked card gets the
+   sibling card's sentence: "Your N chats with <host> are still on this device."
+2. **An oversized turn never kills the thread.** When the previous turn alone exceeds the context, drop
+   that turn from the history the client sends and say so in the ended line ("The essay was too long for
+   <host>'s memory and was left out of this question."); a nine-word question after a refused paste is
+   answered.
+3. **Delivered turns lose their failure line.** The same derivation that clears the bubble's mark clears
+   the assistant row's "Not sent — your invite is paused." (or softens it to grey "Carried into the next
+   question."). Both actions for a rate-limited turn share one countdown state.
+4. **Empty-answer death note.** If the host died before any answer text, the note reads "…stopped
+   answering mid-reply — nothing of the answer had arrived yet, only its thinking." and renders outside
+   the Thinking rule.
+5. **Context meter** = what the next request will carry (never decreasing; agrees with the wall).
+6. Tests for 1–3 and 5; one real-host screenshot each for 1, 2, 4. Checks printed.
+
+**Backlog (ruled non-blocking, appended to 012):** the "host is back" line and the 32 s heal latency;
+composer keeps its height after send; "0 messages left" while sends still work; follower composer
+placeholder; the card right after Disconnect; Escape/focus/refill items already listed.
+
+Size re-priced to **2** (≤400 lines); concept budget 0 (host scope replaces invite scope).
+
 ## Log
 
 All times 2026-09-02, EDT, laptop.
@@ -125,7 +159,24 @@ disabled); a follower tab (same derivations over the same store); a host with no
 
 ### Verified (printed)
 
-<!-- VERIFIED -->
+```
+$ pnpm install --frozen-lockfile  → Done in 158ms using pnpm v11.13.0                    exit 0
+$ pnpm typecheck                  → tsc --noEmit, no output                             exit 0
+$ pnpm test                       → Test Files 10 passed (10) | Tests 239 passed (239)  exit 0
+                                    0 failed, 0 skipped   (023 left 232; +7 here, 2 rewritten)
+$ pnpm lint                       → eslint ., no output                                 exit 0
+$ pnpm build                      → index 231 kB (gzip 74.5); Chat 359 kB (gzip 110); css 13.8 kB  exit 0
+$ node dev/real-check.mjs meter   → 0 → 18 → 36 → 79 · paste refused · "Paris" + the left-out note · 99   exit 0
+$ node dev/real-check.mjs revoke  → the card's sentence · the re-issued code opens the same drawer     exit 0
+$ node dev/real-check.mjs emptydeath → the death note, outside the Thinking block                     exit 0
+$ node dev/real-check.mjs paused  → ZEBRA recalled · marks 0 · the refused row softened                exit 0
+$ node dev/screenshots.mjs (PROD=0) → 94 screenshots; no console or page errors, no horizontal overflow at 360/390 px;
+                                    the fake wall's meter "50/8.2k context" (the next question's load)  exit 0
+```
+
+`package.json` and `pnpm-lock.yaml` unchanged: **no new dependencies.** Processes: only the host,
+previews, dev servers, fake gateways and browsers the harnesses started (6720–6726), all gone; the
+shared llama-server only received requests; max-ws.lab untouched.
 
 ### Backlog by ruling (not started)
 

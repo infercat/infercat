@@ -496,7 +496,12 @@ async function main() {
   if (await walled.locator('.ended button:has-text("Continue")').count()) problems.push('context wall: Continue offered');
   if (!(await walled.locator('.ended.wall button:has-text("New chat")').count())) problems.push('context wall: no New chat');
   if (await walled.locator('.composer textarea').isDisabled()) problems.push('context wall: the composer is disabled');
-  if (!/8\.2k\/8\.2k context/.test(await walled.locator('.meters').innerText())) problems.push(`context wall: meter reads ${await walled.locator('.meters').innerText()}`);
+  // 024 promise 5: the meter is what the next question will carry — the thread as it will be sent,
+  // never the last exchange's prompt + reply with its thinking (the fake's usage chunk says 7000 +
+  // 1192; its reply text is a few dozen tokens). So it must read a number, and not the old 8.2k/8.2k.
+  const wallMeter = (await walled.locator('.meter-label').allInnerTexts()).find((t) => t.includes('context')) ?? '';
+  if (!/^\d+\/8\.2k context$/.test(wallMeter)) problems.push(`context wall: the meter reads ${JSON.stringify(wallMeter)}, not what the next question will carry`);
+  console.log(`  context wall: meter ${wallMeter} (the next question's load, not the 8.2k the wall reply used)`);
   await shot20(walled, 'context-wall');
   await shot22(walled, 'context-wall');
 
