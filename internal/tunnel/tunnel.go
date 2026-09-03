@@ -205,10 +205,11 @@ func (s *Server) Status() Status {
 // distinct identities, not with traffic.
 func (s *Server) Peers() []Peer { return s.ln.peers() }
 
-// Close stops accepting and shuts the tailcat server down, closing every tunnel connection.
+// Close stops accepting and shuts the tailcat server down, closing every tunnel connection;
+// bounded by closeTimeout like the client's (ticket 035), so a host's exit never waits on tailcat.
 func (s *Server) Close() error {
 	s.ln.Close()
-	return s.tc.Close()
+	return closeWithin(closeTimeout, s.tc.Close)
 }
 
 // onTCP is the per-port gate: only Port, and only while the listener is open.

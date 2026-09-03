@@ -165,7 +165,9 @@ func (e *env) cmdServe(ctx context.Context, pre string, args []string) error {
 	if err := gw.Shutdown(sctx); err != nil {
 		e.logf("gateway shutdown: %v", err)
 	}
-	tun.Close()
+	if err := tun.Close(); err != nil {
+		e.logf("%v", err)
+	}
 	adm.Close()
 	rec.Close()
 	return nil

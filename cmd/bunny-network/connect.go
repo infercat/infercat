@@ -100,7 +100,13 @@ func (e *env) cmdConnect(ctx context.Context, pre string, args []string) error {
 	}
 	c := &connector{secret: inv.Secret, sess: sess, out: e.out, logf: e.logf, wake: make(chan struct{}, 1), handshake: time.Since(t0),
 		logRequests: *logRequests, events: admin.NewEvents(nil), addr: inv.Addr, local: "http://" + ln.Addr().String(), started: time.Now()}
-	defer func() { c.mu.Lock(); c.sess.Close(); c.mu.Unlock() }()
+	defer func() { // bounded (035): a relay-only session's close can park; the exit does not
+		c.mu.Lock()
+		if err := c.sess.Close(); err != nil {
+			e.logf("%v", err)
+		}
+		c.mu.Unlock()
+	}()
 	me, herr := c.me(ctx)
 	if herr != nil && (herr.Code == "invalid_key" || herr.Code == "key_revoked" || herr.Status == 0) {
 		return errors.New(herr.Message)
