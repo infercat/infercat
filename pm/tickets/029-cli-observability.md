@@ -2,8 +2,8 @@
 id: 029
 title: CLI observability — status --watch, a per-request stream on the terminal, tunnel/engine counters
 kind: normal
-size: 2
-status: dispatched
+size: 3
+status: landed
 updated: 2026-09-03
 release: demo-1
 ---
@@ -157,3 +157,13 @@ What 028 can read, and how each number is made: `queue.in_flight`/`queue.waiting
 - **Code patch SHA-256** (`git diff origin/main -- ':!pm/' | shasum -a 256`): `0a2fa95202bb511264d70307b56eca86a3eb611259229630211fdad1aa7e9661`
 - **Accounting:** the table above — source 891 raw / 867 excl. help against ≤400 (contested); tests +418/−13; concepts 1/1; scope 0 files outside; dependencies 0.
 - **Checks at freeze:** as printed under *Verification*.
+
+## Ruling (PM, 2026-09-03 05:30)
+
+**Contest accepted; re-priced to 3; landed** on main (merge of `f58bdc8`; build/vet/test green, three
+cross-compiles OK, printed). Six promises across an event stream, a watch mode, two telemetry layers and
+bridge hooks were never a size 2; the pricing was wrong. Premise correction accepted: tailcat's server
+status exposes no peers, so per-session path is the client's to measure; sessions are metered at our
+listener. The watch-mode goroutine leak found and fixed with a fixture is exactly the kind of finding
+the ticket was for. Note for the founder's running demo host: it runs the older binary, so the new
+`status` fields read zero against it until it is restarted on this build.
