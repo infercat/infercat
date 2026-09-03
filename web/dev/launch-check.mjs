@@ -129,25 +129,25 @@ async function contrast(page, label) {
       for (let e = el; e; e = e.parentElement) chain.push(e);
       let bg = [255, 255, 255, 1];
       for (const e of chain.reverse()) {
-        const p = parse(getComputedStyle(e).backgroundColor);
+        const p = parse(window.getComputedStyle(e).backgroundColor);
         if (p && p[3] > 0) bg = over(p, bg);
       }
       return bg;
     };
     const opacityOf = (el) => {
       let o = 1;
-      for (let e = el; e; e = e.parentElement) o *= Number(getComputedStyle(e).opacity);
+      for (let e = el; e; e = e.parentElement) o *= Number(window.getComputedStyle(e).opacity);
       return o;
     };
     const out = [];
     const seen = new Set();
-    const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+    const walker = document.createTreeWalker(document.body, window.NodeFilter.SHOW_TEXT);
     for (let n = walker.nextNode(); n; n = walker.nextNode()) {
       const text = n.textContent.trim();
       const el = n.parentElement;
       if (!text || !el || seen.has(el)) continue;
       seen.add(el);
-      const cs = getComputedStyle(el);
+      const cs = window.getComputedStyle(el);
       if (cs.visibility === 'hidden' || cs.display === 'none') continue;
       const r = el.getBoundingClientRect();
       if (r.width === 0 || r.height === 0) continue;
