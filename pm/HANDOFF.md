@@ -1,6 +1,6 @@
 # HANDOFF — state of the work (succession document)
 
-Updated: 2026-09-03 07:05 EDT. Every post-reset ticket is landed except 027 QR (waits on the URL). Nothing is running. Waiting on the founder: name → URL → 027; relay switch; public repo + tag; social preview upload. Founder's demo host runs the current build.
+Updated: 2026-09-03 07:25 EDT — MORNING REPORT. Since the 03:15 alarm: nine tickets landed (026 connect, 028 load test + LIMITS.md, 029 observability, 030 launch readiness, 031 thinking toggle, 032 latency footer, 033 handshake bound, 035 bounded Close, 036 template-aware token count). Final main passes the full fresh-clone gate. Nothing is running. Blocked on the founder only: name → URL → 027 QR → rename day (docs/RENAME.md) → public repo + tag.
 
 ## What this is
 
