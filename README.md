@@ -9,7 +9,7 @@ The tunnel is [tailcat](https://github.com/tailscale/tailcat), Tailscale's open-
 without the control plane. Traffic is WireGuard-encrypted end to end and relayed through a DERP relay
 (the browser cannot hole-punch yet); the relay sees ciphertext only.
 
-Status: pre-release, private. Design records in `pm/`, the seam contract in `docs/ARCHITECTURE.md`,
+Status: pre-release. Licensed MIT (see LICENSE); third-party notices in THIRD_PARTY_NOTICES.md. Design records in `pm/`, the seam contract in `docs/ARCHITECTURE.md`,
 the design review in `docs/DESIGN.md`, measured numbers in `docs/MEASURE.md`.
 
 ## Quickstart (host)

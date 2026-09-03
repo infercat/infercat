@@ -45,6 +45,7 @@ archives:
     # What a host needs beside the binary: how to run it, and who else's work is inside it.
     files:
       - README.md
+      - LICENSE
       - THIRD_PARTY_NOTICES.md
 
   - id: web
@@ -58,6 +59,7 @@ archives:
       - src: web/dist
         dst: .
       - README.md
+      - LICENSE
       - THIRD_PARTY_NOTICES.md
 
 checksum:
