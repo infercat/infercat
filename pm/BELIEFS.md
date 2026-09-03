@@ -64,6 +64,16 @@ Polish is judged experientially — a stranger's first ten minutes on each side 
   is versioned.
 - **Prompts are never logged by default.** Reason: friends' conversations are theirs; the host sees
   counts, not content. `--log-prompts` exists for debugging and says so loudly.
+- **Two reach paths, one product; the relay path is benchmarked against ngrok.** Reason (founder,
+  2026-09-03): a public OpenAI-compatible endpoint per key (the ngrok shape) is the least-resistance path
+  for clients we do not control, so it will exist; when it does, "we are a specialized ngrok for AI
+  APIs and must do this one thing much better than the general version." The bar, measured by a
+  stranger from a fresh machine on both: install-to-working-invite time; per-friend keys, limits, and
+  meters on the same command; streaming and minutes-long requests as first-class (queued keepalives,
+  idle deadlines, settle table); truthful failure states; a stable per-host address with no
+  interstitial. **The direct (p2p) path stays the differentiator and the destination:** the relay sees
+  ciphertext, and direct traffic costs us nothing per byte while relayed traffic scales with our bill —
+  the product always nudges toward direct as clients grow. Pricing follows that economics.
 - **The client runs the agent loop; the host runs tools.** Reason (founder, 2026-09-02): each client may
   carry a different agent implementation, and the host cannot and should not dictate it. The host's job
   is capabilities behind the gateway (metered tool routes), never orchestration. Consequence: tool calls

@@ -47,6 +47,8 @@ URL secured by the friend's key as bearer token (the ngrok shape). Design notes 
   public hostname terminated at the relay and forwarded to the host) and TLS.
 - The trade must be stated per key, not hidden: on this path whatever terminates TLS sees plaintext
   between it and the host. Per-friend, budgeted, revocable like everything else.
+- Launch gate for the relay path, when built: the ngrok benchmark in BELIEFS (a stranger's
+  install-to-invite on both, plus the five AI-specific gaps), run as an experiential pass.
 - Naming consequence (founder + PM, 2026-09-03): the product name must not be about tunnels, peers,
   or mesh; the constant is a person sharing their AI with chosen people under their control.
 - "Token Torrent" considered and declined as a name: torrent = many-to-many, negative association,
