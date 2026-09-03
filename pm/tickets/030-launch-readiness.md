@@ -194,7 +194,7 @@ xattrs on the staged binary: [com.apple.provenance ]        ← no quarantine: t
 ```
 
 **CI, from a fresh checkout on ubuntu** (`.github/workflows/ci.yml`: build/vet/test, web checks,
-notices, `make release-dry`, checksums verified, artifacts uploaded): {{CI}}
+notices, `make release-dry`, checksums verified, artifacts uploaded): **run 33730496398 on `ae3d94c` → success (2026-09-03T07:54:08Z → 2026-09-03T08:05:41Z)**, every step green: Go build/vet/test, web install/typecheck/test/lint, go-licenses, `notices-check`, goreleaser install, `make release-dry`, `shasum -c` over all six archives, artifacts uploaded. Runs 1 and 2 on the WIP commits failed on lint and on the notices (both fixed, both in the Log); the Go step passed on ubuntu from the first run.
 `release.yml` runs the same as a snapshot on `workflow_dispatch` and publishes only on a `v*` tag.
 
 **GitHub metadata** (`gh repo view --json description,repositoryTopics`):
@@ -303,4 +303,4 @@ before measuring; Tab order is measured from the document top, not from the auto
 | Binary assets | 17 files (icons, og/social cards, 9 screenshots, GIF + PNG) | — | — |
 | Concepts | **0** — no CLI verb, flag, error code, config key or state file. `VITE_WEB_URL` is a build-time env like `VITE_APP_VERSION`; `make brand`/`launch-check`/`release-publish` are make targets; `DESCRIPTION`/`SOURCE_URL` are TS constants beside `PRODUCT_NAME` | 0 | met |
 
-- **Checks at freeze:** the fresh-clone block above, and CI run 33729356606.
+- **Checks at freeze:** the fresh-clone block above (3733111), `make launch-check` re-run on the final script (OK), `make notices-check` after the union fix (OK, 49 Go + 110 npm), and CI run 33730496398 on `ae3d94c` (success). This commit is the Report and Log only (`[skip ci]`).
