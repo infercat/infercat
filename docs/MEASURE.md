@@ -98,3 +98,37 @@ Test host on this laptop (`serve --dev-listen 127.0.0.1:6810 --data-dir …/bn02
 The `connect` path costs the same as `tailcat socks` — one tunnel TCP dial per request over a session
 that is already direct — and is within 2 % of loopback on token rate.
 
+## Load (ticket 028, 2026-09-03 03:30–06:00 EDT) — every layer, layer by layer
+
+**Instrument.** `hack/load` (Go): N simulated friends, each with its own key (`keys add --json`) and its own
+native tailcat session, running the ticket's growing-conversation mix — turn 1 a ~300-token question,
+append-only history of real replies, every fifth turn a 4–12K-token document paste, replies asked for at
+300–2,000 tokens; friend i starts i%8 turns in, so every run covers prompt sizes from 300 to 24K tokens
+at once. `--relay-only` disables the client's UDP (tailscale's `TS_DEBUG_ALWAYS_USE_DERP`), so every byte
+crosses the relay exactly as a browser friend's does; without it, native friends hole-punch to a direct
+path. Sampled once a second: host `status` (in_flight/waiting/clients and, since 029, `process.{goroutines,heap_bytes,sys_bytes}` and
+`engine.{busy,waiting,kv_cache_pct}`) on the admin socket, host RSS via `ps` (029's `process.rss_bytes` is 0 on macOS), the engine's `/metrics`
+(+ `/slots` on llama.cpp) and RSS, and the relay's `derp_*`/`process_*` varz plus `top` over one ssh
+session. Per request: the friend's view (status, code, TTFT, tok/s, bytes up/down, path) in
+`requests.jsonl` and the host's own usage event (prompt_tokens, queued_ms, ttft_ms, settle) in
+`host.jsonl`; `summary.md` is the table quoted below. Raw run directories are kept outside the repo.
+
+**Set-up (all on this laptop, Apple M5 Max, 18 cores, 64 GB; home Wi-Fi).** Hosts: one per engine per
+relay, throwaway data dirs, `--dev-listen 127.0.0.1:682x`; A = llama.cpp on our relay
+(`--region derp.2185lab.com`), B = llama.cpp on Tailscale's NYC relay (default), C/D = vLLM on ours/NYC
+(`--upstream http://127.0.0.1:8010 --slots 2` over the read-only ssh forward to the workstation), E = a
+private llama-server on port 63080 (same binary and model as the laptop engine) for the engine-restart
+case. Engines: laptop `llama-server b9553 -np 2 -c 65536` (Gemma 4 E2B Q4_K_M; 32,768 tokens per slot),
+workstation vLLM `entropy-v2-gemma4-12b-w4a16-group128` (max-num-seqs 2, max_model_len 8192). Relay:
+`derp.2185lab.com`, DigitalOcean NYC, 2 vCPU / 4 GB, derper 1.102.3. The founder's demo host (Tailscale
+relay, same llama-server) stayed up throughout and was not touched.
+
+```
+go build -o $T/bn028-bin/load ./hack/load
+$T/bn028-bin/load --host-dir $T/bn028-a-llama-ours --bin $T/bn028-bin/bunny-network --host-pid <pid> \
+  --engine http://127.0.0.1:18080 --engine-pid <pid> --relay-ssh root@206.189.207.168 \
+  --relay-only --n 12 --minutes 3 --out $T/bn028-out --name R3-llama-ours-n12
+# sessions only:  --mode sessions --n 100 --settle 150s      spike: --mode sessions --n 30 --stagger 0
+# pathological:   --noread · --body-bytes 4300000 · --n 2 --sessions-per-friend 6 --max-concurrent 3
+#                 --n 1 --sessions-per-friend 50 · --at "75s=ssh root@… systemctl restart derper"
+```
