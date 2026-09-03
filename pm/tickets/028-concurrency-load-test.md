@@ -44,6 +44,20 @@ relay** as a first-class metric — it is the relay-sizing input. Run the mix at
 inference; note where the engine's context wall (`context_too_long`) or the gateway's shrink-to-fit
 kicks in and whether the copy the friend sees is true.
 
+## Founder question the report must answer (2026-09-03 02:25; NOT for the demo)
+
+Resending the conversation prefix every turn is stateless but costs (1) relay bytes (grows with chat
+length, matters only on the relayed path), (2) engine prefill (the real cost; llama.cpp reuses a slot's
+prompt cache only when the same chat lands on the same slot; vLLM prefix-caches across requests), and
+(3) nothing on the privacy side — the client owns history, the host stores no content (BELIEFS
+Protection 3). A responses-style stateful API would cut (1) and (2) but invert (3) and couple the host
+to one engine's cache model. **Decision rule (founder):** do not optimize what is not a problem. The
+report must state, from the realistic mix: relay bytes/s per long-conversation friend (the sizing
+number); measured prefill/TTFT vs prompt size per engine, and how much llama.cpp's slot cache and
+vLLM's prefix cache actually recover at N friends; and a recommendation among (a) stateless as is,
+(b) stateless + prefix-hash slot routing / cache hints in the gateway (keeps the client as owner of
+history; no host storage), (c) a stateful conversation API — with the numbers that would justify each.
+
 ## Binding
 
 1. **Instrument.** `hack/load/` (Go): N simulated friends, each with its own key, each holding its own
