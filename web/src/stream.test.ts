@@ -2,7 +2,8 @@
 // finished answer (promises 1 and 2).
 import { describe, expect, it } from 'vitest';
 import type { StreamEvent } from './api';
-import { contextUsed, NEW_REPLY, reduceReply, replyEnding, saidInBanner, type Reply } from './stream';
+import { carried, contextCarried, estimateTokens, NEW_REPLY, reduceReply, replyEnding, saidInBanner, type Reply } from './stream';
+import type { Message } from './storage';
 
 function play(...events: StreamEvent[]): Reply {
   return events.reduce(reduceReply, NEW_REPLY);
@@ -217,11 +218,45 @@ describe('which wall a reply hit', () => {
     expect(replyEnding(true, { in: 100, out: 500 }, 0, ctx)).toBe('length'); // no cap known, nowhere near the wall
   });
 
-  it('reads the context the last reply reported, for the meter', () => {
-    expect(contextUsed([])).toBeNull();
-    expect(contextUsed([{ role: 'user' }, { role: 'assistant' }])).toBeNull();
-    expect(contextUsed([{ role: 'user' }, { role: 'assistant', tokens: { in: 10, out: 5 } }, { role: 'user' }])).toBe(15);
-    expect(contextUsed([{ role: 'assistant', tokens: { in: 10, out: 5 } }, { role: 'assistant', tokens: { in: 20, out: 5 } }])).toBe(25);
+  it('the meter reads what the next question will carry, never the last exchange', () => {
+    const turn = (id: string, content: string, over: Partial<Message> = {}): Message => ({ id, role: 'user', content, ...over });
+    const reply = (id: string, content: string, over: Partial<Message> = {}): Message => ({ id, role: 'assistant', content, status: 'complete', ...over });
+    const s = { systemPrompt: 'Be brief.' };
+    const est = (text: string) => estimateTokens(text) + 4;
+    // Counted: the system prompt and every answer. Never thinking, never a reply that was cut off or empty.
+    const h1 = [turn('u1', 'hello there'), reply('a1', 'hi', { reasoning: 'x'.repeat(4000) })];
+    expect(contextCarried(h1, s, 8192)).toBe(est('Be brief.') + est('hello there') + est('hi'));
+    expect(contextCarried([...h1, reply('cut', 'part', { status: 'interrupted' }), reply('none', '', { status: 'no_answer' })], s, 8192)).toBe(contextCarried(h1, s, 8192));
+    // Never decreasing as the chat grows.
+    let last = 0;
+    const grown: Message[] = [];
+    for (let i = 0; i < 6; i++) {
+      grown.push(turn(`u${i}`, `question ${i} `.repeat(i + 1)), reply(`a${i}`, `answer ${i} `.repeat(i + 2)));
+      const now = contextCarried(grown, s, 8192);
+      expect(now).toBeGreaterThanOrEqual(last);
+      last = now;
+    }
+  });
+
+  it('a turn that alone would not fit the memory is sent once, refused by the host, and left out from then on (024)', () => {
+    const paste: Message = { id: 'big', role: 'user', content: 'w'.repeat(20_000) }; // ~5000 tokens
+    const before: Message[] = [{ id: 'u1', role: 'user', content: 'short' }, { id: 'a1', role: 'assistant', content: 'ok', status: 'complete' }];
+    const s = { systemPrompt: '' };
+    // Its own request carries it: the host is the one that says it does not fit.
+    const own = carried([...before, paste], s, 4096, paste);
+    expect(own.messages.map((m) => m.content.length)).toEqual([5, 2, 20_000]);
+    expect(own.leftOut).toEqual([]);
+    // The next question leaves it out, and says which turn.
+    const refused: Message = { id: 'r', role: 'assistant', content: '', status: 'interrupted', note: 'no longer fits' };
+    const next: Message = { id: 'u2', role: 'user', content: 'What is the capital of France?' };
+    const later = carried([...before, paste, refused, next], s, 4096, next);
+    expect(later.messages.map((m) => m.role)).toEqual(['user', 'assistant', 'user']);
+    expect(later.leftOut).toEqual([paste]);
+    // The meter is what that next question carries — the paste is not in it — and it does not
+    // depend on the host having answered anything yet.
+    expect(contextCarried([...before, paste, refused], s, 4096)).toBe(contextCarried(before, s, 4096));
+    // A host that has not said how big its memory is leaves nothing out.
+    expect(carried([...before, paste, refused, next], s, 0, next).leftOut).toEqual([]);
   });
 });
 

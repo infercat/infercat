@@ -124,8 +124,9 @@ export default function MessageView({
       )}
       {/* A reply another tab is writing (020 promise 6): read as it is checkpointed, never as ours. */}
       {!live && m.status === undefined && <p className="waiting">Arriving in another tab…</p>}
-      {/* The reply did not simply stop: it says which way it stopped, under the text it kept. */}
-      {ended && !inThinking && <p className={`ended ${m.status}`}>{m.note}</p>}
+      {/* The reply did not simply stop, or something was left out of its question (024): said
+          under the text it kept. */}
+      {m.note && !inThinking && <p className={`ended ${m.status ?? ''}`}>{m.note}</p>}
       {/* Running out of allowance is not finishing (014 promise 14): the reader is told where it
           stopped and offered the only thing that helps — more of the same reply, or, when the
           model's memory is what filled, a new chat (020 promise 3). */}

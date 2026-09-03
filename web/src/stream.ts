@@ -2,8 +2,8 @@
 // says. The rule it exists to enforce is that a reply is finished only when the host says it is —
 // running out of tokens is not an ending, and must never render as one (pm/BELIEFS.md, "Surfaces
 // tell the truth").
-import type { StreamEvent } from './api';
-import type { Message, MessageStatus } from './storage';
+import type { ChatMessage, StreamEvent } from './api';
+import { isAnswer, type Message, type MessageStatus, type Settings } from './storage';
 
 /** The parts of a Message this machine owns. `status` is undefined while it is still streaming. */
 export type Reply = Pick<
@@ -134,13 +134,57 @@ export function replyEnding(
   return 'length';
 }
 
-/** What the last reply says the whole thread cost the engine: the context meter's number. */
-export function contextUsed(messages: readonly Pick<Message, 'role' | 'tokens'>[]): number | null {
-  for (let i = messages.length - 1; i >= 0; i--) {
-    const m = messages[i];
-    if (m?.role === 'assistant' && m.tokens) return m.tokens.in + m.tokens.out;
+// ---- what the next request carries (024) --------------------------------------------------------
+
+/**
+ * A token, estimated: four characters of text, plus a few per message for the chat template. The
+ * gateway counts for real (a 13k-character essay came to 3339); this is what the client can know
+ * before it sends, and it is the same estimate for the meter and for the rule below, so they agree.
+ */
+export function estimateTokens(text: string): number {
+  return Math.ceil(text.length / 4);
+}
+const PER_MESSAGE = 4;
+
+/**
+ * The messages the next request will carry, and the turns it leaves out. One function, two readers
+ * — the request and the header's context meter — so the meter can never argue with what is sent.
+ * Not carried: the system prompt when empty; a reply that was cut off or had no answer (not context:
+ * sending it back asks the model to continue what the host never finished); the model's thinking
+ * (never resent); and, when the host has said how big the model's memory is, any single turn that
+ * alone would not fit it (024) — except `asking`, the turn being sent now: the host refuses that
+ * one itself, honestly, and from then on it is left out, so a 5000-word paste is never resent
+ * under a nine-word question, and the reply to that question says so.
+ */
+export function carried(
+  history: readonly Message[],
+  settings: Pick<Settings, 'systemPrompt'>,
+  modelContext: number,
+  asking?: Message,
+): { messages: ChatMessage[]; leftOut: Message[] } {
+  const messages: ChatMessage[] = [];
+  const leftOut: Message[] = [];
+  const system = settings.systemPrompt.trim();
+  if (system !== '') messages.push({ role: 'system', content: system });
+  for (const m of history) {
+    if (!isAnswer(m)) continue;
+    if (m.role === 'assistant' && m.content.trim() === '') continue;
+    if (m !== asking && modelContext > 0 && estimateTokens(m.content) + PER_MESSAGE >= modelContext) {
+      leftOut.push(m);
+      continue;
+    }
+    messages.push({ role: m.role, content: m.content });
   }
-  return null;
+  return { messages, leftOut };
+}
+
+/** What the next question will carry, as the context meter's number: the chat so far as it will be sent under it. */
+export function contextCarried(
+  history: readonly Message[],
+  settings: Pick<Settings, 'systemPrompt'>,
+  modelContext: number,
+): number {
+  return carried(history, settings, modelContext).messages.reduce((n, m) => n + estimateTokens(m.content) + PER_MESSAGE, 0);
 }
 
 function contextSlack(modelContext: number): number {

@@ -9,7 +9,6 @@ import {
   ME_TIMEOUT_MS,
   modelLabel,
   timeoutSignal,
-  type ChatMessage,
   type FriendlyError,
   type Me,
 } from '../api';
@@ -36,7 +35,6 @@ import {
   electStore,
   forget,
   hostScope,
-  isAnswer,
   KEYS,
   load,
   loadChats,
@@ -55,7 +53,7 @@ import {
   type Message,
   type Settings,
 } from '../storage';
-import { contextUsed, NEW_REPLY, reduceReply, saidInBanner, type Reply } from '../stream';
+import { carried, contextCarried, NEW_REPLY, reduceReply, saidInBanner, type Reply } from '../stream';
 import { composing } from './composing';
 import MessageView from './Message';
 import { coarsePointer } from './pointer';
@@ -281,10 +279,18 @@ export default function Chat({ state, live, dispatch, onRedial, reconnecting = f
         return;
       }
       const replyId = newId();
+      // One derivation of what goes to the host (024): the meter reads the same function. A turn
+      // too long for the model's memory on its own is left out, and this reply says so.
+      const ctx = me.host.upstream.model_context;
+      const { messages, leftOut } = carried(history, settings, ctx, history[history.length - 1]);
+      const note =
+        leftOut.length === 0
+          ? undefined
+          : `${leftOut.length === 1 ? 'One earlier message was' : `${leftOut.length} earlier messages were`} too long for the ${compact(ctx)} memory on ${host || 'the host'} and ${leftOut.length === 1 ? 'was' : 'were'} left out of this question.`;
       patch(convId, (c) => ({
         ...c,
         updatedAt: Date.now(),
-        messages: [...history, { id: replyId, role: 'assistant', content: '', model, ...(previous ? { previous } : {}) }],
+        messages: [...history, { id: replyId, role: 'assistant', content: '', model, ...(previous ? { previous } : {}), ...(note ? { note } : {}) }],
       }));
       setBanner(null);
       setRetryUntil(0);
@@ -298,7 +304,7 @@ export default function Chat({ state, live, dispatch, onRedial, reconnecting = f
         for await (const ev of chatEvents(
           live.transport,
           live.secret,
-          { model, messages: toChatMessages(history, settings), temperature: settings.temperature },
+          { model, messages, temperature: settings.temperature },
           ac.signal,
           undefined,
           host,
@@ -328,7 +334,7 @@ export default function Chat({ state, live, dispatch, onRedial, reconnecting = f
       }
       void refreshMe();
     },
-    [live.transport, live.secret, model, settings, patch, dispatch, refreshMe, host],
+    [live.transport, live.secret, model, settings, patch, dispatch, refreshMe, host, me.host.upstream.model_context],
   );
 
   function send(text: string): void {
@@ -486,7 +492,7 @@ export default function Chat({ state, live, dispatch, onRedial, reconnecting = f
           </div>
           <div className="truth">
             <span className="path">{pathLine(live, now)}</span>
-            <Meters live={live} used={contextUsed(conv.messages)} onOpen={() => setLimitsSheet(true)} />
+            <Meters live={live} used={contextCarried(conv.messages, settings, me.host.upstream.model_context)} onOpen={() => setLimitsSheet(true)} />
           </div>
           <button className="ghost tiny" onClick={() => setSheet(true)}>
             Settings
@@ -674,9 +680,10 @@ function LimitsSheet({ me, onClose }: { me: Live['me']; onClose: () => void }) {
         </p>
         {context > 0 && (
           <p>
-            <strong>{compact(context)} tokens of context.</strong> The model’s memory of this chat —
-            everything said so far, both sides. When it fills, replies get shorter until a message
-            no longer fits; a new chat starts empty.
+            <strong>{compact(context)} tokens of context.</strong> The model’s memory. The meter is what
+            the next message will carry — the chat so far, minus thinking, minus anything left out to
+            fit. As it fills, replies get shorter; a message that alone is too long for the memory is
+            left out of the next question; a new chat starts empty.
           </p>
         )}
         <button className="primary small" onClick={onClose}>
@@ -890,20 +897,6 @@ function SettingsSheet({
   );
 }
 
-function toChatMessages(history: Message[], settings: Settings): ChatMessage[] {
-  const out: ChatMessage[] = [];
-  if (settings.systemPrompt.trim() !== '') {
-    out.push({ role: 'system', content: settings.systemPrompt.trim() });
-  }
-  for (const m of history) {
-    // A turn that was cut off or never answered is not context: sending it back asks the model to
-    // continue something the host never finished saying.
-    if (!isAnswer(m)) continue;
-    if (m.role === 'assistant' && m.content.trim() === '') continue;
-    out.push({ role: m.role, content: m.content });
-  }
-  return out;
-}
 
 function lastIndexOfRole(messages: Message[], role: Message['role']): number {
   for (let i = messages.length - 1; i >= 0; i--) if (messages[i]?.role === role) return i;
