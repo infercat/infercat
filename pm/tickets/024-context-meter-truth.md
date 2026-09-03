@@ -2,8 +2,8 @@
 id: 024
 title: Final launch items — host-keyed chats, honest oversized-turn wall, delivered-turn rows, empty-answer death note, context meter (fourth pass, last)
 kind: normal
-size: 1
-status: dispatched
+size: 2
+status: landed
 updated: 2026-09-02
 release: demo-1
 ---
@@ -237,3 +237,14 @@ the streaming estimate; the "host is back" line and the heal latency; composer h
 `adoptInviteScope`, `carried`, `contextCarried`, `carriedAfter`, `estimateTokens` are derivations;
 `ThreadAction.disabled` and the `carried` prop are renderings of state that exists; `Message.note` on
 a complete reply is a field that existed.
+
+## Ruling (PM, 2026-09-03 01:15) — the last launch ticket
+
+**Landed** on main (merge of `d321368`); typecheck 0, 239 tests, lint 0, build OK, go build/test green,
+printed; 223/400 source lines; scope clean. All five promises held on the real host (re-issued code opens
+the same drawer; oversized paste refused once then left out with the note; carried rows softened; the
+empty-answer death note outside the Thinking block; the meter never decreasing). Both calls accepted:
+the meter is what the next question carries (thinking excluded — it is not resent); W6 overturned by the
+founder's promise ("your chats stay"): one host, one drawer.
+
+**Engineering side of the launch gate is closed** (founder: fourth pass was the last).

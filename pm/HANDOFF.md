@@ -1,6 +1,6 @@
 # HANDOFF — state of the work (succession document)
 
-Updated: 2026-09-02 22:20 EDT (machine clock). MILESTONE 13:30: founder ran the demo end to end and declared the concept proven; theme since: polish toward a public launch. PM seat: Claude Fable, session on Max's laptop.
+Updated: 2026-09-03 01:20 EDT (machine clock). MILESTONE 2026-09-02 13:30: founder ran the demo and declared the concept proven. Engineering launch gate closed 2026-09-03 01:15. PM seat: Claude Fable, session on Max's laptop.
 
 ## What this is
 
@@ -23,23 +23,23 @@ a public social-media launch soon after, likely serving DeepSeek v4 flash from t
 
 ## In flight
 
-- **Landed on main (`150e558`):** tickets 001–011, 014, 016–022 and the 022 evidence follow-up.
-  Highlights since the demo: gateway request pipeline + settle table + FIFO queue + engine-side
-  deadlines (006/010/021), engine state + `Engine` seam (011), web session/message state machines
-  (007) and three truth rounds (014/020/022), busy-host keepalives (018), host polish incl. the
-  first-run identity race (009), seeded counters (016), release engineering with notices (017),
-  `docs/DESIGN.md` (008), `docs/ARCHITECTURE.md` v1, `pm/LAUNCH.md`.
-- **Running:** 023 one dial per host (Reconnect joins the self-probe's dial) and 024 context meter
-  truth + five desktop items — same Fable engineer, branch `t023-one-dial`. Fourth experience pass:
-  desktop spot-check done (verdict: launch-ready but for the context meter); phone half + synthesis
-  re-running from cache after the fourth rate-limit kill (`wf_dc0cce6d-452`).
-- **Gate:** the phone half of the fourth pass (or a fifth pass after 023/024) reports no false state
-  and no embarrassing screenshot → engineering side done. Founder decisions F1–F6 in `pm/LAUNCH.md`
-  are the other half.
-- **Rate-limit protocol:** on every kill, commit the worktree as WIP on its branch, push, resume the
-  same agent with a pointer to the commit. Four kills today (05:40, 15:30, 19:30, 22:20 resets).
-- **After launch:** 012 concept trim + cleanup, 015 capability seam + web search (vision reframed to
-  "share an AI"), sandboxes (Docker-class, founder-gated).
+- **Engineering side of the launch is done** (2026-09-03 01:15). Main `HEAD` = 024 landed. Landed today:
+  001–011, 014, 016–024. Four experiential passes; the fourth was the last by founder ruling; its
+  blocker (chats keyed to the invite id) and three screenshot-worthy frames are fixed in 024; the rest
+  is on the 012 backlog. Fresh-clone gate, protections, docs/flags, release engineering: all evidenced
+  in `pm/LAUNCH.md`.
+- **Nothing is running.** No engineer, no workflow, no host processes of ours (the founder's llama-server
+  on 18080 stays up).
+- **Waiting on the founder (pm/LAUNCH.md F1–F6):** name · relay VM (derper) · web app URL · distribution
+  · license file · history rewrite. After F2/F3: regenerate the host key against the derper, set
+  `product.WebURL`, re-run `docs/MEASURE.md` through the real relay, deploy the bundle, live proof from a
+  phone on cellular (checklist "Engineering gates" lines 3, 4, 7).
+- **After launch:** 012 concept trim + cleanup (+ the fourth-pass backlog), 015 capability seam + web
+  search, sandboxes (Docker-class, founder-gated).
+- **Rate-limit protocol:** commit the worktree as WIP, push, resume the same agent with a pointer. Four
+  kills today; the fourth cost ~40 min. Engineers also tend to yield while waiting on their own
+  background jobs — the PM's tree-quiet watcher (5 min of no changes, or a non-WIP commit) is the cheap
+  way to know when to gate.
 
 ## Standing decisions tonight
 
