@@ -54,8 +54,9 @@ import {
   type Conversation,
   type Message,
   type Settings,
+  type Thinking,
 } from '../storage';
-import { carried, contextCarried, NEW_REPLY, reduceReply, saidInBanner, type Reply } from '../stream';
+import { carried, chatSpeed, contextCarried, msText, rateText, reduceReply, saidInBanner, startReply, thinkingFields, tokensSaved, type Reply } from '../stream';
 import { composing } from './composing';
 import MessageView from './Message';
 import { coarsePointer } from './pointer';
@@ -96,7 +97,8 @@ export default function Chat({ state, live, dispatch, onRedial, reconnecting = f
   const touch = coarsePointer();
 
   const [listed, setListed] = useState<string[]>([]);
-  const [settings, setSettings] = useState<Settings>(() => load(keys.settings, DEFAULT_SETTINGS));
+  // Merged over the defaults: a build that did not know a setting stored none of it.
+  const [settings, setSettings] = useState<Settings>(() => ({ ...DEFAULT_SETTINGS, ...load(keys.settings, DEFAULT_SETTINGS) }));
   const [convs, setConvs] = useState<Conversation[]>(() => {
     adoptInviteScope(live.addr, live.me.key.id); // an earlier build's invite-scoped chats, once (024)
     return orNew(loadChats(scope));
@@ -297,7 +299,7 @@ export default function Chat({ state, live, dispatch, onRedial, reconnecting = f
       patch(convId, (c) => ({
         ...c,
         updatedAt: Date.now(),
-        messages: [...history, { id: replyId, role: 'assistant', content: '', model, ...(previous ? { previous } : {}), ...(note ? { note } : {}) }],
+        messages: [...history, { id: replyId, role: 'assistant', content: '', model, ...(previous ? { previous } : {}), ...(note ? { note } : {}), ...(settings.thinking !== 'default' ? { thinking: settings.thinking } : {}) }],
       }));
       setBanner(null);
       setRetryUntil(0);
@@ -305,13 +307,13 @@ export default function Chat({ state, live, dispatch, onRedial, reconnecting = f
       abort.current = ac;
       setStreaming(true);
 
-      let reply: Reply = NEW_REPLY;
+      let reply: Reply = startReply(); // the clock behind the footer's numbers starts at Send (032)
       let failed: { code: string; error: FriendlyError } | null = null;
       try {
         for await (const ev of chatEvents(
           live.transport,
           live.secret,
-          { model, messages, temperature: settings.temperature },
+          { model, messages, temperature: settings.temperature, ...thinkingFields(settings.thinking) },
           ac.signal,
           undefined,
           host,
@@ -565,6 +567,7 @@ export default function Chat({ state, live, dispatch, onRedial, reconnecting = f
                   last={i >= lastUser && i >= conv.messages.length - 2}
                   action={action}
                   limits={limits}
+                  saved={tokensSaved(conv.messages, i)}
                   onContinue={() => send('Continue from where you stopped.')}
                   onNewChat={startNew}
                   onResend={resend}
@@ -640,11 +643,12 @@ export default function Chat({ state, live, dispatch, onRedial, reconnecting = f
           settings={settings}
           models={models}
           live={live}
+          thinks={settings.thinking !== 'default' || conv.messages.some((m) => Boolean(m.reasoning))}
           onChange={setSettings}
           onClose={() => setSheet(false)}
         />
       )}
-      {limitsSheet && <LimitsSheet me={me} onClose={() => setLimitsSheet(false)} />}
+      {limitsSheet && <LimitsSheet live={live} messages={conv.messages} onClose={() => setLimitsSheet(false)} />}
     </div>
   );
 }
@@ -674,9 +678,11 @@ function Meters({ live, used, onOpen }: { live: Live; used: number | null; onOpe
 }
 
 /** One sheet, one sentence each: the whole explanation of the numbers in the header. */
-function LimitsSheet({ me, onClose }: { me: Live['me']; onClose: () => void }) {
+function LimitsSheet({ live, messages, onClose }: { live: Live; messages: readonly Message[]; onClose: () => void }) {
+  const me = live.me;
   const { rpm, daily_tokens: daily } = me.limits;
   const context = me.host.upstream.model_context;
+  const pace = chatSpeed(messages);
   return (
     <div className="sheet-wrap" onClick={onClose}>
       <div className="sheet" onClick={(e) => e.stopPropagation()}>
@@ -695,6 +701,22 @@ function LimitsSheet({ me, onClose }: { me: Live['me']; onClose: () => void }) {
             the next message will carry — the chat so far, minus thinking, minus anything left out to
             fit. As it fills, replies get shorter; a message that alone is too long for the memory is
             left out of the next question; a new chat starts empty.
+          </p>
+        )}
+        {/* Speed, from where the reader sits (032): this chat's medians and what is inside them. The
+            relay round trip is quoted only when there is one: direct mode has no hop. */}
+        {pace.n > 0 && (
+          <p>
+            <strong>
+              {pace.ttftMs !== undefined ? `${msText(pace.ttftMs)} to the first token` : 'Every reply so far waited for a slot first'}
+              {pace.tokPerS !== undefined ? ` · ${rateText(pace.tokPerS)}, ${msText(1000 / pace.tokPerS)} per token` : ''}.
+            </strong>{' '}
+            The median over {pace.n === 1 ? 'the one reply' : `the ${pace.n} replies`} in this chat, measured on this device:
+            Send to the first token, thinking or answer; completion tokens over first-to-last token, thinking included.
+            {live.mode === 'tunnel' && live.pathOk && live.path
+              ? ` The relay hop is inside both — the ${Math.round(live.path.rttMs)} ms round trip in the header right now.`
+              : ''}{' '}
+            A reply that waited for a free slot says so on the reply and is left out of the first-token median.
           </p>
         )}
         <button className="primary small" onClick={onClose}>
@@ -825,12 +847,15 @@ function SettingsSheet({
   settings,
   models,
   live,
+  thinks,
   onChange,
   onClose,
 }: {
   settings: Settings;
   models: string[];
   live: Live;
+  /** The model has shown its thinking in this chat, or a choice is already in force (031 promise 2). */
+  thinks: boolean;
   onChange: (s: Settings) => void;
   onClose: () => void;
 }) {
@@ -872,6 +897,20 @@ function SettingsSheet({
             onChange={(e) => setDraft({ ...draft, temperature: Number(e.target.value) })}
           />
           <span className="field-hint">Lower is more predictable, higher is more surprising.</span>
+        </label>
+        {/* Truthful surface (031): a switch for something this model has never done is a claim, so
+            until it has thought here the row only says what is in force. */}
+        <label className="field">
+          <span className="field-label">Thinking{thinks ? '' : ' · model default'}</span>
+          {thinks ? (
+            <select value={draft.thinking} onChange={(e) => setDraft({ ...draft, thinking: e.target.value as Thinking })}>
+              <option value="default">Model default</option>
+              <option value="on">On — better answers on hard questions</option>
+              <option value="off">Off — faster, shorter, fewer of your tokens</option>
+            </select>
+          ) : (
+            <span className="field-hint">The switch appears once the model has shown its thinking in this chat.</span>
+          )}
         </label>
         <p className="dim small-print">
           {privacyLine(hostName(me), logsPrompts(me))} Your invite is <code>{me.key.name}</code> (

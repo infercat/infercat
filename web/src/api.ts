@@ -141,6 +141,8 @@ export interface ChatRequest {
   model: string;
   messages: ChatMessage[];
   temperature?: number;
+  /** Passed to the engine's chat template untouched by the gateway (proxy.go pass-through list). */
+  chat_template_kwargs?: { enable_thinking: boolean };
 }
 
 /**
