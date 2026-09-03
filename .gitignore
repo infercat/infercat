@@ -10,3 +10,4 @@ web/public/wasm_exec.js
 /.claude/worktrees/
 /bunny-network
 /bunny-network.exe
+/load
