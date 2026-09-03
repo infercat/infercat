@@ -132,3 +132,74 @@ $T/bn028-bin/load --host-dir $T/bn028-a-llama-ours --bin $T/bn028-bin/bunny-netw
 # pathological:   --noread · --body-bytes 4300000 · --n 2 --sessions-per-friend 6 --max-concurrent 3
 #                 --n 1 --sessions-per-friend 50 · --at "75s=ssh root@… systemctl restart derper"
 ```
+
+### Layer 3–4 — gateway + engine, growing-chat mix, relay-only friends on our relay
+
+Client-side outcomes and the host's own per-request events (`requests.jsonl` + `host.jsonl`). "served"
+= 2xx streamed to the end; "qt" = `queue_timeout` (503, or an SSE error after a queued head). The
+gateway held `in_flight ≤ 2` and `waiting ≤ 4` (= 2·S) in every row.
+
+| Run | Engine | N | served | qt % | served-TTFT p50 (incl. queue) | per-stream tok/s p50 | host in_flight / waiting max |
+|---|---|---|---:|---:|---:|---:|---:|
+| R1 | llama.cpp (2 slots, 32K) | 2 | 31 | 0 % | 0.65 s | 108 | 2 / 0 |
+| R2 | llama.cpp | 6 | 40 | 2 % | 20.9 s | 119 | 2 / 4 |
+| R3 | llama.cpp | 12 | 31 | 82 % | 18.3 s | 132 | 2 / 4 |
+| R4 | llama.cpp | 30 | 31 | 95 % | 16.1 s | 133 | 2 / 4 |
+| R5 | vLLM (2 seqs, 8K) | 2 | 49 | 0 % | 0.20 s | 64 | 2 / 0 |
+| R6 | vLLM | 6 | 49 | 0 % | 11.9 s | 62 | 2 / 2 |
+| R7 | vLLM | 12 | 67 | 64 % | 7.2 s | 62 | 2 / 4 |
+| R8 | vLLM | 30 | 41 | 91 % | 11.5 s | 62 | 2 / 4 |
+
+Prefill vs prompt size (llama.cpp, host `ttft_ms − queued_ms`, served rows): 0–1K prompt ≈ 0.1 s;
+2–4K ≈ 0.2 s; 8–16K ≈ 0.4–2.6 s (lower when the slot cache holds the prefix); 16–24K ≈ 0.8–5.9 s.
+Prefill throughput 2,800–4,300 tok/s. **Slot-cache recovery** (1 − engine-prefilled ÷ prompt-tokens-
+sent): R1 87 %, R2 74 %, R3 63 %, R4 52 % — falls as N grows and chats bounce between the two slots.
+vLLM has no served rows above 8K (its context wall): `422 context_too_long`, plus the ticket-036
+boundary `400`s. vLLM prefix-cache hit ≈ 64 % at N=2 (clean); higher-N reads share the workstation's
+global counters with other traffic and are not attributable.
+
+### Layers 1–2 — sessions only, N = 60 and 100 (idle-connected + a trickle)
+
+| Run | Relay | N | host RSS before→after | host goroutines max | tunnel clients max | relay derper CPU | relay RSS | data-packet drops |
+|---|---|---:|---|---:|---:|---:|---:|---:|
+| R12 | ours | 60 | 83→83 MB | 525 | 4 | 2.8 % of 1 core | 27 MB | +75 |
+| R13 | ours | 100 | 83→83 MB | 731 | 4 | 3.5 % of 1 core | 30 MB | +14 |
+| R14 | Tailscale NYC | 60 | 47→54 MB | 499 | 4 | (Tailscale's box) | — | — |
+| R15 | Tailscale NYC | 100 | 54→64 MB | 707 | 4 | — | — | — |
+
+RSS is flat; goroutines track connected clients and drain on tailcat's ~9-minute lazy-peer timer.
+Connect handshakes 65–90 ms p50 at N=100 on both relays. (The huge `derp_packets_dropped` totals are
+`disco` churn to departed peers; the data-carrying `kind=other` drops are the column above.)
+
+### Relay comparison and the direct path (N = 12)
+
+| Run | Relay / path | connect p50 / p95 | served-TTFT p50 | tok/s | relay recv per friend |
+|---|---|---|---:|---:|---:|
+| R3 | ours, relay-only | 76 / 86 ms | 18.3 s | 132 | 11.9 KB/s |
+| R9 | Tailscale NYC, relay-only | 66 / 120 ms | 18.8 s | 133 | (n/a) |
+| R11 | ours, **native (direct)** | 75 / 94 ms | 19.1 s | 134 | **0.14 KB/s** |
+
+Our relay and Tailscale's NYC relay are indistinguishable under load (connect, TTFT, tok/s all within
+noise). A native friend who hole-punches to a direct path puts **85× less** on the relay than a
+relay-only (browser) friend — the direct path costs the relay essentially nothing.
+
+### Pathological cases (each once; N=12 unless noted). Host held in every one — 0 requests past a deadline.
+
+| Case | What was sent | Result | Proves |
+|---|---|---|---|
+| Never-reads stream | friend 0 opens a stream and never reads it | host wrote the 908-token reply into the socket/tunnel buffer, finished in 6.8 s and **freed the slot**; the client held the buffered-but-unread bytes until grace | a non-reading client does not pin a slot. (A reply large enough to fill the buffer and force the 60 s write-deadline cut was not produced by this mix — a test gap, not a host miss.) |
+| 4 MiB+ body | 12 friends, ~4.30 MB chat bodies (> the 4 MiB cap) | **`413 body_too_large`**, refused before a slot or the engine (`in_flight` stayed 0) | the body cap holds; an over-cap upload never reaches the engine |
+| Just-under-cap body | ~3.9 MB bodies (< cap) | read, then **`422 context_too_long`** (≫ 32K tokens) | the pipeline reads then rejects on context, still no engine call |
+| Burst over per-key concurrency | 2 keys × 6 sessions, `max_concurrent 3` | 680/712 → **`429 concurrency_limited`**, 32 served; `in_flight` max 2 | per-key concurrency bounds a key regardless of session count |
+| Launch-day spike | 30 friends connect in the same instant (`--stagger 0`) | all 30 up; handshake 29 < 330 ms, 1 outlier 5.2 s; no failures | a simultaneous crowd connects; one handshake grazed the 5 s watch line under the thundering herd |
+| Engine restarted mid-run | kill+restart the engine at t+75 s | 12 × **`503 upstream_down`** (with `Retry-After`) while down, then serving resumed automatically (30 served); nothing hung | an engine bounce degrades to honest 503s and self-heals |
+| Relay restarted mid-run | `systemctl restart derper` at t+75 s | sessions re-established; 47 served across the restart; nothing hung | a relay bounce does not strand a session |
+| 50 sessions on one key | 1 key, 50 tunnel sessions (abuse) | 4171/4186 → **`429 concurrency_limited`**; `in_flight` max **1** (the key's own limit) | one invite cannot monopolize the engine |
+| Two hosts on one relay | host A (llama) + host C (vLLM), 6 friends each, both on our relay | both served (31, 28); derper 10 % of one core | a second host does not starve the first |
+
+**Leak check (the named failure mode "RSS/goroutines higher after than before").** Not a leak. After the
+4 MiB-body storm a host's RSS sat at ~371 MB and did not fall on idle, but `/status.process` showed
+`heap_bytes` (live objects) **12 MB** against `heap_sys` 345 MB — Go's runtime holding freed arena
+(macOS `MADV_FREE` keeps the pages counted in RSS until memory pressure), not growth. A fresh host is
+30 MB; RSS never grew run-over-run at steady load (83 MB flat across the N=100 session test). Goroutines
+rise with connected clients and drain on tailcat's ~9-minute lazy-peer timer, not ours.

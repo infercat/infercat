@@ -106,3 +106,59 @@ leave it running. The demo host stays on Tailscale's relay throughout (founder r
 
 ## Report
 - 04:25 — Runs R1–R11 clean. Two product/dependency defects filed: **035** (tailcat.Client.Close hangs under relay-only — instrument-guarded, affects 026's connect on a permanently-relayed native client) and **036** (context pre-check undercounts the chat-template prompt → vLLM rejects a near-ceiling request as a raw 400 instead of the gateway's 422; measured token gap + vLLM's own message). Gateway held `in_flight` max 2 / `waiting` max 4 in every run; 0 requests past deadline; host RSS 37–83 MB bounded. WIP commit here.
+- 05:00 — All 15 layer runs + 9 pathological cases done; 413/leak checks confirmed against a fresh host on the rebased (029) binary. Rebased onto origin/main: **dropped my `/debug/vars`** (029 landed `/status.process.{goroutines,heap_bytes,sys_bytes}` + engine/session telemetry — the instrument reads those; RSS still from `ps`, 029's `rss_bytes` is 0 on macOS). Renumbered my defect tickets to **035/036** (033/034 taken on main). Cleaned up every host/engine/forward I started; relay left running; founder host + laptop engine untouched. Checks green.
+
+## Report
+
+**Headline: no layer's ceiling is below launch-day need.** The binding limit is the engine, by design —
+a home engine serves 2 at once and the gateway turns a crowd into an orderly queue. The relay and host
+tunnel are far from their limits at launch numbers. Two defects found (own tickets 035, 036); neither is
+a capacity blocker.
+
+**Core results (each shown in `docs/MEASURE.md` § Load and `docs/LIMITS.md`):**
+- **Instrument.** `hack/load` — N native tunnel-client friends, per-key, the growing-chat mix, per-request
+  + per-second sampling of host/engine/relay. One tool, four layers. Ran N=2/6/12/30 on llama.cpp and
+  vLLM, N=60/100 sessions-only, our relay vs Tailscale NYC, native vs relay-only, and 9 pathological cases.
+- **Gateway held in every run:** `in_flight` ≤ 2, `waiting` ≤ 4 (= 2·S), **0 of ~9,000 requests ended
+  without completing-or-erroring in their deadlines**, no raw 502. A crowd degrades to honest 503s
+  (N=12 → 82% `queue_timeout`, N=30 → 95%), served streams stay full-speed.
+- **Relay:** 100 idle browser friends = 3.5% of one derper core, 30 MB; ~12 KB/s + ~1% core per *active*
+  streaming friend; **no data-packet loss** (the big `dropped` counter is disco churn); a **native** friend
+  puts 85× less on the relay than a relayed one. One 2-vCPU droplet carries 100+ browser friends.
+- **Host tunnel:** no leak — RSS flat at steady load; the 371 MB after a 4 MiB-body storm was Go runtime
+  retention (live objects 12 MB), not growth; fresh host 30 MB.
+- **Engine (the ceiling):** llama.cpp 2 slots/32K → ~12 chats/min, 108–133 tok/s; vLLM 2 seqs/8K →
+  ~30 chats/min, ~62 tok/s but an 8K context walls mature chats. **Recommended public-demo engine: vLLM
+  with `--slots` = its real `max-num-seqs`, raised as far as the GPUs allow (that number is the gateway's
+  S), and a context ≥ 32K.**
+
+**Stateless-vs-stateful (the founder's three numbers): keep it stateless (a).**
+1. Relay uplink of resending history ≈ **5 KB/s per active long-conversation friend** (100 of them ≈
+   0.5 MB/s — negligible).
+2. Prefill is the real cost and the engines already recover it with no host state: llama.cpp slot cache
+   **52–87%**, vLLM prefix cache **~64%** (N=2 clean read).
+3. Privacy unaffected (client owns history). → Do **not** build a stateful API (inverts Protection 3,
+   couples to one engine's cache). Revisit only if a future engine has no prefix cache *and* relay
+   bandwidth dominates the bill — then (b) prefix-hash slot routing, not stateful.
+
+**Edge/pathological (each once, all contained):** 413 over-cap body before a slot; `429` for a burst past
+a key's concurrency and for 50-sessions-on-one-key (`in_flight` max 1 — an invite can't monopolize);
+engine-restart → `503 upstream_down` then auto-recovery; relay-restart → sessions re-establish; two hosts
+on one relay coexist; a non-reading client didn't pin a slot (the write-deadline cut of a *buffer-filling*
+reply wasn't forced by this mix — a noted test gap).
+
+**Verification.** `go build ./... && go vet ./... && go test ./...` all green — every package `ok`, 0
+failed, 0 skipped. Manual: 413 and leak checks reproduced against a fresh 029 host (`V2-413-frozen`).
+
+**Declared loudly:**
+- **Size overrun (contest):** the instrument is **1029 code-only lines** (1177 with comments) vs the
+  ticket's ≤900 for size 3 — a four-layer sampler + mix + summary tables + pathological hooks in one
+  tool. Measured per-file: main 476, friend 278, sample 193, mix 82. It is `hack/` tooling with **0 new
+  product concepts**. PM to rule: accept size 3 at 1029, or re-price.
+- **Zero shipped-product changes.** After the rebase my `/debug/vars` was dropped for 029's `/status`;
+  `git diff origin/main` touches only `hack/load/**`, `docs/**`, `pm/**`, `.gitignore`.
+- **Production actions taken (all ticket-granted):** restarted `derper` once (P6) and left it running;
+  ran two of my own hosts concurrently on the relay (P8 — the designed two-hosts test).
+- **Measurement caveat:** the workstation vLLM is shared/read-only; its global prefix-cache counter is
+  reliable only at N=2 (idle box). llama.cpp on :18080 is shared with the founder's demo host, so its
+  global prefill counter can include a little of that host's traffic (slot-cache % is a floor).
