@@ -10,7 +10,7 @@
 // that a revoked invite's card keeps every chat.
 //
 //   BN_BIN=/path/bunny-network BN_DATA_DIR=/path/data GW=http://127.0.0.1:6720 PREVIEW_PORT=6721 \
-//     UPSTREAM=http://127.0.0.1:18080 node dev/real-check.mjs [cost|asleep|reconnect|heal|race|paused|wall|stall|tabs|phone|revoke|all]
+//     UPSTREAM=http://127.0.0.1:18080 node dev/real-check.mjs [cost|asleep|reconnect|heal|race|paused|wall|stall|tabs|phone|revoke|meter|all]
 //
 // Keys are minted in BN_DATA_DIR (alice for everything, bob for the revoke) unless INVITE is set.
 // It only ever kills processes it started itself.
@@ -429,6 +429,41 @@ async function fits(page, label) {
   check(r.edge <= 0, `${label}: the header runs ${r.edge} px past the edge`);
 }
 
+// --- 024: the context meter is what the next question will carry; an oversized turn is left out ---
+async function meter(browser, key) {
+  const page = await connected(browser, key.invite);
+  const read = async () => (await page.locator('.meter-label').allInnerTexts()).find((t) => t.includes('context')) ?? '(no context meter)';
+  const values = [await read()];
+  console.log(`\nMETER before anything: ${values[0]}`);
+  for (const [n, q] of [[1, 'Reply with the single word: pong.'], [2, 'Reply with the single word: ping.'], [3, 'In one sentence, what is a relay?']]) {
+    await ask(page, q);
+    await answered(page, n);
+    await sleep(400);
+    values.push(await read());
+    console.log(`  after turn ${n}: ${values[values.length - 1]}`);
+  }
+  const nums = values.slice(1).map((v) => Number(/^([\d.]+)(k?)\//.exec(v)?.[1] ?? 0) * (/^[\d.]+k\//.test(v) ? 1000 : 1));
+  check(nums.every((v, i) => i === 0 || v >= (nums[i - 1] ?? 0)), `the meter went down as the chat grew: ${values.join(' → ')}`);
+  await shot(page, 'meter-three-turns', '24-real');
+  // A paste that alone does not fit the memory: the host refuses it once, honestly; the next question
+  // leaves it out and its reply says so; the meter is what that question carried.
+  await ask(page, `Please keep this for later.\n\n${'The quick brown fox jumps over the lazy dog. '.repeat(700)}`);
+  await page.waitForSelector('.row.assistant .ended', { timeout: 120_000 });
+  const refused = await page.locator('.row.assistant .ended').last().innerText();
+  console.log(`  paste (~7.9k tokens) → ${JSON.stringify(refused.slice(0, 90))} · meter ${await read()}`);
+  check(/no longer fits|too long/.test(refused), `the paste was not refused: ${refused}`);
+  await ask(page, 'What is the capital of France? One word.');
+  await answered(page, 4);
+  await sleep(400);
+  const note = await page.locator('.row.assistant').last().locator('.ended').innerText().catch(() => '');
+  const meterAfter = await read();
+  console.log(`  next question → ${JSON.stringify(await page.locator('.row.assistant > .md').last().innerText())} · note ${JSON.stringify(note)} · meter ${meterAfter}`);
+  check(/left out of this question/.test(note), `the reply does not say the paste was left out: ${JSON.stringify(note)}`);
+  check(!/^[5-9]\.\dk|^\d\dk/.test(meterAfter), `the meter still counts the paste: ${meterAfter}`);
+  await shot(page, 'meter-left-out', '24-real');
+  await page.context().close();
+}
+
 // --- 020 promise 7: the phone drawer's delete is undoable ---------------------------------------
 // --- 022 promise 4/5: the header fits, the drawer's Disconnect is reachable, and it sticks -------
 async function phone(browser, key) {
@@ -540,6 +575,7 @@ async function main() {
   if (want('tabs')) await tabs(browser, alice);
   if (want('phone')) await phone(browser, alice);
   if (want('revoke') && bob) await revoke(browser, bob);
+  if (want('meter')) await meter(browser, alice);
 
   await browser.close();
   kids.forEach((c) => c.kill('SIGTERM'));

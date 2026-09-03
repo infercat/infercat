@@ -34,6 +34,25 @@ backoff), tests. Ports 6720–6729.
 
 ## Log
 
+All times 2026-09-02, EDT, laptop.
+
+- 23:05 — ACK. Fresh worktree `t024-context-meter` at `36966ec` (main, with 023 landed). Ruling
+  cuts the ticket to two promises: (a) the meter shows what the next request will carry, (b) a
+  turn that alone would not fit the memory is left out of the history sent and the reply says so.
+  Everything else in the ticket (composer focus, Escape, the card after Disconnect, the per-minute
+  refill, the probe cap and `visibilitychange`, the streaming estimate) is backlog by ruling.
+- 23:08 — Design: one function, two readers. `carried(history, settings, modelContext)` in
+  `stream.ts` is what the request sends — the system prompt, the answers (not cut-off or empty
+  replies), never thinking — and, new, leaves out any single turn whose own estimate (chars ÷ 4,
+  plus 4 per message for the template) would not fit the memory; it returns the messages and the
+  turns left out. `contextCarried()` sums the same messages with the same estimate: the meter's
+  number. `toChatMessages` in Chat.tsx is deleted in its favour; `contextUsed` (the last exchange's
+  prompt + reply, thinking included — the quantity the fourth pass caught arguing with the wall) is
+  deleted. The reply to a question whose history left something out carries a note; Message.tsx
+  shows a note whether or not the reply ended badly. The sheet's sentence says what the meter is.
+  Chars ÷ 4 is the estimate the wall probe measured against the gateway's count (13k characters →
+  3339 tokens); the number is an estimate and the sheet says "what the next message will carry".
+
 ## Report
 
 ## Ruling (PM, 2026-09-02 22:58 — founder: fourth pass is the last)
