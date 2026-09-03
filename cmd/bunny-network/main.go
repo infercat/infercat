@@ -65,6 +65,7 @@ type gatewayOptions struct {
 // platform is everything this command cannot build for itself.
 type platform struct {
 	startTunnel  func(ctx context.Context, o tunnelOptions) (tunnelServer, error)
+	dialTunnel   func(ctx context.Context, addr string, logf func(string, ...any)) (session, error) // connect's client side
 	savedAddr    func(dataDir string) (string, error)
 	encodeInvite func(addr, secret string) string
 	newGateway   func(o gatewayOptions, up upstream.Upstream, store keys.Store, rec usage.Recorder, logf func(string, ...any)) (gatewayServer, error)
@@ -124,6 +125,8 @@ func run(ctx context.Context, args []string, out, errw io.Writer, in io.Reader, 
 		err = e.cmdStatus(ctx, dataDir, cargs)
 	case "usage":
 		err = e.cmdUsage(ctx, dataDir, cargs)
+	case "connect":
+		err = e.cmdConnect(ctx, dataDir, cargs)
 	case "version":
 		// Both halves of a bug report start here: which build, from which commit, built when.
 		fmt.Fprintf(out, "%s %s (%s, %s)\n", product.Name, product.Version, product.Commit, product.Date)
@@ -279,12 +282,14 @@ Commands:
   keys       mint and manage per-friend keys: add, list, pause, resume, revoke, rotate, limits
   status     what the running host is doing right now
   usage      what your friends have used, from the usage log
+  connect    use an invite from this machine: an OpenAI-compatible API on localhost for any app
   version    print the version
 
 Start here:
   bunny-network serve                  # finds llama.cpp, Ollama, LM Studio, or vLLM
   bunny-network keys add alice         # prints Alice's invite, once
   bunny-network status
+  bunny-network connect bn1.tc….…      # a friend's side: any app, base URL http://127.0.0.1:11435/v1
 
 Global flags:
   --data-dir DIR   where keys, usage, config, and the host key live

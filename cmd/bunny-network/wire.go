@@ -29,6 +29,13 @@ func newPlatform() platform {
 			}
 			return realTunnel{s}, nil
 		},
+		dialTunnel: func(ctx context.Context, addr string, logf func(string, ...any)) (session, error) {
+			s, err := tunnel.Dial(ctx, addr, tunnel.ClientOptions{Logf: logf})
+			if err != nil {
+				return nil, err
+			}
+			return tunnelSession{s}, nil
+		},
 		savedAddr:    tunnel.SavedAddr,
 		encodeInvite: invite.Encode,
 		newGateway: func(o gatewayOptions, up upstream.Upstream, store keys.Store, rec usage.Recorder, logf func(string, ...any)) (gatewayServer, error) {
