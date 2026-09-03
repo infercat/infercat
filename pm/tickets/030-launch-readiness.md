@@ -292,7 +292,7 @@ before measuring; Tab order is measured from the document top, not from the auto
 
 - **Base commit:** `ebc1146` (= `origin/main` at freeze: 033 landed after dispatch, a ticket file only; rebased, no conflicts).
 - **Lane:** worktree branch `t030-launch`, pushed. Not merged.
-- **Product diff SHA-256** (`git diff origin/main -- . ':!pm' | shasum -a 256`, before this Report was appended): `fb71f341852f30be85f703297bb48f25c65ee241e5f19637f5158f192799427f`
+- **Product diff SHA-256** (`git diff origin/main -- . ':!pm' | shasum -a 256`, at `ae3d94c`, the last product commit; the two commits after it touch `pm/` only): `278518a1c0414f5f183eb39beb9375a151dfcfa89e17618e6eac97c5abeae61f`
 - **Accounting** (recomputed from `git diff origin/main --numstat`):
 
 | Bucket | Measured | Budget | Verdict |
@@ -301,6 +301,7 @@ before measuring; Tab order is measured from the document top, not from the auto
 | Dev tooling, declared separately (`web/dev/brand.mjs` 145, `web/dev/launch-check.mjs` 398) | +543 | — (harness, like `screenshots.mjs`) | declared |
 | Surfaces: README, CHANGELOG, SECURITY, CONTRIBUTING, CODE_OF_CONDUCT, docs/RELEASE, docs/RENAME, `.github/**`, `.goreleaser.yaml`, Makefile, ticket 034 | +978 / −43 | surfaces | — |
 | Binary assets | 17 files (icons, og/social cards, 9 screenshots, GIF + PNG) | — | — |
+| Outside the scope list, declared: `hack/notices.sh` + regenerated `THIRD_PARTY_NOTICES.md` | THIRD_PARTY_NOTICES.md +11/−1; hack/notices.sh +14/−4 | — | declared |
 | Concepts | **0** — no CLI verb, flag, error code, config key or state file. `VITE_WEB_URL` is a build-time env like `VITE_APP_VERSION`; `make brand`/`launch-check`/`release-publish` are make targets; `DESCRIPTION`/`SOURCE_URL` are TS constants beside `PRODUCT_NAME` | 0 | met |
 
 - **Checks at freeze:** the fresh-clone block above (3733111), `make launch-check` re-run on the final script (OK), `make notices-check` after the union fix (OK, 49 Go + 110 npm), and CI run 33730496398 on `ae3d94c` (success). This commit is the Report and Log only (`[skip ci]`).
