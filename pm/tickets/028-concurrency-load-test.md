@@ -25,6 +25,25 @@ by us at all. Be as thorough as the budget allows: one script family, four layer
 | 3 | **Gateway** (admission, per-key concurrency, FIFO queue, keepalives, settle) | already designed: S running, ≤2S waiting, rest 503 | proof under REAL clients: every exit releases every resource (goroutine/memory flat after a run); queue fairness under sustained pressure; keepalive writes under 30 waiting streams; a dead reader cut within the write deadline; correct codes at every N |
 | 4 | **Engine** (llama.cpp 2 slots; vLLM at its max-num-seqs) | the engine's real parallelism and its per-slot context budget | llama.cpp "no slot available" after we admitted (must surface as busy, never raw 502); `-c`/`-np` shared context causing `context_too_long` below the advertised context; engine memory growth; tok/s per stream at N; vLLM batching behaviour |
 
+## Founder amendment (2026-09-03 02:10): realistic context and message sizes
+
+The 4K context tonight was a test artifact (`-c 8192 -np 2` → 4K per slot); the laptop engine now
+runs `-c 65536 -np 2` (32K per request; Gemma 4 E2B's native context is 128K). A bigger context makes
+the **prompt** the heavy direction: every turn resends the history, so a mature chat sends 10–20K tokens
+(40–80 KB) per message up the tunnel. Tonight's numbers were all short prompts and measured almost
+nothing about the uplink. Three components are untested at that size: the relay (browser friends are
+relay-only), the wasm HTTP client (hand-serialized request bodies), and the gateway's tokenize pre-check
+(a full-prompt round trip to the engine before admission). Layer 4 changes too: prefill of a 20K prompt
+on llama.cpp is seconds, so TTFT climbs and slots are held longer — exactly when queue + keepalives matter.
+
+**Message mix (binding; no 100-token pings):** each simulated friend runs a growing conversation —
+turn 1 a ~300-token question, history accumulating so prompts climb through 2K, 8K, 16K tokens by
+turn ~8; 1 in 5 turns pastes a document (4–12K tokens); replies requested at 300–2,000 tokens. Report
+per-turn prompt size alongside every latency number, and report **uplink bytes/s per friend at the
+relay** as a first-class metric — it is the relay-sizing input. Run the mix at N = 2, 6, 12, 30 for
+inference; note where the engine's context wall (`context_too_long`) or the gateway's shrink-to-fit
+kicks in and whether the copy the friend sees is true.
+
 ## Binding
 
 1. **Instrument.** `hack/load/` (Go): N simulated friends, each with its own key, each holding its own
