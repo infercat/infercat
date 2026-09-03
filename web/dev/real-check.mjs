@@ -313,7 +313,9 @@ async function paused(browser, key) {
   const recalled = (await page.locator('.row.assistant > .md').last().innerText()).toUpperCase().includes('ZEBRA');
   const rows = await page.locator('.row.assistant .meta-text').allInnerTexts();
   const notPart = rows.filter((r) => r.includes('not part of the next question')).length;
-  console.log(`  next send → the model recalls ZEBRA: ${recalled} · marks left: ${after} · "not part of the next question" lines: ${notPart}`);
+  const softened = await page.locator('.ended.carried').allInnerTexts();
+  console.log(`  next send → the model recalls ZEBRA: ${recalled} · marks left: ${after} · "not part of the next question" lines: ${notPart} · row under ZEBRA: ${JSON.stringify(softened)}`);
+  check(softened.length === 1 && /carried into the next question/.test(softened[0] ?? ''), 'the refused row under ZEBRA still says "Not sent" (024 promise 3)');
   check(recalled, 'the model did not recall ZEBRA (was the turn in the history?)');
   check(after === 0, `${after} marks left after a later send carried the turn (promise 2)`);
   check(notPart === 0, '"not part of the next question" still under a turn the next question carried (promise 2)');
