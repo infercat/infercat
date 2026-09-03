@@ -36,3 +36,19 @@ workspaces, CPU/time budgets), host-side browsing, MCP servers on the host.
 ## Log
 
 ## Report
+
+## Founder hypothesis appended 2026-09-03 (not scheduled; price after launch)
+
+**A second reach path: a public OpenAI-compatible endpoint per key.** The WireGuard tunnel is one
+transport, the most scalable because it is direct, but it requires a client we control. Many clients
+the host does not control speak the OpenAI API; the least-resistance path for some hosts is a public
+URL secured by the friend's key as bearer token (the ngrok shape). Design notes for pricing:
+- The gateway already authenticates by key and speaks the protocol; the work is reachability (a
+  public hostname terminated at the relay and forwarded to the host) and TLS.
+- The trade must be stated per key, not hidden: on this path whatever terminates TLS sees plaintext
+  between it and the host. Per-friend, budgeted, revocable like everything else.
+- Naming consequence (founder + PM, 2026-09-03): the product name must not be about tunnels, peers,
+  or mesh; the constant is a person sharing their AI with chosen people under their control.
+- "Token Torrent" considered and declined as a name: torrent = many-to-many, negative association,
+  and it names the transport, not the product. The evocation (a direct line, nobody in the middle)
+  belongs in a tagline, qualified.
