@@ -190,3 +190,32 @@ in the audience's own word without a translation, it is the founder's cloudlet i
 the right noun, and its namespace costs are money and a reclaim request, not a competitor. If the
 founder wants a name with no English surface at all, **thoka** has the truest story and the cleanest
 sheet but loses the `<name>/<name>` GitHub shape; **kotumo** keeps the shape and the thesis.
+
+## Trademark knockout on the five (2026-09-03 evening; journal `wf_93b96723-0a0`; not legal advice)
+
+Five Opus researchers, one per name. USPTO was driven through the search app's own backend endpoint
+(Elasticsearch DSL, 13.2M records) for kotumo, riglet and kagiwa; EUIPO through its eSearch backend
+for kotumo and yunok; WIPO Madrid Monitor and the Global Brand Database as cross-checks; every driven
+register passed an `ollama` control. Gaps stated per name.
+
+| Name | Identical live mark | Nearest live marks in 9/42 | Affiliation | Coverage |
+|---|---|---|---|---|
+| **kotumo** | none, US or EU, any status | KATUMO (US, cl. 9, mouse pads, one vowel off); DATUMO (Korean AI-data company, US regs in 9 and 42, shares -tumo); KOTUG (maritime, 9/42) | none | **full** (USPTO + EUIPO, with controls) |
+| **thoka** | none in WIPO Madrid | THOK e-bikes (cl. 12); Tonka family (cl. 3/33) | Tonka echo, low; ThoKa, a German sole-trader web-design shop (services, no mark found) | **US and EU national registers NOT searched** (bot walls); Madrid only |
+| **riglet** | none live (a cl. 12 RIGLET died on Section 8) | **RINGLET** (US reg. 7573922, cl. 9 + 42, social-life app, one inserted letter, live since Nov 2024); RILLET (US + EU, cl. 42 SaaS); RIGLOGGER (9/42, oil rigs); the RIG root is being claimed now for AI software: RIG (Cortex Coding, 9/42, notice of allowance 2026) and RIG (Rig Intelligence, cl. 42) | **"Rig", the Rust LLM framework** (rig-core, 2.5M downloads, active): our exact audience will parse riglet as "a small Rig"; Burton's RIGLET PARK (cl. 41) | full USPTO + EUIPO |
+| **yunok** | none in EU (3.2M records); none surfaced in US mirrors | **YUNO** wholly contained: Yuno Tecnologías (payments platform) registered in 9/36/42 in the EU, plus several opposed YUNO applications in 9/42; SUNOK (cl. 9) | ngrok cadence inside ngrok's own category; YunOS/AliOS dormant | EUIPO direct; **USPTO not searched directly** |
+| **kagiwa** | none live anywhere (three expired Thai marks, cl. 25/28) | **KAGI** (Kagi Inc., two US regs in 9 + 42, registered Sept 2025) is the whole first four letters; both Japanese, both "key", so the overlap looks intentional | Kagi, moderate-to-strong for a US devtools launch | full USPTO + WIPO GBD |
+
+Consequences for the shortlist: **kagiwa drops** (a senior registered mark in our exact classes, contained
+whole, in the same semantic field). **yunok drops** for the EU (YUNO cluster) and for the ngrok
+cadence. **riglet** keeps its audience legibility but gains a named affiliation risk in our own
+audience (the Rig LLM framework), a one-letter neighbour registered in 9/42 (RINGLET), and a
+contested RIG root; the same class of problem as "tail", milder. **kotumo** is the cleanest legal
+position of the five and was fully searched; its GitHub handle is an empty account created
+2026-09-03 17:00 UTC, before our run (verified via the API), i.e. a coincidental dormant squat.
+**thoka** found nothing but was not searched where it matters; its GitHub handle is a real developer.
+
+PM recommendation after the knockout: **kotumo** first (home-cloud; coined; fully searched; every
+registry and .dev/.app/.ai/.io free; reclaim or vary the GitHub org), **riglet** second only if the
+founder values instant legibility over the Rig-framework association, **thoka** third pending a
+US/EU search a lawyer or a browser session can complete.
