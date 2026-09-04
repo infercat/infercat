@@ -128,3 +128,65 @@ availability check ran against an `ollama` positive control. Facts, then the PM 
 | **openinfer** | **Blocked three ways**: OpenInfer Inc. (San Mateo, ~$8M, openinfer.io/.ai, hosted OpenAI-compatible inference API, posted to HN two weeks ago) owns the name in our market; github.com/openinfer is held by Private Identity LLC since 2020, so `openinfer/openinfer` is impossible; .com/.dev/.ai/.net registered. Only .app/.sh free. | Registers are clean, but OpenInfer Inc. has common-law priority from late 2024 and asserts brand rights in its ToS. OpenInference (Arize, 1.2k stars, being donated to OpenTelemetry) owns the adjacent word. "open" + "infer" is a descriptive compound, a weak mark. | **Blocked**: reads as an open-source inference engine, i.e. vLLM's layer, not ours; `openinfer serve` tells the user the wrong category on the most-typed command; heard aloud it becomes "OpenInference". |
 
 PM read: openinfer is out on facts. tailinfer is legally survivable (Tailscale tolerates tail-names and has never objected) but it borrows the prefix of a registered mark in our exact class while the product is built on that company's library, and it misdirects on category; the launch-day cost is the "are you Tailscale?" thread. infercat is the strongest of the three: coined, free everywhere but a $9.8k .com, cute, and a deliberate nod to its ancestry; its real costs are the Inferact near-homograph and the engine-category first glance, both of which the tagline must fight every time.
+
+# Round 3 (2026-09-03): the founder's frame — "self-sufficient small AI clouds for you and your circle"
+
+Founder's statement of the offer, verbatim: "we basically let users run self-sufficient small AI clouds
+for themselves and their circle." Founder's own tries: cloud words (cloudlet and the cloud types; all
+taken by infra), "infer" (the coworker's keyword), token factory vs homestead/ranch (no word found).
+PM framing agreed: factory is the competitor's word (NVIDIA's "AI factory"; metered tokens); homestead
+is where the audience already lives (Ollama); the product is the homestead's next act. The tagline does
+the describing ("Give friends a key to the AI on your machine"); the name must be a brandable single
+word that points at one true thing and never misdirects.
+
+Method: single words only (invented, blended, or repurposed); rounds 1–2 and the founder's three
+excluded. Eight generator lenses (small-cloud words, cloud coinages, BBS-era/ham vocabulary, invented
+blends, repurposed English, audience vocabulary, cross-language social words), 173 unique candidates,
+every one collision-checked (GitHub org/user, npm, .com/.dev/.app/.ai, web; `ollama` positive
+control), 86 survivors scored by three judges (founder taste as diagnosed, audience read, collision
+severity). Journals `wf_725507fb-e70` (five lenses; the small-cloud generator failed structured
+output) and `wf_3feb55eb-779` (cloud lens rerun, two generators). Caveat: the second run's
+founder-taste judge misread the "already checked" exclusion list as founder rejections and marked
+down candidates sharing a root with them; its scores are conservative for kotumo, wolkar, pileus.
+
+## Cross-cutting findings (both runs)
+
+- Real words meaning "cloud" or "mist" in a living language lose on the audience read: legible ones
+  pull toward the cloud-provider misread (awan, mixtli), and the rest already belong to a footballer,
+  a restaurant, a government acronym (usva = US VA), or a Linux distro. The survivors have no semantic
+  surface in any language the audience reads (thoka, yunok, kotumo), which is also true of Ollama,
+  ngrok, Tailscale, Vercel.
+- Latinate diminutives (-ita/-ito/-ula/-elo) read as consumer apps or pharmaceuticals; sixteen
+  candidates were one idea in different vowels.
+- A cluster of the cross-language social words (atithi, hodi, manaaki, kokua, sarai, estia, noren) is
+  round 1's hospitality in translation; excluded on the founder's round-1 ruling.
+- The ham/rig vein is the one docs/NAME.md's own social-construct notes pointed at; riglet is the only
+  name of 173 that an r/LocalLLaMA reader decodes with no tagline.
+- kumox implies NVIDIA (Kumo.AI acquired June 2026); puyu is Shanghai AI Lab's InternLM name; bruma
+  is a live UK AI company; pileus shares a GitHub org with a FinOps company. All out.
+- No trademark register was searched in the generation runs; the knockout ran separately on the five
+  below (`wf_93b96723-0a0`).
+
+## Shortlist (facts verified 2026-09-03)
+
+| Name | Says | Namespace | The catch |
+|---|---|---|---|
+| **riglet** (RIG-let) | a small rig: the founder's cloudlet move on the audience's own noun; each friend's slice of a rig | npm, .dev, .app, .ai free; **.com brokered ~$7,295**; GitHub handle held by an empty 2025 account (1 repo, 0 followers; reclaim or use a variant org) | slightly toy-like; "rig" has a crypto-mining echo outside the subreddit; Burton's Riglet kids' program (other class) |
+| **thoka** (THOH-kah) | Icelandic þoka: the fog that fills one valley and stops at its walls — a cloud bounded to your circle | npm empty, .dev/.app/.ai free; .com held by a speculator (registered 2024) | **GitHub handle is an active real developer** (86 repos): `thoka/thoka` is unobtainable; two small UK companies and a German web shop trade under the string; Tonka/Ahsoka echo |
+| **kotumo** (koh-TOO-moh) | Finnish koti (home) fused with Japanese kumo (cloud) at the shared k/o: a home-cloud, the thesis in its bones | npm/PyPI/crates free; .dev/.app/.ai/.io free; .com parked; GitHub handle an empty squat | the only dictionary hit is Tolkien's Qenya "kotumo" = enemy; meaning legible only once explained |
+| **yunok** (YOO-nok) | Mandarin 云 yún (cloud) + hard -ok: the ngrok register; legible to Chinese-reading users | npm/PyPI/crates free; .dev/.app/.ai/.io free; .com dormant, no DNS, expires 2026-12-01; GitHub handle an empty squat | Yun-ok is a Korean given name; someone will make the eunuch joke once |
+| **kagiwa** (kah-GEE-wah) | Japanese kagi (key) + wa (ring/circle): the key to a closed circle, i.e. the invite code | **GitHub org free**, npm free, .dev/.app/.ai free; .com an under-construction page | opens with "Kagi", a live privacy search brand this audience knows |
+
+Also clean but set aside: clavula (little key; every namespace incl. .com free; reads pharmaceutical),
+nubondo and wolkita (cloud+circle / little cloud; fully free incl. .com; words you explain), eruv
+(the most exact metaphor; a living religious-law term, not ours to borrow), steading (homestead; all
+four domains registered, .ai "Launching Soon"), kohu (Maori mist; te reo appropriation question),
+oboro (beautiful; every domain and npm taken), yagi/balun (ham hardware; namespaces cluttered).
+
+## PM recommendation (round 3)
+
+**riglet**, with the tagline carrying the circle. It is the only candidate that relates to the offer
+in the audience's own word without a translation, it is the founder's cloudlet instinct applied to
+the right noun, and its namespace costs are money and a reclaim request, not a competitor. If the
+founder wants a name with no English surface at all, **thoka** has the truest story and the cleanest
+sheet but loses the `<name>/<name>` GitHub shape; **kotumo** keeps the shape and the thesis.
