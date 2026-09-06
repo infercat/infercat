@@ -3,7 +3,7 @@ id: 039
 title: The connect screen is a page — header, two columns and a footer on desktop; the phone card gains five comforts
 kind: normal (user-facing)
 size: 3
-status: drafted
+status: dispatched
 updated: 2026-09-06
 release: demo-1
 ---
