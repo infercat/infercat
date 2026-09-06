@@ -3,7 +3,7 @@ id: 039
 title: The connect screen is a page — header, two columns and a footer on desktop; the phone card gains five comforts
 kind: normal (user-facing)
 size: 3
-status: dispatched
+status: landed
 updated: 2026-09-06
 release: demo-1
 ---
@@ -294,3 +294,15 @@ sentence, the field's resize observer), `web/dev/screenshots.mjs` (images waited
 shot; the promise-3, promise-12 and collapse-band assertions), `web/dev/launch-check.mjs` (images
 waited for). No copy was added or changed beyond swapping in the existing logging variant of the
 privacy sentence; concept budget still 0.
+
+### 2026-09-06 — PM landing
+
+Verified myself in place of the second verifier round (the founder asked for speed): the two highs from
+round 1 are fixed on the right code — the log-prompts state's statement now carries the logging sentence
+(no contradiction beside the wall), and the statement's mark holds its line across card states (empty vs
+host-didn't-answer). Main merged in (final mark, brand pipeline); every raster, all screenshots, the
+launch media and the README marks regenerated with the final mark. Gate: CHECK OK · 266 web tests · lint ·
+notices OK (49 Go + 110 npm + 2 fonts) · launch-check OK (0 third-party requests on all three connect
+screens, AA met, no overflow at 390). One process note for the record: a first rebase attempt stalled
+between the two branch commits and its gate ran on the unfixed code; caught by the missing state
+screenshots, redone as a merge.
