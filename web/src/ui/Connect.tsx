@@ -429,8 +429,11 @@ export default function Connect({ state, dispatch }: Props) {
 function About() {
   return (
     <p className="about">
-      Version {VERSION} · MIT · <a href={SOURCE_URL}>Source on GitHub</a>
-      <br />
+      {/* A build number and a licence are machine-issued, so they are set in mono (038 Type); the
+          attribution under them is a sentence and stays in the text face. */}
+      <span className="build">
+        Version {VERSION} · MIT · <a href={SOURCE_URL}>Source on GitHub</a>
+      </span>
       Built on tailcat, Tailscale’s open-source library. {PRODUCT_NAME} is not affiliated with or
       endorsed by Tailscale Inc.
     </p>

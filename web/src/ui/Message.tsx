@@ -106,8 +106,12 @@ export default function MessageView({
   // How fast it was, from this device (032): said the moment the first token lands, and no sooner.
   const measured = speed(m);
   const pace = measured ? speedLine(measured) : null;
+  // The streaming cursor (promise 2, the mock's `.cursor`): shown only while this tab is writing
+  // this reply and there is a line for it to sit on — before the first token the row already says
+  // what it is waiting for, and a cursor next to that sentence would be a second claim.
+  const streaming = live && m.content !== '';
   return (
-    <div className="row assistant">
+    <div className={`row assistant ${streaming ? 'streaming' : ''}`}>
       {m.previous !== undefined && m.previous !== '' && (
         <details className="previous">
           <summary>Previous answer</summary>

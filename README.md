@@ -1,4 +1,7 @@
-<img src="web/public/favicon.svg" alt="" width="52" align="left">
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/media/mark-paper.svg">
+  <img src="docs/media/mark-ink.svg" alt="" width="52" align="left">
+</picture>
 
 # Infercat
 
