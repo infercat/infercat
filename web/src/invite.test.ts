@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { InviteError, decodeInvite, encodeInvite, inviteFromHash, maskInvite, type InviteErrorCode } from './invite';
+import {
+  InviteError,
+  decodeInvite,
+  encodeInvite,
+  inviteFromHash,
+  inviteHint,
+  maskInvite,
+  type InviteErrorCode,
+} from './invite';
 
 // The error table below is internal/invite/invite_test.go's TestDecodeErrors, case for case, with
 // each Go error value mapped to this side's code. ADDR is a real tailcat ConnBlob shape (base64url
@@ -119,5 +127,51 @@ describe('maskInvite', () => {
   it('leaves anything that is not an invite alone rather than pretending to mask it', () => {
     expect(maskInvite('nonsense')).toBe('nonsense');
     expect(maskInvite('  ic1.only-two-parts  ')).toBe('ic1.only-two-parts');
+  });
+});
+
+// 039 comfort 3: the line under the field is a pure function of the field's text through the parser
+// above — three states, no fourth, and nothing of its own that could fall out of step with it.
+describe('inviteHint', () => {
+  const invite = `ic1.${ADDR}.${SECRET}`;
+
+  it('says nothing is there yet for an untouched field, and for whitespace', () => {
+    for (const text of ['', '   ', '\n\t ']) {
+      expect(inviteHint(text), JSON.stringify(text)).toEqual({ state: 'empty', host: '' });
+    }
+  });
+
+  it('reads a valid invite back as its host: six characters of the address and no more', () => {
+    expect(inviteHint(invite)).toEqual({ state: 'valid', host: 'tcAgIB…' });
+    expect(inviteHint(`  ${invite}  `)).toEqual({ state: 'valid', host: 'tcAgIB…' });
+  });
+
+  it('never shows any part of the secret', () => {
+    expect(inviteHint(invite).host).not.toContain(SECRET.slice(0, 6));
+  });
+
+  // Every way the parser can refuse lands on the one state: the specific reason is the inline
+  // error's job, and this line's job is only to say "not yet".
+  it('is invalid for everything the parser refuses, whatever the reason', () => {
+    const bad = [
+      'nonsense',
+      'ic1',
+      `ic9.${ADDR}.${SECRET}`, // not an invite prefix
+      `ic2.${ADDR}.${SECRET}`, // a newer app's invite
+      `ic1.${ADDR}`, // cut off
+      `ic1..${SECRET}`, // an empty part
+      `ic1.notanaddress.${SECRET}`, // not a host address
+      `ic1.${ADDR}.not a secret`, // characters that do not belong in a secret
+    ];
+    for (const text of bad) {
+      expect(inviteHint(text), text).toEqual({ state: 'invalid', host: '' });
+    }
+  });
+
+  it('is the parser, not a second opinion about what an invite is', () => {
+    expect(inviteHint(invite).state).toBe('valid');
+    expect(() => decodeInvite(invite)).not.toThrow();
+    expect(inviteHint('ic1.x.y').state).toBe('invalid');
+    expect(() => decodeInvite('ic1.x.y')).toThrow(InviteError);
   });
 });

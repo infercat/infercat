@@ -153,7 +153,12 @@ textarea:focus-visible, input[type='text']:focus-visible, select:focus-visible {
 .booting { display: grid; place-items: center; height: 100%; color: var(--muted); }
 
 /* ---------- connect screen: the landing page ---------- */
-.connect { display: grid; place-items: center; min-height: 100%; padding: 32px 20px 64px; }
+/* One page for two readers (039). `.page` is the column the whole screen lives in at every width;
+   below 900 px it holds nothing but the card, and the header, statement and footer below are not
+   rendered. It is a flex column rather than a bare wrapper so the card can still fill the viewport
+   and centre itself in it, which is what it did when it was `#root`'s own child. */
+.page { display: flex; flex-direction: column; min-height: 100%; }
+.connect { display: grid; place-items: center; flex: 1 1 auto; min-height: 100%; padding: 32px 20px 64px; }
 /* The mock's card is a card: one ink rectangle holding the whole product for a stranger, with the
    small print behind a hairline as its own foot strip. "Ink rules for frames" (038 Idiom). */
 .connect-card {
@@ -162,7 +167,36 @@ textarea:focus-visible, input[type='text']:focus-visible, select:focus-visible {
 }
 .connect h1 { font-size: 31px; letter-spacing: -0.035em; margin: 0 0 12px; font-weight: 700; line-height: 1.06; }
 .pitch { color: var(--muted); margin: 0 0 26px; font-size: 14.5px; line-height: 1.5; }
+/* The mark is the anchor of every layout (039 comfort 1): 48 px over the wordmark on the card,
+   48 px over the headline in the statement, 24 px beside the wordmark in the header. It is one
+   colour of ink and carries its own scheme switch, so it needs no token here. */
+.mark { display: block; margin: 0 0 16px; }
 .field { display: block; margin-bottom: 12px; }
+/* The field is the frame; Paste sits inside it rather than beside it, so the tap that fills the
+   field is where the field is (039 comfort 2). */
+.field-wrap { position: relative; display: block; }
+/* Reserved on every line, not just the first: a monospace invite is long, and a code that ran
+   under the button would be unreadable exactly where the reader is checking it. */
+.field-wrap.has-paste textarea { padding-right: 66px; }
+/* The label lands on the field's own text grid — 11 px down from the frame, 13 px in from the
+   right — while the hit area runs to the inner edge, so the thumb target is the whole corner. */
+.paste {
+  position: absolute; top: 1px; right: 1px;
+  font-family: var(--font); font-size: 12.5px; font-weight: 500; line-height: 1.55;
+  color: var(--muted); padding: 10px 12px;
+}
+.paste:hover { color: var(--text); }
+/* Three states, one line, mono because it is reading a machine-issued code back to the reader.
+   Not `.hint`: that name is the composer's, down in the chat shell, and it is centred. */
+.code-hint { font-family: var(--mono); font-size: 11.5px; line-height: 1.5; color: var(--muted); margin: 0 0 16px; }
+.code-hint .ck { color: var(--success); font-weight: 500; }
+.code-hint .host { color: var(--text); font-weight: 500; }
+.code-hint.bad { color: var(--danger); }
+.field.tight { margin-bottom: 9px; }
+/* The stranger's line: the one thing to do when the answer to "do you have a code" is no. */
+.quiet { margin: 16px 0 0; font-size: 13px; line-height: 1.55; color: var(--muted); }
+.quiet a { color: var(--accent-text); }
+.quiet .nb { white-space: nowrap; }
 /* Labels are machine-issued names for machine-issued things: mono, tracked, uppercase (the mock). */
 .field-label {
   display: block; font-family: var(--mono); font-size: 10.5px; font-weight: 500;
@@ -191,7 +225,25 @@ textarea:focus-visible, input[type='text']:focus-visible, select:focus-visible {
 .about a, .small-print a { color: var(--accent-text); }
 /* A build number and a licence are machine-issued facts, so they are mono (038 Type). The
    attribution sentence under them is prose and stays in Archivo. */
-.build { display: block; font-family: var(--mono); font-size: 11px; margin-bottom: 5px; }
+.build { display: block; font-family: var(--mono); font-size: 11px; }
+/* The attribution, one keystroke away instead of always on (039 comfort 5). Inline, so "About"
+   sits in the small print's own line between two middle dots; its body is a block, so it opens
+   underneath the line rather than inside it. The marker is dropped in both engines — the line is
+   already a list of dot-separated words and a triangle would read as a sixth item. */
+/* Inline-block, not inline: `<details>` carries a block slot for its content in every engine's
+   shadow tree, and an inline box holding a block one is split in two — which put "· Made by 2185
+   Lab" on a line of its own. Atomic, the split cannot reach the line it sits in. */
+.about-disc { display: inline-block; vertical-align: baseline; }
+.about-disc > summary { display: inline; cursor: pointer; color: var(--accent-text); }
+.about-disc > summary::marker, .about-disc > summary::-webkit-details-marker { content: ''; display: none; }
+.about-disc > summary:hover { text-decoration: underline; }
+/* Closed, the sentence generates no box at all — a block inside the inline `<details>`, even a
+   hidden one, splits the line it sits in and pushes the rest of the small print under it. */
+.about-body { display: none; }
+.about-disc[open] ~ .about-body {
+  display: block; margin: 8px 0 0; max-width: 70ch;
+  font-family: var(--font); font-size: 12px; line-height: 1.55; color: var(--muted);
+}
 .devmode {
   display: flex; gap: 8px; align-items: center;
   margin: 14px -26px 0; padding: 12px 26px 0; border-top: 1px solid var(--border);
@@ -241,6 +293,85 @@ input[type='range']::-moz-range-track { height: 3px; background: var(--surface-2
 input[type='range']::-moz-range-progress { height: 3px; background: var(--accent); border: 0; border-radius: 0; }
 input[type='range']::-moz-range-thumb {
   width: 9px; height: 17px; background: var(--accent); border: 0; border-radius: 0;
+}
+
+/* ---------- the connect page: 900 px and up (039) ---------- */
+/* Above the breakpoint the card opens out into a page, because two people arrive at this URL: a
+   friend with a code, for whom the card is right, and a stranger from the launch post with no code,
+   for whom a card alone on an empty page is a locked door with no sign. It is one page and not two
+   products — the same card, with a header, the product's statement beside it and a footer under
+   both — so every card state renders here unchanged and the left column never moves. */
+.page-only { display: none; }
+
+@media (min-width: 900px) {
+  /* The four measures the layout is made of, each a ramp between the two frames the mock draws
+     (900 px and 1280 px), so nothing steps and nothing overflows in between. */
+  .page {
+    --gut: clamp(28px, 3.125vw, 40px);
+    --gap: clamp(40px, 9.375vw - 44px, 76px);
+    --card-w: clamp(372px, 21.875vw + 176px, 456px);
+    --display-size: clamp(41px, 2.34375vw + 20px, 50px);
+  }
+  .page-only { display: block; }
+  .card-only { display: none; }
+
+  /* The header is the whole of the page chrome: the mark, the wordmark, and two links. A third
+     link would be a site map, and this product has no site (BELIEFS: one concept per thing). */
+  .page-head { border-bottom: 1px solid var(--rule); flex: none; }
+  .page-head-in {
+    height: 52px; display: flex; align-items: center; justify-content: space-between;
+    gap: 24px; padding: 0 var(--gut);
+  }
+  .page-brand { display: flex; align-items: center; gap: 10px; }
+  .page-brand .mark { margin: 0; }
+  .wordmark { font-size: 17px; font-weight: 700; letter-spacing: -0.03em; line-height: 1; }
+  .page-nav { display: flex; align-items: center; gap: 24px; }
+  .page-nav a {
+    font-size: 13.5px; font-weight: 500; letter-spacing: -0.005em;
+    color: var(--accent-text); text-decoration: none;
+  }
+  .page-nav a:hover { text-decoration: underline; }
+
+  /* The pair, centred in the space between the two rules and top-aligned with each other: the
+     card's frame starts on the same line as the statement's mark. */
+  .page-main { flex: 1 1 auto; display: flex; align-items: center; min-height: 0; padding: 48px 0; }
+  .page-cols {
+    width: 100%; padding: 0 var(--gut);
+    display: grid; grid-template-columns: minmax(0, 1fr) var(--card-w);
+    gap: var(--gap); align-items: start;
+  }
+
+  /* The social card's composition, live: a stranger can read the whole argument without touching
+     the field. Its measure is 600 px, and the rule under the promise stops there — it is the
+     social card's rule, not a divider across the page. */
+  .statement { max-width: 600px; }
+  .statement .mark { margin: 0 0 22px; }
+  .display {
+    font-weight: 700; font-size: var(--display-size);
+    letter-spacing: -0.042em; line-height: 1.04; margin: 0 0 20px;
+  }
+  .lead { font-size: 17px; line-height: 1.5; color: var(--text); margin: 0 0 16px; max-width: 44ch; }
+  .promise { font-size: 14px; line-height: 1.55; color: var(--muted); margin: 0; max-width: 56ch; }
+  .rule2 { border: 0; border-top: 2px solid var(--rule); margin: 30px 0 0; height: 0; }
+  .facts {
+    font-family: var(--mono); font-size: 13px; font-weight: 500; line-height: 1.5;
+    color: var(--text); margin: 13px 0 0;
+  }
+
+  /* The card stops centring itself — the grid places it — and loses the width cap it needed when
+     it was the whole screen. */
+  .connect { display: block; min-height: 0; padding: 0; }
+  .connect-card { max-width: none; padding: 26px; }
+  .quiet { margin-bottom: 0; }
+
+  /* One mono line under a hairline of ink, with the attribution folded into About. */
+  .page-foot { border-top: 1px solid var(--rule); flex: none; }
+  .page-foot-in { padding: 13px var(--gut); }
+  .foot-line {
+    font-family: var(--mono); font-size: 11px; line-height: 1.55;
+    color: var(--muted); font-variant-numeric: tabular-nums;
+  }
+  .foot-line a { color: var(--accent-text); }
 }
 
 /* ---------- chat shell ---------- */
