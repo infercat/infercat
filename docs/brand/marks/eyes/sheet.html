@@ -1,0 +1,372 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Round eyes, six variants</title>
+<style>
+  :root {
+    --ink:#0a0a0a; --paper:#fff; --rule:#dcdcdc; --mute:#6b6b6b; --cobalt:#1F3BFF;
+    --sans:-apple-system,BlinkMacSystemFont,"Segoe UI",Helvetica,Arial,sans-serif;
+  }
+  * { box-sizing:border-box; }
+  body { margin:0; background:var(--paper); color:var(--ink); font-family:var(--sans);
+         -webkit-font-smoothing:antialiased; }
+  .wrap { max-width:1180px; margin:0 auto; padding:56px 40px 96px; }
+
+  header.top { border-bottom:2px solid var(--ink); padding-bottom:20px; margin-bottom:8px; }
+  h1 { font-size:38px; font-weight:700; letter-spacing:-.022em; margin:0 0 10px; }
+  .sub { font-size:14px; line-height:1.55; color:var(--mute); margin:0; max-width:62ch; }
+  .fixnote { font-size:13px; line-height:1.6; color:var(--ink); margin:20px 0 44px;
+              padding:14px 16px; background:#f4f4f4; max-width:88ch; }
+  .fixnote code { font-family:ui-monospace,SFMono-Regular,Menlo,monospace; font-size:12px; }
+
+  .row { border-bottom:1px solid var(--rule); padding:34px 0 30px; }
+  .row:last-of-type { border-bottom:2px solid var(--ink); }
+  .rowhead { display:flex; align-items:baseline; gap:16px; flex-wrap:wrap; margin-bottom:22px; }
+  h2 { font-size:19px; font-weight:700; letter-spacing:-.01em; margin:0;
+        font-family:ui-monospace,SFMono-Regular,Menlo,monospace; }
+  .spec { font-size:13px; color:var(--mute); margin:0; }
+  .gloss { font-size:13px; color:var(--ink); margin:0 0 0 auto; font-style:italic; }
+
+  .plates { display:flex; flex-wrap:wrap; gap:12px; align-items:flex-start; }
+  .plate { padding:18px 20px 12px; border:1px solid var(--rule); }
+  .plate.paper { background:var(--paper); }
+  .plate.dark { background:#000; border-color:#000; color:#fff; }
+  .plate.cobalt { color:var(--cobalt); }
+  .strip { display:flex; align-items:flex-end; gap:22px; min-height:160px; }
+  .plate.dark .strip, .plate:not(.wide) .strip { min-height:64px; }
+  .plate.wide .strip { min-height:160px; }
+
+  .cell { display:flex; flex-direction:column; align-items:center; gap:8px; }
+  .mark svg { display:block; }
+  .s160 svg { width:160px; height:160px; }
+  .s64  svg { width:64px;  height:64px;  }
+  .s32  svg { width:32px;  height:32px;  }
+  .s16  svg { width:16px;  height:16px;  }
+  .s26  svg { width:26px;  height:26px;  }
+  .cap { font-size:10px; letter-spacing:.09em; text-transform:uppercase; color:var(--mute); }
+  .plate.dark .cap { color:#9a9a9a; }
+  .plabel { font-size:10px; letter-spacing:.09em; text-transform:uppercase; color:var(--mute);
+             margin:14px 0 0; border-top:1px solid var(--rule); padding-top:8px; }
+  .plate.dark .plabel { color:#9a9a9a; border-top-color:#2a2a2a; }
+
+  .lk { display:flex; align-items:center; gap:9px; }
+  .wm { font-size:22px; font-weight:700; letter-spacing:-.02em; line-height:1; }
+
+  .note { font-size:13.5px; line-height:1.62; margin:22px 0 0; max-width:96ch; color:#2a2a2a; }
+  .tag { display:inline-block; font-size:10px; letter-spacing:.09em; text-transform:uppercase;
+          font-weight:700; background:var(--ink); color:#fff; padding:3px 6px; margin-right:9px;
+          vertical-align:2px; }
+  .foot { font-size:12px; color:var(--mute); margin-top:26px; line-height:1.6; }
+</style></head>
+<body><div class="wrap">
+<header class="top">
+  <h1>Round eyes, six variants</h1>
+  <p class="sub">One body, six eyes. Circle head, two triangle ears, one triangle body, one stroked
+  arc tail — identical in every variant, byte for byte. Eyes are holes cut by reverse winding; a
+  pupil is an ink subpath inside the hole. One colour throughout (<code>currentColor</code>).</p>
+</header>
+<p class="fixnote"><strong>One fix applied.</strong> At the specified base spacing the two r 2.10 ring holes left a 1.60-unit bridge — 0.8 px at 16 — and fused into a single grey bar. The pair was widened by 0.8, the same widening <em>dots-large-low</em> uses; radii and the eye line are as specified. Every hole now clears the head rim by ≥ 1.04 units and the body edge by ≥ 0.71. Head, ears, body and tail are byte-identical across all six; <em>dots-medium</em> is byte-identical to <code>geometry-a.svg</code>.</p>
+<section class="row">
+  <div class="rowhead">
+    <h2>dots-small</h2>
+    <p class="spec">r 1.10 at the base positions</p>
+    <p class="gloss">the “• •” read — alert, minimal</p>
+  </div>
+  <div class="plates">
+    <div class="plate paper wide"><div class="strip"><div class="cell"><div class="mark s160"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="currentColor" role="img" aria-label="Infercat">
+  <path fill="currentColor" d="M12.3 15.7L21.3 28.7L3.3 28.7ZM6.7 2.6L11.84 5.21L6.19 8.34ZM17.9 2.6L18.41 8.34L12.76 5.21ZM19.8 12.7A7.5 7.5 0 1 1 4.8 12.7A7.5 7.5 0 1 1 19.8 12.7ZM10.5 15.1A1.1 1.1 0 1 0 8.3 15.1A1.1 1.1 0 1 0 10.5 15.1ZM16.3 15.1A1.1 1.1 0 1 0 14.1 15.1A1.1 1.1 0 1 0 16.3 15.1Z"/>
+  <path d="M19.8 27.2C26.2 28.6 28.6 24 25.6 20.4" fill="none" stroke="currentColor" stroke-width="3.0" stroke-linecap="round"/>
+</svg></div><div class="cap">160</div></div><div class="cell"><div class="mark s64"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="currentColor" role="img" aria-label="Infercat">
+  <path fill="currentColor" d="M12.3 15.7L21.3 28.7L3.3 28.7ZM6.7 2.6L11.84 5.21L6.19 8.34ZM17.9 2.6L18.41 8.34L12.76 5.21ZM19.8 12.7A7.5 7.5 0 1 1 4.8 12.7A7.5 7.5 0 1 1 19.8 12.7ZM10.5 15.1A1.1 1.1 0 1 0 8.3 15.1A1.1 1.1 0 1 0 10.5 15.1ZM16.3 15.1A1.1 1.1 0 1 0 14.1 15.1A1.1 1.1 0 1 0 16.3 15.1Z"/>
+  <path d="M19.8 27.2C26.2 28.6 28.6 24 25.6 20.4" fill="none" stroke="currentColor" stroke-width="3.0" stroke-linecap="round"/>
+</svg></div><div class="cap">64</div></div><div class="cell"><div class="mark s32"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="currentColor" role="img" aria-label="Infercat">
+  <path fill="currentColor" d="M12.3 15.7L21.3 28.7L3.3 28.7ZM6.7 2.6L11.84 5.21L6.19 8.34ZM17.9 2.6L18.41 8.34L12.76 5.21ZM19.8 12.7A7.5 7.5 0 1 1 4.8 12.7A7.5 7.5 0 1 1 19.8 12.7ZM10.5 15.1A1.1 1.1 0 1 0 8.3 15.1A1.1 1.1 0 1 0 10.5 15.1ZM16.3 15.1A1.1 1.1 0 1 0 14.1 15.1A1.1 1.1 0 1 0 16.3 15.1Z"/>
+  <path d="M19.8 27.2C26.2 28.6 28.6 24 25.6 20.4" fill="none" stroke="currentColor" stroke-width="3.0" stroke-linecap="round"/>
+</svg></div><div class="cap">32</div></div><div class="cell"><div class="mark s16"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="currentColor" role="img" aria-label="Infercat">
+  <path fill="currentColor" d="M12.3 15.7L21.3 28.7L3.3 28.7ZM6.7 2.6L11.84 5.21L6.19 8.34ZM17.9 2.6L18.41 8.34L12.76 5.21ZM19.8 12.7A7.5 7.5 0 1 1 4.8 12.7A7.5 7.5 0 1 1 19.8 12.7ZM10.5 15.1A1.1 1.1 0 1 0 8.3 15.1A1.1 1.1 0 1 0 10.5 15.1ZM16.3 15.1A1.1 1.1 0 1 0 14.1 15.1A1.1 1.1 0 1 0 16.3 15.1Z"/>
+  <path d="M19.8 27.2C26.2 28.6 28.6 24 25.6 20.4" fill="none" stroke="currentColor" stroke-width="3.0" stroke-linecap="round"/>
+</svg></div><div class="cap">16</div></div></div>
+      <p class="plabel">ink on paper</p></div>
+    <div class="plate dark"><div class="strip"><div class="cell"><div class="mark s64"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="currentColor" role="img" aria-label="Infercat">
+  <path fill="currentColor" d="M12.3 15.7L21.3 28.7L3.3 28.7ZM6.7 2.6L11.84 5.21L6.19 8.34ZM17.9 2.6L18.41 8.34L12.76 5.21ZM19.8 12.7A7.5 7.5 0 1 1 4.8 12.7A7.5 7.5 0 1 1 19.8 12.7ZM10.5 15.1A1.1 1.1 0 1 0 8.3 15.1A1.1 1.1 0 1 0 10.5 15.1ZM16.3 15.1A1.1 1.1 0 1 0 14.1 15.1A1.1 1.1 0 1 0 16.3 15.1Z"/>
+  <path d="M19.8 27.2C26.2 28.6 28.6 24 25.6 20.4" fill="none" stroke="currentColor" stroke-width="3.0" stroke-linecap="round"/>
+</svg></div><div class="cap">64</div></div><div class="cell"><div class="mark s32"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="currentColor" role="img" aria-label="Infercat">
+  <path fill="currentColor" d="M12.3 15.7L21.3 28.7L3.3 28.7ZM6.7 2.6L11.84 5.21L6.19 8.34ZM17.9 2.6L18.41 8.34L12.76 5.21ZM19.8 12.7A7.5 7.5 0 1 1 4.8 12.7A7.5 7.5 0 1 1 19.8 12.7ZM10.5 15.1A1.1 1.1 0 1 0 8.3 15.1A1.1 1.1 0 1 0 10.5 15.1ZM16.3 15.1A1.1 1.1 0 1 0 14.1 15.1A1.1 1.1 0 1 0 16.3 15.1Z"/>
+  <path d="M19.8 27.2C26.2 28.6 28.6 24 25.6 20.4" fill="none" stroke="currentColor" stroke-width="3.0" stroke-linecap="round"/>
+</svg></div><div class="cap">32</div></div><div class="cell"><div class="mark s16"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="currentColor" role="img" aria-label="Infercat">
+  <path fill="currentColor" d="M12.3 15.7L21.3 28.7L3.3 28.7ZM6.7 2.6L11.84 5.21L6.19 8.34ZM17.9 2.6L18.41 8.34L12.76 5.21ZM19.8 12.7A7.5 7.5 0 1 1 4.8 12.7A7.5 7.5 0 1 1 19.8 12.7ZM10.5 15.1A1.1 1.1 0 1 0 8.3 15.1A1.1 1.1 0 1 0 10.5 15.1ZM16.3 15.1A1.1 1.1 0 1 0 14.1 15.1A1.1 1.1 0 1 0 16.3 15.1Z"/>
+  <path d="M19.8 27.2C26.2 28.6 28.6 24 25.6 20.4" fill="none" stroke="currentColor" stroke-width="3.0" stroke-linecap="round"/>
+</svg></div><div class="cap">16</div></div></div>
+      <p class="plabel">paper on black</p></div>
+    <div class="plate paper cobalt"><div class="strip"><div class="cell"><div class="mark s64"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="currentColor" role="img" aria-label="Infercat">
+  <path fill="currentColor" d="M12.3 15.7L21.3 28.7L3.3 28.7ZM6.7 2.6L11.84 5.21L6.19 8.34ZM17.9 2.6L18.41 8.34L12.76 5.21ZM19.8 12.7A7.5 7.5 0 1 1 4.8 12.7A7.5 7.5 0 1 1 19.8 12.7ZM10.5 15.1A1.1 1.1 0 1 0 8.3 15.1A1.1 1.1 0 1 0 10.5 15.1ZM16.3 15.1A1.1 1.1 0 1 0 14.1 15.1A1.1 1.1 0 1 0 16.3 15.1Z"/>
+  <path d="M19.8 27.2C26.2 28.6 28.6 24 25.6 20.4" fill="none" stroke="currentColor" stroke-width="3.0" stroke-linecap="round"/>
+</svg></div><div class="cap">64</div></div></div>
+      <p class="plabel">cobalt #1F3BFF</p></div>
+    <div class="plate paper"><div class="strip"><div class="cell"><div class="lk"><span class="mark s26"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="currentColor" role="img" aria-label="Infercat">
+  <path fill="currentColor" d="M12.3 15.7L21.3 28.7L3.3 28.7ZM6.7 2.6L11.84 5.21L6.19 8.34ZM17.9 2.6L18.41 8.34L12.76 5.21ZM19.8 12.7A7.5 7.5 0 1 1 4.8 12.7A7.5 7.5 0 1 1 19.8 12.7ZM10.5 15.1A1.1 1.1 0 1 0 8.3 15.1A1.1 1.1 0 1 0 10.5 15.1ZM16.3 15.1A1.1 1.1 0 1 0 14.1 15.1A1.1 1.1 0 1 0 16.3 15.1Z"/>
+  <path d="M19.8 27.2C26.2 28.6 28.6 24 25.6 20.4" fill="none" stroke="currentColor" stroke-width="3.0" stroke-linecap="round"/>
+</svg></span><span class="wm">Infercat</span></div><div class="cap">lockup</div></div></div>
+      <p class="plabel">on paper</p></div>
+    <div class="plate dark"><div class="strip"><div class="cell"><div class="lk"><span class="mark s26"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="currentColor" role="img" aria-label="Infercat">
+  <path fill="currentColor" d="M12.3 15.7L21.3 28.7L3.3 28.7ZM6.7 2.6L11.84 5.21L6.19 8.34ZM17.9 2.6L18.41 8.34L12.76 5.21ZM19.8 12.7A7.5 7.5 0 1 1 4.8 12.7A7.5 7.5 0 1 1 19.8 12.7ZM10.5 15.1A1.1 1.1 0 1 0 8.3 15.1A1.1 1.1 0 1 0 10.5 15.1ZM16.3 15.1A1.1 1.1 0 1 0 14.1 15.1A1.1 1.1 0 1 0 16.3 15.1Z"/>
+  <path d="M19.8 27.2C26.2 28.6 28.6 24 25.6 20.4" fill="none" stroke="currentColor" stroke-width="3.0" stroke-linecap="round"/>
+</svg></span><span class="wm">Infercat</span></div><div class="cap">lockup</div></div></div>
+      <p class="plabel">on black</p></div>
+  </div>
+  <p class="note"><span class="tag">16 px</span>At 16 px the dots hold, but only as two faint grey pixels (peak L 179/201 against solid black): the eyes are the first thing to go, and the mark is one step from a plain silhouette read off the ears and tail.</p>
+</section>
+<section class="row">
+  <div class="rowhead">
+    <h2>dots-medium</h2>
+    <p class="spec">r 1.55 at the base positions — the reference</p>
+    <p class="gloss">the base, unchanged</p>
+  </div>
+  <div class="plates">
+    <div class="plate paper wide"><div class="strip"><div class="cell"><div class="mark s160"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="currentColor" role="img" aria-label="Infercat">
+  <path fill="currentColor" d="M12.3 15.7L21.3 28.7L3.3 28.7ZM6.7 2.6L11.84 5.21L6.19 8.34ZM17.9 2.6L18.41 8.34L12.76 5.21ZM19.8 12.7A7.5 7.5 0 1 1 4.8 12.7A7.5 7.5 0 1 1 19.8 12.7ZM10.95 15.1A1.55 1.55 0 1 0 7.85 15.1A1.55 1.55 0 1 0 10.95 15.1ZM16.75 15.1A1.55 1.55 0 1 0 13.65 15.1A1.55 1.55 0 1 0 16.75 15.1Z"/>
+  <path d="M19.8 27.2C26.2 28.6 28.6 24 25.6 20.4" fill="none" stroke="currentColor" stroke-width="3.0" stroke-linecap="round"/>
+</svg></div><div class="cap">160</div></div><div class="cell"><div class="mark s64"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="currentColor" role="img" aria-label="Infercat">
+  <path fill="currentColor" d="M12.3 15.7L21.3 28.7L3.3 28.7ZM6.7 2.6L11.84 5.21L6.19 8.34ZM17.9 2.6L18.41 8.34L12.76 5.21ZM19.8 12.7A7.5 7.5 0 1 1 4.8 12.7A7.5 7.5 0 1 1 19.8 12.7ZM10.95 15.1A1.55 1.55 0 1 0 7.85 15.1A1.55 1.55 0 1 0 10.95 15.1ZM16.75 15.1A1.55 1.55 0 1 0 13.65 15.1A1.55 1.55 0 1 0 16.75 15.1Z"/>
+  <path d="M19.8 27.2C26.2 28.6 28.6 24 25.6 20.4" fill="none" stroke="currentColor" stroke-width="3.0" stroke-linecap="round"/>
+</svg></div><div class="cap">64</div></div><div class="cell"><div class="mark s32"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="currentColor" role="img" aria-label="Infercat">
+  <path fill="currentColor" d="M12.3 15.7L21.3 28.7L3.3 28.7ZM6.7 2.6L11.84 5.21L6.19 8.34ZM17.9 2.6L18.41 8.34L12.76 5.21ZM19.8 12.7A7.5 7.5 0 1 1 4.8 12.7A7.5 7.5 0 1 1 19.8 12.7ZM10.95 15.1A1.55 1.55 0 1 0 7.85 15.1A1.55 1.55 0 1 0 10.95 15.1ZM16.75 15.1A1.55 1.55 0 1 0 13.65 15.1A1.55 1.55 0 1 0 16.75 15.1Z"/>
+  <path d="M19.8 27.2C26.2 28.6 28.6 24 25.6 20.4" fill="none" stroke="currentColor" stroke-width="3.0" stroke-linecap="round"/>
+</svg></div><div class="cap">32</div></div><div class="cell"><div class="mark s16"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="currentColor" role="img" aria-label="Infercat">
+  <path fill="currentColor" d="M12.3 15.7L21.3 28.7L3.3 28.7ZM6.7 2.6L11.84 5.21L6.19 8.34ZM17.9 2.6L18.41 8.34L12.76 5.21ZM19.8 12.7A7.5 7.5 0 1 1 4.8 12.7A7.5 7.5 0 1 1 19.8 12.7ZM10.95 15.1A1.55 1.55 0 1 0 7.85 15.1A1.55 1.55 0 1 0 10.95 15.1ZM16.75 15.1A1.55 1.55 0 1 0 13.65 15.1A1.55 1.55 0 1 0 16.75 15.1Z"/>
+  <path d="M19.8 27.2C26.2 28.6 28.6 24 25.6 20.4" fill="none" stroke="currentColor" stroke-width="3.0" stroke-linecap="round"/>
+</svg></div><div class="cap">16</div></div></div>
+      <p class="plabel">ink on paper</p></div>
+    <div class="plate dark"><div class="strip"><div class="cell"><div class="mark s64"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="currentColor" role="img" aria-label="Infercat">
+  <path fill="currentColor" d="M12.3 15.7L21.3 28.7L3.3 28.7ZM6.7 2.6L11.84 5.21L6.19 8.34ZM17.9 2.6L18.41 8.34L12.76 5.21ZM19.8 12.7A7.5 7.5 0 1 1 4.8 12.7A7.5 7.5 0 1 1 19.8 12.7ZM10.95 15.1A1.55 1.55 0 1 0 7.85 15.1A1.55 1.55 0 1 0 10.95 15.1ZM16.75 15.1A1.55 1.55 0 1 0 13.65 15.1A1.55 1.55 0 1 0 16.75 15.1Z"/>
+  <path d="M19.8 27.2C26.2 28.6 28.6 24 25.6 20.4" fill="none" stroke="currentColor" stroke-width="3.0" stroke-linecap="round"/>
+</svg></div><div class="cap">64</div></div><div class="cell"><div class="mark s32"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="currentColor" role="img" aria-label="Infercat">
+  <path fill="currentColor" d="M12.3 15.7L21.3 28.7L3.3 28.7ZM6.7 2.6L11.84 5.21L6.19 8.34ZM17.9 2.6L18.41 8.34L12.76 5.21ZM19.8 12.7A7.5 7.5 0 1 1 4.8 12.7A7.5 7.5 0 1 1 19.8 12.7ZM10.95 15.1A1.55 1.55 0 1 0 7.85 15.1A1.55 1.55 0 1 0 10.95 15.1ZM16.75 15.1A1.55 1.55 0 1 0 13.65 15.1A1.55 1.55 0 1 0 16.75 15.1Z"/>
+  <path d="M19.8 27.2C26.2 28.6 28.6 24 25.6 20.4" fill="none" stroke="currentColor" stroke-width="3.0" stroke-linecap="round"/>
+</svg></div><div class="cap">32</div></div><div class="cell"><div class="mark s16"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="currentColor" role="img" aria-label="Infercat">
+  <path fill="currentColor" d="M12.3 15.7L21.3 28.7L3.3 28.7ZM6.7 2.6L11.84 5.21L6.19 8.34ZM17.9 2.6L18.41 8.34L12.76 5.21ZM19.8 12.7A7.5 7.5 0 1 1 4.8 12.7A7.5 7.5 0 1 1 19.8 12.7ZM10.95 15.1A1.55 1.55 0 1 0 7.85 15.1A1.55 1.55 0 1 0 10.95 15.1ZM16.75 15.1A1.55 1.55 0 1 0 13.65 15.1A1.55 1.55 0 1 0 16.75 15.1Z"/>
+  <path d="M19.8 27.2C26.2 28.6 28.6 24 25.6 20.4" fill="none" stroke="currentColor" stroke-width="3.0" stroke-linecap="round"/>
+</svg></div><div class="cap">16</div></div></div>
+      <p class="plabel">paper on black</p></div>
+    <div class="plate paper cobalt"><div class="strip"><div class="cell"><div class="mark s64"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="currentColor" role="img" aria-label="Infercat">
+  <path fill="currentColor" d="M12.3 15.7L21.3 28.7L3.3 28.7ZM6.7 2.6L11.84 5.21L6.19 8.34ZM17.9 2.6L18.41 8.34L12.76 5.21ZM19.8 12.7A7.5 7.5 0 1 1 4.8 12.7A7.5 7.5 0 1 1 19.8 12.7ZM10.95 15.1A1.55 1.55 0 1 0 7.85 15.1A1.55 1.55 0 1 0 10.95 15.1ZM16.75 15.1A1.55 1.55 0 1 0 13.65 15.1A1.55 1.55 0 1 0 16.75 15.1Z"/>
+  <path d="M19.8 27.2C26.2 28.6 28.6 24 25.6 20.4" fill="none" stroke="currentColor" stroke-width="3.0" stroke-linecap="round"/>
+</svg></div><div class="cap">64</div></div></div>
+      <p class="plabel">cobalt #1F3BFF</p></div>
+    <div class="plate paper"><div class="strip"><div class="cell"><div class="lk"><span class="mark s26"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="currentColor" role="img" aria-label="Infercat">
+  <path fill="currentColor" d="M12.3 15.7L21.3 28.7L3.3 28.7ZM6.7 2.6L11.84 5.21L6.19 8.34ZM17.9 2.6L18.41 8.34L12.76 5.21ZM19.8 12.7A7.5 7.5 0 1 1 4.8 12.7A7.5 7.5 0 1 1 19.8 12.7ZM10.95 15.1A1.55 1.55 0 1 0 7.85 15.1A1.55 1.55 0 1 0 10.95 15.1ZM16.75 15.1A1.55 1.55 0 1 0 13.65 15.1A1.55 1.55 0 1 0 16.75 15.1Z"/>
+  <path d="M19.8 27.2C26.2 28.6 28.6 24 25.6 20.4" fill="none" stroke="currentColor" stroke-width="3.0" stroke-linecap="round"/>
+</svg></span><span class="wm">Infercat</span></div><div class="cap">lockup</div></div></div>
+      <p class="plabel">on paper</p></div>
+    <div class="plate dark"><div class="strip"><div class="cell"><div class="lk"><span class="mark s26"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="currentColor" role="img" aria-label="Infercat">
+  <path fill="currentColor" d="M12.3 15.7L21.3 28.7L3.3 28.7ZM6.7 2.6L11.84 5.21L6.19 8.34ZM17.9 2.6L18.41 8.34L12.76 5.21ZM19.8 12.7A7.5 7.5 0 1 1 4.8 12.7A7.5 7.5 0 1 1 19.8 12.7ZM10.95 15.1A1.55 1.55 0 1 0 7.85 15.1A1.55 1.55 0 1 0 10.95 15.1ZM16.75 15.1A1.55 1.55 0 1 0 13.65 15.1A1.55 1.55 0 1 0 16.75 15.1Z"/>
+  <path d="M19.8 27.2C26.2 28.6 28.6 24 25.6 20.4" fill="none" stroke="currentColor" stroke-width="3.0" stroke-linecap="round"/>
+</svg></span><span class="wm">Infercat</span></div><div class="cap">lockup</div></div></div>
+      <p class="plabel">on black</p></div>
+  </div>
+  <p class="note"><span class="tag">16 px</span>At 16 px both eyes land as near-white pixels (L 249/255) with unbroken ink between them — the cleanest small-size read of the six, and the one to beat.</p>
+</section>
+<section class="row">
+  <div class="rowhead">
+    <h2>dots-large-low</h2>
+    <p class="spec">r 2.00, 0.6 lower and 0.8 wider than the base</p>
+    <p class="gloss">kitten proportion — big and friendly</p>
+  </div>
+  <div class="plates">
+    <div class="plate paper wide"><div class="strip"><div class="cell"><div class="mark s160"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="currentColor" role="img" aria-label="Infercat">
+  <path fill="currentColor" d="M12.3 15.7L21.3 28.7L3.3 28.7ZM6.7 2.6L11.84 5.21L6.19 8.34ZM17.9 2.6L18.41 8.34L12.76 5.21ZM19.8 12.7A7.5 7.5 0 1 1 4.8 12.7A7.5 7.5 0 1 1 19.8 12.7ZM11 15.7A2 2 0 1 0 7 15.7A2 2 0 1 0 11 15.7ZM17.6 15.7A2 2 0 1 0 13.6 15.7A2 2 0 1 0 17.6 15.7Z"/>
+  <path d="M19.8 27.2C26.2 28.6 28.6 24 25.6 20.4" fill="none" stroke="currentColor" stroke-width="3.0" stroke-linecap="round"/>
+</svg></div><div class="cap">160</div></div><div class="cell"><div class="mark s64"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="currentColor" role="img" aria-label="Infercat">
+  <path fill="currentColor" d="M12.3 15.7L21.3 28.7L3.3 28.7ZM6.7 2.6L11.84 5.21L6.19 8.34ZM17.9 2.6L18.41 8.34L12.76 5.21ZM19.8 12.7A7.5 7.5 0 1 1 4.8 12.7A7.5 7.5 0 1 1 19.8 12.7ZM11 15.7A2 2 0 1 0 7 15.7A2 2 0 1 0 11 15.7ZM17.6 15.7A2 2 0 1 0 13.6 15.7A2 2 0 1 0 17.6 15.7Z"/>
+  <path d="M19.8 27.2C26.2 28.6 28.6 24 25.6 20.4" fill="none" stroke="currentColor" stroke-width="3.0" stroke-linecap="round"/>
+</svg></div><div class="cap">64</div></div><div class="cell"><div class="mark s32"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="currentColor" role="img" aria-label="Infercat">
+  <path fill="currentColor" d="M12.3 15.7L21.3 28.7L3.3 28.7ZM6.7 2.6L11.84 5.21L6.19 8.34ZM17.9 2.6L18.41 8.34L12.76 5.21ZM19.8 12.7A7.5 7.5 0 1 1 4.8 12.7A7.5 7.5 0 1 1 19.8 12.7ZM11 15.7A2 2 0 1 0 7 15.7A2 2 0 1 0 11 15.7ZM17.6 15.7A2 2 0 1 0 13.6 15.7A2 2 0 1 0 17.6 15.7Z"/>
+  <path d="M19.8 27.2C26.2 28.6 28.6 24 25.6 20.4" fill="none" stroke="currentColor" stroke-width="3.0" stroke-linecap="round"/>
+</svg></div><div class="cap">32</div></div><div class="cell"><div class="mark s16"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="currentColor" role="img" aria-label="Infercat">
+  <path fill="currentColor" d="M12.3 15.7L21.3 28.7L3.3 28.7ZM6.7 2.6L11.84 5.21L6.19 8.34ZM17.9 2.6L18.41 8.34L12.76 5.21ZM19.8 12.7A7.5 7.5 0 1 1 4.8 12.7A7.5 7.5 0 1 1 19.8 12.7ZM11 15.7A2 2 0 1 0 7 15.7A2 2 0 1 0 11 15.7ZM17.6 15.7A2 2 0 1 0 13.6 15.7A2 2 0 1 0 17.6 15.7Z"/>
+  <path d="M19.8 27.2C26.2 28.6 28.6 24 25.6 20.4" fill="none" stroke="currentColor" stroke-width="3.0" stroke-linecap="round"/>
+</svg></div><div class="cap">16</div></div></div>
+      <p class="plabel">ink on paper</p></div>
+    <div class="plate dark"><div class="strip"><div class="cell"><div class="mark s64"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="currentColor" role="img" aria-label="Infercat">
+  <path fill="currentColor" d="M12.3 15.7L21.3 28.7L3.3 28.7ZM6.7 2.6L11.84 5.21L6.19 8.34ZM17.9 2.6L18.41 8.34L12.76 5.21ZM19.8 12.7A7.5 7.5 0 1 1 4.8 12.7A7.5 7.5 0 1 1 19.8 12.7ZM11 15.7A2 2 0 1 0 7 15.7A2 2 0 1 0 11 15.7ZM17.6 15.7A2 2 0 1 0 13.6 15.7A2 2 0 1 0 17.6 15.7Z"/>
+  <path d="M19.8 27.2C26.2 28.6 28.6 24 25.6 20.4" fill="none" stroke="currentColor" stroke-width="3.0" stroke-linecap="round"/>
+</svg></div><div class="cap">64</div></div><div class="cell"><div class="mark s32"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="currentColor" role="img" aria-label="Infercat">
+  <path fill="currentColor" d="M12.3 15.7L21.3 28.7L3.3 28.7ZM6.7 2.6L11.84 5.21L6.19 8.34ZM17.9 2.6L18.41 8.34L12.76 5.21ZM19.8 12.7A7.5 7.5 0 1 1 4.8 12.7A7.5 7.5 0 1 1 19.8 12.7ZM11 15.7A2 2 0 1 0 7 15.7A2 2 0 1 0 11 15.7ZM17.6 15.7A2 2 0 1 0 13.6 15.7A2 2 0 1 0 17.6 15.7Z"/>
+  <path d="M19.8 27.2C26.2 28.6 28.6 24 25.6 20.4" fill="none" stroke="currentColor" stroke-width="3.0" stroke-linecap="round"/>
+</svg></div><div class="cap">32</div></div><div class="cell"><div class="mark s16"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="currentColor" role="img" aria-label="Infercat">
+  <path fill="currentColor" d="M12.3 15.7L21.3 28.7L3.3 28.7ZM6.7 2.6L11.84 5.21L6.19 8.34ZM17.9 2.6L18.41 8.34L12.76 5.21ZM19.8 12.7A7.5 7.5 0 1 1 4.8 12.7A7.5 7.5 0 1 1 19.8 12.7ZM11 15.7A2 2 0 1 0 7 15.7A2 2 0 1 0 11 15.7ZM17.6 15.7A2 2 0 1 0 13.6 15.7A2 2 0 1 0 17.6 15.7Z"/>
+  <path d="M19.8 27.2C26.2 28.6 28.6 24 25.6 20.4" fill="none" stroke="currentColor" stroke-width="3.0" stroke-linecap="round"/>
+</svg></div><div class="cap">16</div></div></div>
+      <p class="plabel">paper on black</p></div>
+    <div class="plate paper cobalt"><div class="strip"><div class="cell"><div class="mark s64"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="currentColor" role="img" aria-label="Infercat">
+  <path fill="currentColor" d="M12.3 15.7L21.3 28.7L3.3 28.7ZM6.7 2.6L11.84 5.21L6.19 8.34ZM17.9 2.6L18.41 8.34L12.76 5.21ZM19.8 12.7A7.5 7.5 0 1 1 4.8 12.7A7.5 7.5 0 1 1 19.8 12.7ZM11 15.7A2 2 0 1 0 7 15.7A2 2 0 1 0 11 15.7ZM17.6 15.7A2 2 0 1 0 13.6 15.7A2 2 0 1 0 17.6 15.7Z"/>
+  <path d="M19.8 27.2C26.2 28.6 28.6 24 25.6 20.4" fill="none" stroke="currentColor" stroke-width="3.0" stroke-linecap="round"/>
+</svg></div><div class="cap">64</div></div></div>
+      <p class="plabel">cobalt #1F3BFF</p></div>
+    <div class="plate paper"><div class="strip"><div class="cell"><div class="lk"><span class="mark s26"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="currentColor" role="img" aria-label="Infercat">
+  <path fill="currentColor" d="M12.3 15.7L21.3 28.7L3.3 28.7ZM6.7 2.6L11.84 5.21L6.19 8.34ZM17.9 2.6L18.41 8.34L12.76 5.21ZM19.8 12.7A7.5 7.5 0 1 1 4.8 12.7A7.5 7.5 0 1 1 19.8 12.7ZM11 15.7A2 2 0 1 0 7 15.7A2 2 0 1 0 11 15.7ZM17.6 15.7A2 2 0 1 0 13.6 15.7A2 2 0 1 0 17.6 15.7Z"/>
+  <path d="M19.8 27.2C26.2 28.6 28.6 24 25.6 20.4" fill="none" stroke="currentColor" stroke-width="3.0" stroke-linecap="round"/>
+</svg></span><span class="wm">Infercat</span></div><div class="cap">lockup</div></div></div>
+      <p class="plabel">on paper</p></div>
+    <div class="plate dark"><div class="strip"><div class="cell"><div class="lk"><span class="mark s26"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="currentColor" role="img" aria-label="Infercat">
+  <path fill="currentColor" d="M12.3 15.7L21.3 28.7L3.3 28.7ZM6.7 2.6L11.84 5.21L6.19 8.34ZM17.9 2.6L18.41 8.34L12.76 5.21ZM19.8 12.7A7.5 7.5 0 1 1 4.8 12.7A7.5 7.5 0 1 1 19.8 12.7ZM11 15.7A2 2 0 1 0 7 15.7A2 2 0 1 0 11 15.7ZM17.6 15.7A2 2 0 1 0 13.6 15.7A2 2 0 1 0 17.6 15.7Z"/>
+  <path d="M19.8 27.2C26.2 28.6 28.6 24 25.6 20.4" fill="none" stroke="currentColor" stroke-width="3.0" stroke-linecap="round"/>
+</svg></span><span class="wm">Infercat</span></div><div class="cap">lockup</div></div></div>
+      <p class="plabel">on black</p></div>
+  </div>
+  <p class="note"><span class="tag">16 px</span>At 16 px the eyes are the brightest here (L 255/255) and the face stays a face, but the rim is spent: 1.04 units of ink separate each hole from the head’s edge, half a pixel at this size, so it holds with nothing in reserve.</p>
+</section>
+<section class="row">
+  <div class="rowhead">
+    <h2>rings-pupil</h2>
+    <p class="spec">outer hole r 2.10, ink pupil r 1.00 — widened 0.8 (see note)</p>
+    <p class="gloss">a pupil, so the eye cannot read hollow</p>
+  </div>
+  <div class="plates">
+    <div class="plate paper wide"><div class="strip"><div class="cell"><div class="mark s160"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="currentColor" role="img" aria-label="Infercat">
+  <path fill="currentColor" d="M12.3 15.7L21.3 28.7L3.3 28.7ZM6.7 2.6L11.84 5.21L6.19 8.34ZM17.9 2.6L18.41 8.34L12.76 5.21ZM19.8 12.7A7.5 7.5 0 1 1 4.8 12.7A7.5 7.5 0 1 1 19.8 12.7ZM11.1 15.1A2.1 2.1 0 1 0 6.9 15.1A2.1 2.1 0 1 0 11.1 15.1ZM17.7 15.1A2.1 2.1 0 1 0 13.5 15.1A2.1 2.1 0 1 0 17.7 15.1ZM10 15.1A1 1 0 1 1 8 15.1A1 1 0 1 1 10 15.1ZM16.6 15.1A1 1 0 1 1 14.6 15.1A1 1 0 1 1 16.6 15.1Z"/>
+  <path d="M19.8 27.2C26.2 28.6 28.6 24 25.6 20.4" fill="none" stroke="currentColor" stroke-width="3.0" stroke-linecap="round"/>
+</svg></div><div class="cap">160</div></div><div class="cell"><div class="mark s64"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="currentColor" role="img" aria-label="Infercat">
+  <path fill="currentColor" d="M12.3 15.7L21.3 28.7L3.3 28.7ZM6.7 2.6L11.84 5.21L6.19 8.34ZM17.9 2.6L18.41 8.34L12.76 5.21ZM19.8 12.7A7.5 7.5 0 1 1 4.8 12.7A7.5 7.5 0 1 1 19.8 12.7ZM11.1 15.1A2.1 2.1 0 1 0 6.9 15.1A2.1 2.1 0 1 0 11.1 15.1ZM17.7 15.1A2.1 2.1 0 1 0 13.5 15.1A2.1 2.1 0 1 0 17.7 15.1ZM10 15.1A1 1 0 1 1 8 15.1A1 1 0 1 1 10 15.1ZM16.6 15.1A1 1 0 1 1 14.6 15.1A1 1 0 1 1 16.6 15.1Z"/>
+  <path d="M19.8 27.2C26.2 28.6 28.6 24 25.6 20.4" fill="none" stroke="currentColor" stroke-width="3.0" stroke-linecap="round"/>
+</svg></div><div class="cap">64</div></div><div class="cell"><div class="mark s32"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="currentColor" role="img" aria-label="Infercat">
+  <path fill="currentColor" d="M12.3 15.7L21.3 28.7L3.3 28.7ZM6.7 2.6L11.84 5.21L6.19 8.34ZM17.9 2.6L18.41 8.34L12.76 5.21ZM19.8 12.7A7.5 7.5 0 1 1 4.8 12.7A7.5 7.5 0 1 1 19.8 12.7ZM11.1 15.1A2.1 2.1 0 1 0 6.9 15.1A2.1 2.1 0 1 0 11.1 15.1ZM17.7 15.1A2.1 2.1 0 1 0 13.5 15.1A2.1 2.1 0 1 0 17.7 15.1ZM10 15.1A1 1 0 1 1 8 15.1A1 1 0 1 1 10 15.1ZM16.6 15.1A1 1 0 1 1 14.6 15.1A1 1 0 1 1 16.6 15.1Z"/>
+  <path d="M19.8 27.2C26.2 28.6 28.6 24 25.6 20.4" fill="none" stroke="currentColor" stroke-width="3.0" stroke-linecap="round"/>
+</svg></div><div class="cap">32</div></div><div class="cell"><div class="mark s16"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="currentColor" role="img" aria-label="Infercat">
+  <path fill="currentColor" d="M12.3 15.7L21.3 28.7L3.3 28.7ZM6.7 2.6L11.84 5.21L6.19 8.34ZM17.9 2.6L18.41 8.34L12.76 5.21ZM19.8 12.7A7.5 7.5 0 1 1 4.8 12.7A7.5 7.5 0 1 1 19.8 12.7ZM11.1 15.1A2.1 2.1 0 1 0 6.9 15.1A2.1 2.1 0 1 0 11.1 15.1ZM17.7 15.1A2.1 2.1 0 1 0 13.5 15.1A2.1 2.1 0 1 0 17.7 15.1ZM10 15.1A1 1 0 1 1 8 15.1A1 1 0 1 1 10 15.1ZM16.6 15.1A1 1 0 1 1 14.6 15.1A1 1 0 1 1 16.6 15.1Z"/>
+  <path d="M19.8 27.2C26.2 28.6 28.6 24 25.6 20.4" fill="none" stroke="currentColor" stroke-width="3.0" stroke-linecap="round"/>
+</svg></div><div class="cap">16</div></div></div>
+      <p class="plabel">ink on paper</p></div>
+    <div class="plate dark"><div class="strip"><div class="cell"><div class="mark s64"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="currentColor" role="img" aria-label="Infercat">
+  <path fill="currentColor" d="M12.3 15.7L21.3 28.7L3.3 28.7ZM6.7 2.6L11.84 5.21L6.19 8.34ZM17.9 2.6L18.41 8.34L12.76 5.21ZM19.8 12.7A7.5 7.5 0 1 1 4.8 12.7A7.5 7.5 0 1 1 19.8 12.7ZM11.1 15.1A2.1 2.1 0 1 0 6.9 15.1A2.1 2.1 0 1 0 11.1 15.1ZM17.7 15.1A2.1 2.1 0 1 0 13.5 15.1A2.1 2.1 0 1 0 17.7 15.1ZM10 15.1A1 1 0 1 1 8 15.1A1 1 0 1 1 10 15.1ZM16.6 15.1A1 1 0 1 1 14.6 15.1A1 1 0 1 1 16.6 15.1Z"/>
+  <path d="M19.8 27.2C26.2 28.6 28.6 24 25.6 20.4" fill="none" stroke="currentColor" stroke-width="3.0" stroke-linecap="round"/>
+</svg></div><div class="cap">64</div></div><div class="cell"><div class="mark s32"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="currentColor" role="img" aria-label="Infercat">
+  <path fill="currentColor" d="M12.3 15.7L21.3 28.7L3.3 28.7ZM6.7 2.6L11.84 5.21L6.19 8.34ZM17.9 2.6L18.41 8.34L12.76 5.21ZM19.8 12.7A7.5 7.5 0 1 1 4.8 12.7A7.5 7.5 0 1 1 19.8 12.7ZM11.1 15.1A2.1 2.1 0 1 0 6.9 15.1A2.1 2.1 0 1 0 11.1 15.1ZM17.7 15.1A2.1 2.1 0 1 0 13.5 15.1A2.1 2.1 0 1 0 17.7 15.1ZM10 15.1A1 1 0 1 1 8 15.1A1 1 0 1 1 10 15.1ZM16.6 15.1A1 1 0 1 1 14.6 15.1A1 1 0 1 1 16.6 15.1Z"/>
+  <path d="M19.8 27.2C26.2 28.6 28.6 24 25.6 20.4" fill="none" stroke="currentColor" stroke-width="3.0" stroke-linecap="round"/>
+</svg></div><div class="cap">32</div></div><div class="cell"><div class="mark s16"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="currentColor" role="img" aria-label="Infercat">
+  <path fill="currentColor" d="M12.3 15.7L21.3 28.7L3.3 28.7ZM6.7 2.6L11.84 5.21L6.19 8.34ZM17.9 2.6L18.41 8.34L12.76 5.21ZM19.8 12.7A7.5 7.5 0 1 1 4.8 12.7A7.5 7.5 0 1 1 19.8 12.7ZM11.1 15.1A2.1 2.1 0 1 0 6.9 15.1A2.1 2.1 0 1 0 11.1 15.1ZM17.7 15.1A2.1 2.1 0 1 0 13.5 15.1A2.1 2.1 0 1 0 17.7 15.1ZM10 15.1A1 1 0 1 1 8 15.1A1 1 0 1 1 10 15.1ZM16.6 15.1A1 1 0 1 1 14.6 15.1A1 1 0 1 1 16.6 15.1Z"/>
+  <path d="M19.8 27.2C26.2 28.6 28.6 24 25.6 20.4" fill="none" stroke="currentColor" stroke-width="3.0" stroke-linecap="round"/>
+</svg></div><div class="cap">16</div></div></div>
+      <p class="plabel">paper on black</p></div>
+    <div class="plate paper cobalt"><div class="strip"><div class="cell"><div class="mark s64"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="currentColor" role="img" aria-label="Infercat">
+  <path fill="currentColor" d="M12.3 15.7L21.3 28.7L3.3 28.7ZM6.7 2.6L11.84 5.21L6.19 8.34ZM17.9 2.6L18.41 8.34L12.76 5.21ZM19.8 12.7A7.5 7.5 0 1 1 4.8 12.7A7.5 7.5 0 1 1 19.8 12.7ZM11.1 15.1A2.1 2.1 0 1 0 6.9 15.1A2.1 2.1 0 1 0 11.1 15.1ZM17.7 15.1A2.1 2.1 0 1 0 13.5 15.1A2.1 2.1 0 1 0 17.7 15.1ZM10 15.1A1 1 0 1 1 8 15.1A1 1 0 1 1 10 15.1ZM16.6 15.1A1 1 0 1 1 14.6 15.1A1 1 0 1 1 16.6 15.1Z"/>
+  <path d="M19.8 27.2C26.2 28.6 28.6 24 25.6 20.4" fill="none" stroke="currentColor" stroke-width="3.0" stroke-linecap="round"/>
+</svg></div><div class="cap">64</div></div></div>
+      <p class="plabel">cobalt #1F3BFF</p></div>
+    <div class="plate paper"><div class="strip"><div class="cell"><div class="lk"><span class="mark s26"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="currentColor" role="img" aria-label="Infercat">
+  <path fill="currentColor" d="M12.3 15.7L21.3 28.7L3.3 28.7ZM6.7 2.6L11.84 5.21L6.19 8.34ZM17.9 2.6L18.41 8.34L12.76 5.21ZM19.8 12.7A7.5 7.5 0 1 1 4.8 12.7A7.5 7.5 0 1 1 19.8 12.7ZM11.1 15.1A2.1 2.1 0 1 0 6.9 15.1A2.1 2.1 0 1 0 11.1 15.1ZM17.7 15.1A2.1 2.1 0 1 0 13.5 15.1A2.1 2.1 0 1 0 17.7 15.1ZM10 15.1A1 1 0 1 1 8 15.1A1 1 0 1 1 10 15.1ZM16.6 15.1A1 1 0 1 1 14.6 15.1A1 1 0 1 1 16.6 15.1Z"/>
+  <path d="M19.8 27.2C26.2 28.6 28.6 24 25.6 20.4" fill="none" stroke="currentColor" stroke-width="3.0" stroke-linecap="round"/>
+</svg></span><span class="wm">Infercat</span></div><div class="cap">lockup</div></div></div>
+      <p class="plabel">on paper</p></div>
+    <div class="plate dark"><div class="strip"><div class="cell"><div class="lk"><span class="mark s26"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="currentColor" role="img" aria-label="Infercat">
+  <path fill="currentColor" d="M12.3 15.7L21.3 28.7L3.3 28.7ZM6.7 2.6L11.84 5.21L6.19 8.34ZM17.9 2.6L18.41 8.34L12.76 5.21ZM19.8 12.7A7.5 7.5 0 1 1 4.8 12.7A7.5 7.5 0 1 1 19.8 12.7ZM11.1 15.1A2.1 2.1 0 1 0 6.9 15.1A2.1 2.1 0 1 0 11.1 15.1ZM17.7 15.1A2.1 2.1 0 1 0 13.5 15.1A2.1 2.1 0 1 0 17.7 15.1ZM10 15.1A1 1 0 1 1 8 15.1A1 1 0 1 1 10 15.1ZM16.6 15.1A1 1 0 1 1 14.6 15.1A1 1 0 1 1 16.6 15.1Z"/>
+  <path d="M19.8 27.2C26.2 28.6 28.6 24 25.6 20.4" fill="none" stroke="currentColor" stroke-width="3.0" stroke-linecap="round"/>
+</svg></span><span class="wm">Infercat</span></div><div class="cap">lockup</div></div></div>
+      <p class="plabel">on black</p></div>
+  </div>
+  <p class="note"><span class="tag">16 px</span>At 16 px the ring closes: the 1.1-unit annulus and the pupil average together and the eye zone goes to a grey cloud (peak L 119/148, no white anywhere) — this is a 32 px-and-up mark, and below that the face is a blur, not a silhouette.</p>
+</section>
+<section class="row">
+  <div class="rowhead">
+    <h2>dots-nose</h2>
+    <p class="spec">base eyes r 1.55 + nose 1.6 × 1.3, 2.2 below the eye line</p>
+    <p class="gloss">cute, still one colour</p>
+  </div>
+  <div class="plates">
+    <div class="plate paper wide"><div class="strip"><div class="cell"><div class="mark s160"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="currentColor" role="img" aria-label="Infercat">
+  <path fill="currentColor" d="M12.3 15.7L21.3 28.7L3.3 28.7ZM6.7 2.6L11.84 5.21L6.19 8.34ZM17.9 2.6L18.41 8.34L12.76 5.21ZM19.8 12.7A7.5 7.5 0 1 1 4.8 12.7A7.5 7.5 0 1 1 19.8 12.7ZM10.95 15.1A1.55 1.55 0 1 0 7.85 15.1A1.55 1.55 0 1 0 10.95 15.1ZM16.75 15.1A1.55 1.55 0 1 0 13.65 15.1A1.55 1.55 0 1 0 16.75 15.1ZM12.3 17.95L13.1 16.65L11.5 16.65ZM11.567 16.7588L12.3 17.95L13.033 16.7588L12.9577 16.65L11.6423 16.65Z"/>
+  <path d="M19.8 27.2C26.2 28.6 28.6 24 25.6 20.4" fill="none" stroke="currentColor" stroke-width="3.0" stroke-linecap="round"/>
+</svg></div><div class="cap">160</div></div><div class="cell"><div class="mark s64"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="currentColor" role="img" aria-label="Infercat">
+  <path fill="currentColor" d="M12.3 15.7L21.3 28.7L3.3 28.7ZM6.7 2.6L11.84 5.21L6.19 8.34ZM17.9 2.6L18.41 8.34L12.76 5.21ZM19.8 12.7A7.5 7.5 0 1 1 4.8 12.7A7.5 7.5 0 1 1 19.8 12.7ZM10.95 15.1A1.55 1.55 0 1 0 7.85 15.1A1.55 1.55 0 1 0 10.95 15.1ZM16.75 15.1A1.55 1.55 0 1 0 13.65 15.1A1.55 1.55 0 1 0 16.75 15.1ZM12.3 17.95L13.1 16.65L11.5 16.65ZM11.567 16.7588L12.3 17.95L13.033 16.7588L12.9577 16.65L11.6423 16.65Z"/>
+  <path d="M19.8 27.2C26.2 28.6 28.6 24 25.6 20.4" fill="none" stroke="currentColor" stroke-width="3.0" stroke-linecap="round"/>
+</svg></div><div class="cap">64</div></div><div class="cell"><div class="mark s32"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="currentColor" role="img" aria-label="Infercat">
+  <path fill="currentColor" d="M12.3 15.7L21.3 28.7L3.3 28.7ZM6.7 2.6L11.84 5.21L6.19 8.34ZM17.9 2.6L18.41 8.34L12.76 5.21ZM19.8 12.7A7.5 7.5 0 1 1 4.8 12.7A7.5 7.5 0 1 1 19.8 12.7ZM10.95 15.1A1.55 1.55 0 1 0 7.85 15.1A1.55 1.55 0 1 0 10.95 15.1ZM16.75 15.1A1.55 1.55 0 1 0 13.65 15.1A1.55 1.55 0 1 0 16.75 15.1ZM12.3 17.95L13.1 16.65L11.5 16.65ZM11.567 16.7588L12.3 17.95L13.033 16.7588L12.9577 16.65L11.6423 16.65Z"/>
+  <path d="M19.8 27.2C26.2 28.6 28.6 24 25.6 20.4" fill="none" stroke="currentColor" stroke-width="3.0" stroke-linecap="round"/>
+</svg></div><div class="cap">32</div></div><div class="cell"><div class="mark s16"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="currentColor" role="img" aria-label="Infercat">
+  <path fill="currentColor" d="M12.3 15.7L21.3 28.7L3.3 28.7ZM6.7 2.6L11.84 5.21L6.19 8.34ZM17.9 2.6L18.41 8.34L12.76 5.21ZM19.8 12.7A7.5 7.5 0 1 1 4.8 12.7A7.5 7.5 0 1 1 19.8 12.7ZM10.95 15.1A1.55 1.55 0 1 0 7.85 15.1A1.55 1.55 0 1 0 10.95 15.1ZM16.75 15.1A1.55 1.55 0 1 0 13.65 15.1A1.55 1.55 0 1 0 16.75 15.1ZM12.3 17.95L13.1 16.65L11.5 16.65ZM11.567 16.7588L12.3 17.95L13.033 16.7588L12.9577 16.65L11.6423 16.65Z"/>
+  <path d="M19.8 27.2C26.2 28.6 28.6 24 25.6 20.4" fill="none" stroke="currentColor" stroke-width="3.0" stroke-linecap="round"/>
+</svg></div><div class="cap">16</div></div></div>
+      <p class="plabel">ink on paper</p></div>
+    <div class="plate dark"><div class="strip"><div class="cell"><div class="mark s64"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="currentColor" role="img" aria-label="Infercat">
+  <path fill="currentColor" d="M12.3 15.7L21.3 28.7L3.3 28.7ZM6.7 2.6L11.84 5.21L6.19 8.34ZM17.9 2.6L18.41 8.34L12.76 5.21ZM19.8 12.7A7.5 7.5 0 1 1 4.8 12.7A7.5 7.5 0 1 1 19.8 12.7ZM10.95 15.1A1.55 1.55 0 1 0 7.85 15.1A1.55 1.55 0 1 0 10.95 15.1ZM16.75 15.1A1.55 1.55 0 1 0 13.65 15.1A1.55 1.55 0 1 0 16.75 15.1ZM12.3 17.95L13.1 16.65L11.5 16.65ZM11.567 16.7588L12.3 17.95L13.033 16.7588L12.9577 16.65L11.6423 16.65Z"/>
+  <path d="M19.8 27.2C26.2 28.6 28.6 24 25.6 20.4" fill="none" stroke="currentColor" stroke-width="3.0" stroke-linecap="round"/>
+</svg></div><div class="cap">64</div></div><div class="cell"><div class="mark s32"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="currentColor" role="img" aria-label="Infercat">
+  <path fill="currentColor" d="M12.3 15.7L21.3 28.7L3.3 28.7ZM6.7 2.6L11.84 5.21L6.19 8.34ZM17.9 2.6L18.41 8.34L12.76 5.21ZM19.8 12.7A7.5 7.5 0 1 1 4.8 12.7A7.5 7.5 0 1 1 19.8 12.7ZM10.95 15.1A1.55 1.55 0 1 0 7.85 15.1A1.55 1.55 0 1 0 10.95 15.1ZM16.75 15.1A1.55 1.55 0 1 0 13.65 15.1A1.55 1.55 0 1 0 16.75 15.1ZM12.3 17.95L13.1 16.65L11.5 16.65ZM11.567 16.7588L12.3 17.95L13.033 16.7588L12.9577 16.65L11.6423 16.65Z"/>
+  <path d="M19.8 27.2C26.2 28.6 28.6 24 25.6 20.4" fill="none" stroke="currentColor" stroke-width="3.0" stroke-linecap="round"/>
+</svg></div><div class="cap">32</div></div><div class="cell"><div class="mark s16"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="currentColor" role="img" aria-label="Infercat">
+  <path fill="currentColor" d="M12.3 15.7L21.3 28.7L3.3 28.7ZM6.7 2.6L11.84 5.21L6.19 8.34ZM17.9 2.6L18.41 8.34L12.76 5.21ZM19.8 12.7A7.5 7.5 0 1 1 4.8 12.7A7.5 7.5 0 1 1 19.8 12.7ZM10.95 15.1A1.55 1.55 0 1 0 7.85 15.1A1.55 1.55 0 1 0 10.95 15.1ZM16.75 15.1A1.55 1.55 0 1 0 13.65 15.1A1.55 1.55 0 1 0 16.75 15.1ZM12.3 17.95L13.1 16.65L11.5 16.65ZM11.567 16.7588L12.3 17.95L13.033 16.7588L12.9577 16.65L11.6423 16.65Z"/>
+  <path d="M19.8 27.2C26.2 28.6 28.6 24 25.6 20.4" fill="none" stroke="currentColor" stroke-width="3.0" stroke-linecap="round"/>
+</svg></div><div class="cap">16</div></div></div>
+      <p class="plabel">paper on black</p></div>
+    <div class="plate paper cobalt"><div class="strip"><div class="cell"><div class="mark s64"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="currentColor" role="img" aria-label="Infercat">
+  <path fill="currentColor" d="M12.3 15.7L21.3 28.7L3.3 28.7ZM6.7 2.6L11.84 5.21L6.19 8.34ZM17.9 2.6L18.41 8.34L12.76 5.21ZM19.8 12.7A7.5 7.5 0 1 1 4.8 12.7A7.5 7.5 0 1 1 19.8 12.7ZM10.95 15.1A1.55 1.55 0 1 0 7.85 15.1A1.55 1.55 0 1 0 10.95 15.1ZM16.75 15.1A1.55 1.55 0 1 0 13.65 15.1A1.55 1.55 0 1 0 16.75 15.1ZM12.3 17.95L13.1 16.65L11.5 16.65ZM11.567 16.7588L12.3 17.95L13.033 16.7588L12.9577 16.65L11.6423 16.65Z"/>
+  <path d="M19.8 27.2C26.2 28.6 28.6 24 25.6 20.4" fill="none" stroke="currentColor" stroke-width="3.0" stroke-linecap="round"/>
+</svg></div><div class="cap">64</div></div></div>
+      <p class="plabel">cobalt #1F3BFF</p></div>
+    <div class="plate paper"><div class="strip"><div class="cell"><div class="lk"><span class="mark s26"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="currentColor" role="img" aria-label="Infercat">
+  <path fill="currentColor" d="M12.3 15.7L21.3 28.7L3.3 28.7ZM6.7 2.6L11.84 5.21L6.19 8.34ZM17.9 2.6L18.41 8.34L12.76 5.21ZM19.8 12.7A7.5 7.5 0 1 1 4.8 12.7A7.5 7.5 0 1 1 19.8 12.7ZM10.95 15.1A1.55 1.55 0 1 0 7.85 15.1A1.55 1.55 0 1 0 10.95 15.1ZM16.75 15.1A1.55 1.55 0 1 0 13.65 15.1A1.55 1.55 0 1 0 16.75 15.1ZM12.3 17.95L13.1 16.65L11.5 16.65ZM11.567 16.7588L12.3 17.95L13.033 16.7588L12.9577 16.65L11.6423 16.65Z"/>
+  <path d="M19.8 27.2C26.2 28.6 28.6 24 25.6 20.4" fill="none" stroke="currentColor" stroke-width="3.0" stroke-linecap="round"/>
+</svg></span><span class="wm">Infercat</span></div><div class="cap">lockup</div></div></div>
+      <p class="plabel">on paper</p></div>
+    <div class="plate dark"><div class="strip"><div class="cell"><div class="lk"><span class="mark s26"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="currentColor" role="img" aria-label="Infercat">
+  <path fill="currentColor" d="M12.3 15.7L21.3 28.7L3.3 28.7ZM6.7 2.6L11.84 5.21L6.19 8.34ZM17.9 2.6L18.41 8.34L12.76 5.21ZM19.8 12.7A7.5 7.5 0 1 1 4.8 12.7A7.5 7.5 0 1 1 19.8 12.7ZM10.95 15.1A1.55 1.55 0 1 0 7.85 15.1A1.55 1.55 0 1 0 10.95 15.1ZM16.75 15.1A1.55 1.55 0 1 0 13.65 15.1A1.55 1.55 0 1 0 16.75 15.1ZM12.3 17.95L13.1 16.65L11.5 16.65ZM11.567 16.7588L12.3 17.95L13.033 16.7588L12.9577 16.65L11.6423 16.65Z"/>
+  <path d="M19.8 27.2C26.2 28.6 28.6 24 25.6 20.4" fill="none" stroke="currentColor" stroke-width="3.0" stroke-linecap="round"/>
+</svg></span><span class="wm">Infercat</span></div><div class="cap">lockup</div></div></div>
+      <p class="plabel">on black</p></div>
+  </div>
+  <p class="note"><span class="tag">16 px</span>At 16 px the eyes read exactly as dots-medium does; the nose does not survive — it leaves a single grey notch (L 57) below the eye line, which costs nothing but adds nothing either.</p>
+</section>
+<section class="row">
+  <div class="rowhead">
+    <h2>dots-large-nose</h2>
+    <p class="spec">large low eyes r 2.00 + the same nose</p>
+    <p class="gloss">the friendliest of the six at display size</p>
+  </div>
+  <div class="plates">
+    <div class="plate paper wide"><div class="strip"><div class="cell"><div class="mark s160"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="currentColor" role="img" aria-label="Infercat">
+  <path fill="currentColor" d="M12.3 15.7L21.3 28.7L3.3 28.7ZM6.7 2.6L11.84 5.21L6.19 8.34ZM17.9 2.6L18.41 8.34L12.76 5.21ZM19.8 12.7A7.5 7.5 0 1 1 4.8 12.7A7.5 7.5 0 1 1 19.8 12.7ZM11 15.7A2 2 0 1 0 7 15.7A2 2 0 1 0 11 15.7ZM17.6 15.7A2 2 0 1 0 13.6 15.7A2 2 0 1 0 17.6 15.7ZM12.3 17.95L13.1 16.65L11.5 16.65ZM11.567 16.7588L12.3 17.95L13.033 16.7588L12.9577 16.65L11.6423 16.65Z"/>
+  <path d="M19.8 27.2C26.2 28.6 28.6 24 25.6 20.4" fill="none" stroke="currentColor" stroke-width="3.0" stroke-linecap="round"/>
+</svg></div><div class="cap">160</div></div><div class="cell"><div class="mark s64"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="currentColor" role="img" aria-label="Infercat">
+  <path fill="currentColor" d="M12.3 15.7L21.3 28.7L3.3 28.7ZM6.7 2.6L11.84 5.21L6.19 8.34ZM17.9 2.6L18.41 8.34L12.76 5.21ZM19.8 12.7A7.5 7.5 0 1 1 4.8 12.7A7.5 7.5 0 1 1 19.8 12.7ZM11 15.7A2 2 0 1 0 7 15.7A2 2 0 1 0 11 15.7ZM17.6 15.7A2 2 0 1 0 13.6 15.7A2 2 0 1 0 17.6 15.7ZM12.3 17.95L13.1 16.65L11.5 16.65ZM11.567 16.7588L12.3 17.95L13.033 16.7588L12.9577 16.65L11.6423 16.65Z"/>
+  <path d="M19.8 27.2C26.2 28.6 28.6 24 25.6 20.4" fill="none" stroke="currentColor" stroke-width="3.0" stroke-linecap="round"/>
+</svg></div><div class="cap">64</div></div><div class="cell"><div class="mark s32"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="currentColor" role="img" aria-label="Infercat">
+  <path fill="currentColor" d="M12.3 15.7L21.3 28.7L3.3 28.7ZM6.7 2.6L11.84 5.21L6.19 8.34ZM17.9 2.6L18.41 8.34L12.76 5.21ZM19.8 12.7A7.5 7.5 0 1 1 4.8 12.7A7.5 7.5 0 1 1 19.8 12.7ZM11 15.7A2 2 0 1 0 7 15.7A2 2 0 1 0 11 15.7ZM17.6 15.7A2 2 0 1 0 13.6 15.7A2 2 0 1 0 17.6 15.7ZM12.3 17.95L13.1 16.65L11.5 16.65ZM11.567 16.7588L12.3 17.95L13.033 16.7588L12.9577 16.65L11.6423 16.65Z"/>
+  <path d="M19.8 27.2C26.2 28.6 28.6 24 25.6 20.4" fill="none" stroke="currentColor" stroke-width="3.0" stroke-linecap="round"/>
+</svg></div><div class="cap">32</div></div><div class="cell"><div class="mark s16"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="currentColor" role="img" aria-label="Infercat">
+  <path fill="currentColor" d="M12.3 15.7L21.3 28.7L3.3 28.7ZM6.7 2.6L11.84 5.21L6.19 8.34ZM17.9 2.6L18.41 8.34L12.76 5.21ZM19.8 12.7A7.5 7.5 0 1 1 4.8 12.7A7.5 7.5 0 1 1 19.8 12.7ZM11 15.7A2 2 0 1 0 7 15.7A2 2 0 1 0 11 15.7ZM17.6 15.7A2 2 0 1 0 13.6 15.7A2 2 0 1 0 17.6 15.7ZM12.3 17.95L13.1 16.65L11.5 16.65ZM11.567 16.7588L12.3 17.95L13.033 16.7588L12.9577 16.65L11.6423 16.65Z"/>
+  <path d="M19.8 27.2C26.2 28.6 28.6 24 25.6 20.4" fill="none" stroke="currentColor" stroke-width="3.0" stroke-linecap="round"/>
+</svg></div><div class="cap">16</div></div></div>
+      <p class="plabel">ink on paper</p></div>
+    <div class="plate dark"><div class="strip"><div class="cell"><div class="mark s64"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="currentColor" role="img" aria-label="Infercat">
+  <path fill="currentColor" d="M12.3 15.7L21.3 28.7L3.3 28.7ZM6.7 2.6L11.84 5.21L6.19 8.34ZM17.9 2.6L18.41 8.34L12.76 5.21ZM19.8 12.7A7.5 7.5 0 1 1 4.8 12.7A7.5 7.5 0 1 1 19.8 12.7ZM11 15.7A2 2 0 1 0 7 15.7A2 2 0 1 0 11 15.7ZM17.6 15.7A2 2 0 1 0 13.6 15.7A2 2 0 1 0 17.6 15.7ZM12.3 17.95L13.1 16.65L11.5 16.65ZM11.567 16.7588L12.3 17.95L13.033 16.7588L12.9577 16.65L11.6423 16.65Z"/>
+  <path d="M19.8 27.2C26.2 28.6 28.6 24 25.6 20.4" fill="none" stroke="currentColor" stroke-width="3.0" stroke-linecap="round"/>
+</svg></div><div class="cap">64</div></div><div class="cell"><div class="mark s32"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="currentColor" role="img" aria-label="Infercat">
+  <path fill="currentColor" d="M12.3 15.7L21.3 28.7L3.3 28.7ZM6.7 2.6L11.84 5.21L6.19 8.34ZM17.9 2.6L18.41 8.34L12.76 5.21ZM19.8 12.7A7.5 7.5 0 1 1 4.8 12.7A7.5 7.5 0 1 1 19.8 12.7ZM11 15.7A2 2 0 1 0 7 15.7A2 2 0 1 0 11 15.7ZM17.6 15.7A2 2 0 1 0 13.6 15.7A2 2 0 1 0 17.6 15.7ZM12.3 17.95L13.1 16.65L11.5 16.65ZM11.567 16.7588L12.3 17.95L13.033 16.7588L12.9577 16.65L11.6423 16.65Z"/>
+  <path d="M19.8 27.2C26.2 28.6 28.6 24 25.6 20.4" fill="none" stroke="currentColor" stroke-width="3.0" stroke-linecap="round"/>
+</svg></div><div class="cap">32</div></div><div class="cell"><div class="mark s16"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="currentColor" role="img" aria-label="Infercat">
+  <path fill="currentColor" d="M12.3 15.7L21.3 28.7L3.3 28.7ZM6.7 2.6L11.84 5.21L6.19 8.34ZM17.9 2.6L18.41 8.34L12.76 5.21ZM19.8 12.7A7.5 7.5 0 1 1 4.8 12.7A7.5 7.5 0 1 1 19.8 12.7ZM11 15.7A2 2 0 1 0 7 15.7A2 2 0 1 0 11 15.7ZM17.6 15.7A2 2 0 1 0 13.6 15.7A2 2 0 1 0 17.6 15.7ZM12.3 17.95L13.1 16.65L11.5 16.65ZM11.567 16.7588L12.3 17.95L13.033 16.7588L12.9577 16.65L11.6423 16.65Z"/>
+  <path d="M19.8 27.2C26.2 28.6 28.6 24 25.6 20.4" fill="none" stroke="currentColor" stroke-width="3.0" stroke-linecap="round"/>
+</svg></div><div class="cap">16</div></div></div>
+      <p class="plabel">paper on black</p></div>
+    <div class="plate paper cobalt"><div class="strip"><div class="cell"><div class="mark s64"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="currentColor" role="img" aria-label="Infercat">
+  <path fill="currentColor" d="M12.3 15.7L21.3 28.7L3.3 28.7ZM6.7 2.6L11.84 5.21L6.19 8.34ZM17.9 2.6L18.41 8.34L12.76 5.21ZM19.8 12.7A7.5 7.5 0 1 1 4.8 12.7A7.5 7.5 0 1 1 19.8 12.7ZM11 15.7A2 2 0 1 0 7 15.7A2 2 0 1 0 11 15.7ZM17.6 15.7A2 2 0 1 0 13.6 15.7A2 2 0 1 0 17.6 15.7ZM12.3 17.95L13.1 16.65L11.5 16.65ZM11.567 16.7588L12.3 17.95L13.033 16.7588L12.9577 16.65L11.6423 16.65Z"/>
+  <path d="M19.8 27.2C26.2 28.6 28.6 24 25.6 20.4" fill="none" stroke="currentColor" stroke-width="3.0" stroke-linecap="round"/>
+</svg></div><div class="cap">64</div></div></div>
+      <p class="plabel">cobalt #1F3BFF</p></div>
+    <div class="plate paper"><div class="strip"><div class="cell"><div class="lk"><span class="mark s26"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="currentColor" role="img" aria-label="Infercat">
+  <path fill="currentColor" d="M12.3 15.7L21.3 28.7L3.3 28.7ZM6.7 2.6L11.84 5.21L6.19 8.34ZM17.9 2.6L18.41 8.34L12.76 5.21ZM19.8 12.7A7.5 7.5 0 1 1 4.8 12.7A7.5 7.5 0 1 1 19.8 12.7ZM11 15.7A2 2 0 1 0 7 15.7A2 2 0 1 0 11 15.7ZM17.6 15.7A2 2 0 1 0 13.6 15.7A2 2 0 1 0 17.6 15.7ZM12.3 17.95L13.1 16.65L11.5 16.65ZM11.567 16.7588L12.3 17.95L13.033 16.7588L12.9577 16.65L11.6423 16.65Z"/>
+  <path d="M19.8 27.2C26.2 28.6 28.6 24 25.6 20.4" fill="none" stroke="currentColor" stroke-width="3.0" stroke-linecap="round"/>
+</svg></span><span class="wm">Infercat</span></div><div class="cap">lockup</div></div></div>
+      <p class="plabel">on paper</p></div>
+    <div class="plate dark"><div class="strip"><div class="cell"><div class="lk"><span class="mark s26"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="currentColor" role="img" aria-label="Infercat">
+  <path fill="currentColor" d="M12.3 15.7L21.3 28.7L3.3 28.7ZM6.7 2.6L11.84 5.21L6.19 8.34ZM17.9 2.6L18.41 8.34L12.76 5.21ZM19.8 12.7A7.5 7.5 0 1 1 4.8 12.7A7.5 7.5 0 1 1 19.8 12.7ZM11 15.7A2 2 0 1 0 7 15.7A2 2 0 1 0 11 15.7ZM17.6 15.7A2 2 0 1 0 13.6 15.7A2 2 0 1 0 17.6 15.7ZM12.3 17.95L13.1 16.65L11.5 16.65ZM11.567 16.7588L12.3 17.95L13.033 16.7588L12.9577 16.65L11.6423 16.65Z"/>
+  <path d="M19.8 27.2C26.2 28.6 28.6 24 25.6 20.4" fill="none" stroke="currentColor" stroke-width="3.0" stroke-linecap="round"/>
+</svg></span><span class="wm">Infercat</span></div><div class="cap">lockup</div></div></div>
+      <p class="plabel">on black</p></div>
+  </div>
+  <p class="note"><span class="tag">16 px</span>At 16 px the big eyes still hold, but the nose lifts the ink directly beneath them from black to grey (L 2 → 62), softening the muzzle into a smudge — legible, and measurably muddier than dots-large-low.</p>
+</section>
+<p class="foot">Rendered in headless Chrome; the 16 and 32 px cells above are live SVG at true size.
+Luminance figures in each note are read off nearest-neighbour magnifications of the actual 16 px
+raster, black ink on white.</p>
+</div></body></html>
