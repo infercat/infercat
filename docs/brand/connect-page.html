@@ -1,0 +1,566 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Connect page, two columns</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* ------------------------------------------------------------------
+   Specimen sheet. Page chrome follows the reader's scheme; every render
+   frame carries its own hard-scoped token set, so a light render stays
+   light on a dark page and a dark render stays true black on a white
+   one. Card CSS is transcribed unchanged from the previous mock
+   (connect-comforts.html, itself transcribed from web/src/styles.css);
+   the page chrome around it — header, statement column, footer — is new.
+
+   One simulation to declare: the real stylesheet switches layouts at
+   @media (min-width:900px). A media query answers to the browser
+   viewport, not to a scaled render frame, so on this sheet the switch is
+   carried by a class (.is-desk) applied per frame. Everything inside a
+   frame is laid out in real pixels at the frame's own width, so the
+   proportions, wraps and line breaks are true.
+   ------------------------------------------------------------------ */
+:root{
+  --pg-bg:#ffffff; --pg-ink:#0a0a0a; --pg-muted:#5c6068;
+  --pg-border:#d8dbe0; --pg-rule:#0a0a0a; --pg-accent:#1f3bff;
+  --font:'Archivo',-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,'Helvetica Neue',Arial,sans-serif;
+  --mono:'IBM Plex Mono',ui-monospace,SFMono-Regular,'SF Mono',Menlo,Consolas,monospace;
+  color-scheme: light dark;
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --pg-bg:#000000; --pg-ink:#ffffff; --pg-muted:#9aa0aa;
+    --pg-border:#2a2d33; --pg-rule:#ffffff; --pg-accent:#7e93ff;
+  }
+}
+*{ box-sizing:border-box; }
+html{ -webkit-text-size-adjust:100%; }
+body{
+  margin:0; background:var(--pg-bg); color:var(--pg-ink);
+  font-family:var(--font); font-size:15px; line-height:1.55;
+  -webkit-font-smoothing:antialiased;
+}
+.sheet{ max-width:1424px; margin:0 auto; padding:52px 48px 96px; }
+@media (max-width:900px){ .sheet{ padding:40px 24px 72px; } }
+
+/* ---------- masthead ---------- */
+.masthead{ border-bottom:1px solid var(--pg-rule); padding-bottom:26px; margin-bottom:46px; }
+.eyebrow{
+  font-family:var(--mono); font-size:10.5px; font-weight:500; letter-spacing:.14em;
+  text-transform:uppercase; color:var(--pg-muted); margin:0 0 14px;
+}
+h1.title{ font-size:36px; font-weight:700; letter-spacing:-.04em; line-height:1.05; margin:0 0 18px; }
+.caption{ margin:0; max-width:74ch; font-size:15px; line-height:1.6; color:var(--pg-muted); }
+.caption b{ color:var(--pg-ink); font-weight:500; }
+
+/* ---------- sections ---------- */
+.sec{ margin:0 0 58px; }
+.sec-head{ border-bottom:1px solid var(--pg-rule); padding-bottom:7px; margin-bottom:22px; display:flex; align-items:baseline; gap:12px; flex-wrap:wrap; }
+.sec-k{ font-family:var(--mono); font-size:10.5px; font-weight:500; letter-spacing:.14em; text-transform:uppercase; }
+.sec-v{ font-family:var(--mono); font-size:10.5px; font-weight:400; letter-spacing:.06em; color:var(--pg-muted); }
+
+/* every row is a wrapping flex of fixed-width frames, so nothing can
+   overflow: the widest single frame is 640 px. */
+.row{ display:flex; flex-wrap:wrap; gap:44px 40px; align-items:flex-start; }
+
+.cap{ display:flex; align-items:baseline; gap:10px; margin:0 0 9px; flex-wrap:wrap; max-width:100%; }
+.cap-k{ font-family:var(--mono); font-size:10.5px; font-weight:500; letter-spacing:.14em; text-transform:uppercase; }
+.cap-v{ font-family:var(--mono); font-size:10.5px; font-weight:400; letter-spacing:.06em; color:var(--pg-muted); }
+
+/* the render frame: a fixed viewport that clips a uniformly scaled page */
+.shot{ position:relative; overflow:hidden; box-shadow:0 0 0 1px var(--pg-border);
+  width:calc(var(--w) * var(--s) * 1px); height:calc(var(--h) * var(--s) * 1px); }
+.shot > .scr{ width:calc(var(--w) * 1px); height:calc(var(--h) * 1px);
+  transform:scale(var(--s)); transform-origin:0 0; }
+.note{ font-family:var(--mono); font-size:11px; line-height:1.6; color:var(--pg-muted); max-width:46ch; margin:0; }
+.note b{ color:var(--pg-ink); font-weight:500; }
+.note + .note{ margin-top:12px; }
+.colophon{ border-top:1px solid var(--pg-border); padding-top:14px; margin-top:38px;
+  font-family:var(--mono); font-size:11px; line-height:1.6; color:var(--pg-muted); max-width:96ch; }
+.colophon b{ color:var(--pg-ink); font-weight:500; }
+
+/* =========================================================
+   SCHEME TOKENS — swiss ink, transcribed from styles.css
+   ========================================================= */
+.scheme-light{
+  --paper:#ffffff; --surface:#f1f2f4; --surface-2:#e7e9ed; --text:#0a0a0a; --muted:#5c6068;
+  --border:#d8dbe0; --rule:#0a0a0a; --accent:#1f3bff; --accent-ink:#ffffff; --accent-text:#1f3bff;
+  --success:#0b7a4b; --danger:#d5182f;
+}
+.scheme-dark{
+  --paper:#000000; --surface:#101114; --surface-2:#1a1c21; --text:#ffffff; --muted:#9aa0aa;
+  --border:#2a2d33; --rule:#ffffff; --accent:#1f3bff; --accent-ink:#ffffff; --accent-text:#7e93ff;
+  --success:#35d48d; --danger:#ff5266;
+}
+
+/* =========================================================
+   THE APP, AS RENDERED
+   ========================================================= */
+.scr{ background:var(--paper); color:var(--text); font-family:var(--font);
+  font-size:15px; line-height:1.55; -webkit-font-smoothing:antialiased; }
+
+/* ---- below 900 px: the phone card, exactly as shipped in the last mock ---- */
+.scr .connect{ display:grid; place-items:center; height:100%; padding:32px 20px 64px; }
+.scr.ph .connect{ padding:101px 18px 48px; align-items:start; }
+.scr .connect-card{ width:100%; max-width:30rem; background:var(--paper);
+  border:1px solid var(--rule); padding:28px 26px 14px; }
+
+.scr h1{ font-size:31px; letter-spacing:-.035em; margin:0 0 12px; font-weight:700; line-height:1.06; }
+.scr .pitch{ color:var(--muted); margin:0 0 26px; font-size:14.5px; line-height:1.5; }
+
+.scr .mark{ display:block; line-height:0; margin:0 0 16px; color:var(--text); }
+.scr .mark svg{ display:block; width:48px; height:48px; }
+
+.scr .field{ display:block; margin-bottom:12px; }
+.scr .field-label{ display:block; font-family:var(--mono); font-size:10.5px; font-weight:500;
+  letter-spacing:.14em; text-transform:uppercase; color:var(--muted); margin-bottom:7px; }
+.scr .field-wrap{ position:relative; }
+.scr .ta{ font-family:var(--mono); font-size:13.5px; line-height:1.5; color:var(--text);
+  background:var(--paper); border:1px solid var(--rule); padding:11px 13px; height:85px;
+  overflow:hidden; overflow-wrap:anywhere; }
+.scr .ta .ph{ color:var(--muted); }
+.scr .ta .sp{ float:right; width:70px; height:20px; }
+
+/* The Paste ghost. Its padding puts the label on the field's own text grid — 11 px down from the
+   frame, 13 px in from the right, exactly where the code's first line starts — while the hit area
+   runs to the inner edge of the frame, so the thumb target is the whole top-right corner. */
+.scr .paste{ position:absolute; top:1px; right:1px; -webkit-appearance:none; appearance:none;
+  border:0; background:none; font-family:var(--font); font-size:12.5px; font-weight:500;
+  line-height:1.55; color:var(--muted); padding:10px 12px; cursor:pointer; }
+
+.scr .hint{ font-family:var(--mono); font-size:11.5px; line-height:1.5; color:var(--muted); margin:0 0 16px; }
+.scr .hint .ck{ color:var(--success); font-weight:500; }
+.scr .hint .host{ color:var(--text); font-weight:500; }
+.scr .hint.bad{ color:var(--danger); }
+.scr .field.tight{ margin-bottom:9px; }
+
+.scr .connect-actions{ display:flex; gap:14px; align-items:center; flex-wrap:wrap; }
+.scr button.primary{ -webkit-appearance:none; appearance:none; font-family:var(--font);
+  font-size:15px; line-height:1.55; background:var(--accent); color:var(--accent-ink);
+  border:1px solid var(--accent); border-radius:0; padding:10px 22px; font-weight:600;
+  letter-spacing:-.005em; cursor:pointer; }
+.scr button.primary:disabled{ background:var(--surface-2); color:var(--muted);
+  border-color:var(--border); cursor:default; }
+
+.scr .quiet{ margin:16px 0 0; font-size:13px; line-height:1.55; color:var(--muted); }
+.scr .quiet a{ color:var(--accent-text); }
+.scr .quiet .arw{ text-decoration:none; display:inline-block; }
+.scr .quiet .nb{ white-space:nowrap; }
+
+.scr .privacy{ color:var(--muted); font-size:12.5px; line-height:1.55; margin:26px 0 0;
+  border-top:1px solid var(--border); padding-top:14px; }
+.scr .about{ color:var(--muted); font-size:12px; line-height:1.55; font-variant-numeric:tabular-nums;
+  margin:22px -26px 0; padding:12px 26px 0; border-top:1px solid var(--border); }
+.scr .about a{ color:var(--accent-text); }
+.scr .build{ display:block; font-family:var(--mono); font-size:11px; margin-bottom:5px; }
+.scr .about.only .build{ margin-bottom:0; }
+
+/* ---- at and above 900 px: the same card, inside a page ---- */
+.scr .desk-only{ display:none; }
+.scr.is-desk .desk-only{ display:block; }
+.scr.is-desk .mob-only{ display:none; }
+
+.scr.is-desk .page{ display:flex; flex-direction:column; height:100%; }
+
+/* header: 52 px, hairline ink rule, mark + wordmark left, exactly two ghost links right */
+.scr .hd{ border-bottom:1px solid var(--rule); flex:none; }
+.scr .hd-in{ height:52px; display:flex; align-items:center; justify-content:space-between;
+  gap:24px; padding:0 var(--gut); }
+.scr .hd-brand{ display:flex; align-items:center; gap:10px; color:var(--text); }
+.scr .hd-brand svg{ display:block; width:24px; height:24px; }
+.scr .wm{ font-size:17px; font-weight:700; letter-spacing:-.03em; line-height:1; }
+.scr .hd-nav{ display:flex; align-items:center; gap:24px; }
+.scr .hd-nav a{ font-size:13.5px; font-weight:500; letter-spacing:-.005em;
+  color:var(--accent-text); text-decoration:none; }
+
+/* main: two columns, the statement left, the card right */
+.scr .mn{ flex:1 1 auto; display:flex; align-items:center; min-height:0; }
+.scr .mn-in{ width:100%; padding:0 var(--gut); display:grid;
+  grid-template-columns:minmax(0,1fr) var(--cardw); gap:var(--gap); align-items:start; }
+
+.scr .statement{ max-width:600px; }
+.scr .statement .mark{ margin:0 0 22px; }
+.scr .display{ font-family:var(--font); font-weight:700; font-size:var(--h1);
+  letter-spacing:-.042em; line-height:1.04; margin:0 0 20px; }
+.scr .lead{ font-size:17px; line-height:1.5; color:var(--text); margin:0 0 16px; max-width:44ch; }
+.scr .promise{ font-size:14px; line-height:1.55; color:var(--muted); margin:0; max-width:56ch; }
+.scr .rule2{ border:0; border-top:2px solid var(--rule); margin:30px 0 0; height:0; }
+.scr .facts{ font-family:var(--mono); font-size:13px; font-weight:500; line-height:1.5;
+  color:var(--text); margin:13px 0 0; }
+
+.scr.is-desk .connect{ display:block; height:auto; padding:0; }
+.scr.is-desk .connect-card{ max-width:none; padding:26px; }
+.scr.is-desk .quiet{ margin-bottom:0; }
+
+/* footer: hairline ink rule above, one mono line, About as a disclosure */
+.scr .ft{ border-top:1px solid var(--rule); flex:none; }
+.scr .ft-in{ padding:13px var(--gut); }
+.scr .ft-line{ font-family:var(--mono); font-size:11px; line-height:1.55; color:var(--muted);
+  margin:0; font-variant-numeric:tabular-nums; }
+.scr .ft-line a{ color:var(--accent-text); }
+.scr .ft-about{ font-size:12px; line-height:1.55; color:var(--muted); margin:8px 0 0; max-width:70ch; }
+
+/* actual-size details */
+.detail{ background:var(--paper); border:1px solid var(--pg-border); width:640px; max-width:100%; }
+.detail .ft{ border-top:0; }
+.about-open{ background:var(--paper); }
+</style>
+</head>
+<body>
+
+<svg xmlns="http://www.w3.org/2000/svg" width="0" height="0" style="position:absolute" aria-hidden="true"><symbol id="mk" viewBox="0 0 64 64"><path fill="currentColor" d="M 15.83 21.38 L 11.13 9.57 L 13.17 7.45 L 25.14 11.74 Z M 31.86 11.74 L 43.83 7.45 L 45.87 9.57 L 41.17 21.38 Z M 19.22 33.4 L 37.78 33.4 L 45.5 57.2 L 11.5 57.2 Z M 44.93 32.49 A 11.5 11.5 0 0 1 39.4 54.69 L 40.1 49.74 A 6.5 6.5 0 0 0 43.22 37.19 A 2.5 2.5 0 0 1 44.93 32.49 Z M 15.5 24.3 A 13 13 0 0 1 41.5 24.3 A 13 13 0 0 1 15.5 24.3 Z M 26.8 27.8 A 4.77 4.77 0 0 0 18.2 27.8 A 23.31 23.31 0 0 1 26.8 27.8 Z M 38.8 27.8 A 4.77 4.77 0 0 0 30.2 27.8 A 23.31 23.31 0 0 1 38.8 27.8 Z M 28.5 32.4 L 30.3 30 L 26.7 30 Z"/></symbol></svg>
+
+<div class="sheet">
+
+  <header class="masthead">
+    <p class="eyebrow">Infercat · Swiss ink · connect screen · founder + PM, 2026-09-06</p>
+    <h1 class="title">Connect page, two columns</h1>
+    <p class="caption">
+      The connect screen is <b>one responsive page, not two products</b>. At and above 900&nbsp;px it opens out into a page:
+      a slim header carrying the mark, the wordmark and exactly two ghost links; under it the product's statement on the left —
+      mark, headline, the two-sentence body, the privacy promise, an ink rule and the mono facts line, the OG card's composition —
+      and on the right the card slimmed to its task, the label, the field, the hint, the cobalt Connect and the no-code line;
+      a mono footer across the bottom. Below 900&nbsp;px it is <b>exactly the phone card from the previous mock</b>, mark and all,
+      with no header bar, because mobile-first is untouched and the card already carries the mark.
+    </p>
+  </header>
+
+  <!-- ============================ 1 + 2 · THE PAGE ============================ -->
+  <section class="sec">
+    <div class="sec-head">
+      <span class="sec-k">The page · desktop</span>
+      <span class="sec-v">1280 × 800 · light and dark · both shown at 50%</span>
+    </div>
+
+    <div class="row">
+
+      <!-- 1 · DESKTOP LIGHT -->
+      <div>
+        <div class="cap"><span class="cap-k">Light</span><span class="cap-v">valid code pasted · Connect live</span></div>
+        <div class="shot" style="--w:1280;--h:800;--s:.5">
+          <div class="scr is-desk scheme-light" style="--gut:40px;--gap:76px;--cardw:456px;--h1:50px">
+            <div class="page">
+
+              <header class="hd">
+                <div class="hd-in">
+                  <span class="hd-brand"><svg role="img" aria-label="Infercat"><use href="#mk"/></svg><span class="wm">Infercat</span></span>
+                  <nav class="hd-nav"><a href="#">Host your own</a><a href="#">Source</a></nav>
+                </div>
+              </header>
+
+              <main class="mn">
+                <div class="mn-in">
+
+                  <div class="statement desk-only">
+                    <span class="mark"><svg role="img" aria-label="Infercat"><use href="#mk"/></svg></span>
+                    <h1 class="display">Chat with a friend’s GPU.</h1>
+                    <p class="lead">They send you one code; you paste it here. No account, no install, nothing to set up.</p>
+                    <p class="promise">Encrypted end-to-end from your device to your host’s computer — the relay in between can’t read it. Infercat records counts, never text. The model runs on their machine.</p>
+                    <hr class="rule2">
+                    <p class="facts">Self-hosted · end-to-end encrypted · MIT</p>
+                  </div>
+
+                  <div class="connect">
+                    <div class="connect-card">
+                      <span class="mark mob-only"><svg role="img" aria-label="Infercat"><use href="#mk"/></svg></span>
+                      <h1 class="mob-only">Infercat</h1>
+                      <p class="pitch mob-only">Chat with a friend’s GPU. They send you one code; you paste it here. No account, no install, nothing to set up.</p>
+                      <div class="field tight">
+                        <span class="field-label">Invite code</span>
+                        <div class="field-wrap">
+                          <div class="ta"><span class="sp"></span>ic1.tco2Fw8yq3zn.k7QmR2vXb9nTdYsL4HpZc6WjXaE1gu5FoB3</div>
+                          <button type="button" class="paste">Paste</button>
+                        </div>
+                      </div>
+                      <p class="hint"><span class="ck">✓</span> Reads as an invite · host <span class="host">tco2Fw…</span></p>
+                      <div class="connect-actions">
+                        <button type="button" class="primary">Connect</button>
+                      </div>
+                      <p class="quiet">No code? Ask a friend who runs Infercat, or <span class="nb"><a href="#">host your own</a> <a href="#" class="arw">→</a></span></p>
+                      <p class="privacy mob-only">Encrypted end-to-end from your device to your host’s computer — the relay in between can’t read it. Infercat records counts, never text. The model runs on their machine.</p>
+                      <p class="about only mob-only"><span class="build">Version 0.0.1-dev · MIT · <a href="#">Source on GitHub</a> · <a href="#">About</a></span></p>
+                    </div>
+                  </div>
+
+                </div>
+              </main>
+
+              <footer class="ft desk-only">
+                <div class="ft-in">
+                  <p class="ft-line">Version 0.0.1-dev · MIT · <a href="#">Source on GitHub</a> · <a href="#">About</a> · Made by 2185 Lab</p>
+                </div>
+              </footer>
+
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 2 · DESKTOP DARK -->
+      <div>
+        <div class="cap"><span class="cap-k">Dark</span><span class="cap-v">true black · same cobalt on Connect and links</span></div>
+        <div class="shot" style="--w:1280;--h:800;--s:.5">
+          <div class="scr is-desk scheme-dark" style="--gut:40px;--gap:76px;--cardw:456px;--h1:50px">
+            <div class="page">
+
+              <header class="hd">
+                <div class="hd-in">
+                  <span class="hd-brand"><svg role="img" aria-label="Infercat"><use href="#mk"/></svg><span class="wm">Infercat</span></span>
+                  <nav class="hd-nav"><a href="#">Host your own</a><a href="#">Source</a></nav>
+                </div>
+              </header>
+
+              <main class="mn">
+                <div class="mn-in">
+
+                  <div class="statement desk-only">
+                    <span class="mark"><svg role="img" aria-label="Infercat"><use href="#mk"/></svg></span>
+                    <h1 class="display">Chat with a friend’s GPU.</h1>
+                    <p class="lead">They send you one code; you paste it here. No account, no install, nothing to set up.</p>
+                    <p class="promise">Encrypted end-to-end from your device to your host’s computer — the relay in between can’t read it. Infercat records counts, never text. The model runs on their machine.</p>
+                    <hr class="rule2">
+                    <p class="facts">Self-hosted · end-to-end encrypted · MIT</p>
+                  </div>
+
+                  <div class="connect">
+                    <div class="connect-card">
+                      <div class="field tight">
+                        <span class="field-label">Invite code</span>
+                        <div class="field-wrap">
+                          <div class="ta"><span class="sp"></span>ic1.tco2Fw8yq3zn.k7QmR2vXb9nTdYsL4HpZc6WjXaE1gu5FoB3</div>
+                          <button type="button" class="paste">Paste</button>
+                        </div>
+                      </div>
+                      <p class="hint"><span class="ck">✓</span> Reads as an invite · host <span class="host">tco2Fw…</span></p>
+                      <div class="connect-actions">
+                        <button type="button" class="primary">Connect</button>
+                      </div>
+                      <p class="quiet">No code? Ask a friend who runs Infercat, or <span class="nb"><a href="#">host your own</a> <a href="#" class="arw">→</a></span></p>
+                    </div>
+                  </div>
+
+                </div>
+              </main>
+
+              <footer class="ft desk-only">
+                <div class="ft-in">
+                  <p class="ft-line">Version 0.0.1-dev · MIT · <a href="#">Source on GitHub</a> · <a href="#">About</a> · Made by 2185 Lab</p>
+                </div>
+              </footer>
+
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <p class="note">The header is the whole of the page chrome: mark at <b>24&nbsp;px</b>, wordmark, and on the right <b>two ghost links and nothing else, ever</b>. The card has no H1 and no description here — the left column carries them, so the reader meets the sentence once.</p>
+        <p class="note">The left column is the <b>OG card's composition</b>, live: mark at 48&nbsp;px, the headline, the body, the promise, a 2&nbsp;px ink rule and the mono facts line. A stranger from the launch post can read the whole argument without touching the field.</p>
+        <p class="note">The two columns are <b>top-aligned</b>: the card's frame starts on the same line as the mark, and the pair is centred in the space between the two rules. The rule under the promise stops at the statement's own measure, 600&nbsp;px — it is the OG's rule, not a divider.</p>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ============================ 3 + 4 + 5 · THE RANGE ============================ -->
+  <section class="sec">
+    <div class="sec-head">
+      <span class="sec-k">The range</span>
+      <span class="sec-v">the narrow end of desktop, the collapse, the phone · all three at 50%, same scale as above</span>
+    </div>
+
+    <div class="row">
+
+      <!-- 3 · 1024 LIGHT -->
+      <div>
+        <div class="cap"><span class="cap-k">1024 × 768</span><span class="cap-v">two columns still hold</span></div>
+        <div class="shot" style="--w:1024;--h:768;--s:.5">
+          <div class="scr is-desk scheme-light" style="--gut:32px;--gap:52px;--cardw:400px;--h1:44px">
+            <div class="page">
+
+              <header class="hd">
+                <div class="hd-in">
+                  <span class="hd-brand"><svg role="img" aria-label="Infercat"><use href="#mk"/></svg><span class="wm">Infercat</span></span>
+                  <nav class="hd-nav"><a href="#">Host your own</a><a href="#">Source</a></nav>
+                </div>
+              </header>
+
+              <main class="mn">
+                <div class="mn-in">
+
+                  <div class="statement desk-only">
+                    <span class="mark"><svg role="img" aria-label="Infercat"><use href="#mk"/></svg></span>
+                    <h1 class="display">Chat with a friend’s GPU.</h1>
+                    <p class="lead">They send you one code; you paste it here. No account, no install, nothing to set up.</p>
+                    <p class="promise">Encrypted end-to-end from your device to your host’s computer — the relay in between can’t read it. Infercat records counts, never text. The model runs on their machine.</p>
+                    <hr class="rule2">
+                    <p class="facts">Self-hosted · end-to-end encrypted · MIT</p>
+                  </div>
+
+                  <div class="connect">
+                    <div class="connect-card">
+                      <div class="field tight">
+                        <span class="field-label">Invite code</span>
+                        <div class="field-wrap">
+                          <div class="ta"><span class="sp"></span>ic1.tco2Fw8yq3zn.k7QmR2vXb9nTdYsL4HpZc6WjXaE1gu5FoB3</div>
+                          <button type="button" class="paste">Paste</button>
+                        </div>
+                      </div>
+                      <p class="hint"><span class="ck">✓</span> Reads as an invite · host <span class="host">tco2Fw…</span></p>
+                      <div class="connect-actions">
+                        <button type="button" class="primary">Connect</button>
+                      </div>
+                      <p class="quiet">No code? Ask a friend who runs Infercat, or <span class="nb"><a href="#">host your own</a> <a href="#" class="arw">→</a></span></p>
+                    </div>
+                  </div>
+
+                </div>
+              </main>
+
+              <footer class="ft desk-only">
+                <div class="ft-in">
+                  <p class="ft-line">Version 0.0.1-dev · MIT · <a href="#">Source on GitHub</a> · <a href="#">About</a> · Made by 2185 Lab</p>
+                </div>
+              </footer>
+
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 4 · THE COLLAPSE -->
+      <div>
+        <div class="cap"><span class="cap-k">899 × 760</span><span class="cap-v">one pixel below the breakpoint · stacked</span></div>
+        <div class="shot" style="--w:899;--h:760;--s:.5">
+          <div class="scr scheme-light">
+            <div class="connect">
+              <div class="connect-card">
+                <span class="mark mob-only"><svg role="img" aria-label="Infercat"><use href="#mk"/></svg></span>
+                <h1 class="mob-only">Infercat</h1>
+                <p class="pitch mob-only">Chat with a friend’s GPU. They send you one code; you paste it here. No account, no install, nothing to set up.</p>
+                <div class="field tight">
+                  <span class="field-label">Invite code</span>
+                  <div class="field-wrap">
+                    <div class="ta"><span class="sp"></span>ic1.tco2Fw8yq3zn.k7QmR2vXb9nTdYsL4HpZc6WjXaE1gu5FoB3</div>
+                    <button type="button" class="paste">Paste</button>
+                  </div>
+                </div>
+                <p class="hint"><span class="ck">✓</span> Reads as an invite · host <span class="host">tco2Fw…</span></p>
+                <div class="connect-actions">
+                  <button type="button" class="primary">Connect</button>
+                </div>
+                <p class="quiet">No code? Ask a friend who runs Infercat, or <span class="nb"><a href="#">host your own</a> <a href="#" class="arw">→</a></span></p>
+                <p class="privacy mob-only">Encrypted end-to-end from your device to your host’s computer — the relay in between can’t read it. Infercat records counts, never text. The model runs on their machine.</p>
+                <p class="about only mob-only"><span class="build">Version 0.0.1-dev · MIT · <a href="#">Source on GitHub</a> · <a href="#">About</a></span></p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- 5 · PHONE at the shared scale -->
+      <div>
+        <div class="cap"><span class="cap-k">390 × 844</span><span class="cap-v">same card, same scale</span></div>
+        <div class="shot" style="--w:390;--h:844;--s:.5">
+          <div class="scr ph scheme-light">
+            <div class="connect">
+              <div class="connect-card">
+                <span class="mark mob-only"><svg role="img" aria-label="Infercat"><use href="#mk"/></svg></span>
+                <h1 class="mob-only">Infercat</h1>
+                <p class="pitch mob-only">Chat with a friend’s GPU. They send you one code; you paste it here. No account, no install, nothing to set up.</p>
+                <div class="field tight">
+                  <span class="field-label">Invite code</span>
+                  <div class="field-wrap">
+                    <div class="ta"><span class="sp"></span>ic1.tco2Fw8yq3zn.k7QmR2vXb9nTdYsL4HpZc6WjXaE1gu5FoB3</div>
+                    <button type="button" class="paste">Paste</button>
+                  </div>
+                </div>
+                <p class="hint"><span class="ck">✓</span> Reads as an invite · host <span class="host">tco2Fw…</span></p>
+                <div class="connect-actions">
+                  <button type="button" class="primary">Connect</button>
+                </div>
+                <p class="quiet">No code? Ask a friend who runs Infercat, or <span class="nb"><a href="#">host your own</a> <a href="#" class="arw">→</a></span></p>
+                <p class="privacy mob-only">Encrypted end-to-end from your device to your host’s computer — the relay in between can’t read it. Infercat records counts, never text. The model runs on their machine.</p>
+                <p class="about only mob-only"><span class="build">Version 0.0.1-dev · MIT · <a href="#">Source on GitHub</a> · <a href="#">About</a></span></p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <p class="note">At <b>1024</b> the columns hold by giving up 6&nbsp;px of headline and 56&nbsp;px of card: the gutter drops to 32, the gap to 52, the card to 400&nbsp;px, the headline to 44. Nothing reflows out of order.</p>
+        <p class="note">At <b>899</b> the page is gone and the card is centred on its own — the shipped mobile screen, running on a laptop. Nothing is lost in the collapse: the statement's sentences are the card's own H1, pitch and privacy paragraph, which is why one page can be both.</p>
+      </div>
+
+    </div>
+  </section>
+
+  <!-- ============================ 5b + 6 · ACTUAL SIZE ============================ -->
+  <section class="sec">
+    <div class="sec-head">
+      <span class="sec-k">Actual size</span>
+      <span class="sec-v">the phone, unchanged from the previous mock · and the About disclosure, open</span>
+    </div>
+
+    <div class="row">
+
+      <div>
+        <div class="cap"><span class="cap-k">Phone · light</span><span class="cap-v">390 × 844 · 100%</span></div>
+        <div class="shot" style="--w:390;--h:844;--s:1">
+          <div class="scr ph scheme-light">
+            <div class="connect">
+              <div class="connect-card">
+                <span class="mark mob-only"><svg role="img" aria-label="Infercat"><use href="#mk"/></svg></span>
+                <h1 class="mob-only">Infercat</h1>
+                <p class="pitch mob-only">Chat with a friend’s GPU. They send you one code; you paste it here. No account, no install, nothing to set up.</p>
+                <div class="field tight">
+                  <span class="field-label">Invite code</span>
+                  <div class="field-wrap">
+                    <div class="ta"><span class="sp"></span>ic1.tco2Fw8yq3zn.k7QmR2vXb9nTdYsL4HpZc6WjXaE1gu5FoB3</div>
+                    <button type="button" class="paste">Paste</button>
+                  </div>
+                </div>
+                <p class="hint"><span class="ck">✓</span> Reads as an invite · host <span class="host">tco2Fw…</span></p>
+                <div class="connect-actions">
+                  <button type="button" class="primary">Connect</button>
+                </div>
+                <p class="quiet">No code? Ask a friend who runs Infercat, or <span class="nb"><a href="#">host your own</a> <a href="#" class="arw">→</a></span></p>
+                <p class="privacy mob-only">Encrypted end-to-end from your device to your host’s computer — the relay in between can’t read it. Infercat records counts, never text. The model runs on their machine.</p>
+                <p class="about only mob-only"><span class="build">Version 0.0.1-dev · MIT · <a href="#">Source on GitHub</a> · <a href="#">About</a></span></p>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <div class="cap"><span class="cap-k">Footer · About, open</span><span class="cap-v">the page's foot · 100%</span></div>
+        <div class="detail scr is-desk scheme-light about-open" style="--gut:40px">
+          <footer class="ft desk-only">
+            <div class="ft-in">
+              <p class="ft-line">Version 0.0.1-dev · MIT · <a href="#">Source on GitHub</a> · <a href="#">About</a> · Made by 2185 Lab</p>
+              <p class="ft-about">Built on tailcat, Tailscale’s open-source library. Infercat is not affiliated with or endorsed by Tailscale Inc.</p>
+            </div>
+          </footer>
+        </div>
+        <p class="note" style="margin-top:14px">The disclosure holds <b>exactly those two sentences</b> and opens under the line, so the attribution is one click from every screen and on none of them by default. It is the same About the phone card's footer line carries.</p>
+        <p class="note">The cat is an <b>interim mark</b> — <b>content-a.svg</b>, the PM's pick, at 24&nbsp;px in the header and 48&nbsp;px in the statement, pending the founder's choice. Nothing in this layout depends on which mark wins.</p>
+      </div>
+
+    </div>
+
+    <p class="colophon">
+      Colours, type sizes and rules transcribed from <b>web/src/styles.css</b> by way of the previous mock; the card, its Paste ghost, its hint states and every line of its copy are unchanged. Page chrome adds three things only: the 52&nbsp;px header, the statement column, and the footer line.
+      Contrast, both schemes: ink 20.4:1 / 21:1 · muted 6.3:1 / 8.0:1 · cobalt links 6.7:1 / 7.5:1 (dark links use the <b>#7E93FF</b> tint, never flat cobalt on black) · Connect's white on cobalt 6.7:1 · the valid-hint check 5.4:1 / 11:1 — AA or better throughout.
+      The breakpoint is simulated here by a class rather than a media query, because a media query answers to the browser window and not to a scaled render frame; in the stylesheet it is one <b>@media (min-width:900px)</b> block, and the per-frame gutter, gap, card width and headline size become a clamp.
+    </p>
+
+  </section>
+
+</div>
+</body>
+</html>
