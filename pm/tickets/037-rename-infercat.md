@@ -3,8 +3,8 @@ id: 037
 title: Rename day — the product is Infercat (founder decision 2026-09-05)
 kind: docs/copy + normal
 size: 3
-status: dispatched
-updated: 2026-09-05
+status: landed
+updated: 2026-09-06
 release: demo-1
 ---
 

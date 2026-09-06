@@ -1,6 +1,6 @@
 # HANDOFF — state of the work (succession document)
 
-Updated: 2026-09-03 07:25 EDT — MORNING REPORT. Since the 03:15 alarm: nine tickets landed (026 connect, 028 load test + LIMITS.md, 029 observability, 030 launch readiness, 031 thinking toggle, 032 latency footer, 033 handshake bound, 035 bounded Close, 036 template-aware token count). Final main passes the full fresh-clone gate. Nothing is running. Blocked on the founder only: name → URL → 027 QR → rename day (docs/RENAME.md) → public repo + tag.
+Updated: 2026-09-06 01:20 EDT — NAME DECIDED AND LANDED: Infercat (`infercat`, prefix `ic1`), ticket 037 on main `0b2173f`; repo is `2185Lab/infercat`. Brand look (F8) contest published for the founder's pick: https://claude.ai/code/artifact/11ec5b1c-2b39-4401-9d67-47954f1585a7 (PM: Riso Zine > Swiss ink > Cat-eye). Demo host restarted on the new build; link in `~/.claude/jobs/12b4a99c/tmp/founder-url.txt`. Waiting on the founder: brand pick → implementation ticket; domain (infercat.dev recommended) → WebURL → Vercel → 027 QR; GitHub org `infercat` (optional transfer); security@ address; F6 history rewrite → public → tag.
 
 ## What this is
 
