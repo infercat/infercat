@@ -18,8 +18,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/2185Lab/bunny-network/internal/admin"
-	"github.com/2185Lab/bunny-network/internal/tunnel"
+	"github.com/2185Lab/infercat/internal/admin"
+	"github.com/2185Lab/infercat/internal/tunnel"
 )
 
 const testSecret = "s3cr3t-s3cr3t-s3cr3t-s3cr3t-s3cr3t-s3cr3t-0"
@@ -494,7 +494,7 @@ func TestConnectCommandBannerAndRefusals(t *testing.T) {
 		}
 		return sess, nil
 	}
-	inv := "bn1." + fakeAddr + "." + testSecret
+	inv := "ic1." + fakeAddr + "." + testSecret
 
 	for _, bad := range [][]string{{"connect"}, {"connect", "nope"}, {"connect", inv, "--listen", "0.0.0.0:11435"}, {"connect", inv, "extra"}} {
 		if r := exec(t, plat, bad...); r.code == 0 {

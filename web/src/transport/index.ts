@@ -1,12 +1,12 @@
 // The two Transports and the connect flow that produces one.
 import { abortError, fetchOverConn } from './http1';
-import { loadBunnyTunnel } from './wasm';
+import { loadInfercatTunnel } from './wasm';
 import { tunnelGlobal, type Conn, type PingResult, type Session, type Transport } from './types';
 
-export type { Conn, PingResult, Session, Transport, BunnyTunnel } from './types';
+export type { Conn, PingResult, Session, Transport, InfercatTunnel } from './types';
 export { Http1Error, fetchOverConn, encodeRequest, parseResponseHead } from './http1';
 
-/** Real fetch against `bunny-network serve --dev-listen` (or the fake gateway). */
+/** Real fetch against `infercat serve --dev-listen` (or the fake gateway). */
 export class DirectTransport implements Transport {
   readonly kind = 'direct' as const;
   constructor(private readonly base: string) {}
@@ -36,7 +36,7 @@ export class TunnelTransport implements Transport {
   async fetch(input: string, init?: RequestInit): Promise<Response> {
     const headers = new Headers(init?.headers);
     const body = toBytes(init?.body);
-    headers.set('host', 'bunny');
+    headers.set('host', 'infercat');
     headers.set('connection', 'close');
     if (body) headers.set('content-length', String(body.length));
     const conn = await dialOrAbort(this.session, this.port, init?.signal);
@@ -149,7 +149,7 @@ export async function openTransport(addr: string, opts: OpenOptions): Promise<Op
   }
 
   opts.onWasmProgress?.(tunnelGlobal() ? 100 : null);
-  const bridge = await loadBunnyTunnel((p) => opts.onWasmProgress?.(p.pct));
+  const bridge = await loadInfercatTunnel((p) => opts.onWasmProgress?.(p.pct));
 
   opts.onWasmLoaded?.();
   const session = await bridge.connect({

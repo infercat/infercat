@@ -16,14 +16,14 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/2185Lab/bunny-network/internal/admin"
-	"github.com/2185Lab/bunny-network/internal/keys"
-	"github.com/2185Lab/bunny-network/internal/product"
+	"github.com/2185Lab/infercat/internal/admin"
+	"github.com/2185Lab/infercat/internal/keys"
+	"github.com/2185Lab/infercat/internal/product"
 	// only for tunnel.KeyFile: the host identity's file name is the tunnel's to define, and a
 	// second copy of it here would be a lie waiting to happen.
-	"github.com/2185Lab/bunny-network/internal/tunnel"
-	"github.com/2185Lab/bunny-network/internal/upstream"
-	"github.com/2185Lab/bunny-network/internal/usage"
+	"github.com/2185Lab/infercat/internal/tunnel"
+	"github.com/2185Lab/infercat/internal/upstream"
+	"github.com/2185Lab/infercat/internal/usage"
 )
 
 // refreshEvery is how often a running host re-probes the upstream. An engine that was down at
@@ -504,14 +504,14 @@ func orDash(s string) string {
 	return s
 }
 
-const serveHelp = `Usage: bunny-network serve [flags]
+const serveHelp = `Usage: infercat serve [flags]
 
 Runs the host: finds your inference server, opens the tunnel, and serves the gateway inside it.
 Flags you pass are remembered in config.json, so the next serve needs none of them.
 
-  bunny-network serve
-  bunny-network serve --upstream http://127.0.0.1:8000 --slots 4
-  bunny-network serve --dev-listen 127.0.0.1:9090     # also on loopback, for web development
+  infercat serve
+  infercat serve --upstream http://127.0.0.1:8000 --slots 4
+  infercat serve --dev-listen 127.0.0.1:9090     # also on loopback, for web development
 
 Ctrl-C drains in-flight requests for up to 10s, then stops.
 

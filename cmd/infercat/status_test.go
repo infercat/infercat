@@ -8,10 +8,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/2185Lab/bunny-network/internal/admin"
-	"github.com/2185Lab/bunny-network/internal/keys"
-	"github.com/2185Lab/bunny-network/internal/upstream"
-	"github.com/2185Lab/bunny-network/internal/usage"
+	"github.com/2185Lab/infercat/internal/admin"
+	"github.com/2185Lab/infercat/internal/keys"
+	"github.com/2185Lab/infercat/internal/upstream"
+	"github.com/2185Lab/infercat/internal/usage"
 )
 
 // The request line (029 promises 1, 2, 5): the ticket's example, and the three ways a request
@@ -66,7 +66,7 @@ garbage line
 // bridge's own block.
 func TestStatusBlockShowsSessionsEngineAndProcess(t *testing.T) {
 	now := time.Now()
-	st := admin.Status{Product: "Bunny Network", Version: "t", UptimeS: 90, Mode: "host",
+	st := admin.Status{Product: "Infercat", Version: "t", UptimeS: 90, Mode: "host",
 		Upstream: admin.Upstream{Kind: "llama.cpp", URL: "http://127.0.0.1:8080", Healthy: true, ModelContext: 4096, Slots: 2},
 		Tunnel: admin.Tunnel{Addr: "tcABC", Region: "New York City", Clients: 1, RxBytes: 3000, TxBytes: 5 << 20, Sessions: []admin.Session{
 			{Key: "fd7a:115c:a1e0:ab12:4843:cd96:6263:e3a2", Path: "unknown", Conns: 2, RxBytes: 1000, TxBytes: 4 << 20, LastByte: now.Add(-40 * time.Second), Since: now.Add(-3 * time.Minute), Active: true},
@@ -109,7 +109,7 @@ func TestStatusBlockShowsSessionsEngineAndProcess(t *testing.T) {
 		t.Errorf("vLLM's memory and cache:\n%s", out.String())
 	}
 
-	bridge := admin.Status{Product: "Bunny Network", Version: "t", UptimeS: 5, Mode: "bridge", Name: "Max's laptop",
+	bridge := admin.Status{Product: "Infercat", Version: "t", UptimeS: 5, Mode: "bridge", Name: "Max's laptop",
 		Tunnel:   admin.Tunnel{Addr: "tcABC", Region: "New York City", Sessions: []admin.Session{{Key: "host", Path: "relayed", Via: "nyc", RTTMS: 27.4, HandshakeMS: 512, Since: now.Add(-5 * time.Second), Active: true}}},
 		Upstream: admin.Upstream{Kind: "bridge", URL: "http://127.0.0.1:11435", Healthy: true},
 		Queue:    admin.Queue{InFlight: 1}}

@@ -4,8 +4,8 @@
     @media (prefers-color-scheme: dark) { .m { fill: #e9926a } }
   </style>
   <g class="m">
-    <ellipse cx="11.5" cy="9.5" rx="2.5" ry="6.4" transform="rotate(-13 11.5 9.5)" />
-    <ellipse cx="20.5" cy="9.5" rx="2.5" ry="6.4" transform="rotate(13 20.5 9.5)" />
-    <circle cx="16" cy="22" r="7.6" />
+    <polygon points="8.14,12.49 6.2,4.3 14.33,8.55" />
+    <polygon points="23.86,12.49 25.8,4.3 17.67,8.55" />
+    <circle cx="16" cy="18" r="9.6" />
   </g>
 </svg>

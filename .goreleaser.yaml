@@ -4,7 +4,7 @@
 #     dist/, the Homebrew formula is written to dist/homebrew/, and nothing leaves the machine.
 #   - `make release-publish` (only from .github/workflows/release.yml, only on a v* tag) creates the
 #     GitHub Release with the archives and the checksums file. The formula is still not pushed
-#     anywhere until `brews[].skip_upload` below is flipped (docs/RELEASE.md, rename day).
+#     anywhere until `brews[].skip_upload` below is flipped (docs/RELEASE.md, the day the tap exists).
 #
 # Run it through the Makefile, never bare: the Makefile is what reads CLI_NAME and PRODUCT_VERSION
 # out of internal/product/product.go, because the product name and version live in one constant
@@ -17,7 +17,7 @@ snapshot:
 
 builds:
   - id: cli
-    main: ./cmd/bunny-network
+    main: ./cmd/infercat
     binary: "{{ .Env.CLI_NAME }}"
     env:
       - CGO_ENABLED=0
@@ -27,9 +27,9 @@ builds:
       - -trimpath
     ldflags:
       - -s -w
-      - -X github.com/2185Lab/bunny-network/internal/product.Version={{ .Version }}
-      - -X github.com/2185Lab/bunny-network/internal/product.Commit={{ .FullCommit }}
-      - -X github.com/2185Lab/bunny-network/internal/product.Date={{ .CommitDate }}
+      - -X github.com/2185Lab/infercat/internal/product.Version={{ .Version }}
+      - -X github.com/2185Lab/infercat/internal/product.Commit={{ .FullCommit }}
+      - -X github.com/2185Lab/infercat/internal/product.Date={{ .CommitDate }}
     goos: [darwin, linux, windows]
     goarch: [amd64, arm64]
     ignore:
@@ -74,7 +74,7 @@ release:
   # notes and the CHANGELOG entry side by side before anyone sees it; prerelease decided by the tag.
   github:
     owner: 2185Lab
-    name: bunny-network
+    name: infercat
   draft: true
   prerelease: auto
   name_template: "{{ .Env.CLI_NAME }} {{ .Version }}"
@@ -83,7 +83,7 @@ homebrew_casks:
   # The Homebrew cask (goreleaser 2.18 deprecates `brews` for pre-built binaries in favour of casks):
   # `brew install 2185Lab/tap/<CLI_NAME>`. Written to dist/homebrew/ on every run so it can be read
   # and installed locally (docs/RELEASE.md); committed to the tap repository only when skip_upload is
-  # flipped to "auto" on the day the tap exists (rename day), with a PAT in HOMEBREW_TAP_GITHUB_TOKEN.
+  # flipped to "auto" on the day the tap exists, with a PAT in HOMEBREW_TAP_GITHUB_TOKEN.
   # "auto" then still skips prereleases and snapshots.
   - name: "{{ .Env.CLI_NAME }}"
     ids: [cli]
@@ -98,7 +98,7 @@ homebrew_casks:
     commit_author:
       name: goreleaser
       email: noreply@2185lab.com
-    homepage: https://github.com/2185Lab/bunny-network # TODO(rename day): the web app URL (F3)
+    homepage: https://github.com/2185Lab/infercat # TODO(F3): the web app URL, when the founder registers a domain (product.WebURL)
     description: "Share the model on your machine with friends: one binary, one invite code, a browser"
     # The binaries are not signed yet (pm/tickets/034-notarization.md): Homebrew quarantines what it
     # downloads, and macOS refuses to run a quarantined unsigned binary. This is the hook goreleaser

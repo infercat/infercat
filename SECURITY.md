@@ -2,7 +2,7 @@
 
 ## Reporting
 
-Email **security@2185lab.com** <!-- TODO(rename day): confirm the address exists before the repo goes public -->
+Email **security@2185lab.com** <!-- TODO(address): confirm security@2185lab.com exists before the repo goes public -->
 or use GitHub's private vulnerability reporting on this repository (Security → Report a vulnerability).
 Please do not open a public issue for something exploitable. You will get an answer within three
 days, and a fix or a stated plan within fourteen; you are credited in the changelog unless you ask

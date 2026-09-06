@@ -1,11 +1,11 @@
 // Ticket 018's real-stack evidence: the real web client (vite dev, Direct mode through the dev
-// listener) against a real `bunny-network serve --slots 1` on the shared llama-server, with a second
+// listener) against a real `infercat serve --slots 1` on the shared llama-server, with a second
 // key holding the one slot. Proves the busy host is not called asleep: the pending line says
 // "Waiting for a free slot on <host>…" within a second of Send, the reply follows on the same
 // response, and — with the slot held past the queue's 30 s — the timeout arrives as "<host> is
 // busy" with a countdown, the message kept and the session still connected.
 //
-//   BN_BIN=/path/bunny-network BN_DATA_DIR=/path/data UPSTREAM=http://127.0.0.1:18080 \
+//   BN_BIN=/path/infercat BN_DATA_DIR=/path/data UPSTREAM=http://127.0.0.1:18080 \
 //     GW=http://127.0.0.1:6620 WEB_PORT=6621 node dev/busy-check.mjs [queued|timeout|all]
 //
 // It only ever kills processes it started itself; the upstream is never touched.

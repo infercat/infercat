@@ -20,9 +20,9 @@ const WEB_PORT = Number(process.env.WEB_PORT ?? 49173);
 const GATEWAY_PORT = Number(process.env.FAKE_GATEWAY_PORT ?? 49090);
 const BASE = `http://127.0.0.1:${WEB_PORT}`;
 
-// A well-formed invite for the fake host: bn1.<addr>.<43-char base64url secret>.
-const INVITE = `bn1.tcDEMOaddressDEMOaddressDEMOaddressDEMO.${'D'.repeat(43)}`;
-const OFFLINE_INVITE = `bn1.tcOFFLINEaddressOFFLINEaddress.${'D'.repeat(43)}`;
+// A well-formed invite for the fake host: ic1.<addr>.<43-char base64url secret>.
+const INVITE = `ic1.tcDEMOaddressDEMOaddressDEMOaddressDEMO.${'D'.repeat(43)}`;
+const OFFLINE_INVITE = `ic1.tcOFFLINEaddressOFFLINEaddress.${'D'.repeat(43)}`;
 const SLOW = 'fake&connectMs=2200&tokenDelay=70';
 
 const children = [];
@@ -178,7 +178,7 @@ async function main() {
   const bad = await fresh.newPage();
   watch(bad, 'bad-invite');
   await bad.goto(BASE);
-  await bad.locator('.connect textarea').fill('bn9.tcSomething.abc');
+  await bad.locator('.connect textarea').fill('ic9.tcSomething.abc');
   // 014 promise 10: the reason arrives as they paste, and it is what disables Connect.
   await bad.waitForSelector('.inline-error');
   if (await bad.getByRole('button', { name: 'Connect' }).isEnabled()) {

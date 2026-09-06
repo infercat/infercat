@@ -1,5 +1,5 @@
 // Drives the REAL wasm bridge (ticket 001) against the REAL tunnel, in a real browser:
-// loads web/public/bunny.wasm, connects to hack/tunneldemo over the public relay, and runs
+// loads web/public/infercat.wasm, connects to hack/tunneldemo over the public relay, and runs
 // /healthz and /stream through TunnelTransport's HTTP/1.1 code. Prints measured numbers.
 //
 //   make wasm && pnpm tunnel-check
@@ -53,9 +53,9 @@ async function waitFor(url) {
 }
 
 const main = async () => {
-  const gz = statSync(join(web, 'public/bunny.wasm.gz')).size;
-  const raw = statSync(join(web, 'public/bunny.wasm')).size;
-  console.log(`bunny.wasm ${raw} bytes, bunny.wasm.gz ${gz} bytes`);
+  const gz = statSync(join(web, 'public/infercat.wasm.gz')).size;
+  const raw = statSync(join(web, 'public/infercat.wasm')).size;
+  console.log(`infercat.wasm ${raw} bytes, infercat.wasm.gz ${gz} bytes`);
 
   console.log('starting hack/tunneldemo (public relay)…');
   const addr = await startTunnelDemo();
@@ -81,7 +81,7 @@ const main = async () => {
     const wasm = await import('/src/transport/wasm.ts');
     const transport = await import('/src/transport/index.ts');
     let lastPct = null;
-    const bridge = await wasm.loadBunnyTunnel((p) => (lastPct = p.pct));
+    const bridge = await wasm.loadInfercatTunnel((p) => (lastPct = p.pct));
     const wasmMs = performance.now() - t0;
 
     const t1 = performance.now();

@@ -10,10 +10,10 @@ import (
 	"text/tabwriter"
 	"time"
 
-	"github.com/2185Lab/bunny-network/internal/admin"
-	"github.com/2185Lab/bunny-network/internal/product"
-	"github.com/2185Lab/bunny-network/internal/upstream"
-	"github.com/2185Lab/bunny-network/internal/usage"
+	"github.com/2185Lab/infercat/internal/admin"
+	"github.com/2185Lab/infercat/internal/product"
+	"github.com/2185Lab/infercat/internal/upstream"
+	"github.com/2185Lab/infercat/internal/usage"
 )
 
 // watchLines is how many request lines `status --watch` keeps under the block.
@@ -315,15 +315,15 @@ func shortDur(d time.Duration) string {
 	}
 }
 
-const statusHelp = `Usage: bunny-network status [--data-dir DIR] [--watch [--interval 1s]]
+const statusHelp = `Usage: infercat status [--data-dir DIR] [--watch [--interval 1s]]
 
 What the running host is doing right now: the upstream, the tunnel address and relay, every
 session (path, handshake, bytes, age), the queue and the engine's own counters, the process,
 and every key with its live counters. Reads the admin socket in the data dir; exits non-zero
 when no host is running. Against a bridge (connect --data-dir DIR) it shows that bridge.
 
-  bunny-network status
-  bunny-network status --watch            # redrawn every second, one line per request beneath:
+  infercat status
+  infercat status --watch            # redrawn every second, one line per request beneath:
                                           # 12:01:05  alice  chat  gemma  38→412 tok  ttft 61ms  4.1s  ok
 
 Flags:

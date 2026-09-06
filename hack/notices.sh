@@ -47,7 +47,7 @@ TARGETS="darwin/arm64 darwin/amd64 linux/amd64 linux/arm64 windows/amd64"
 printf '{{ range . }}{{ .Name }}\t{{ .Version }}\t{{ .LicenseName }}\t{{ .LicenseURL }}\t{{ .LicensePath }}\n{{ end }}' >"$tmp/go.tmpl"
 : >"$tmp/go.all"
 for target in $TARGETS; do
-  GOOS=${target%/*} GOARCH=${target#*/} go-licenses report ./cmd/bunny-network --ignore "$module" --template "$tmp/go.tmpl" \
+  GOOS=${target%/*} GOARCH=${target#*/} go-licenses report ./cmd/infercat --ignore "$module" --template "$tmp/go.tmpl" \
     >>"$tmp/go.all" 2>>"$tmp/go.err" ||
     { cat "$tmp/go.err" >&2; echo "notices: go-licenses report failed for $target" >&2; exit 1; }
 done

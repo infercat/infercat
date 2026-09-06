@@ -17,9 +17,9 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/2185Lab/bunny-network/internal/keys"
-	"github.com/2185Lab/bunny-network/internal/upstream"
-	"github.com/2185Lab/bunny-network/internal/usage"
+	"github.com/2185Lab/infercat/internal/keys"
+	"github.com/2185Lab/infercat/internal/upstream"
+	"github.com/2185Lab/infercat/internal/usage"
 )
 
 // Config is everything the gateway needs beyond its collaborators. The queue's capacity is not
@@ -71,7 +71,7 @@ type Gateway struct {
 	closed  bool
 }
 
-// The CLI (cmd/bunny-network, ticket 003) wires the gateway through exactly this interface.
+// The CLI (cmd/infercat, ticket 003) wires the gateway through exactly this interface.
 var _ interface {
 	usage.Snapshot
 	Serve(l net.Listener) error

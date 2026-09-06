@@ -23,7 +23,7 @@ import { composing } from './composing';
 declare const __DEFAULT_DIRECT_URL__: string;
 
 /**
- * An invite handed over as a link (`<app>/#bn1.…`, which the host's CLI prints). Read once, at
+ * An invite handed over as a link (`<app>/#ic1.…`, which the host's CLI prints). Read once, at
  * module load, and wiped from the address bar in the same breath, so the secret is not left in
  * history or in a screenshot of the address bar. Not a hook or an initializer — those run twice
  * under StrictMode.
@@ -341,7 +341,7 @@ export default function Connect({ state, dispatch }: Props) {
               autoCapitalize="off"
               autoCorrect="off"
               rows={3}
-              placeholder="bn1.…"
+              placeholder="ic1.…"
               onChange={(e) => {
                 edit(e.target.value);
                 void import('./Chat'); // warm the chat chunk while they are still typing
@@ -421,11 +421,18 @@ export default function Connect({ state, dispatch }: Props) {
   );
 }
 
-/** The page's own small print: which build this is, under what licence, and where the code is. */
+/**
+ * The page's own small print: which build this is, under what licence, where the code is, and whose
+ * library the tunnel is — the last one because "are you Tailscale?" is this audience's first
+ * question, and BSD-3 clause 3 says the answer must be here (037).
+ */
 function About() {
   return (
     <p className="about">
       Version {VERSION} · MIT · <a href={SOURCE_URL}>Source on GitHub</a>
+      <br />
+      Built on tailcat, Tailscale’s open-source library. {PRODUCT_NAME} is not affiliated with or
+      endorsed by Tailscale Inc.
     </p>
   );
 }

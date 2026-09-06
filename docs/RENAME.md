@@ -1,9 +1,10 @@
 # Rename day — every surface the name touches
 
-The product name is "Bunny Network" until the founder names it (pm/LAUNCH.md F1; research in
-docs/NAME.md). This is the mechanical list: every file, string, asset and setting the working name
-is in, with the edit or command for each, in the order to do them. Budget: about an hour, one
-branch, one commit, then `make launch-check` and `make release-dry` before the tag.
+**Done 2026-09-05 as ticket 037.** The name is **Infercat**: CLI and package `infercat`, invite
+prefix `ic1`, module `github.com/2185Lab/infercat`. Everything below is the record of the inventory
+as it was written before the name existed — the placeholders (`NEWNAME`, `newcli`, `nn1`) and the
+old name are history, not instructions. Read `pm/tickets/037-rename-infercat.md` for what was
+actually done and what was deliberately left (the tap, the web app URL, the two email addresses).
 
 Placeholders below: `NEWNAME` (display, e.g. `Guestroom`), `newcli` (binary and package, lowercase,
 no spaces, e.g. `guestroom`), `nn1` (invite prefix: two or three letters + `1`), `NEWORG/newrepo`

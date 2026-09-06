@@ -1,6 +1,6 @@
 // A stand-in for the real gateway (ticket 002), shaped exactly by docs/ARCHITECTURE.md §Gateway
 // HTTP API. One implementation feeds two adapters: dev/fake-gateway.ts (a Node http server, for
-// Direct mode) and dev/fake-bunny-tunnel.ts (an in-page fake of window.BunnyTunnel, for Tunnel
+// Direct mode) and dev/fake-infercat-tunnel.ts (an in-page fake of window.InfercatTunnel, for Tunnel
 // mode). Nothing here ships in the bundle.
 
 export interface FakeRequest {
@@ -35,7 +35,7 @@ export interface FakeOptions {
   /**
    * The host went away: a chat request is accepted by the tunnel and simply never answered, and
    * ping() fails with it. This is the blocker 014 promise 1 is about, so it is a mode, not a code.
-   * Handled by the conn (fake-bunny-tunnel), which never writes a response.
+   * Handled by the conn (fake-infercat-tunnel), which never writes a response.
    */
   hostAsleep?: boolean;
   /** The host paused this invite mid-session: chat is 403 key_paused, /me still answers. */
@@ -210,7 +210,7 @@ function reply(prompt: string): string {
     '```python\n' +
     'import httpx\n\n' +
     'r = httpx.post(\n' +
-    '    "https://bunny.local/v1/chat/completions",\n' +
+    '    "https://infercat.local/v1/chat/completions",\n' +
     '    headers={"Authorization": f"Bearer {invite_secret}"},\n' +
     '    json={"model": "gemma-4-e2b-it", "messages": messages, "stream": True},\n' +
     ')\n' +

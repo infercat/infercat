@@ -1,9 +1,9 @@
-// Ticket 005 integration runner: the REAL web client against the REAL host (bunny-network serve),
+// Ticket 005 integration runner: the REAL web client against the REAL host (infercat serve),
 // in headless chromium. Direct mode through the dev listener, Tunnel mode through the public relay
 // with the built bundle, then the limits story (429 countdown, revoke, pause/resume). Screenshots
 // land in dev/screenshots/int-*.png; the invite textarea is masked in every shot that shows it.
 //
-//   INVITE_ALICE=bn1.… INVITE_BOB=bn1.… BN_BIN=/path/bunny-network BN_DATA_DIR=/path/data \
+//   INVITE_ALICE=ic1.… INVITE_BOB=ic1.… BN_BIN=/path/infercat BN_DATA_DIR=/path/data \
 //   DIRECT_URL=http://127.0.0.1:9090 node dev/int-check.mjs [direct|tunnel|limits|all]
 //
 // Prints TTFT (DOM-observed: first reasoning/content text, raf polling, ±16 ms) and tokens/s
@@ -61,7 +61,7 @@ const masked = (page) => ({ mask: [page.locator('textarea')] });
 function keys(...args) {
   const r = spawnSync(BN_BIN, ['keys', ...args, '--data-dir', BN_DATA_DIR], { encoding: 'utf8' });
   if (r.status !== 0) throw new Error(`keys ${args.join(' ')}: ${r.stderr}`);
-  console.log(`  $ bunny-network keys ${args.join(' ')} → ${r.stdout.trim().split('\n')[0]}`);
+  console.log(`  $ infercat keys ${args.join(' ')} → ${r.stdout.trim().split('\n')[0]}`);
 }
 
 // Sends one message and measures it. Returns {ttftMs, totalMs, out, tokPerS, meta}.

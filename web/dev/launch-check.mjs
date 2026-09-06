@@ -1,7 +1,7 @@
 // What a stranger's browser sees on the built app (web/dist), checked and photographed. Two modes:
 //
 //   pnpm launch-check                                  # the connect screen, from a vite preview it starts
-//   INVITE=bn1.… APP=http://127.0.0.1:6831 pnpm launch-check
+//   INVITE=ic1.… APP=http://127.0.0.1:6831 pnpm launch-check
 //                                                      # + the chat against a real host: the README recording
 //
 // Checks — any failure exits 1: nothing on the console at load (warnings included); title,
@@ -379,7 +379,7 @@ async function main() {
     console.log(`launch-check on ${APP}`);
     await connectScreen(browser);
     if (INVITE) await chat(browser);
-    else say('no INVITE: the chat was not exercised (set INVITE=bn1.… APP=… against a running host)');
+    else say('no INVITE: the chat was not exercised (set INVITE=ic1.… APP=… against a running host)');
   } finally {
     await browser.close();
     preview?.kill('SIGTERM');

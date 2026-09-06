@@ -8,7 +8,7 @@ async function boot(): Promise<void> {
   // exercised (and screenshotted) before ticket 001's artifact exists.
   const q = new URLSearchParams(location.search);
   if (import.meta.env.DEV && q.has('fake')) {
-    const { installFakeTunnel } = await import('../dev/fake-bunny-tunnel.ts');
+    const { installFakeTunnel } = await import('../dev/fake-infercat-tunnel.ts');
     installFakeTunnel({
       ...(q.has('connectMs') ? { connectMs: Number(q.get('connectMs')) } : {}),
       ...(q.has('tokenDelay') ? { tokenDelayMs: Number(q.get('tokenDelay')) } : {}),

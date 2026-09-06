@@ -609,10 +609,10 @@ Disposition: **keep** (sound, leave it), **redesign → §n** (replaced by a str
 | 10 | `retryAfterUpstreamDown = 10` and `refreshEvery = 10s` — one fact in two packages | `gateway.go:38`, `serve.go:21` | comment says "matches" | **fold**: `upstream.ProbeInterval` const used by both | after |
 | 11 | `Status().Clients` = open port-80 connections, so a browser between requests counts 0 | `tunnel.go:54-56`, `status.go:42` | tailcat exposes no peer list (001 judgment 2) | **keep the counter, fix the label**: `status` says `N open connections`; "friends seen in the last 5 min" comes from the limiter's `LastSeen` | after |
 | 12 | `quiet()` string-prefix filter on tailcat's log | `tunnel.go:115-122` | tailcat logs a NetworkMap dump on the caller's Logf (005 10b) | **keep** (upstream issue candidate) | — |
-| 13 | wasm loader: `booting` singleton, `waitForTunnel` 15 s poll, `go.run` promise voided, no asset timeouts | `wasm.ts:17-53, 58-78` | `go.run` never resolves by design | **keep the shape**; 007 promise 11 adds asset timeouts and holds the run promise. Optional later: `main_js.go` calls `window.__bunnyReady?.()` so the poll goes away | after |
+| 13 | wasm loader: `booting` singleton, `waitForTunnel` 15 s poll, `go.run` promise voided, no asset timeouts | `wasm.ts:17-53, 58-78` | `go.run` never resolves by design | **keep the shape**; 007 promise 11 adds asset timeouts and holds the run promise. Optional later: `main_js.go` calls `window.__infercatReady?.()` so the poll goes away | after |
 | 14 | A usage event per `/me` and `/v1/models` (every request + a 60 s poll = ~1.5k lines/day/friend of no tokens) | `request.go:327-336`, `usage.go:15` | 002 promise 8: "one event per request" | **propose**: events for POST routes only; last-seen for `keys list` stays correct via the POST events, live last-seen via the limiter. (006 backlog "keyed rejection events at request rate" is the same lane.) | after (contract line; PM rules) |
 | 15 | Second `serve` on Windows overwrites `admin.port`/`admin.token` | `sock_windows.go:20-46` | no unix-socket liveness check on Windows `[2nd:launch-day#4]` | **fix without a new file**: dial the recorded port with the recorded token; 200 → refuse "another host is serving" (same as unix `sock_unix.go:32-39`). Also move `admin.Serve` before `saveConfig`/tunnel start so the guard runs first. | after (Windows is not the demo host) |
-| 16 | `BunnyTunnel.stats()` and `serve --verbose` — debug affordances not in the contract | `main_js.go:71-76`, `serve.go:54` | 005 fixes 10l/10b | **keep**; add both to `docs/ARCHITECTURE.md` (PM) | after |
+| 16 | `InfercatTunnel.stats()` and `serve --verbose` — debug affordances not in the contract | `main_js.go:71-76`, `serve.go:54` | 005 fixes 10l/10b | **keep**; add both to `docs/ARCHITECTURE.md` (PM) | after |
 | 17 | `client_closed` — a `Code` that is never on the wire | `errors.go:32`, `request.go:349-351` | usage needs a status for "friend went away" | **keep** as a usage status; list it under the event, not in the error table | — |
 | 18 | `hostAddr` asks the admin socket, then the saved key | `keys.go:143-151` | `--ephemeral` makes the saved key wrong while a host runs | **keep** (both are needed exactly because of `--ephemeral`; if §5 cuts the flag, the admin lookup goes with it) | — |
 | 19 | `web/dev` fakes duplicate the gateway's error shapes | `fake-backend.ts:45-79` | test harness | **keep** | — |
@@ -630,7 +630,7 @@ code embodies these, and the following. Each row argues for existence or removal
 
 | Concept | Values | Verdict |
 |---|---|---|
-| Invite | `bn1.<addr>.<secret>` | keep (the product) |
+| Invite | `ic1.<addr>.<secret>` | keep (the product) |
 | Key | `{id, name, status, secret_hash, created_at, limits}` | keep |
 | Key status | `active`, `paused`, `revoked` | keep all three: paused is reversible and the friend's copy differs ("works again when they resume"); revoked keeps history under its id, which delete would not |
 | Limits | `rpm`, `tpm`, `daily_tokens`, `max_concurrent`, `max_output_tokens`, `max_context`, `models` | keep six; **`max_context` is the weakest** — with shrink-to-fit its only effect is a per-key prompt ceiling below the engine's (KV memory / TTFT protection). Keep for v1, remove if unused by v1.1 |
@@ -777,7 +777,7 @@ and risks a promise that is currently kept.
 - **Host key handling.** `host.key.json` 0600 in a 0700 dir, `O_EXCL` temp + rename (005 10f),
   address derived from the private key (`tunnel.go:201-238`); short-form address by default,
   full form only with a pinned relay (001 judgment 3).
-- **Invite format and both parsers.** `bn1.<tc…>.<secret>`, prefix checked before part count,
+- **Invite format and both parsers.** `ic1.<tc…>.<secret>`, prefix checked before part count,
   `bn<N>` → "needs a newer app" (`invite.go:39-72`), the TS mirror running the Go vectors
   (`invite.ts`, `invite.test.ts`). `[001-adv]` refuted every edge case raised.
 - **Key store.** `sha256:` hashes only, constant-time compare across every key

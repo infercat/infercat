@@ -1,6 +1,6 @@
 // Invite parsing, mirroring internal/invite on the Go side (docs/ARCHITECTURE.md §Invite format):
 //
-//   bn1.<tailcat ConnBlob>.<secret>
+//   ic1.<tailcat ConnBlob>.<secret>
 //
 // The blob and the secret are base64url and never contain a dot, so splitting on "." is exact.
 // Whitespace around the whole string is trimmed; everything else is case-sensitive. The checks and
@@ -36,7 +36,9 @@ export interface Invite {
 }
 
 const BASE64URL = /^[A-Za-z0-9_-]+$/;
-const VERSION_TAG = /^bn(\d+)$/;
+// The prefix family without its version number ("ic" of "ic1"), from the constant: the family
+// changes with the product name (037), and the Go side derives it the same way.
+const VERSION_TAG = new RegExp(`^${INVITE_PREFIX.replace(/\d+$/, '')}(\\d+)$`);
 const NEWER = 'This invite needs a newer version of the app.';
 
 export function encodeInvite(addr: string, secret: string): string {
@@ -82,7 +84,7 @@ export function decodeInvite(raw: string): Invite {
   return { addr, secret };
 }
 
-/** "bn2" and up mean the host is ahead of us. "bn", "bnx", "bn0", "bn01" and overflow do not. */
+/** "ic2" and up mean the host is ahead of us. "ic", "icx", "ic0", "ic01" and overflow do not. */
 function isNewerVersion(tag: string): boolean {
   const digits = VERSION_TAG.exec(tag)?.[1];
   if (digits === undefined) return false;
@@ -95,7 +97,7 @@ function clip(s: string): string {
 }
 
 /**
- * The invite in a link the host's CLI printed: `<app>/#bn1.…`. Returns '' for any fragment that is
+ * The invite in a link the host's CLI printed: `<app>/#ic1.…`. Returns '' for any fragment that is
  * not one, and never throws — a fragment is attacker-shaped input like any other. The caller wipes
  * it from the address bar afterwards: a secret does not belong in history or in a shared screenshot.
  */
@@ -107,12 +109,12 @@ export function inviteFromHash(hash: string): string {
     /* a malformed percent escape is not an invite */
   }
   raw = raw.trim();
-  return raw.startsWith('bn1.') ? raw : '';
+  return raw.startsWith(`${INVITE_PREFIX}.`) ? raw : '';
 }
 
 /**
  * A remembered invite is still a secret sitting in a text box on a screen somebody may be sharing.
- * It is shown as `bn1.tco2…N96as` — enough for the reader to recognise as theirs, not enough for
+ * It is shown as `ic1.tco2…N96as` — enough for the reader to recognise as theirs, not enough for
  * anyone to use — until they ask for the rest (014 promise 9).
  */
 export function maskInvite(invite: string): string {

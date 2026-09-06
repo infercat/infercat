@@ -1,6 +1,6 @@
 // Leak and input-guard check for the wasm bridge (ticket 005 fixes 10l and 10m). Drives
 // demo.html in headless Chromium against hack/tunneldemo, dials N times through the tunnel,
-// and reports BunnyTunnel.stats() (live js.Func handles, Go heap after GC) before and after;
+// and reports InfercatTunnel.stats() (live js.Func handles, Go heap after GC) before and after;
 // then feeds write() every wrong type and checks the session survives.
 //
 //   go run ./hack/tunneldemo -ephemeral -demo-listen 127.0.0.1:59080   # prints the address
@@ -19,11 +19,11 @@ page.on("pageerror", (e) => console.log("[pageerror]", e.message));
 await page.goto(url);
 const r = await page.evaluate(async (n) => {
   const go = new Go();
-  const { instance } = await WebAssembly.instantiateStreaming(fetch("/public/bunny.wasm"), go.importObject);
+  const { instance } = await WebAssembly.instantiateStreaming(fetch("/public/infercat.wasm"), go.importObject);
   go.run(instance);
   const enc = new TextEncoder();
   const addr = new URLSearchParams(location.search).get("addr");
-  const session = await BunnyTunnel.connect({ addr });
+  const session = await InfercatTunnel.connect({ addr });
   const healthz = async () => {
     const conn = await session.dial(80);
     await conn.write(enc.encode("GET /healthz HTTP/1.1\r\nHost: t\r\nConnection: close\r\n\r\n"));
@@ -34,13 +34,13 @@ const r = await page.evaluate(async (n) => {
     if (!text.includes('{"ok":true}')) throw new Error("healthz body: " + text.slice(-80));
   };
   await healthz();
-  const before = BunnyTunnel.stats();
+  const before = InfercatTunnel.stats();
   const samples = [];
   for (let i = 1; i <= n; i++) {
     await healthz();
-    if (i % 50 === 0) samples.push({ i, ...BunnyTunnel.stats() });
+    if (i % 50 === 0) samples.push({ i, ...InfercatTunnel.stats() });
   }
-  const after = BunnyTunnel.stats();
+  const after = InfercatTunnel.stats();
   // 10m: every wrong type is a rejection with a message, never a crash.
   const conn = await session.dial(80);
   const bad = [];
@@ -49,9 +49,9 @@ const r = await page.evaluate(async (n) => {
   }
   conn.close();
   await healthz(); // the program is still alive and the session still works
-  const alive = typeof BunnyTunnel.connect === "function";
+  const alive = typeof InfercatTunnel.connect === "function";
   session.close();
-  const closed = BunnyTunnel.stats();
+  const closed = InfercatTunnel.stats();
   return { before, samples, after, bad, alive, closed };
 }, N);
 await browser.close();

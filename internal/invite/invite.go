@@ -1,6 +1,6 @@
 // Package invite encodes and decodes the one string a friend pastes:
 //
-//	bn1.<tailcat ConnBlob>.<secret>
+//	ic1.<tailcat ConnBlob>.<secret>
 //
 // Ticket 004 mirrors this in TypeScript; the two MUST agree (docs/ARCHITECTURE.md §Invite format).
 package invite
@@ -11,7 +11,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/2185Lab/bunny-network/internal/product"
+	"github.com/2185Lab/infercat/internal/product"
 )
 
 // Invite is the decoded form. Addr is the tailcat ConnBlob ("tc…"); Secret is the friend's key.
@@ -20,10 +20,10 @@ type Invite struct {
 	Secret string
 }
 
-// Decode errors. Compare with errors.Is; the messages are for humans. A "bn<N>" prefix with N > 1
+// Decode errors. Compare with errors.Is; the messages are for humans. An "ic<N>" prefix with N > 1
 // wraps ErrPrefix with a message saying the invite needs a newer app.
 var (
-	ErrPrefix      = errors.New("not a " + product.Name + " invite (missing or wrong prefix)")
+	ErrPrefix      = errors.New("not an " + product.Name + " invite (missing or wrong prefix)")
 	ErrParts       = errors.New("invite must have exactly three dot-separated parts")
 	ErrEmptyPart   = errors.New("invite has an empty part")
 	ErrAddr        = errors.New("invite address is not a tailcat address")
@@ -59,11 +59,16 @@ func Decode(s string) (Invite, error) {
 	return Invite{Addr: addr, Secret: secret}, nil
 }
 
+// prefixFamily is InvitePrefix without its version number ("ic" of "ic1"): the letters that say an
+// invite is ours at all, so a newer format is recognised as ahead of us rather than as junk. It
+// follows the constant, because the family changes with the product name (037).
+var prefixFamily = strings.TrimRight(product.InvitePrefix, "0123456789")
+
 func checkPrefix(p string) error {
 	if p == product.InvitePrefix {
 		return nil
 	}
-	if digits, ok := strings.CutPrefix(p, "bn"); ok {
+	if digits, ok := strings.CutPrefix(p, prefixFamily); ok {
 		if n, err := strconv.Atoi(digits); err == nil && n > 1 {
 			return fmt.Errorf("%w: this invite needs a newer app (format %s)", ErrPrefix, p)
 		}

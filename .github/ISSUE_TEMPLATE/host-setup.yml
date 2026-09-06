@@ -5,7 +5,7 @@ body:
   - type: textarea
     id: output
     attributes:
-      label: The full output of `bunny-network serve`
+      label: The full output of `infercat serve`
       description: Everything from the first line to the error. The banner never prints a secret.
       render: text
     validations:
@@ -13,7 +13,7 @@ body:
   - type: textarea
     id: version
     attributes:
-      label: bunny-network version
+      label: infercat version
       render: text
     validations:
       required: true
@@ -34,5 +34,5 @@ body:
   - type: textarea
     id: status
     attributes:
-      label: bunny-network status (if the host got that far)
+      label: infercat status (if the host got that far)
       render: text

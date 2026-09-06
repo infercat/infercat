@@ -11,10 +11,10 @@ import (
 	"text/tabwriter"
 	"time"
 
-	"github.com/2185Lab/bunny-network/internal/admin"
-	"github.com/2185Lab/bunny-network/internal/keys"
-	"github.com/2185Lab/bunny-network/internal/product"
-	"github.com/2185Lab/bunny-network/internal/usage"
+	"github.com/2185Lab/infercat/internal/admin"
+	"github.com/2185Lab/infercat/internal/keys"
+	"github.com/2185Lab/infercat/internal/product"
+	"github.com/2185Lab/infercat/internal/usage"
 )
 
 func (e *env) cmdKeys(ctx context.Context, pre string, args []string) error {
@@ -429,15 +429,15 @@ func ago(t time.Time) string {
 	}
 }
 
-const keysHelp = `Usage: bunny-network keys <subcommand>
+const keysHelp = `Usage: infercat keys <subcommand>
 
 One key is one person. Limits live on the key.
 
-  bunny-network keys add alice              # mint alice and print her invite, once
-  bunny-network keys list
-  bunny-network keys pause alice            # she gets 403 until you resume
-  bunny-network keys rotate alice           # new invite; the old one stops working
-  bunny-network keys limits alice --rpm 60
+  infercat keys add alice              # mint alice and print her invite, once
+  infercat keys list
+  infercat keys pause alice            # she gets 403 until you resume
+  infercat keys rotate alice           # new invite; the old one stops working
+  infercat keys limits alice --rpm 60
 
 Subcommands:
   add NAME [limits]   mint a key and print the invite and its QR code
@@ -448,19 +448,19 @@ Subcommands:
   rotate ID           issue a new secret, keeping id, name, and limits
   limits ID [limits]  change limits; only the flags you pass change
 
-An invite is bn1.<host address>.<secret>; the web app sends the secret as "Bearer <secret>".
+An invite is ic1.<host address>.<secret>; the web app sends the secret as "Bearer <secret>".
 ID is a key id (k_7f3a2b) or a key name when that name is unique.
 Limit flags: --rpm --tpm --max-concurrent --max-output-tokens --max-context --daily-tokens --models
 `
 
-const keysAddHelp = `Usage: bunny-network keys add NAME [limit flags]
+const keysAddHelp = `Usage: infercat keys add NAME [limit flags]
 
 Mints a key for one person and prints their invite — the whole thing they need to paste.
 The secret is shown here and never again; only its hash is stored.
 
-  bunny-network keys add alice
-  bunny-network keys add bob --rpm 60 --daily-tokens 500000
-  bunny-network keys add carol --models gemma-4-E2B-it-Q4_K_M.gguf
+  infercat keys add alice
+  infercat keys add bob --rpm 60 --daily-tokens 500000
+  infercat keys add carol --models gemma-4-E2B-it-Q4_K_M.gguf
 
 Defaults: 20 rpm · 20000 tpm · 1 concurrent · 2048 max output · the upstream's context ·
 200000 tokens/day · every model.
@@ -481,12 +481,12 @@ Other flags:
   --data-dir DIR          where keys, usage, and the host key live
 `
 
-const keysLimitsHelp = `Usage: bunny-network keys limits ID [limit flags]
+const keysLimitsHelp = `Usage: infercat keys limits ID [limit flags]
 
 Changes limits on an existing key. Only the flags you pass change; 0 means "no limit".
 
-  bunny-network keys limits alice --rpm 60 --daily-tokens 1000000
-  bunny-network keys limits k_7f3a2b --models gemma-4-E2B-it-Q4_K_M.gguf
+  infercat keys limits alice --rpm 60 --daily-tokens 1000000
+  infercat keys limits k_7f3a2b --models gemma-4-E2B-it-Q4_K_M.gguf
 
 Limit flags: --rpm --tpm --max-concurrent --max-output-tokens --max-context --daily-tokens --models
 `

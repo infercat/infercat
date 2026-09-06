@@ -12,16 +12,16 @@ body:
   - type: textarea
     id: version
     attributes:
-      label: bunny-network version
-      description: Paste the output of `bunny-network version`. For the web app, Settings shows "App version".
+      label: infercat version
+      description: Paste the output of `infercat version`. For the web app, Settings shows "App version".
       render: text
     validations:
       required: true
   - type: textarea
     id: status
     attributes:
-      label: bunny-network status
-      description: Paste the output of `bunny-network status` while the host is running. It contains no secrets — key ids, counters, the upstream, the relay.
+      label: infercat status
+      description: Paste the output of `infercat status` while the host is running. It contains no secrets — key ids, counters, the upstream, the relay.
       render: text
   - type: dropdown
     id: side

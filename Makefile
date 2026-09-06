@@ -14,7 +14,7 @@ export VITE_WEB_URL := $(shell sed -n 's/^[[:space:]]*WebURL[[:space:]]*=[[:spac
 .PHONY: build test vet wasm web web-test check clean release-dry notices notices-check brand launch-check
 
 build:
-	go build -o bin/bunny-network ./cmd/bunny-network
+	go build -o bin/infercat ./cmd/infercat
 
 test:
 	go test ./...

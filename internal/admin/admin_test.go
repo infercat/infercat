@@ -10,7 +10,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/2185Lab/bunny-network/internal/product"
+	"github.com/2185Lab/infercat/internal/product"
 )
 
 // shortDir keeps the socket path under the kernel's sun_path limit; t.TempDir() names itself

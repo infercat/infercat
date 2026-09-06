@@ -1,7 +1,7 @@
 # Contributing
 
 Issues are welcome — a bug, a host that would not start, an invite that would not connect, a
-feature you want. The templates ask for the output of `bunny-network status` and `bunny-network
+feature you want. The templates ask for the output of `infercat status` and `infercat
 version`; they save a round trip.
 
 Pull requests: open an issue or a discussion first, so the change is agreed before the work.

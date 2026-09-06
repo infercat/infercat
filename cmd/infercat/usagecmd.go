@@ -10,8 +10,8 @@ import (
 	"text/tabwriter"
 	"time"
 
-	"github.com/2185Lab/bunny-network/internal/keys"
-	"github.com/2185Lab/bunny-network/internal/usage"
+	"github.com/2185Lab/infercat/internal/keys"
+	"github.com/2185Lab/infercat/internal/usage"
 )
 
 func (e *env) cmdUsage(ctx context.Context, pre string, args []string) error {
@@ -191,16 +191,16 @@ func comma(n int) string {
 	return b.String()
 }
 
-const usageHelp = `Usage: bunny-network usage [--key ID] [--since 24h] [--data-dir DIR]
+const usageHelp = `Usage: infercat usage [--key ID] [--since 24h] [--data-dir DIR]
 
 Reads usage.jsonl and totals it: model calls (what your friends asked the engine for) and app
 polls (what their browser did on its own), errors by code, tokens, and the median and p95 of
 time-to-first-token and total time over successful model calls. Works whether or not the host is
 running.
 
-  bunny-network usage
-  bunny-network usage --since 7d
-  bunny-network usage --key alice --since all
+  infercat usage
+  infercat usage --since 7d
+  infercat usage --key alice --since all
 
 Flags:
   --key ID       one key id or name

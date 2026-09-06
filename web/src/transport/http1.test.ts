@@ -46,19 +46,19 @@ class ScriptedConn implements Conn {
   }
 }
 
-const GET = { method: 'GET', path: '/me', headers: new Headers({ host: 'bunny' }) };
+const GET = { method: 'GET', path: '/me', headers: new Headers({ host: 'infercat' }) };
 
 describe('encodeRequest', () => {
   it('writes a request line, headers, and the body', () => {
     const bytes = encodeRequest({
       method: 'post',
       path: '/v1/chat/completions',
-      headers: new Headers({ host: 'bunny', 'content-type': 'application/json' }),
+      headers: new Headers({ host: 'infercat', 'content-type': 'application/json' }),
       body: enc('{"a":1}'),
     });
     const text = new TextDecoder().decode(bytes);
     expect(text.startsWith('POST /v1/chat/completions HTTP/1.1\r\n')).toBe(true);
-    expect(text).toContain('host: bunny\r\n');
+    expect(text).toContain('host: infercat\r\n');
     expect(text).toContain('content-type: application/json\r\n');
     expect(text.endsWith('\r\n\r\n{"a":1}')).toBe(true);
   });

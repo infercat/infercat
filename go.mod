@@ -1,4 +1,4 @@
-module github.com/2185Lab/bunny-network
+module github.com/2185Lab/infercat
 
 go 1.27.0
 

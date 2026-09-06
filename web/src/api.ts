@@ -1,5 +1,6 @@
 // The gateway HTTP API (docs/ARCHITECTURE.md §Gateway HTTP API) and the friendly copy for every
 // error code it can return. Nothing else in the app parses a gateway response.
+import { PRODUCT_NAME } from './product';
 import type { Transport } from './transport';
 
 export interface Limits {
@@ -510,7 +511,7 @@ const COPY: Record<
   invalid_request: { title: 'The host could not read that request',
     detail: 'This is the app’s fault, not yours. Start a new chat; if it keeps happening the host and this app disagree about the API.' },
   not_found: { title: 'The host has no such endpoint',
-    detail: 'This app is talking to something that is not a Bunny gateway, or to an older one.' },
+    detail: `This app is talking to something that is not an ${PRODUCT_NAME} gateway, or to an older one.` },
   invalid_key: { fatal: true, title: 'The host does not recognise this invite',
     detail: 'It may have been rotated or deleted. Ask {host} for a fresh code.' },
   // Paused is a pause, not an ending. Mid-session the chat stays where it is (the header says so,

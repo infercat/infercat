@@ -12,7 +12,7 @@ body:
   - type: textarea
     id: status
     attributes:
-      label: bunny-network status, on the host, at the time
+      label: infercat status, on the host, at the time
       description: Shows whether the host is up, its tunnel address, the relay, and each key's state (active / paused / revoked) and last-seen. No secrets.
       render: text
     validations:
@@ -20,7 +20,7 @@ body:
   - type: textarea
     id: version
     attributes:
-      label: bunny-network version (host) and App version (friend, in Settings)
+      label: infercat version (host) and App version (friend, in Settings)
       render: text
     validations:
       required: true

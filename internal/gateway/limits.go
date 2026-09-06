@@ -5,8 +5,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/2185Lab/bunny-network/internal/keys"
-	"github.com/2185Lab/bunny-network/internal/usage"
+	"github.com/2185Lab/infercat/internal/keys"
+	"github.com/2185Lab/infercat/internal/usage"
 )
 
 // Per-key limits live entirely in memory. The sliding minute is genuinely empty after a restart —

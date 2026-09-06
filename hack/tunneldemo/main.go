@@ -21,11 +21,11 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/2185Lab/bunny-network/internal/tunnel"
+	"github.com/2185Lab/infercat/internal/tunnel"
 )
 
 func main() {
-	dataDir := flag.String("data-dir", filepath.Join(os.TempDir(), "bunny-tunneldemo"), "directory holding host.key.json; the address is stable across restarts")
+	dataDir := flag.String("data-dir", filepath.Join(os.TempDir(), "infercat-tunneldemo"), "directory holding host.key.json; the address is stable across restarts")
 	ephemeral := flag.Bool("ephemeral", false, "new identity and address every run; nothing written to disk")
 	derpMapURL := flag.String("derpmap-url", "", "alternate DERP map URL (the address then embeds the relay)")
 	region := flag.String("region", "", "relay for a new key: region ID, code (sfo), name substring, or DERP hostname(s)")

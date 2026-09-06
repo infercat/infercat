@@ -1,5 +1,5 @@
 // Real-stack evidence for tickets 031 and 032: the built bundle, over the real relay, against a real
-// `bunny-network serve --slots 1` on the shared llama-server, started and stopped by this script.
+// `infercat serve --slots 1` on the shared llama-server, started and stopped by this script.
 // What it shows: (031) the Thinking row says "model default" before the model has thought, becomes a
 // switch after, and a reply asked not to think has no Thinking block, fewer tokens and says so;
 // (032) every reply's footer carries ttft and tok/s measured from the device, a reply that waited for
@@ -7,7 +7,7 @@
 // reload. Each reply's device numbers are printed beside the host's own usage line for the same
 // request, so the relay hop can be seen rather than guessed at.
 //
-//   BN_BIN=/path/bunny-network BN_DATA_DIR=/path/data GW=http://127.0.0.1:6840 PREVIEW_PORT=6841 \
+//   BN_BIN=/path/infercat BN_DATA_DIR=/path/data GW=http://127.0.0.1:6840 PREVIEW_PORT=6841 \
 //     UPSTREAM=http://127.0.0.1:18080 node dev/footer-check.mjs
 //
 // It only ever kills processes it started itself; the upstream only receives requests.
