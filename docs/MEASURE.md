@@ -4,7 +4,7 @@
 
 ```
 ~/Desktop/repos/2185Lab/bunny-kit/binaries/llama-server/b9553/llama-server \
-  -m ~/.cache/infercat/models/gemma-4-E2B-it-Q4_K_M.gguf \
+  -m ~/.cache/bunny-network/models/gemma-4-E2B-it-Q4_K_M.gguf   # path predates the rename; the model lives here \
   --host 127.0.0.1 --port 18080 -np 2 -c 65536 --no-mmproj --metrics   # 32K per request
 ```
 

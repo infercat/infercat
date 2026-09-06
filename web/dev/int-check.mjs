@@ -1,9 +1,9 @@
 // Ticket 005 integration runner: the REAL web client against the REAL host (infercat serve),
 // in headless chromium. Direct mode through the dev listener, Tunnel mode through the public relay
 // with the built bundle, then the limits story (429 countdown, revoke, pause/resume). Screenshots
-// land in dev/screenshots/int-*.png; the invite textarea is masked in every shot that shows it.
+// land in dev/evidence/int-*.png; the invite textarea is masked in every shot that shows it.
 //
-//   INVITE_ALICE=ic1.… INVITE_BOB=ic1.… BN_BIN=/path/infercat BN_DATA_DIR=/path/data \
+//   INVITE_ALICE=ic1.… INVITE_BOB=ic1.… INFERCAT_BIN=/path/infercat INFERCAT_DATA_DIR=/path/data \
 //   DIRECT_URL=http://127.0.0.1:9090 node dev/int-check.mjs [direct|tunnel|limits|all]
 //
 // Prints TTFT (DOM-observed: first reasoning/content text, raf polling, ±16 ms) and tokens/s
@@ -16,11 +16,11 @@ import { chromium } from 'playwright';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const web = join(here, '..');
-const shots = join(here, 'screenshots');
+const shots = join(here, 'evidence'); // real-host evidence: viewed at landing, not tracked (037)
 const WEB_PORT = Number(process.env.WEB_PORT ?? 59173);
 const PREVIEW_PORT = Number(process.env.PREVIEW_PORT ?? 59174);
 const DIRECT_URL = process.env.DIRECT_URL ?? 'http://127.0.0.1:9090';
-const { INVITE_ALICE, INVITE_BOB, BN_BIN, BN_DATA_DIR } = process.env;
+const { INVITE_ALICE, INVITE_BOB, INFERCAT_BIN, INFERCAT_DATA_DIR } = process.env;
 const BOB = process.env.BOB_NAME ?? 'bob'; // the --rpm 2 key's name, for revoke
 const only = process.argv[2] ?? 'all';
 const PROMPT = 'Why is the sky blue? Answer in three sentences.';
@@ -59,7 +59,7 @@ async function shot(page, name, opts = {}) {
 const masked = (page) => ({ mask: [page.locator('textarea')] });
 
 function keys(...args) {
-  const r = spawnSync(BN_BIN, ['keys', ...args, '--data-dir', BN_DATA_DIR], { encoding: 'utf8' });
+  const r = spawnSync(INFERCAT_BIN, ['keys', ...args, '--data-dir', INFERCAT_DATA_DIR], { encoding: 'utf8' });
   if (r.status !== 0) throw new Error(`keys ${args.join(' ')}: ${r.stderr}`);
   console.log(`  $ infercat keys ${args.join(' ')} → ${r.stdout.trim().split('\n')[0]}`);
 }
@@ -263,7 +263,7 @@ async function runReconnect(browser, base) {
 }
 
 async function main() {
-  for (const [k, v] of Object.entries({ INVITE_ALICE, INVITE_BOB, BN_BIN, BN_DATA_DIR })) {
+  for (const [k, v] of Object.entries({ INVITE_ALICE, INVITE_BOB, INFERCAT_BIN, INFERCAT_DATA_DIR })) {
     if (!v && (only === 'all' || k.startsWith('INVITE') || only === 'limits')) throw new Error(`${k} is not set`);
   }
   mkdirSync(shots, { recursive: true });

@@ -21,7 +21,7 @@ and see counts, never their conversations.
   WebAssembly, so the browser connects to your host directly — through the relay, encrypted end to end.
 - **The tunnel** is [tailcat](https://github.com/tailscale/tailcat), Tailscale's open-source data
   plane without the control plane. There is no account on either side. The relay is a DERP server:
-  public ones by default, or your own (`--derpmap-url`).
+  public ones by default, or your own (`--derpmap-url`). Infercat is not affiliated with or endorsed by Tailscale Inc.
 
 ## Quickstart (host)
 
@@ -238,7 +238,7 @@ Releases: `docs/RELEASE.md`. Design records: `pm/`; the seam contract: `docs/ARC
 ## License
 
 MIT — see [LICENSE](LICENSE). Built on [tailcat](https://github.com/tailscale/tailcat), Tailscale's
-open-source library. Infercat is not affiliated with or endorsed by Tailscale Inc. tailcat is BSD-3;
+open-source library (not affiliated; see above). tailcat is BSD-3;
 every dependency's licence is listed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 Security reports: [SECURITY.md](SECURITY.md). Contributing: [CONTRIBUTING.md](CONTRIBUTING.md).
 

@@ -9,10 +9,10 @@
 // what happens next, that the phone header fits and its Disconnect is reachable and durable, and
 // that a revoked invite's card keeps every chat.
 //
-//   BN_BIN=/path/infercat BN_DATA_DIR=/path/data GW=http://127.0.0.1:6720 PREVIEW_PORT=6721 \
+//   INFERCAT_BIN=/path/infercat INFERCAT_DATA_DIR=/path/data GW=http://127.0.0.1:6720 PREVIEW_PORT=6721 \
 //     UPSTREAM=http://127.0.0.1:18080 node dev/real-check.mjs [cost|asleep|reconnect|heal|race|paused|wall|stall|tabs|phone|revoke|meter|emptydeath|all]
 //
-// Keys are minted in BN_DATA_DIR (alice for everything, bob for the revoke) unless INVITE is set.
+// Keys are minted in INFERCAT_DATA_DIR (alice for everything, bob for the revoke) unless INVITE is set.
 // It only ever kills processes it started itself.
 import { spawn, spawnSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
@@ -22,15 +22,15 @@ import { chromium } from 'playwright';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const web = join(here, '..');
-const shots = join(here, 'screenshots');
-const { INVITE, BN_BIN, BN_DATA_DIR } = process.env;
+const shots = join(here, 'evidence'); // real-host evidence: viewed at landing, not tracked (037)
+const { INVITE, INFERCAT_BIN, INFERCAT_DATA_DIR } = process.env;
 const GW = process.env.GW ?? 'http://127.0.0.1:6609';
 const UPSTREAM = process.env.UPSTREAM ?? 'http://127.0.0.1:18080';
 const LISTEN = GW.replace(/^https?:\/\//, '').replace(/\/.*$/, '');
 const PREVIEW = Number(process.env.PREVIEW_PORT ?? 6611);
 const HOST_NAME = process.env.HOST_NAME ?? "Max's laptop";
 const only = process.argv[2] ?? 'all';
-if (!BN_BIN || !BN_DATA_DIR) throw new Error('BN_BIN and BN_DATA_DIR are required');
+if (!INFERCAT_BIN || !INFERCAT_DATA_DIR) throw new Error('INFERCAT_BIN and INFERCAT_DATA_DIR are required');
 
 const kids = [];
 process.on('exit', () => kids.forEach((c) => c.kill('SIGTERM')));
@@ -47,7 +47,7 @@ async function waitFor(url, what, tries = 300) {
 }
 /** Starts the host this script owns. Returns its child, which is the only thing we ever kill. */
 function startHost() {
-  const h = spawn(BN_BIN, ['--data-dir', BN_DATA_DIR, 'serve', '--upstream', UPSTREAM,
+  const h = spawn(INFERCAT_BIN, ['--data-dir', INFERCAT_DATA_DIR, 'serve', '--upstream', UPSTREAM,
     '--dev-listen', LISTEN, '--name', HOST_NAME], { stdio: 'ignore' });
   kids.push(h);
   return h;
@@ -57,7 +57,7 @@ function killHost(child) {
 }
 /** The host's own CLI, on the host's own data dir: what the host does to a key is done here. */
 function keys(...args) {
-  const r = spawnSync(BN_BIN, ['keys', ...args, '--data-dir', BN_DATA_DIR], { encoding: 'utf8' });
+  const r = spawnSync(INFERCAT_BIN, ['keys', ...args, '--data-dir', INFERCAT_DATA_DIR], { encoding: 'utf8' });
   if (r.status !== 0) throw new Error(`keys ${args.join(' ')}: ${r.stderr || r.stdout}`);
   return r.stdout;
 }
@@ -65,7 +65,7 @@ function keys(...args) {
 const RUN = Date.now().toString(36).slice(-4);
 const mint = (name) => JSON.parse(keys('add', `${name}-${RUN}`, '--json', '--no-qr'));
 const events = () => {
-  try { return readFileSync(join(BN_DATA_DIR, 'usage.jsonl'), 'utf8').trim().split('\n').filter(Boolean).map(JSON.parse); }
+  try { return readFileSync(join(INFERCAT_DATA_DIR, 'usage.jsonl'), 'utf8').trim().split('\n').filter(Boolean).map(JSON.parse); }
   catch { return []; }
 };
 const since = (n) => events().slice(n).map((e) => `${e.endpoint} ${e.status}`);

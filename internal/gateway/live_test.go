@@ -1,7 +1,7 @@
 package gateway
 
 // Opt-in check against a real llama.cpp server, e.g.
-//   BN_LIVE_UPSTREAM=http://127.0.0.1:18080 go test -run Live -v ./internal/gateway/
+//   INFERCAT_LIVE_UPSTREAM=http://127.0.0.1:18080 go test -run Live -v ./internal/gateway/
 // It sends requests only. The minimal Engine here is not ticket 003's adapter; it exists so the
 // gateway can be exercised end-to-end with the seam in the test's hands.
 
@@ -98,9 +98,9 @@ func getJSON(ctx context.Context, u string, v any) error {
 }
 
 func TestLiveLlamaCPP(t *testing.T) {
-	target := os.Getenv("BN_LIVE_UPSTREAM")
+	target := os.Getenv("INFERCAT_LIVE_UPSTREAM")
 	if target == "" {
-		t.Skip("set BN_LIVE_UPSTREAM=http://127.0.0.1:18080 to run")
+		t.Skip("set INFERCAT_LIVE_UPSTREAM=http://127.0.0.1:18080 to run")
 	}
 	base, err := url.Parse(target)
 	if err != nil {
