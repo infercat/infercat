@@ -1,5 +1,7 @@
 # BELIEFS — Bunny Network (working name)
 
+> Name: **Infercat** (founder, 2026-09-05). Working name "Bunny Network" until then; the name lives in one Go constant and one TS constant (ticket 037).
+
 Founder: Max (Yuanping Song). PM seat: Claude (Fable), appointed 2026-09-02.
 Repo: github.com/2185Lab/bunny-network (private). Name not locked; rename expected after first use.
 

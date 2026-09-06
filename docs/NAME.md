@@ -1,5 +1,7 @@
 # Product name research (2026-09-03) — for the founder's decision (pm/LAUNCH.md F1)
 
+> **Decision (2026-09-05, founder): Infercat.** "My honest feedback is none of these options really speak to me, let's proceed with infercat." CLI `infercat`, invite prefix `ic1`. The rounds below are the record of how the field was searched; the knockout on infercat is in "Founder candidates".
+
 Three research lenses (collisions/availability, friend-side read, fresh generation) and a synthesis;
 journal `wf_a5d23ba8-16d`. Verified facts are marked; **no trademark clearance was performed on any
 recommended name** — that is counsel's job before the mark goes on a public post.
