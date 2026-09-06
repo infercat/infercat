@@ -301,6 +301,9 @@ async function connectScreen(browser) {
     await page.waitForTimeout(300);
     // After the fonts have settled, so a font that was fetched from a CDN would be in the log.
     await page.evaluate(() => document.fonts.ready);
+    // And after the mark has arrived: it is an `<img>` (039 comfort 1), and a shot taken before it
+    // lands shows the page with its anchor missing, which is a lie about the page.
+    await page.waitForFunction(() => [...document.images].every((i) => i.complete));
     await firstParty(asked, name);
     await names(page, name);
     await contrast(page, name);

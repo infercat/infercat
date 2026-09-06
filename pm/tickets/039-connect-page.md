@@ -180,3 +180,117 @@ the page shows the gate, accepts, and lands in a chat whose `/me` no longer repo
 with this branch's work set aside. It went green once the 039 section was placed before the 007
 block, which means the dev harness's shared browser context and its per-page `?fake` state are
 order-sensitive — not that anything was fixed. Worth its own ticket; the suite is green as committed.
+
+### 2026-09-06 — engineer, fixes after review (round 1)
+
+Six defects from the review, three causes between them: the page frame did not carry its height
+below 900 px, the pair was centred on the card rather than the column, and the gate was rewrapped in
+a frame that already carried the sentence it exists to correct. Every number below is measured on
+this branch — the dev build for the states, the built bundle (`vite preview` of `dist`) for the
+frames.
+
+**1. The log-prompts gate said the promise and its correction side by side (high).** `Page` renders
+the statement, and the statement carries `privacyLine('', false)` — so above 900 px a stranger
+meeting a logging host read "Infercat records counts, never text" a few centimetres left of "…is
+recording what you write", at the moment of consent. `Page` now takes the sentence as a prop and
+`LogPromptsGate` passes `privacyLine(hostName(me), true)`: the same sentence, the opposite fact,
+said once (007 promise 12's "*replaces*", and the variant `privacyLine` already existed to give).
+Measured at 1280×800: `body.innerText.includes('records counts, never text')` is now false, and the
+column reads "…but this host has prompt logging on, so everything you send and everything the model
+answers is written to a log on their machine." Below 900 px nothing changed — the card never
+rendered `CardFoot` in this state.
+
+**2. Promise 3: the left column moved as the card changed state (high, two reports).**
+`.page-main { align-items: center }` centred the *pair*, so the statement hung off the card's
+height: 235 px for an empty card, 147 px for the host-didn't-answer card at the same viewport.
+The statement's cell is now stretched to the row and its own content centred inside it
+(`.statement { align-self: stretch; display: flex; justify-content: center }`), so the column is
+centred on a line that depends on the viewport alone. Measured at 1280×800, four card states whose
+heights run 242 → 514 px: the mark holds at **y = 235.2 ± 0.00 px**. The card still starts on the
+mark's line whenever it is the shorter of the two — which is every state and every frame the mock
+draws, `delta 0.0` at 900, 1024, 1280, 1440, 1920 and 2560 in the built bundle — and grows about the
+centre when it is not. `pnpm screenshots` now asserts this and prints the number, and commits
+`39-state-empty.png` and `39-state-failed.png` at one size so it can also be checked by eye; the
+old evidence was five shots of one card state, which could not show it either way.
+
+**3. Below 900 px the card was pinned to the window's top padding (medium).** `.connect`'s
+`min-height: 100%` resolved against `#root` when `.connect` was its child; with `.page` and
+`.page-main` interposed and neither carrying height below the breakpoint, it resolved to nothing —
+the card sat at 32 px with the rest of the window blank in the 761–899 px band. The height now
+travels down the flex chain (`.page-main` and `.page-cols` grow, `.connect` fills and centres), and
+`.page-main` is put back to `flex-direction: row` inside the media query. Measured, before → after:
+820×1180 32 → 268, 899×1200 32 → 255, 768×1024 32 → 190, 899×760 32 → 58 (the mock's own 899 frame
+draws 62; the remaining 4 px is the card being 4 px taller than the mock's, not the centring). The
+harness asserts the slack above and below the card is equal at 820×1180 (213 px each).
+
+**4. The two columns drifted apart above ~1300 px (medium).** The first grid track absorbed every
+extra pixel while the statement's measure stayed at 600, so at 1920 the statement ended at x=640 and
+the card began at x=1424. The page now keeps the mock's widest frame and centres it:
+`--page-max: 1280px` on `.page-head-in`, `.page-cols` and `.page-foot-in`, so the header's mark, the
+statement's mark and the footer's first character stay on one line (measured x: 40/40/40 at 1280,
+120 at 1440, 360 at 1920, 680 at 2560) and the statement-to-card gap stays the mock's 144 px at
+every width. The rules still run edge to edge. Nothing at 1280 and below changed by a pixel.
+
+**5. The field clipped the code after a resize (medium).** The auto-size effect answered to the text
+and not to the box, so a window dragged narrower (or a phone turned) left a height measured at the
+old width: fill at 1280, resize to 390, and 20 px of the code was under the frame. A `ResizeObserver`
+on the field re-fits on a *width* change only (the height is what the effect itself just set, and
+re-fitting on that would loop); absent, it degrades to the old behaviour. Measured on the same page:
+`scrollHeight - clientHeight` 20 → **0**.
+
+**6. A committed shot had no mark in it (medium).** `20-revoked-new-code.png` showed the page with
+the header mark and the statement mark missing — comfort 1 absent from the evidence — because the
+mark is a separately-fetched `<img>` and the harness waited only for `.connect-card`. `write()` now
+waits for fonts and for every image on the page before it shoots (with a 4 s ceiling, so a dead
+asset is the shot's own story rather than a hang), and `launch-check` waits the same way. Both marks
+are in `20-revoked-new-code.png` now.
+
+**One ruling taken, and flagged for the PM.** The mock says the pair is "centred in the space
+between the two rules" and top-aligned; the frozen decisions say "the left column and footer are
+constant; only the card's content is stateful". Those cannot all hold when the card's height changes
+by 175 px between states, so the frozen decision won and centring gave way exactly where it had to:
+the column is centred, the card top-aligns to it whenever it is the shorter of the two (every frame
+the mock draws), and a taller card grows about the centre instead of dragging the column up. One
+consequence worth naming: in the log-prompts state the column's own sentence is one line longer, so
+the mark sits 10.8 px higher there. That is the left column's copy changing because 007 promise 12
+says it must, not the card moving it — the four ordinary states hold at ±0.00 px.
+
+**Gate.** All green, in this order, on the final tree:
+
+    make check EXIT=0          |  CHECK OK
+    pnpm typecheck EXIT=0
+    pnpm test EXIT=0           |  Tests  266 passed (266)
+    pnpm lint EXIT=0
+    make brand EXIT=0          |  no change to og.png or social-preview.png
+    make notices-check EXIT=0  |  notices: OK — 49 Go + 110 npm dependencies + 2 bundled fonts
+    pnpm screenshots EXIT=0    |  70 screenshots in dev/screenshots/ (66 before; four are new)
+                               |  No console errors, no page errors, no horizontal overflow at 360/390 px
+                               |  39-states: the left column holds at y=235.2 ±0.00px while the card is
+                               |             empty 339, typed 339, connecting 242, failed 514
+                               |  39-state-log-prompts: the statement says "…ng the model answers is
+                               |             written to a log on their machine."
+                               |  39-centred-820: 213px of slack above the card, 213px below
+    make launch-check EXIT=0   |  launch-check: OK
+                               |  30-connect-desktop: 16 text runs, lowest 6.31:1 (p.promise) — AA met
+                               |  30-connect-dark: 16 text runs, lowest 7.5:1 (a) — AA met
+                               |  30-connect-phone: 12 text runs, lowest 6.31:1 (p.pitch) — AA met, no
+                               |             horizontal overflow at 390px
+                               |  Tab order and the two-link header assertion unchanged and passing.
+
+**Media, not re-captured, and why.** `docs/media/friend-chat.gif|png`'s first frame is the connect
+screen at 880×640 — below the breakpoint, where the card is taller than the window, so none of these
+fixes touch it. Checked rather than assumed: the branch's sources and this tree were each built and
+photographed at 880×640, and the two PNGs are **byte-identical**
+(`c0d1240c…9ed90dd4`), card top 32 px and page height 709 px in both. Promise 4 says re-capture only
+if the first frame changed; it did not.
+
+**New shots.** `39-state-empty.png`, `39-state-failed.png`, `39-state-log-prompts.png` (all
+1280×800, one card state each, comparable), `39-centred-820.png` (820×1180). Every other shot in
+`web/dev/screenshots/` was regenerated by the run above.
+
+**Files.** `web/src/styles.css` (the flex chain below the breakpoint, the page's max measure, the
+statement's own centring), `web/src/ui/Connect.tsx` (the `promise` prop and the gate's corrected
+sentence, the field's resize observer), `web/dev/screenshots.mjs` (images waited for before every
+shot; the promise-3, promise-12 and collapse-band assertions), `web/dev/launch-check.mjs` (images
+waited for). No copy was added or changed beyond swapping in the existing logging variant of the
+privacy sentence; concept budget still 0.

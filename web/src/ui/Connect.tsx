@@ -8,7 +8,8 @@
 // 900 px up the same card sits inside a page — a header of two links, the product's statement in
 // the left column, a footer — and below it the page chrome is gone and the card is the screen, as
 // it always was. One DOM, one media query: `Page` renders the frame, and every card state is passed
-// through it as children, which is why the left column never moves when the card changes.
+// through it as children. The left column not moving when the card changes is the stylesheet's half
+// of that — the statement is centred on its own box, not on the pair (styles.css, `.statement`).
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { describeError, getMe, hostName, logsPrompts, type FriendlyError, type Me } from '../api';
 import { decodeInvite, inviteFromHash, InviteError, inviteHint, maskInvite } from '../invite';
@@ -305,10 +306,26 @@ export default function Connect({ state, dispatch }: Props) {
   useEffect(() => {
     const el = field.current;
     if (!el) return;
-    el.style.height = 'auto'; // back to the rows attribute, so the box can shrink as well as grow
-    // Everything here is border-box, so the frame's own two hairlines are part of the height and
-    // scrollHeight — which is content plus padding — is two pixels short of holding the last line.
-    el.style.height = `${el.scrollHeight + el.offsetHeight - el.clientHeight}px`;
+    function fit(box: HTMLTextAreaElement): void {
+      box.style.height = 'auto'; // back to the rows attribute, so the box can shrink as well as grow
+      // Everything here is border-box, so the frame's own two hairlines are part of the height and
+      // scrollHeight — which is content plus padding — is two pixels short of holding the last line.
+      box.style.height = `${box.scrollHeight + box.offsetHeight - box.clientHeight}px`;
+    }
+    fit(el);
+    // The code also rewraps when the *box* changes width — a window dragged narrower, a phone
+    // turned — and a height measured at the old width leaves the last line under the frame, which
+    // is the one thing this field must not do. Width only: the observer sees the height we just
+    // set as well, and re-fitting on that would be a loop.
+    if (typeof ResizeObserver === 'undefined') return; // jsdom, and browsers older than the app's floor
+    let width = el.clientWidth;
+    const ro = new ResizeObserver(() => {
+      if (el.clientWidth === width) return;
+      width = el.clientWidth;
+      fit(el);
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
   }, [text, known, showCode, busy, failure]);
 
   if (disclosure) return <LogPromptsGate me={disclosure.me} onAccept={disclosure.accept} />;
@@ -502,8 +519,13 @@ export default function Connect({ state, dispatch }: Props) {
  * to the card alone and the chrome is not rendered at all (CSS, one media query). The card's
  * content is the only stateful part, which is what keeps the left column still while the card goes
  * from empty to connecting to revoked (039 promise 3).
+ *
+ * `promise` is the one line of the statement that is not a constant: on a host that logs prompts
+ * the sentence in this column is false, and 007 promise 12 says the disclosure *replaces* it rather
+ * than sitting next to it. The caller passes the corrected sentence; nothing else about the column
+ * changes.
  */
-function Page({ children }: { children: ReactNode }) {
+function Page({ children, promise = privacyLine('', false) }: { children: ReactNode; promise?: string }) {
   return (
     <div className="page">
       <header className="page-head page-only">
@@ -530,7 +552,7 @@ function Page({ children }: { children: ReactNode }) {
             <p className="lead">
               They send you one code; you paste it here. No account, no install, nothing to set up.
             </p>
-            <p className="promise">{privacyLine('', false)}</p>
+            <p className="promise">{promise}</p>
             <hr className="rule2" />
             <p className="facts">Self-hosted · end-to-end encrypted · MIT</p>
           </section>
@@ -643,10 +665,17 @@ function Hint({ text }: { text: string }) {
 /**
  * The host runs with --log-prompts. BELIEFS.md says that flag "says so loudly": the reader learns it
  * here, in place of the promise this page just made them, and chooses before typing anything.
+ *
+ * "In place of" is literal, and above 900 px it takes saying: the statement column carries the
+ * privacy sentence, so a page that only added the alert would state the promise and its correction
+ * side by side, a few centimetres apart, at the moment of consent. The column's sentence is
+ * therefore the `--log-prompts` variant of the same line — one sentence, opposite fact, said once
+ * (007 promise 12; `privacyLine`). Below 900 px the card's own privacy line is not rendered at all
+ * in this state, which is the same promise kept the way the card keeps it.
  */
 function LogPromptsGate({ me, onAccept }: { me: Me; onAccept: () => void }) {
   return (
-    <Page>
+    <Page promise={privacyLine(hostName(me), true)}>
       <CardHead />
       <div className="failure" role="alert">
         <strong>{hostName(me) || 'This host'} is recording what you write</strong>

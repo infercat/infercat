@@ -158,7 +158,15 @@ textarea:focus-visible, input[type='text']:focus-visible, select:focus-visible {
    rendered. It is a flex column rather than a bare wrapper so the card can still fill the viewport
    and centre itself in it, which is what it did when it was `#root`'s own child. */
 .page { display: flex; flex-direction: column; min-height: 100%; }
-.connect { display: grid; place-items: center; flex: 1 1 auto; min-height: 100%; padding: 32px 20px 64px; }
+/* Below the breakpoint the frame is one column and the card is the screen, so the height has to
+   reach it: `main` and the column inside it grow with `.page`, and `.connect` fills what is left
+   and centres the card in it — exactly what `min-height: 100%` did when `.connect` was `#root`'s
+   own child. A percentage cannot do that here (`.page` has no height of its own, only a floor), so
+   it is the flex chain that carries the height down. Above 900 px the block below re-lays all
+   three. */
+.page-main { flex: 1 1 auto; display: flex; flex-direction: column; }
+.page-cols { flex: 1 1 auto; display: flex; flex-direction: column; }
+.connect { display: grid; place-items: center; flex: 1 1 auto; padding: 32px 20px 64px; }
 /* The mock's card is a card: one ink rectangle holding the whole product for a stranger, with the
    small print behind a hairline as its own foot strip. "Ink rules for frames" (038 Idiom). */
 .connect-card {
@@ -311,7 +319,16 @@ input[type='range']::-moz-range-thumb {
     --gap: clamp(40px, 9.375vw - 44px, 76px);
     --card-w: clamp(372px, 21.875vw + 176px, 456px);
     --display-size: clamp(41px, 2.34375vw + 20px, 50px);
+    /* The widest frame the mock draws is 1280, and the four measures above stop ramping there. Past
+       it the page keeps that frame and centres it rather than letting the two columns drift to
+       opposite edges of a 1920 or 2560 screen — at 1920 the statement's measure would end at 640
+       and the card start at 1424, which is not a pair any more. The rules still run edge to edge;
+       it is what sits between them that is held. */
+    --page-max: 1280px;
   }
+  /* One measure for the three inner containers, so the header's mark, the statement's mark and the
+     footer's first character stay on one line at every width. */
+  .page-head-in, .page-cols, .page-foot-in { max-width: var(--page-max); margin-inline: auto; }
   .page-only { display: block; }
   .card-only { display: none; }
 
@@ -333,8 +350,10 @@ input[type='range']::-moz-range-thumb {
   .page-nav a:hover { text-decoration: underline; }
 
   /* The pair, centred in the space between the two rules and top-aligned with each other: the
-     card's frame starts on the same line as the statement's mark. */
-  .page-main { flex: 1 1 auto; display: flex; align-items: center; min-height: 0; padding: 48px 0; }
+     card's frame starts on the same line as the statement's mark. A row again — below the
+     breakpoint it is the column that carries the height down to the card — so that `align-items`
+     is the vertical one here and the pair is as tall as its taller column. */
+  .page-main { flex: 1 1 auto; display: flex; flex-direction: row; align-items: center; min-height: 0; padding: 48px 0; }
   .page-cols {
     width: 100%; padding: 0 var(--gut);
     display: grid; grid-template-columns: minmax(0, 1fr) var(--card-w);
@@ -344,7 +363,15 @@ input[type='range']::-moz-range-thumb {
   /* The social card's composition, live: a stranger can read the whole argument without touching
      the field. Its measure is 600 px, and the rule under the promise stops there — it is the
      social card's rule, not a divider across the page. */
-  .statement { max-width: 600px; }
+  /* Why the left column is stretched and its own content centred, rather than simply top-aligned
+     with the card: centring the *pair* would hang the statement off the card's height, and a card
+     that has failed is 175 px taller than an empty one — the mark, the headline and the facts
+     line would all slide up as the card failed, with no user input to the left column
+     (039 promise 3, and the frozen decision that only the card's content is stateful). The cell
+     takes the row's height, so the statement's own box is centred on a line that depends on the
+     viewport alone; the card starts on the mark's line whenever it is the shorter of the two,
+     which is every state the mock draws, and grows about the centre when it is not. */
+  .statement { max-width: 600px; align-self: stretch; display: flex; flex-direction: column; justify-content: center; }
   .statement .mark { margin: 0 0 22px; }
   .display {
     font-weight: 700; font-size: var(--display-size);
