@@ -242,3 +242,168 @@ CLI says so clearly.
    the Settings sheet (031) and is styled there. Moving or duplicating it is a layout and state change.
 5. The two stale `web/public/bunny.wasm{,.gz}` files are untracked leftovers from before 037's rename
    and were left alone.
+
+### 2026-09-06 — engineer, fixes after review (round 1), branch `t038-brand-swiss-ink`
+
+Eleven findings, two high and nine medium. All eleven are fixed inside the frozen decisions — no new
+element, state or copy except the streaming cursor promise 2 names and the mock defines. Every claim
+below is measured against the built app or the committed file, not read off the source.
+
+**[high] `.conv-del:hover` failed AA (styles.css:235).** `--surface-2` is the one ground in this
+palette that drops `--danger` below 4.5:1, and the delete button was the only thing standing on it.
+The hover ground is now `--surface`, the same ground the row under it already takes, so the colour
+change from muted to danger stays the whole affordance. Measured with a real Playwright hover over
+the element's box on the built bundle: **light `#D5182F` on `#F1F2F4` = 4.69:1** (was 4.32:1),
+**dark `#FF5266` on `#101114` = 5.98:1** (was 5.40:1). Nothing else in the app uses `--surface-2` as
+a ground for danger or success.
+
+**[high] The degraded ("stale") header dropped three runs under AA (styles.css:281).** `opacity:
+0.55` on `.truth` and `.who .dim` is gone. The truths now recede by dropping out of ink into the
+muted grade instead of fading — `.main.stale .truth, .main.stale .who .dim { color: var(--muted) }`,
+with the path pill's ink text, its state square and the meter fills following it — because the muted
+grade is AA on every ground in this palette and a faded number is a number nobody can read. Driven
+with the fake harness in the paused-invite state (`?fake&keyPaused`, which is `key !== 'active'` —
+the same flag the revoked state sets), at 1280×800, 390×844 and 360×780, light and dark, walked with
+launch-check's own contrast walker:
+
+- `stale light 1280x800: 20 runs, lowest 5.25:1 (span.pending-mark) — AA met`
+- `stale dark 1280x800: 20 runs, lowest 6.65:1 (span.pending-mark) — AA met`
+- `stale light 390x844: 21 runs, lowest 5.25:1 (span.pending-mark) — AA met`
+- `stale dark 360x780: 21 runs, lowest 6.65:1 (span.pending-mark) — AA met`
+
+Before, in the same state: `span.meter-label` 2.39:1 light / 2.94:1 dark, `span.dim` 2.39:1,
+`span.path` 4.4:1. The review is right that this was carried over from `dff93cc` (2.24:1 there) — it
+is fixed now rather than carried further.
+
+**[medium] The three transparent icons vanished on dark chrome (brand.mjs:56,58,59).** `favicon.png`,
+`icon-192.png` and `icon-512.png` now render on `P.paper` like the other two, so all five rasters
+carry their ground with them. The mark is one colour and in this palette that colour is ink; a PNG
+cannot re-read the `prefers-color-scheme` query that `favicon.svg` still uses in a modern tab.
+Committed files, PIL: corner pixel `(255,255,255,255)` and centre `(10,10,10,255)` on all three —
+`favicon.png` 65.5 % paper / 31.3 % ink, `icon-192.png` 66.0 / 32.4, `icon-512.png` 66.5 / 32.9.
+`apple-touch-icon.png` (78.2 % paper) and `icon-maskable-512.png` (87.9 %) are unchanged. On Chrome's
+dark tab strip `#202124` the icon is now a paper square carrying the mark instead of 1.09:1 of
+nothing. The SVG favicon still flips to white and is what a modern browser actually uses.
+
+**[medium] The app had no streaming cursor (Message.tsx / promise 2).** Added, as the mock defines it
+(`docs/brand/swiss-ink.html:174`): an 8×16 px cobalt block, blinking on a 1 s step, on the end of the
+last line of the reply this tab is streaming. It is a `::after` on the reply's last block
+(`.row.streaming > .md > :last-child::after`), so it sits inline after the final word rather than on
+a line of its own, and it is on `live && m.content !== ''` only — never on a reply another tab is
+writing, and never next to "Waiting for the first token…", which already says what is happening.
+`@media (prefers-reduced-motion: reduce)` stops the blink and keeps the block. Visible in
+`web/dev/screenshots/05-streaming-answer.png` (after "You are talking to a model running") and in the
+re-recorded `docs/media/friend-chat.gif`.
+
+**[medium] The stale `bunny.wasm` pair was tracked, not untracked — my deviation 5 was wrong.**
+It was: `git ls-tree -l 25cbc09 web/public/` returns both blobs (26,933,534 and 6,188,895 bytes),
+they were copied into `web/dist` and they shipped inside `web-0.0.1-dev.zip`. `git rm`'d. After
+`make release-dry` the zip is **23 files / 33,968,107 bytes** and contains exactly `infercat.wasm`,
+`infercat.wasm.gz` and `wasm_exec.js` — 33,122,429 bytes of duplicate dead payload gone from the
+tree, from `web/dist` and from the release artifact. `.gitignore` already ignores the `infercat.*`
+pair, so nothing regenerates them. (`pm/BELIEFS.md:144` still says `make wasm` builds
+`web/public/bunny.wasm`; that is a PM file and 037's rename, so I have left it to you.)
+
+**[medium] The connect card was not the mock's connect card (styles.css:150).** `.connect-card` is
+now the ink rectangle the mock frames it in — `border: 1px solid var(--rule)` with the card's own
+padding — and `.about` is a foot strip flush to that frame behind a hairline, as is `.devmode` when
+dev mode is on. That is the frame and the footer strip; the **top strip and the tagline H1 are still
+declared deviation 1** and still yours to rule on, because both are new elements or new copy. The OG
+card's `.shot` lost its own border in the same change: the card carries the rectangle now, and two
+frames would be two. Computed on the built app, both schemes: `.connect-card` border is
+`1px solid rgb(10,10,10)` / `1px solid rgb(255,255,255)`, radius `0px`.
+
+**[medium] The version string was in Archivo, not mono (styles.css:174).** The build line is now its
+own `<span class="build">` inside `.about`, set in `var(--mono)` at 11 px, matching the mock's
+connect-card foot; the tailcat attribution sentence under it is prose and stays in Archivo. The same
+`build` class is on the settings sheet's `App version …` line. Walking every text node on the built
+connect screen now reads `IBM Plex Mono 11px build … | Version` / `0.0.1-dev` / `Source on GitHub`.
+`docs/DESIGN.md` §8 already named versions as mono; the app now matches it.
+
+**[medium] The Temperature slider was the last rounded object and used two untokened greys
+(styles.css:206).** `accent-color` is gone; the control is drawn from the tokens — `appearance:
+none`, a 3 px `--surface-2` track (the same rule the meters are) and a square 9×17 px `--accent`
+thumb, with the `-moz-` pair for Firefox. Pixel scan of the control at 3× in the settings sheet:
+**light = paper 82.6 % + `rgb(231,233,237)` 15.4 % + `rgb(31,59,255)` 2.0 %**, **dark = black 82.6 %
++ `rgb(26,28,33)` 15.4 % + `rgb(31,59,255)` 2.0 %** — three tokens each, and different in each
+scheme, where before it was `#EFEFEF`/`#B2B2B2` identically in both. A DOM sweep of every element in
+the chat and the sheet in both schemes now returns `rounded elements: none`.
+
+**[medium] The README mark flipped against the OS, not against GitHub's page theme (README.md:1).**
+The header is now a `<picture>` with a `(prefers-color-scheme: dark)` `<source>` — the mechanism
+GitHub honours against its own canvas — over two flat one-colour files, `docs/media/mark-ink.svg` and
+`docs/media/mark-paper.svg`. Both are **generated by `make brand`** from `web/public/favicon.svg`
+(the stylesheet flattened to one `fill`), so the mark contest still changes exactly one file.
+Evidence: GitHub's Markdown API returns the block wrapped in its own
+`<themed-picture data-catalyst-inline="true">`, which the previous `<img>` form did not get; each
+source over its intended canvas is **19.80:1 on GitHub light and 18.92:1 on GitHub dark**, and the
+pairings the `<picture>` prevents are the 1.05:1 and 1.00:1 the review measured; `float: left` still
+resolves (`getComputedStyle(img).float === "left"`, box at x 53). `30-readme-rendered.png`
+re-captured through the same pipeline 030/037/038 used.
+
+**[medium] The one cobalt control rested as a pale periwinkle (styles.css:104).** `button:disabled {
+opacity: 0.45 }` is gone. Disabled is now a state of the token system: `.primary:disabled` is
+`--surface-2` behind a `--border` hairline with the `--muted` label, `.secondary:disabled` the same
+hairline and label, and nothing composites. That takes the empty-field Connect and the empty-composer
+Send from **white on `#9AA7FF` at 2.25:1 to `#5C6068` on `#E7E9ED` at 5.50:1** (dark: 3.10:1 →
+`#9AA0AA` on `#1A1C21` at 6.48:1), and it means cobalt now appears only on a button that will do
+something. Visible in `30-connect-desktop.png`, `30-chat-phone.png`, `08-settings.png` and the
+re-captured `docs/media/friend-chat.png`. `brand.mjs` still fills the card's field before the OG
+shot, which is now about showing a friend the screen they arrive at with a code in hand rather than
+about dodging a pastel button.
+
+**Gate lines, verbatim, all from this worktree after the last source change.**
+
+- `make check` → `CHECK OK` (go vet clean; `go test ./...` 11 packages ok, 0 failures)
+- `cd web && pnpm typecheck` → `$ tsc --noEmit` (no output, exit 0)
+- `cd web && pnpm test` → `Test Files  10 passed (10)` · `Tests  257 passed (257)`
+- `cd web && pnpm lint` → `$ eslint .` (no output, exit 0)
+- `make wasm` → ` 26934031 web/public/infercat.wasm` · ` 6189810 web/public/infercat.wasm.gz`
+- `make notices-check` → `notices: OK — 49 Go + 110 npm dependencies + 2 bundled fonts, licences all in ALLOWED, verbatim texts present`
+- `make release-dry` → `• thanks for using GoReleaser!`; dist: `infercat_0.0.1-dev_{darwin_arm64,darwin_amd64,linux_amd64,linux_arm64}.tar.gz`, `infercat_0.0.1-dev_windows_amd64.zip`, `infercat_0.0.1-dev_checksums.txt`, `web-0.0.1-dev.zip` (23 files, no `bunny.wasm`), `homebrew/Casks/infercat.rb`
+- `make brand` → `web/public/favicon.png 2 KB · apple-touch-icon.png 3 KB · icon-192.png 3 KB · icon-512.png 9 KB · icon-maskable-512.png 7 KB · docs/media/mark-ink.svg · docs/media/mark-paper.svg · web/public/og.png 84 KB · .github/social-preview.png 91 KB`
+- `pnpm screenshots` → `60 screenshots in dev/screenshots/` · `No console errors, no page errors, no horizontal overflow at 360 px or 390 px.`
+- `INVITE=ic1.… make launch-check` (against a host from this branch) → `launch-check: OK`, and:
+  - `30-connect-desktop: 6 requests, 0 to a third party — none, all same-origin` (the same for dark and phone)
+  - `30-connect-desktop: 7 text runs, lowest 6.31:1 (p.pitch) — AA met`
+  - `30-connect-dark: 7 text runs, lowest 7.5:1 (a) — AA met`
+  - `30-connect-phone: 7 text runs, lowest 6.31:1 (p.pitch) — AA met` · `no horizontal overflow at 390px`
+  - `chat: connected in 0.8 s (relayed via New York · 72 ms)`
+  - `chat (light): 44 text runs, lowest 5.63:1 (button.conv-del) — AA met`
+  - `chat-phone: 49 text runs, lowest 5.63:1 (button.conv-del) — AA met` · `no horizontal overflow at 390px`
+  - `chat-dark: 18 text runs, lowest 7.18:1 (button.conv-del) — AA met`
+  - `chat: 14 requests, off-origin — https://tailcat.dev, https://tc301a.ipn.dev (the relay is the only one Protection 3 allows)`
+  - `docs/media/friend-chat.gif  817 KB` (under the 2 MB budget)
+- Off the gates, with the fake harness and launch-check's own walker — the states launch-check never
+  visits: the four stale runs above, `conv-del hover light: lowest 4.69:1 — AA met`, `conv-del hover
+  dark: lowest 5.98:1 — AA met`, `settings light: 32 runs, lowest 5.63:1 — AA met`, `settings dark:
+  32 runs, lowest 6.71:1 — AA met`, and `rounded elements: none` in both schemes.
+
+**Before / after (the "before" is `25cbc09`, this ticket's first commit).**
+
+- `web/dev/screenshots/30-connect-desktop.png` — before: unframed text floating on bare paper, the
+  version line in Archivo, a pale periwinkle Connect. After: the card is a 1 px ink rectangle, the
+  build line is mono behind a hairline foot strip flush to the frame, and Connect rests as
+  `--surface-2` behind a hairline until the field holds a well-formed code.
+- `web/dev/screenshots/30-chat-phone.png` — before: a pale cobalt Send on an empty composer. After:
+  the same grey-and-hairline disabled state; everything else in the header and the thread is
+  unchanged.
+- `web/dev/screenshots/05-streaming-answer.png` — the cursor, which was not there before.
+- `web/dev/screenshots/08-settings.png` — the slider is a 3 px rule with a square cobalt thumb, and
+  `App version 0.0.1-dev · MIT` is mono.
+- `web/public/{favicon,icon-192,icon-512}.png` — an opaque paper ground.
+- `web/public/og.png`, `.github/social-preview.png` — one frame instead of two: the card's own.
+- `web/dev/screenshots/30-readme-rendered.png` — re-captured for the `<picture>` header.
+
+**Production-touching actions, declared.** A host of my own from this branch
+(`./bin/infercat serve --upstream http://127.0.0.1:18080 --dev-listen 127.0.0.1:9095 --data-dir
+/tmp/hd038r1 --name "Max's laptop"`) and one `keys add alice` against it, for the media re-capture;
+stopped afterwards (`shutting down (up to 10s for in-flight requests)`, port 9095 free) and the data
+dir deleted. It lives in `/tmp` rather than the worktree only because `<data-dir>/admin.sock` would
+pass the 103-byte unix socket limit under this worktree's path. The founder's host on **9091 was
+never touched and was listening before and after** (`lsof` at both ends). One read-only
+`api.github.com/markdown` call for the README render; nothing written to GitHub.
+
+**Still open, unchanged from the first log.** Deviation 1 is now half done — the frame and the foot
+strip are in; the tagline H1 and the top strip are still new copy and a new element, so still your
+ruling — and deviations 2, 3 and 4 stand as written. Deviation 5 was wrong and is corrected above.

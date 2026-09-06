@@ -101,7 +101,14 @@ button {
   border-radius: 0;
   background: none;
 }
-button:disabled { cursor: default; opacity: 0.45; }
+/* A control that cannot be pressed steps out of the accent rather than fading it: 45 % cobalt on
+   paper composites to a periwinkle #9aa7ff whose white label is 2.3:1, and a stranger's first
+   sight of the brand's one colour was that pastel (the empty Connect, every Send in a screenshot).
+   Disabled is now a state of the token system — surface behind a hairline, the muted ink — so
+   cobalt appears only on a button that will do something. */
+button:disabled { cursor: default; color: var(--muted); }
+.primary:disabled { background: var(--surface-2); color: var(--muted); border-color: var(--border); }
+.secondary:disabled { border-color: var(--border); color: var(--muted); }
 
 textarea, input, select {
   font: inherit;
@@ -147,7 +154,12 @@ textarea:focus-visible, input[type='text']:focus-visible, select:focus-visible {
 
 /* ---------- connect screen: the landing page ---------- */
 .connect { display: grid; place-items: center; min-height: 100%; padding: 32px 20px 64px; }
-.connect-card { width: 100%; max-width: 30rem; }
+/* The mock's card is a card: one ink rectangle holding the whole product for a stranger, with the
+   small print behind a hairline as its own foot strip. "Ink rules for frames" (038 Idiom). */
+.connect-card {
+  width: 100%; max-width: 30rem;
+  background: var(--paper); border: 1px solid var(--rule); padding: 28px 26px 14px;
+}
 .connect h1 { font-size: 31px; letter-spacing: -0.035em; margin: 0 0 12px; font-weight: 700; line-height: 1.06; }
 .pitch { color: var(--muted); margin: 0 0 26px; font-size: 14.5px; line-height: 1.5; }
 .field { display: block; margin-bottom: 12px; }
@@ -171,11 +183,18 @@ textarea:focus-visible, input[type='text']:focus-visible, select:focus-visible {
   color: var(--muted); font-size: 12.5px; line-height: 1.55;
   margin-top: 26px; border-top: 1px solid var(--border); padding-top: 14px;
 }
-.about { color: var(--muted); font-size: 12px; margin: 12px 0 0; font-variant-numeric: tabular-nums; }
+/* The card's foot: flush to the frame behind a hairline, as in the mock. */
+.about {
+  color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums;
+  margin: 22px -26px 0; padding: 12px 26px 0; border-top: 1px solid var(--border);
+}
 .about a, .small-print a { color: var(--accent-text); }
+/* A build number and a licence are machine-issued facts, so they are mono (038 Type). The
+   attribution sentence under them is prose and stays in Archivo. */
+.build { display: block; font-family: var(--mono); font-size: 11px; margin-bottom: 5px; }
 .devmode {
   display: flex; gap: 8px; align-items: center;
-  margin-top: 20px; padding-top: 14px; border-top: 1px solid var(--border);
+  margin: 14px -26px 0; padding: 12px 26px 0; border-top: 1px solid var(--border);
   color: var(--muted); font-size: 12px;
 }
 .devmode input { width: auto; }
@@ -203,7 +222,26 @@ textarea:focus-visible, input[type='text']:focus-visible, select:focus-visible {
 }
 .masked code { font-family: var(--mono); font-size: 13px; color: var(--text); }
 .field-hint { display: block; color: var(--muted); font-size: 12px; margin-top: 6px; }
-input[type='range'] { accent-color: var(--accent); padding: 0; border: 0; }
+/* The one control a user agent would draw for us, and it drew a rounded pill in two greys no token
+   owns — identically in both schemes, so on true black the empty half was a near-white capsule.
+   Drawn here instead, from the tokens, as the same 3 px rule the meters are, with a square thumb. */
+input[type='range'] {
+  appearance: none; -webkit-appearance: none;
+  width: 100%; height: 18px; padding: 0; border: 0; background: none; cursor: pointer;
+}
+input[type='range']::-webkit-slider-runnable-track {
+  height: 3px; background: var(--surface-2); border: 0; border-radius: 0;
+}
+input[type='range']::-webkit-slider-thumb {
+  -webkit-appearance: none; appearance: none;
+  width: 9px; height: 17px; margin-top: -7px;
+  background: var(--accent); border: 0; border-radius: 0;
+}
+input[type='range']::-moz-range-track { height: 3px; background: var(--surface-2); border: 0; border-radius: 0; }
+input[type='range']::-moz-range-progress { height: 3px; background: var(--accent); border: 0; border-radius: 0; }
+input[type='range']::-moz-range-thumb {
+  width: 9px; height: 17px; background: var(--accent); border: 0; border-radius: 0;
+}
 
 /* ---------- chat shell ---------- */
 .app { display: grid; grid-template-columns: 248px 1fr; height: 100dvh; }
@@ -232,7 +270,9 @@ input[type='range'] { accent-color: var(--accent); padding: 0; border: 0; }
   display: grid; place-items: center;
 }
 .conv:hover .conv-del, .conv.current .conv-del { opacity: 1; }
-.conv-del:hover { background: var(--surface-2); color: var(--danger); }
+/* `--surface-2` is the one ground in this palette that drops danger under AA (4.32:1 at 16 px);
+   the row's own hover ground carries it at 4.69:1, and the colour is the affordance anyway. */
+.conv-del:hover { background: var(--surface); color: var(--danger); }
 @media (pointer: coarse) { .conv-del { opacity: 1; } }
 
 .main { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
@@ -277,8 +317,13 @@ input[type='range'] { accent-color: var(--accent); padding: 0; border: 0; }
 .meter-fill { display: block; height: 100%; background: var(--text); transition: width 0.3s; }
 .hamburger { display: none; font-size: 18px; padding: 2px 6px; }
 
-/* Nothing on screen outlives its measurement: while /me is stale the truths above it recede. */
-.main.stale .truth, .main.stale .who .dim { opacity: 0.55; }
+/* Nothing on screen outlives its measurement: while /me is stale the truths above it recede.
+   They recede by dropping out of ink into the muted grade, not by fading: a 55 % opacity took the
+   meter labels to 2.4:1 and the path to 4.4:1, and a number nobody can read is worse than no
+   number. The muted grade is AA on every ground in this palette. */
+.main.stale .truth, .main.stale .who .dim { color: var(--muted); }
+.main.stale .path { color: var(--muted); border-color: var(--border); }
+.main.stale .path::before, .main.stale .meter-fill { background: var(--muted); }
 
 /* flex-1 with min-height:0 rather than a fixed grid row count: the header can grow a truthful
    line (a degraded engine, a host that logs prompts) without stealing the thread's height. */
@@ -312,6 +357,25 @@ input[type='range'] { accent-color: var(--accent); padding: 0; border: 0; }
 }
 .meta .actions { margin-left: auto; flex: none; }
 .waiting { color: var(--muted); font-size: 14px; margin: 0; }
+
+/* The streaming cursor (the mock's `.cursor`): a cobalt block on the end of the last line this tab
+   is still writing, so a reply that has paused mid-sentence is visibly still coming. It is drawn as
+   a pseudo-element on the reply's last block so it sits inline after the final word rather than on
+   a line of its own, and it is on the reply this tab streams only — never on a checkpointed one. */
+.row.streaming > .md > :last-child::after {
+  content: '';
+  display: inline-block;
+  width: 8px; height: 16px;
+  vertical-align: -2px; margin-left: 3px;
+  background: var(--accent);
+  animation: cursor-blink 1s steps(1, end) infinite;
+}
+@keyframes cursor-blink { 0%, 55% { opacity: 1; } 56%, 100% { opacity: 0; } }
+/* A blinking block is exactly the motion this setting is about; the cursor itself still says the
+   reply is live. */
+@media (prefers-reduced-motion: reduce) {
+  .row.streaming > .md > :last-child::after { animation: none; }
+}
 .msg-error { color: var(--danger); margin: 0; }
 
 /* A reply that stopped says how it stopped, right under what it managed to say. */
