@@ -407,3 +407,17 @@ never touched and was listening before and after** (`lsof` at both ends). One re
 **Still open, unchanged from the first log.** Deviation 1 is now half done — the frame and the foot
 strip are in; the tagline H1 and the top strip are still new copy and a new element, so still your
 ruling — and deviations 2, 3 and 4 stand as written. Deviation 5 was wrong and is corrected above.
+
+### 2026-09-06 — PM landing
+
+Rulings on the engineer's declared deviations: (1) the tagline stays OUT of the connect card — it is
+host-facing marketing; the friend who pastes a code needs the friend's sentence, which the card
+already has; (2) the light share card with the real screenshot is right; (3)–(5) accepted as stated.
+Verifiers (three lenses, two rounds, one fix round `2eb1db2`) left two regressions and three cosmetics;
+PM fixes in this landing commit: the chat header below 1260 px is now two rows and never more (who +
+Settings, then the truths full width — the phone rule generalised), `.connect-actions` wraps so a
+two-button wall stacks instead of squeezing "Not now" into two lines at 390 px, and the share-card
+screenshot is bounded to the canvas (`bottom: 8.5%`, `object-fit: cover`) so its frame no longer
+runs off the bottom of `.github/social-preview.png`. Accepted to the backlog (012): meter values set
+in ink weight 500 with muted names (needs a span in `Meters`); the paused-invite composer hint is a
+prose sentence set in mono (needs a second hint class). Media regenerated after the fixes.

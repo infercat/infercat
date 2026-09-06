@@ -113,10 +113,10 @@ function cardPage(w, h, cardPng) {
     }
     /* No frame of its own: the connect card carries the ink rectangle now, and two would be two. */
     .shot {
-      position: absolute; left: 55%; top: 10.5%; width: 41%; height: 100%;
+      position: absolute; left: 55%; top: 10.5%; bottom: 8.5%; width: 41%;
       overflow: hidden;
     }
-    .shot img { width: 100%; display: block; }
+    .shot img { width: 100%; height: 100%; object-fit: cover; object-position: top left; display: block; }
   </style>
   <div class="left">
     <div class="mark">${mark}</div>
