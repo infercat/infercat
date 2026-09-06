@@ -173,3 +173,61 @@ capture needs a full ffmpeg for the GIF and Playwright's own build cannot write 
 header says exactly this). Without it the run dies after `friend-chat.png` and leaves the media set half
 old, half new. (2) Ran a host of my own and one `keys add` against the laptop engine on :18080, as
 instructed. Nothing else on this machine was written outside the worktree.
+
+### 2026-09-06 — engineer, fixes after review (round 1)
+
+**One defect, reported three times: `web/dev/screenshots/30-readme-rendered.png` was never
+re-captured.** Correct, and my 09-05 media paragraph made it worse by listing the eight files
+`make launch-check` writes as though they were the whole of promise 3. Nine `30-*.png` are tracked;
+the ninth is not a launch-check output — ticket 030 made it by hand (030's log, line 221) and left no
+producer in the repo, so `INVITE=… pnpm launch-check` could not have touched it and I never noticed it
+standing still. It is also invisible to this ticket's own remainder gate: neither `git grep -i
+'bunny|bn1'` nor a binary-aware `grep -rail bunny` reads anything inside a deflate-compressed PNG. The
+committed image showed the old name in four places — the crumb `2185Lab / bunny-network · branch
+t030-launch`, the H1 `Bunny Network (working name)`, and the in-app line `Bunny Network records
+counts, never text.`
+
+**Re-captured, not declared-and-skipped.** Same pipeline as 030, recovered from that run's own
+artifacts (its `readme.html` survived), so the stylesheet and the 1100×900 geometry are the
+original's:
+1. `gh api /markdown` with `{text: README.md, mode: gfm, context: 2185Lab/bunny-network}` — the
+   context repo is the one that exists today; it drives only camo-proxying and `dir="auto"`, never a
+   visible string, and every visible name comes from this branch's README.
+2. 030's wrapper verbatim (`<base href="http://127.0.0.1:6834/">` and its GitHub-ish stylesheet), a
+   `python3 -m http.server 6834` over the repo root so `docs/media/friend-chat.gif` resolves to the
+   GIF this branch regenerated, and the crumb rewritten.
+3. Playwright chromium, viewport 1100×900, light, scale 1 — the same clip 030 shot.
+
+**What the new file shows.** Crumb `2185Lab / infercat · branch t037-rename-infercat · README.md ·
+rendered by GitHub's Markdown API (gfm), styled locally`; the H1 `Infercat`; the friend-chat still
+from this branch's recording (`relayed via New York · 72 ms`, a fresh `0/200k tokens today` meter);
+the in-app line now reads `Infercat records counts, never text.` 1100×900, 181 KB. Zero old-name
+strings, checked where a PNG can be checked: the HTML the shot was taken from has 0 hits for
+`bunny|bn1` and 27 for `infercat`.
+
+**The crumb says `2185Lab / infercat` while GitHub still says `bunny-network`.** Deliberate, and the
+one judgement call here: the frozen decisions write the repo path as `github.com/2185Lab/infercat`
+everywhere, every link inside the render does, and the GitHub rename is your landing step.
+Photographing today's literal path would have put `bunny-network` back into the one image this round
+exists to clear. Say the word if you would rather the evidence show the pre-rename state.
+
+**Unchanged from 030, still not a bug.** The CI badge renders as its alt text `CI`: shields cannot
+read a private repo's workflow status, and `2185Lab/infercat` does not exist yet. It fills in once the
+repo is public under the new name. The MIT badge renders.
+
+**Still no producer in the repo** — this file is now a hand-made one-off for the second ticket
+running. A small `web/dev/readme-shot.mjs` beside `launch-check.mjs` would fold it into
+`make launch-check` and end the whole class of miss. That is new surface on a rename ticket, so I have
+not added it; it is a cheap follow-up if you want it.
+
+**Checks re-run.** Only a PNG changed, so the Go, wasm, brand and release-dry gates have no input that
+moved; I re-ran everything that reads `web/` regardless.
+- `cd web && pnpm typecheck` → `$ tsc --noEmit` (no output, exit 0)
+- `cd web && pnpm test` → `Test Files  10 passed (10)` · `Tests  257 passed (257)`
+- `cd web && pnpm lint` → `$ eslint .` (no output, exit 0)
+- remainder gate re-run, identical to 09-05: `docs/MEASURE.md:6` (the `bunny-kit` repo path),
+  `hack/load/sample.go:147` (`top -bn1`), `web/pnpm-lock.yaml:306` (base64 `BN1`).
+
+**Production-touching, declared.** One read-only `gh api /markdown` call (nothing written to GitHub)
+and a `python3 -m http.server` bound to 127.0.0.1:6834 over this worktree, stopped at the end (port
+free). The founder's host on :9091 and the engine on :18080 were not touched.
