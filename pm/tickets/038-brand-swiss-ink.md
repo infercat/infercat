@@ -3,7 +3,7 @@ id: 038
 title: Brand — implement the "Swiss ink" direction across the web app, cards, icons and README
 kind: normal (user-facing; docs/copy for the README header)
 size: 5
-status: dispatched
+status: landed
 updated: 2026-09-06
 release: demo-1
 ---

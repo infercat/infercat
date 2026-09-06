@@ -1,6 +1,6 @@
 # HANDOFF — state of the work (succession document)
 
-Updated: 2026-09-06 01:20 EDT — NAME DECIDED AND LANDED: Infercat (`infercat`, prefix `ic1`), ticket 037 on main `0b2173f`; repo is `2185Lab/infercat`. Brand look (F8) contest published for the founder's pick: https://claude.ai/code/artifact/11ec5b1c-2b39-4401-9d67-47954f1585a7 (PM: Riso Zine > Swiss ink > Cat-eye). Demo host restarted on the new build; link in `~/.claude/jobs/12b4a99c/tmp/founder-url.txt`. Waiting on the founder: brand pick → implementation ticket; domain (infercat.dev recommended) → WebURL → Vercel → 027 QR; GitHub org `infercat` (optional transfer); security@ address; F6 history rewrite → public → tag.
+Updated: 2026-09-06 04:10 EDT — Infercat named (037) and dressed (038, Swiss ink) on main; repo `2185Lab/infercat`; demo host on the new build, link in `~/.claude/jobs/12b4a99c/tmp/founder-url.txt`. Waiting on the founder: the MARK pick (https://claude.ai/code/artifact/75eb002f-35c6-442a-9d13-619324875950; PM: sitting content cat) → one-file swap + `make brand`; domain (infercat.dev/.app/.ai free; .com speculator, expires 2026-09-11 → backorder) → WebURL → Vercel → 027 QR; GitHub org (optional); security@ address; F6 history rewrite → public → tag v0.1.0.
 
 ## What this is
 
