@@ -2,14 +2,22 @@ import json
 def circ(cx,cy,r): return f"M{cx-r:.2f} {cy:.2f}A{r:.2f} {r:.2f} 0 1 0 {cx+r:.2f} {cy:.2f}A{r:.2f} {r:.2f} 0 1 0 {cx-r:.2f} {cy:.2f}Z"
 def ell(cx,cy,rx,ry): return f"M{cx-rx:.2f} {cy:.2f}A{rx:.2f} {ry:.2f} 0 1 0 {cx+rx:.2f} {cy:.2f}A{rx:.2f} {ry:.2f} 0 1 0 {cx-rx:.2f} {cy:.2f}Z"
 def poly(pts): return "M"+"L".join(f"{x:.2f} {y:.2f}" for x,y in pts)+"Z"
-def ear(base_out, tip, base_in, rt=2.0):
-    # a triangle with a rounded tip: replace the tip vertex by a short arc
-    (ox,oy),(tx,ty),(ix,iy)=base_out,tip,base_in
+def ear(base_out, tip, base_in, rt=2.9, grow=1.22, bow=0.9):
+    # bigger: the tip is pushed away from the base midpoint by `grow`; rounder: a wide tip arc (rt) and
+    # both edges bowed outward by `bow` so the ear reads as a rounded leaf, not a softened triangle
     import math
+    (ox,oy),(ix,iy)=base_out,base_in
+    mx,my=(ox+ix)/2,(oy+iy)/2
+    tx,ty=mx+(tip[0]-mx)*grow, my+(tip[1]-my)*grow
     def toward(a,b,d):
         vx,vy=b[0]-a[0],b[1]-a[1]; L=math.hypot(vx,vy); return (a[0]+vx/L*d, a[1]+vy/L*d)
-    p1=toward(tip,base_out,rt); p2=toward(tip,base_in,rt)
-    return f"M{ox:.2f} {oy:.2f}L{p1[0]:.2f} {p1[1]:.2f}Q{tx:.2f} {ty:.2f} {p2[0]:.2f} {p2[1]:.2f}L{ix:.2f} {iy:.2f}Z"
+    p1=toward((tx,ty),(ox,oy),rt); p2=toward((tx,ty),(ix,iy),rt)
+    # outward normal of each edge (away from the base midpoint)
+    def ctrl(a,b):
+        cx,cy=(a[0]+b[0])/2,(a[1]+b[1])/2; nx,ny=cx-mx,cy-my; L=math.hypot(nx,ny) or 1
+        return (cx+nx/L*bow, cy+ny/L*bow)
+    c1=ctrl((ox,oy),p1); c2=ctrl(p2,(ix,iy))
+    return f"M{ox:.2f} {oy:.2f}Q{c1[0]:.2f} {c1[1]:.2f} {p1[0]:.2f} {p1[1]:.2f}Q{tx:.2f} {ty:.2f} {p2[0]:.2f} {p2[1]:.2f}Q{c2[0]:.2f} {c2[1]:.2f} {ix:.2f} {iy:.2f}Z"
 STYLE = "<style>.m{fill:#0A0A0A}.s{fill:none;stroke:#0A0A0A;stroke-width:3;stroke-linecap:round}@media (prefers-color-scheme: dark){.m{fill:#FFFFFF}.s{stroke:#FFFFFF}}</style>"
 def svg(face, solids, tail=None):
     parts=[f'<path class="m" fill-rule="evenodd" d="{face}"/>']
