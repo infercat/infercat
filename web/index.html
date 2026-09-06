@@ -4,8 +4,13 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <meta name="color-scheme" content="light dark" />
-    <meta name="theme-color" content="#fdfcfb" media="(prefers-color-scheme: light)" />
-    <meta name="theme-color" content="#121110" media="(prefers-color-scheme: dark)" />
+    <meta name="theme-color" content="#ffffff" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#000000" media="(prefers-color-scheme: dark)" />
+    <!-- The two faces, self-hosted, on the first screen: no request leaves for a font (038 promise 3,
+         Protection 3). Preloaded because @font-face inside the CSS bundle is found one round trip late. -->
+    <link rel="preload" href="/fonts/archivo-latin-var.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/fonts/ibm-plex-mono-400-latin.woff2" as="font" type="font/woff2" crossorigin />
+    <link rel="preload" href="/fonts/ibm-plex-mono-500-latin.woff2" as="font" type="font/woff2" crossorigin />
     <!-- %PRODUCT_NAME%, %PRODUCT_DESCRIPTION% and %WEB_URL% are filled in by the plugin in
          vite.config.ts from src/product.ts and the build environment: the name lives in one place. -->
     <title>%PRODUCT_NAME%</title>

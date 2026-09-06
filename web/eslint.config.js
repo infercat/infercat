@@ -18,6 +18,7 @@ export default tseslint.config(
         location: 'readonly',
         performance: 'readonly',
         TextDecoder: 'readonly',
+        URL: 'readonly',
         process: 'readonly',
         setTimeout: 'readonly',
         window: 'readonly',

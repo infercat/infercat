@@ -1,7 +1,13 @@
+<img src="web/public/favicon.svg" alt="" width="52" align="left">
+
 # Infercat
 
-[![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
+**Give friends a key to the AI on your machine.**
+
+[![License: MIT](https://img.shields.io/badge/license-MIT-1F3BFF?style=flat-square)](LICENSE)
 [![CI](https://github.com/2185Lab/infercat/actions/workflows/ci.yml/badge.svg)](https://github.com/2185Lab/infercat/actions/workflows/ci.yml)
+
+---
 
 Share the model on your machine with friends. You run one binary in front of the inference server
 you already have — llama.cpp, vLLM, Ollama or LM Studio — and give each friend one invite code. They

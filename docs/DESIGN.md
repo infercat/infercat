@@ -816,3 +816,20 @@ and risks a promise that is currently kept.
 - **The dev harness.** `web/dev` fakes, the Playwright runners, `hack/tunneldemo`,
   `hack/measure.sh`, `leak-check.mjs` — the only things that prove the real bridge and the real
   relay agree with the unit tests.
+
+## 8. Visual system
+
+The app is drawn in **Swiss ink**, the brand direction the founder picked on 2026-09-06 (pm/LAUNCH.md
+F8; the specification and the rendered mock are `docs/brand/swiss-ink.md` and `.html`): black ink on
+white paper, a strict grid, hairline rules for separators and ink rules for frames, zero border
+radius anywhere, and exactly one accent — a printer's cobalt `#1F3BFF` — reserved for the thing the
+reader can act on. Dark is true black with the same cobalt, and cobalt never carries text there (the
+`#7E93FF` tint does). Type is Archivo for everything and IBM Plex Mono for what is *measured or
+machine-issued* — invite codes, the path pill, latencies, token counts, versions — never for prose,
+which is what keeps the metrics readable as facts. Both faces are self-hosted woff2 under
+`web/public/fonts` (SIL OFL 1.1, in THIRD_PARTY_NOTICES.md) so the app asks no third party for
+anything (Protection 3; `launch-check` asserts it). **Every colour is a token in the `:root` and
+`prefers-color-scheme: dark` blocks at the top of `web/src/styles.css` — including the syntax
+highlighting, which is drawn from the same five palette colours. No component, and no generated
+image, names a hex outside that file and its two deliberate mirrors: `web/dev/brand.mjs` (the social
+cards) and `web/public/favicon.svg` (the mark, which has no stylesheet to read).**

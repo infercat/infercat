@@ -8,8 +8,10 @@
 // Writes, in public/: favicon.png (96), apple-touch-icon.png (180, on the page ground — iOS ignores
 // alpha), icon-192.png, icon-512.png, icon-maskable-512.png (mark inside the safe zone, on the page
 // ground) and og.png (1200×630: the name, the one sentence, and the connect card as it renders);
-// and ../.github/social-preview.png (1280×640, the same design at GitHub's size). The name and the
-// sentence come from src/product.ts; the card is a screenshot, never a replica. No network.
+// and ../.github/social-preview.png (1280×640, the same design at GitHub's size). Both cards are in
+// the Swiss ink idiom (docs/brand/swiss-ink.md, ticket 038) and carry the two self-hosted faces
+// inlined. The name and the sentence come from src/product.ts; the card is a screenshot, never a
+// replica. No network.
 import { spawn } from 'node:child_process';
 import { readFileSync, statSync } from 'node:fs';
 import { dirname, join } from 'node:path';
@@ -26,19 +28,36 @@ const product = readFileSync(join(web, 'src/product.ts'), 'utf8');
 const NAME = /PRODUCT_NAME = '([^']+)'/.exec(product)?.[1] ?? 'app';
 const DESCRIPTION = /DESCRIPTION =\s*'([^']+)'/.exec(product)?.[1] ?? '';
 const mark = readFileSync(join(pub, 'favicon.svg'), 'utf8');
+// A well-formed invite for the card's field: the real shape (prefix, a 32-char tailcat address, a
+// 43-char secret), so the card shows the screen a friend actually sees. Both halves are invented —
+// no such host exists, the card is a screenshot, and nothing is ever sent.
+const PREFIX = /INVITE_PREFIX = '([^']+)'/.exec(product)?.[1] ?? 'ic1';
+const DEMO_INVITE = `${PREFIX}.tco2FwWCAw8jPY9xK4mR7bQvUz3Ld1Hn.T8kQz2mXvA5rNpJ7wEyLd3sHfBc9UgKi0oRtZ6xVn4M`;
 
-// Mirror of the light :root tokens in src/styles.css. The cards are always light: a social card is
-// shown on the reader's timeline, not in their colour scheme.
-const P = { bg: '#fdfcfb', raised: '#ffffff', text: '#1b1a18', muted: '#6f6b64', faint: '#716c65', line: '#e6e2dc' };
-const FONT = "-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif";
+// Mirror of the light :root tokens in src/styles.css (Swiss ink, 038). The cards are always the
+// light half: a social card is shown on the reader's timeline, not in their colour scheme.
+const P = { paper: '#ffffff', text: '#0a0a0a', muted: '#5c6068', border: '#d8dbe0', rule: '#0a0a0a' };
+
+// The two faces the app ships, inlined so the composition needs no network and no installed font.
+const FACES = [
+  ['Archivo', '400 700', 'fonts/archivo-latin-var.woff2'],
+  ['IBM Plex Mono', '400', 'fonts/ibm-plex-mono-400-latin.woff2'],
+  ['IBM Plex Mono', '500', 'fonts/ibm-plex-mono-500-latin.woff2'],
+];
+const FACE_CSS = FACES.map(
+  ([family, weight, file]) =>
+    `@font-face{font-family:'${family}';font-style:normal;font-weight:${weight};src:url(data:font/woff2;base64,${readFileSync(join(pub, file)).toString('base64')}) format('woff2')}`,
+).join('');
+const FONT = "'Archivo', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif";
+const MONO = "'IBM Plex Mono', ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace";
 
 // name, edge, ground (null = transparent), padding as a fraction of the edge on each side
 const ICONS = [
   ['favicon.png', 96, null, 0],
-  ['apple-touch-icon.png', 180, P.bg, 0.1],
+  ['apple-touch-icon.png', 180, P.paper, 0.1],
   ['icon-192.png', 192, null, 0],
   ['icon-512.png', 512, null, 0],
-  ['icon-maskable-512.png', 512, P.bg, 0.2],
+  ['icon-maskable-512.png', 512, P.paper, 0.2],
 ];
 
 function iconPage(edge, ground, pad) {
@@ -50,19 +69,29 @@ function iconPage(edge, ground, pad) {
   </style>${mark}`;
 }
 
-/** The card: the mark, the name, the sentence, three true words, and the connect screen itself. */
+/**
+ * The card, in the Swiss ink idiom (038): ink on paper, no radius, no shadow, a 2 px ink rule over
+ * the facts line, and the facts themselves in mono because they are claims about a machine. The
+ * mark, the name and the sentence on the left; the connect screen — a screenshot, never a replica,
+ * so the cobalt Connect on it is the app's own — framed in a hairline on the right.
+ */
 function cardPage(w, h, cardPng) {
   return `<!doctype html><meta charset="utf-8"><style>
-    html, body { margin: 0; width: ${w}px; height: ${h}px; overflow: hidden; background: ${P.bg}; font-family: ${FONT}; }
-    .left { position: absolute; left: 6%; top: 11%; width: 44%; }
-    .mark { width: 52px; height: 52px; }
-    h1 { font-size: 54px; letter-spacing: -0.02em; line-height: 1.1; margin: 22px 0 18px; font-weight: 600; color: ${P.text}; }
-    p { font-size: 23px; line-height: 1.45; color: ${P.muted}; margin: 0; }
-    .facts { position: absolute; left: 6%; bottom: 9%; font-size: 17px; color: ${P.faint}; }
+    ${FACE_CSS}
+    html, body { margin: 0; width: ${w}px; height: ${h}px; overflow: hidden; background: ${P.paper}; font-family: ${FONT}; }
+    .left { position: absolute; left: 6%; top: 10.5%; width: 45%; }
+    .mark { width: 54px; height: 54px; color: ${P.text}; }
+    h1 { font-size: 92px; letter-spacing: -0.045em; line-height: 0.94; margin: 30px 0 22px; font-weight: 700; color: ${P.text}; }
+    p { font-size: 26px; line-height: 1.34; color: ${P.muted}; margin: 0; max-width: 22ch; font-weight: 400; }
+    .facts {
+      position: absolute; left: 6%; bottom: 8.5%; width: 45%;
+      border-top: 2px solid ${P.rule}; padding-top: 22px;
+      font-family: ${MONO}; font-size: 19px; letter-spacing: 0.02em; color: ${P.text};
+    }
     .shot {
-      position: absolute; left: 55%; top: 10%; width: 41%; height: 100%;
-      border: 1px solid ${P.line}; border-bottom: 0; border-radius: 16px 16px 0 0; background: ${P.bg};
-      box-shadow: 0 12px 40px rgba(27, 26, 24, 0.10); overflow: hidden; padding: 30px 30px 0;
+      position: absolute; left: 55%; top: 10.5%; width: 41%; height: 100%;
+      border: 1px solid ${P.rule}; border-bottom: 0; background: ${P.paper};
+      overflow: hidden; padding: 30px 30px 0;
     }
     .shot img { width: 100%; display: block; }
   </style>
@@ -117,6 +146,13 @@ async function main() {
     const page = await ctx.newPage();
     await page.goto(`${BASE}/`);
     await page.waitForSelector('.connect-card');
+    // The card is shown in the state the reader arrives at with a code in hand: the field carries a
+    // well-formed invite (this address does not exist), so Connect is the enabled cobalt button the
+    // brand calls for rather than a disabled one, and the focus ring is not mistaken for a border.
+    await page.fill('.connect textarea', DEMO_INVITE);
+    await page.evaluate(() => document.activeElement?.blur());
+    await page.evaluate(() => document.fonts.ready);
+    await page.waitForTimeout(200);
     const cardPng = await page.locator('.connect-card').screenshot();
     await ctx.close();
 
