@@ -169,7 +169,7 @@ textarea:focus-visible, input[type='text']:focus-visible, select:focus-visible {
   letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); margin-bottom: 7px;
 }
 .connect textarea { font-family: var(--mono); font-size: 13.5px; line-height: 1.5; }
-.connect-actions { display: flex; gap: 14px; align-items: center; }
+.connect-actions { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; }
 .inline-error { color: var(--danger); font-size: 13px; margin: -4px 0 12px; }
 /* No tint washes in this system: a notice is a block of surface behind an ink rule. */
 .notice {
@@ -290,6 +290,12 @@ input[type='range']::-moz-range-thumb {
 .truth {
   margin-left: auto; display: flex; align-items: center; flex-wrap: wrap;
   gap: 4px 14px; min-width: 0; color: var(--muted);
+}
+/* Below the width where host, path, meters and Settings fit one row, the header is two rows and
+   never more: who + Settings on the first, the truths full-width on the second (038 review). */
+@media (max-width: 1259px) {
+  .topbar > .ghost { order: 2; margin-left: auto; }
+  .truth { order: 3; margin-left: 0; width: 100%; }
 }
 /* The path pill: rectangular, hairline, mono, with the state in a 7 px square of colour. */
 .path {
