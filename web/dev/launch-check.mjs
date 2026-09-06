@@ -305,7 +305,20 @@ async function connectScreen(browser) {
     await names(page, name);
     await contrast(page, name);
     const order = await tabOrder(page, name, 6);
-    if (!order[0]?.startsWith('textarea[Invite code]')) problems.push(`${name}: Tab lands on ${order[0] ?? 'nothing'} first, not the invite field`);
+    // The field is the first thing past the chrome. Below 900 px there is no chrome and Tab lands
+    // on it outright; above, the page carries a header of exactly two links (039), and those two —
+    // and only those two — may come first. A friend with a code never tabs through a site map.
+    const HEADER = ['link[Host your own]', 'link[Source]', 'a[Host your own]', 'a[Source]'];
+    const chrome = order.findIndex((d) => !HEADER.includes(d));
+    const first = order[chrome === -1 ? 0 : chrome];
+    if (!first?.startsWith('textarea[Invite code]')) {
+      problems.push(`${name}: Tab reaches ${first ?? 'nothing'} before the invite field (order: ${order.join(' → ')})`);
+    }
+    if (chrome > 2) problems.push(`${name}: ${chrome} controls in the header, and the frozen design has two`);
+    // The shot below is what a reader meets, so it must not carry the checker's own cursor: with
+    // more than six controls on the page Tab now stops on one of them and leaves a focus ring
+    // there, where it used to run off the end of the document and leave none.
+    await page.evaluate(() => document.activeElement?.blur?.());
     if (viewport.width < 500) await noOverflow(page, name);
     const file = join(shots, `${name}.png`);
     await page.screenshot({ path: file });

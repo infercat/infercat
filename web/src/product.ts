@@ -8,6 +8,10 @@ export const DESCRIPTION =
   'Chat with a friend’s GPU. They send you one code; you paste it here. No account, no install.';
 // Where the code lives: the About line links here. MIT (LICENSE at the repo root).
 export const SOURCE_URL = 'https://github.com/2185Lab/infercat';
+// Where a stranger with no code is sent: the README's host quickstart, which is the whole answer to
+// "how do I get one of these". The header link and the card's no-code line are the same destination
+// and so are one constant, until there is a docs site to point at instead (039).
+export const HOST_URL = `${SOURCE_URL}#quickstart-host`;
 // The build stamps VITE_APP_VERSION from internal/product/product.go (see the Makefile), so the
 // app and the host binary report the same version and a bug report can name both halves. A bare
 // `vite build` or `vite dev` has no stamp and says so by falling back to the source default.

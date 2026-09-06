@@ -113,6 +113,29 @@ export function inviteFromHash(hash: string): string {
 }
 
 /**
+ * What the line under the field says about what is in the field, in three states, as a pure
+ * function of the text through the parser above (039). `host` is the first six characters of the
+ * address — enough for a reader to recognise the machine their friend named, and nothing a stranger
+ * could dial: the address is public, the secret is the half this never touches.
+ */
+export type HintState = 'empty' | 'valid' | 'invalid';
+
+export interface InviteHint {
+  state: HintState;
+  /** `tco2Fw…` when the text parses, '' otherwise. */
+  host: string;
+}
+
+export function inviteHint(text: string): InviteHint {
+  if (text.trim() === '') return { state: 'empty', host: '' };
+  try {
+    return { state: 'valid', host: `${decodeInvite(text).addr.slice(0, 6)}…` };
+  } catch {
+    return { state: 'invalid', host: '' };
+  }
+}
+
+/**
  * A remembered invite is still a secret sitting in a text box on a screen somebody may be sharing.
  * It is shown as `ic1.tco2…N96as` — enough for the reader to recognise as theirs, not enough for
  * anyone to use — until they ask for the rest (014 promise 9).

@@ -130,7 +130,9 @@ async function main() {
   watch(page, 'desktop');
 
   await page.goto(BASE);
-  await page.waitForSelector('.connect-card h1');
+  // The card's own H1 is the phone card's; on the page above 900 px the statement column carries
+  // the name and the card is the task alone (039). The frame is what every layout has.
+  await page.waitForSelector('.connect-card');
   await shot(page, 'connect');
 
   await connectViaTunnel(page);
@@ -204,7 +206,7 @@ async function main() {
   const darkPage = await dark.newPage();
   watch(darkPage, 'dark');
   await darkPage.goto(BASE);
-  await darkPage.waitForSelector('.connect-card h1');
+  await darkPage.waitForSelector('.connect-card');
   await shot(darkPage, 'connect-dark');
   await connectViaTunnel(darkPage);
   await darkPage.waitForSelector('.empty', { timeout: 20_000 });
@@ -240,6 +242,75 @@ async function main() {
 
   // No horizontal scrolling at 360 px, ever.
   await fits(m, 'mobile: 360 px with the drawer open');
+
+  // --- 039: the connect page across its range, and the About disclosure open ---
+  // One page, five widths. The two frames the mock draws are 1280 and 1024; 899 is one pixel below
+  // the breakpoint, where the chrome is gone and the card is the screen it always was.
+  // The code goes into the field the way a reader puts it there — a code in the URL is consent and
+  // would connect by itself (020 promise 8), and the state being drawn here is the card before that.
+  for (const [name, viewport, scheme] of [
+    ['page-1280-light', { width: 1280, height: 800 }, 'light'],
+    ['page-1280-dark', { width: 1280, height: 800 }, 'dark'],
+    ['page-1024', { width: 1024, height: 768 }, 'light'],
+    ['collapse-899', { width: 899, height: 760 }, 'light'],
+    ['phone-390', { width: 390, height: 844 }, 'light'],
+  ]) {
+    const ctx = await browser.newContext({ viewport, colorScheme: scheme, deviceScaleFactor: viewport.width < 500 ? 2 : 1 });
+    const p = await ctx.newPage();
+    watch(p, `39-${name}`);
+    // A code in the field, which is the state the mock draws: the hint reading it back, Connect live.
+    await p.goto(BASE);
+    await p.waitForSelector('.connect-card');
+    await p.locator('.connect textarea').fill(INVITE);
+    await p.waitForSelector('.code-hint .host');
+    await p.evaluate(() => document.fonts.ready);
+    await sleep(200);
+    // The page is a page above the breakpoint and the card alone below it: one of the two, never
+    // half of each, and never a column left orphaned across the fold (promise 1).
+    const frame = await p.evaluate(() => ({
+      head: document.querySelector('.page-head')?.getBoundingClientRect().height ?? 0,
+      statement: document.querySelector('.statement')?.getBoundingClientRect().height ?? 0,
+      foot: document.querySelector('.page-foot')?.getBoundingClientRect().height ?? 0,
+      cardH1: document.querySelector('.connect-card h1')?.getBoundingClientRect().height ?? 0,
+      over: document.documentElement.scrollWidth - window.innerWidth,
+      hint: document.querySelector('.code-hint')?.textContent ?? '',
+      paste: document.querySelectorAll('.paste').length,
+    }));
+    const page900 = viewport.width >= 900;
+    const chrome = frame.head > 0 && frame.statement > 0 && frame.foot > 0;
+    if (chrome !== page900) problems.push(`39-${name}: page chrome ${chrome ? 'shown' : 'missing'} at ${viewport.width}px`);
+    // The card's own head is the phone card's: on the page the statement says the name instead, so
+    // the reader meets the sentence once (039).
+    if (page900 === frame.cardH1 > 0) problems.push(`39-${name}: the card's H1 is ${frame.cardH1 > 0 ? 'shown' : 'missing'} at ${viewport.width}px`);
+    if (frame.over > 0) problems.push(`39-${name}: the page scrolls horizontally by ${frame.over}px at ${viewport.width}px`);
+    if (!frame.hint.includes('Reads as an invite')) problems.push(`39-${name}: the hint does not read the code back ("${frame.hint}")`);
+    if (frame.paste !== 1) problems.push(`39-${name}: ${frame.paste} Paste buttons, expected 1`);
+    console.log(`  39-${name}: ${page900 ? 'page' : 'card'} at ${viewport.width}px, hint "${frame.hint.trim()}"`);
+    await write(p, `39-${name}`);
+    await ctx.close();
+  }
+
+  // The attribution, open: one keystroke from the footer, on no screen by default (comfort 5).
+  const aboutCtx = await browser.newContext({ viewport: { width: 1280, height: 800 }, colorScheme: 'light' });
+  const about = await aboutCtx.newPage();
+  watch(about, '39-about-open');
+  await about.goto(BASE);
+  await about.waitForSelector('.page-foot .about-disc');
+  await about.locator('.connect textarea').fill(INVITE);
+  // Opened with the keyboard, because that is the promise (promise 2): focus the summary and press.
+  await about.locator('.page-foot .about-disc > summary').focus();
+  await about.keyboard.press('Enter');
+  // The sentence is the disclosure's sibling, not its child: a block inside an inline `<details>`
+  // splits the small-print line in two (styles.css says why), so `[open]` reaches it with `~`.
+  await about.waitForSelector('.page-foot .about-disc[open] ~ .about-body');
+  const said = await about.locator('.page-foot .about-body').innerText();
+  if (!said.includes('Tailscale')) problems.push(`39-about-open: the disclosure does not carry the attribution ("${said}")`);
+  await sleep(150);
+  await write(about, '39-about-open');
+  // And closes again on the same key: a disclosure that only opens is a paragraph with extra steps.
+  await about.keyboard.press('Enter');
+  if (await about.locator('.page-foot .about-disc[open]').count()) problems.push('39-about-open: the disclosure will not close from the keyboard');
+  await aboutCtx.close();
 
   // --- ticket 007: the states that used to lie ---------------------------------------------
   const FAST = 'fake&connectMs=200&tokenDelay=25';
@@ -615,7 +686,7 @@ async function main() {
     if (!r.url().startsWith(previewBase) && !r.url().startsWith('data:')) offOrigin.push(r.url());
   });
   await prodPage.goto(previewBase);
-  await prodPage.waitForSelector('.connect-card h1');
+  await prodPage.waitForSelector('.connect-card');
   await shot(prodPage, 'production-landing');
   // Promise 7: the landing page fetches nothing off its own origin, and no wasm until Connect.
   if (offOrigin.length > 0) problems.push(`production: off-origin requests ${offOrigin.join(', ')}`);
