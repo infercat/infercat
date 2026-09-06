@@ -778,7 +778,7 @@ and risks a promise that is currently kept.
   address derived from the private key (`tunnel.go:201-238`); short-form address by default,
   full form only with a pinned relay (001 judgment 3).
 - **Invite format and both parsers.** `ic1.<tc…>.<secret>`, prefix checked before part count,
-  `bn<N>` → "needs a newer app" (`invite.go:39-72`), the TS mirror running the Go vectors
+  `ic<N>` (N > 1) → "needs a newer app" (`invite.go:39-72`), the TS mirror running the Go vectors
   (`invite.ts`, `invite.test.ts`). `[001-adv]` refuted every edge case raised.
 - **Key store.** `sha256:` hashes only, constant-time compare across every key
   (`store.go:136-144`), atomic writes with fsync (`:323-363`), fail-closed on corruption or an

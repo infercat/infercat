@@ -100,7 +100,7 @@ describe('inviteFromHash', () => {
   });
 
   it('ignores a fragment that is not an invite, and never throws', () => {
-    for (const hash of ['', '#', '#section-2', '#bn2.something', '#%E0%A4%A', '#nope']) {
+    for (const hash of ['', '#', '#section-2', '#ic2.something', '#%E0%A4%A', '#nope']) {
       expect(inviteFromHash(hash), hash).toBe('');
     }
   });

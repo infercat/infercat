@@ -5,7 +5,7 @@
 // response, and — with the slot held past the queue's 30 s — the timeout arrives as "<host> is
 // busy" with a countdown, the message kept and the session still connected.
 //
-//   BN_BIN=/path/infercat BN_DATA_DIR=/path/data UPSTREAM=http://127.0.0.1:18080 \
+//   INFERCAT_BIN=/path/infercat INFERCAT_DATA_DIR=/path/data UPSTREAM=http://127.0.0.1:18080 \
 //     GW=http://127.0.0.1:6620 WEB_PORT=6621 node dev/busy-check.mjs [queued|timeout|all]
 //
 // It only ever kills processes it started itself; the upstream is never touched.
@@ -17,15 +17,15 @@ import { chromium } from 'playwright';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const web = join(here, '..');
-const shots = join(here, 'screenshots');
-const { BN_BIN, BN_DATA_DIR } = process.env;
+const shots = join(here, 'evidence'); // real-host evidence: viewed at landing, not tracked (037)
+const { INFERCAT_BIN, INFERCAT_DATA_DIR } = process.env;
 const GW = process.env.GW ?? 'http://127.0.0.1:6620';
 const UPSTREAM = process.env.UPSTREAM ?? 'http://127.0.0.1:18080';
 const WEB_PORT = Number(process.env.WEB_PORT ?? 6621);
 const LISTEN = GW.replace(/^https?:\/\//, '').replace(/\/.*$/, '');
 const HOST_NAME = process.env.HOST_NAME ?? "Max's laptop";
 const only = process.argv[2] ?? 'all';
-if (!BN_BIN || !BN_DATA_DIR) throw new Error('BN_BIN and BN_DATA_DIR are required');
+if (!INFERCAT_BIN || !INFERCAT_DATA_DIR) throw new Error('INFERCAT_BIN and INFERCAT_DATA_DIR are required');
 
 const kids = [];
 process.on('exit', () => kids.forEach((c) => c.kill('SIGTERM')));
@@ -45,12 +45,12 @@ function start(name, cmd, args, env = {}) {
   return child;
 }
 function keyAdd(name, ...limits) {
-  const r = spawnSync(BN_BIN, ['keys', 'add', name, '--json', '--no-qr', '--data-dir', BN_DATA_DIR, ...limits], { encoding: 'utf8' });
+  const r = spawnSync(INFERCAT_BIN, ['keys', 'add', name, '--json', '--no-qr', '--data-dir', INFERCAT_DATA_DIR, ...limits], { encoding: 'utf8' });
   if (r.status !== 0) throw new Error(`keys add ${name}: ${r.stderr}`);
   return JSON.parse(r.stdout);
 }
 const events = () => {
-  try { return readFileSync(join(BN_DATA_DIR, 'usage.jsonl'), 'utf8').trim().split('\n').filter(Boolean).map(JSON.parse); }
+  try { return readFileSync(join(INFERCAT_DATA_DIR, 'usage.jsonl'), 'utf8').trim().split('\n').filter(Boolean).map(JSON.parse); }
   catch { return []; }
 };
 const shot = (page, name) => page.screenshot({ path: join(shots, `18-real-${name}.png`) });
@@ -159,7 +159,7 @@ async function timeout(browser, alice, bob, carol) {
 }
 
 async function main() {
-  start('host', BN_BIN, ['--data-dir', BN_DATA_DIR, 'serve', '--upstream', UPSTREAM, '--dev-listen', LISTEN, '--name', HOST_NAME, '--slots', '1']);
+  start('host', INFERCAT_BIN, ['--data-dir', INFERCAT_DATA_DIR, 'serve', '--upstream', UPSTREAM, '--dev-listen', LISTEN, '--name', HOST_NAME, '--slots', '1']);
   await waitFor(`${GW}/healthz`, 'the host');
   const alice = keyAdd('alice');
   const bob = keyAdd('bob', '--max-output-tokens', '8000');

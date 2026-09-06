@@ -231,3 +231,13 @@ moved; I re-ran everything that reads `web/` regardless.
 **Production-touching, declared.** One read-only `gh api /markdown` call (nothing written to GitHub)
 and a `python3 -m http.server` bound to 127.0.0.1:6834 over this worktree, stopped at the end (port
 free). The founder's host on :9091 and the engine on :18080 were not touched.
+- 2026-09-06 00:40 PM landing (mechanical freeze on top of `7b070b9`). Verifiers' surviving findings and what was done: docs/DESIGN.md
+  `bn<N>` bullet → `ic<N> (N > 1)`; docs/MEASURE.md model path restored to the real `~/.cache/bunny-network/models/…`
+  (the directory predates the rename; a rewritten path that does not exist breaks the reproduction command);
+  `web/src/invite.test.ts` non-invite hash fixture follows the prefix family (`#ic2.something`); the three
+  `BN_*` env vars of the Go live test and the web dev harnesses → `INFERCAT_LIVE_UPSTREAM`, `INFERCAT_BIN`,
+  `INFERCAT_DATA_DIR` (pm/ tickets keep the old names as history); the Tailscale disclaimer moved to the first
+  tailcat mention (README "How it works"), the License paragraph points back to it; all 112 `web/dev/screenshots`
+  regenerated with `pnpm screenshots` (the fake-gateway harness) so no tracked image shows the old name. Left as
+  history on purpose: `Inferact` in docs/NAME.md (the knockout record), the `bn.*` localStorage keys and the
+  `bn###-` temp-dir prefixes (invisible to a friend; renaming the storage keys is a migration with a concept).

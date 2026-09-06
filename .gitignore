@@ -11,3 +11,6 @@ web/public/wasm_exec.js
 /infercat
 /infercat.exe
 /load
+
+# Real-host evidence captures (busy/real/footer/int-check): viewed at landing, not tracked (037)
+web/dev/evidence/

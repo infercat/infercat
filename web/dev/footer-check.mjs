@@ -7,7 +7,7 @@
 // reload. Each reply's device numbers are printed beside the host's own usage line for the same
 // request, so the relay hop can be seen rather than guessed at.
 //
-//   BN_BIN=/path/infercat BN_DATA_DIR=/path/data GW=http://127.0.0.1:6840 PREVIEW_PORT=6841 \
+//   INFERCAT_BIN=/path/infercat INFERCAT_DATA_DIR=/path/data GW=http://127.0.0.1:6840 PREVIEW_PORT=6841 \
 //     UPSTREAM=http://127.0.0.1:18080 node dev/footer-check.mjs
 //
 // It only ever kills processes it started itself; the upstream only receives requests.
@@ -19,14 +19,14 @@ import { chromium } from 'playwright';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const web = join(here, '..');
-const shots = join(here, 'screenshots');
-const { BN_BIN, BN_DATA_DIR } = process.env;
+const shots = join(here, 'evidence'); // real-host evidence: viewed at landing, not tracked (037)
+const { INFERCAT_BIN, INFERCAT_DATA_DIR } = process.env;
 const GW = process.env.GW ?? 'http://127.0.0.1:6840';
 const UPSTREAM = process.env.UPSTREAM ?? 'http://127.0.0.1:18080';
 const LISTEN = GW.replace(/^https?:\/\//, '').replace(/\/.*$/, '');
 const PREVIEW = Number(process.env.PREVIEW_PORT ?? 6841);
 const HOST_NAME = process.env.HOST_NAME ?? "Max's laptop";
-if (!BN_BIN || !BN_DATA_DIR) throw new Error('BN_BIN and BN_DATA_DIR are required');
+if (!INFERCAT_BIN || !INFERCAT_DATA_DIR) throw new Error('INFERCAT_BIN and INFERCAT_DATA_DIR are required');
 
 const kids = [];
 process.on('exit', () => kids.forEach((c) => c.kill('SIGTERM')));
@@ -42,7 +42,7 @@ async function waitFor(url, what, tries = 300) {
   throw new Error(`${what} never came up at ${url}`);
 }
 function keys(...args) {
-  const r = spawnSync(BN_BIN, ['keys', ...args, '--data-dir', BN_DATA_DIR], { encoding: 'utf8' });
+  const r = spawnSync(INFERCAT_BIN, ['keys', ...args, '--data-dir', INFERCAT_DATA_DIR], { encoding: 'utf8' });
   if (r.status !== 0) throw new Error(`keys ${args.join(' ')}: ${r.stderr || r.stdout}`);
   return r.stdout;
 }
@@ -50,7 +50,7 @@ const RUN = Date.now().toString(36).slice(-4);
 /** The secret is the invite's third segment (docs/ARCHITECTURE.md, invite format); the CLI never prints it twice. */
 const mint = (name) => { const k = JSON.parse(keys('add', `${name}-${RUN}`, '--json', '--no-qr')); k.secret = k.invite.split('.')[2]; return k; };
 const events = () => {
-  try { return readFileSync(join(BN_DATA_DIR, 'usage.jsonl'), 'utf8').trim().split('\n').filter(Boolean).map(JSON.parse); }
+  try { return readFileSync(join(INFERCAT_DATA_DIR, 'usage.jsonl'), 'utf8').trim().split('\n').filter(Boolean).map(JSON.parse); }
   catch { return []; }
 };
 /** The host's own line for the newest chat request of this key: the other side of every footer. */
@@ -94,7 +94,7 @@ const Q = 'What is the capital of France? Answer in one short sentence.';
 async function main() {
   spawnSync('node', ['node_modules/vite/bin/vite.js', 'build'], { cwd: web, stdio: 'inherit' });
   kids.push(spawn('node', ['node_modules/vite/bin/vite.js', 'preview', '--port', String(PREVIEW), '--strictPort'], { cwd: web, stdio: 'ignore' }));
-  kids.push(spawn(BN_BIN, ['--data-dir', BN_DATA_DIR, 'serve', '--upstream', UPSTREAM, '--dev-listen', LISTEN, '--slots', '1', '--name', HOST_NAME], { stdio: 'ignore' }));
+  kids.push(spawn(INFERCAT_BIN, ['--data-dir', INFERCAT_DATA_DIR, 'serve', '--upstream', UPSTREAM, '--dev-listen', LISTEN, '--slots', '1', '--name', HOST_NAME], { stdio: 'ignore' }));
   await waitFor(`http://127.0.0.1:${PREVIEW}`, 'vite preview');
   await waitFor(`${GW}/healthz`, 'the host');
   const alice = mint('alice');
