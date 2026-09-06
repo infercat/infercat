@@ -1,0 +1,702 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=1160">
+<title>Infercat — Direction: Swiss ink</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<style>
+/* ============================================================
+   INFERCAT — DIRECTION 01 "SWISS INK"
+   black ink · white paper · hairline rules · one printer's cobalt
+   ============================================================ */
+
+*,*::before,*::after{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{
+  margin:0; background:#fff; color:#0A0A0A;
+  font-family:"Archivo",-apple-system,"Segoe UI",Helvetica,Arial,sans-serif;
+  font-size:15px; line-height:1.5;
+  -webkit-font-smoothing:antialiased;
+}
+.mono{font-family:"IBM Plex Mono",ui-monospace,"SF Mono",Menlo,Consolas,monospace}
+.page{width:1100px; margin:0 auto; padding:0 30px 120px}
+
+/* ---------- spec sheet chrome ---------- */
+.sheet-head{border-bottom:3px solid #0A0A0A; padding:38px 0 16px; margin-bottom:6px}
+.sheet-kicker{font-family:"IBM Plex Mono",monospace; font-size:11.5px; font-weight:500;
+  letter-spacing:.16em; text-transform:uppercase; color:#5C6068}
+.sheet-title{font-size:58px; font-weight:700; letter-spacing:-.035em; line-height:.98; margin:14px 0 10px}
+.sheet-sub{max-width:660px; font-size:15px; color:#5C6068; margin:0}
+.sheet-meta{display:flex; gap:28px; margin-top:18px; font-family:"IBM Plex Mono",monospace;
+  font-size:11.5px; color:#5C6068; letter-spacing:.02em}
+.sheet-meta b{color:#0A0A0A; font-weight:500}
+
+.sec{margin-top:64px}
+.sec-h{display:flex; align-items:baseline; gap:18px; border-top:2px solid #0A0A0A; padding-top:11px; margin-bottom:24px}
+.sec-n{font-family:"IBM Plex Mono",monospace; font-size:12px; font-weight:600; letter-spacing:.1em}
+.sec-t{font-size:25px; font-weight:600; letter-spacing:-.022em}
+.sec-d{margin-left:auto; font-family:"IBM Plex Mono",monospace; font-size:11.5px; color:#5C6068; text-align:right}
+.note{font-size:13px; color:#5C6068; max-width:720px; margin:0 0 18px}
+.tag{display:inline-block; font-family:"IBM Plex Mono",monospace; font-size:10.5px; font-weight:600;
+  letter-spacing:.14em; text-transform:uppercase; color:#5C6068; margin-bottom:9px}
+
+/* ============================================================
+   SCHEME TOKENS
+   ============================================================ */
+.sw{
+  --bg:#FFFFFF; --surface:#F1F2F4; --surface2:#E7E9ED;
+  --text:#0A0A0A; --muted:#5C6068; --border:#D8DBE0; --rule:#0A0A0A;
+  --accent:#1F3BFF; --accent-ink:#FFFFFF; --accent-text:#1F3BFF;
+  --success:#0B7A4B; --warning:#E5E80B; --danger:#D5182F; --code:#EDEFF2;
+  --dot-ring:#0A0A0A;
+  background:var(--bg); color:var(--text);
+}
+.sw.dark{
+  --bg:#000000; --surface:#101114; --surface2:#1A1C21;
+  --text:#FFFFFF; --muted:#9AA0AA; --border:#2A2D33; --rule:#FFFFFF;
+  --accent:#1F3BFF; --accent-ink:#FFFFFF; --accent-text:#7E93FF;
+  --success:#35D48D; --warning:#F2F52E; --danger:#FF5266; --code:#16181D;
+  --dot-ring:#FFFFFF;
+}
+.frame{border:1px solid var(--rule)}
+.pair{display:grid; grid-template-columns:1fr 1fr; gap:22px}
+
+/* ============================================================
+   MARK
+   ============================================================ */
+.mark{display:block; color:inherit}
+.mark-row{display:flex; align-items:flex-end; gap:44px; padding:32px 30px 22px}
+.mark-item{display:flex; flex-direction:column; align-items:center; gap:12px}
+.mark-item .cap{font-family:"IBM Plex Mono",monospace; font-size:10.5px; color:var(--muted); letter-spacing:.08em}
+.mark-hair{border-top:1px solid var(--border); margin:0 30px}
+.wordmark{font-size:78px; font-weight:700; letter-spacing:-.042em; line-height:1; margin:0}
+.wordmark.sm{font-size:34px; letter-spacing:-.035em}
+.lockup{display:flex; align-items:center; gap:14px}
+.lockup .wm{font-weight:700; letter-spacing:-.038em; line-height:1}
+.lockup-stack{display:flex; flex-direction:column; align-items:flex-start; gap:12px}
+.onecolour{display:flex; gap:0; align-items:stretch; margin:0 30px 30px; border:1px solid var(--border)}
+.oc{flex:1; display:flex; align-items:center; justify-content:center; padding:26px 0; gap:0}
+.oc + .oc{border-left:1px solid var(--border)}
+
+/* ============================================================
+   SHARED UI PRIMITIVES (product surfaces)
+   ============================================================ */
+.btn{
+  font-family:"Archivo",sans-serif; font-size:14px; font-weight:600; letter-spacing:-.005em;
+  border:1px solid var(--accent); background:var(--accent); color:var(--accent-ink);
+  padding:10px 22px; border-radius:0; cursor:default; line-height:1.2;
+}
+.btn.ghost{background:transparent; color:var(--text); border-color:var(--rule)}
+.btn.link{background:none; border:none; padding:0; color:var(--muted); font-weight:500; font-size:12.5px}
+.btn.sm{font-size:12.5px; padding:7px 14px}
+.field-label{font-family:"IBM Plex Mono",monospace; font-size:10.5px; font-weight:600;
+  letter-spacing:.14em; text-transform:uppercase; color:var(--muted); display:block; margin-bottom:7px}
+.input{
+  border:1px solid var(--rule); background:var(--bg); color:var(--text);
+  font-family:"IBM Plex Mono",monospace; font-size:14px; padding:12px 13px; width:100%;
+  display:flex; align-items:center; justify-content:space-between; gap:10px;
+}
+.input .caret{width:2px; height:17px; background:var(--accent); display:inline-block; vertical-align:-3px}
+
+/* path pill — rectangular, no radius */
+.pill{
+  display:inline-flex; align-items:center; gap:7px; border:1px solid var(--border);
+  font-family:"IBM Plex Mono",monospace; font-size:11.5px; color:var(--text);
+  padding:4px 9px; white-space:nowrap; line-height:1.4;
+}
+.pill .dot{width:7px; height:7px; flex:none; display:block}
+.pill.direct .dot{background:var(--success)}
+.pill.relayed .dot{background:var(--accent)}
+.pill.reconn{border-color:var(--rule)}
+.pill.reconn .dot{background:var(--warning); outline:1px solid var(--dot-ring); outline-offset:-1px;
+  animation:blip 1.1s steps(1,end) infinite}
+@keyframes blip{0%,60%{opacity:1}61%,100%{opacity:.25}}
+
+/* meters */
+.meters{display:flex; gap:20px}
+.meter{width:128px}
+.meter.wide{width:158px}
+.meter .mt{display:flex; justify-content:space-between; gap:8px; font-family:"IBM Plex Mono",monospace;
+  font-size:10.5px; color:var(--muted); margin-bottom:4px; letter-spacing:.02em; white-space:nowrap}
+.meter .mt b{color:var(--text); font-weight:500; white-space:nowrap}
+.bar{height:3px; background:var(--surface2); position:relative}
+.sw.dark .bar{background:var(--surface2)}
+.bar i{position:absolute; inset:0 auto 0 0; background:var(--text); display:block}
+
+/* ============================================================
+   CONNECT CARD
+   ============================================================ */
+.connect{width:100%; background:var(--bg)}
+.connect-top{display:flex; align-items:center; justify-content:space-between;
+  padding:13px 26px; border-bottom:1px solid var(--rule)}
+.connect-body{padding:30px 26px 24px}
+.connect h1{font-size:31px; font-weight:600; letter-spacing:-.03em; line-height:1.06; margin:0 0 12px}
+.connect .desc{font-size:14.5px; color:var(--muted); margin:0 0 26px; max-width:44ch; line-height:1.5}
+.connect-actions{display:flex; align-items:center; gap:16px; margin-top:16px}
+.privacy{font-size:12.5px; line-height:1.55; color:var(--muted); margin:22px 0 0;
+  border-top:1px solid var(--border); padding-top:14px}
+.connect-foot{border-top:1px solid var(--border); padding:11px 26px;
+  font-family:"IBM Plex Mono",monospace; font-size:11px; color:var(--muted); display:flex; justify-content:space-between}
+.connect-foot a{color:var(--accent-text); text-decoration:none; border-bottom:1px solid var(--accent-text)}
+
+/* ============================================================
+   CHAT
+   ============================================================ */
+.chat{display:grid; grid-template-columns:186px 1fr; background:var(--bg); height:508px}
+.side{border-right:1px solid var(--rule); display:flex; flex-direction:column}
+.side-head{padding:12px}
+.side .wide{width:100%; text-align:left}
+.convs{flex:1; padding:2px 12px; display:flex; flex-direction:column; gap:1px}
+.conv{font-size:13px; padding:7px 9px; color:var(--muted); border:1px solid transparent;
+  white-space:nowrap; overflow:hidden; text-overflow:ellipsis}
+.conv.on{color:var(--text); border-color:var(--border); background:var(--surface); font-weight:500}
+.side-foot{padding:12px; border-top:1px solid var(--border)}
+
+.main{display:flex; flex-direction:column; min-width:0}
+.topbar{display:flex; align-items:center; gap:22px; padding:11px 20px; border-bottom:1px solid var(--rule)}
+.who{min-width:0}
+.who b{display:block; font-size:14.5px; font-weight:600; letter-spacing:-.012em}
+.who span{display:block; font-family:"IBM Plex Mono",monospace; font-size:11px; color:var(--muted); margin-top:1px}
+.truth{display:flex; align-items:center; gap:20px; margin-left:auto}
+
+.scroll{flex:1; overflow:hidden; padding:26px 20px 14px; display:flex; flex-direction:column;
+  justify-content:flex-end; gap:22px}
+.msg-user{align-self:flex-end; max-width:62%; background:var(--surface2); color:var(--text);
+  padding:11px 14px; font-size:14.5px; line-height:1.5}
+.msg-edit{align-self:flex-end; font-family:"IBM Plex Mono",monospace; font-size:10.5px; color:var(--muted); margin-top:-16px}
+.think{display:inline-flex; align-items:center; gap:9px; border-left:2px solid var(--text);
+  padding:2px 0 2px 10px; font-family:"IBM Plex Mono",monospace; font-size:11.5px; color:var(--muted)}
+.think b{color:var(--text); font-weight:500}
+.think .tri{font-size:9px; color:var(--text)}
+.answer{font-size:15px; line-height:1.62; max-width:64ch; margin:12px 0 0}
+.cursor{display:inline-block; width:8px; height:16px; background:var(--accent);
+  vertical-align:-2px; margin-left:3px; animation:cur 1s steps(1,end) infinite}
+@keyframes cur{0%,55%{opacity:1}56%,100%{opacity:0}}
+.reply-foot{display:flex; align-items:center; gap:16px; margin-top:12px;
+  font-family:"IBM Plex Mono",monospace; font-size:11px; color:var(--muted)}
+.reply-foot .acts{margin-left:auto; display:flex; gap:14px}
+
+.composer{border-top:1px solid var(--rule); padding:12px 20px 10px}
+.composer-row{display:flex; align-items:stretch; gap:10px}
+.composer .box{flex:1; border:1px solid var(--rule); padding:11px 13px; font-size:14px; color:var(--muted)}
+.tgl{display:inline-flex; align-items:center; gap:8px; border:1px solid var(--rule); background:transparent;
+  color:var(--text); font-family:"IBM Plex Mono",monospace; font-size:11.5px; padding:0 12px; cursor:default}
+.composer .tgl .box{width:11px; height:11px; min-width:11px; border:1px solid currentColor;
+  flex:0 0 auto; padding:0}
+.composer .tgl.on .box{background:var(--accent); border-color:var(--accent)}
+.composer .hint{font-family:"IBM Plex Mono",monospace; font-size:10.5px; color:var(--muted); text-align:center; margin:9px 0 0}
+
+.states{display:flex; gap:14px; align-items:center; padding:20px; flex-wrap:wrap}
+.states .lbl{font-family:"IBM Plex Mono",monospace; font-size:10.5px; letter-spacing:.14em;
+  text-transform:uppercase; color:var(--muted); margin-right:4px}
+
+/* ============================================================
+   OG CARD
+   ============================================================ */
+.og-wrap{width:1038px; height:546px; overflow:hidden; position:relative}
+.og-wrap.small{width:1038px; height:546px}
+.og{width:1200px; height:630px; transform:scale(.865); transform-origin:0 0; position:relative;
+  overflow:hidden; background:var(--bg); color:var(--text); display:flex; flex-direction:column}
+.og-bleed{position:absolute; right:-40px; bottom:-90px; width:520px; height:520px;
+  color:var(--surface); pointer-events:none}
+.sw.dark .og-bleed{color:#141519}
+.og-in{position:relative; z-index:1; padding:64px 72px; display:flex; flex-direction:column; height:100%}
+.og-lock{display:flex; align-items:center; gap:16px}
+.og-lock .wm{font-size:38px; font-weight:700; letter-spacing:-.038em}
+.og-big{font-size:132px; font-weight:700; letter-spacing:-.045em; line-height:.92; margin:auto 0 0}
+.og-desc{font-size:30px; line-height:1.34; max-width:24ch; color:var(--muted); margin:26px 0 0; font-weight:400}
+.og-foot{margin-top:auto; padding-top:34px; border-top:2px solid var(--rule);
+  display:flex; justify-content:space-between; align-items:baseline;
+  font-family:"IBM Plex Mono",monospace; font-size:20px; letter-spacing:.02em}
+.og-foot .r{color:var(--accent-text)}
+
+/* ============================================================
+   README STRIP
+   ============================================================ */
+.readme{background:#fff; color:#0A0A0A; border:1px solid #0A0A0A}
+.readme-in{padding:34px 34px 28px}
+.readme-lock{display:flex; align-items:center; gap:18px}
+.readme-lock .wm{font-size:44px; font-weight:700; letter-spacing:-.04em; line-height:1}
+.readme-rule{width:1px; align-self:stretch; background:#D8DBE0; margin:0 6px}
+.readme-tag{font-size:17px; color:#5C6068; letter-spacing:-.008em}
+.badges{display:flex; gap:8px; margin-top:22px; flex-wrap:wrap}
+.badge{font-family:"IBM Plex Mono",monospace; font-size:11px; border:1px solid #0A0A0A;
+  padding:3px 9px; letter-spacing:.03em}
+.badge.acc{background:#1F3BFF; border-color:#1F3BFF; color:#fff}
+
+/* ============================================================
+   PALETTE / TYPE / RATIONALE
+   ============================================================ */
+.pal{display:grid; grid-template-columns:repeat(6,1fr); gap:14px; padding:20px}
+.sw3{border:1px solid var(--border)}
+.sw3 .chip{height:56px; display:block}
+.sw3 .m{display:block; padding:7px 8px 8px; border-top:1px solid var(--border)}
+.sw3 .hex{font-family:"IBM Plex Mono",monospace; font-size:11px; font-weight:500; display:block; color:var(--text)}
+.sw3 .role{font-family:"IBM Plex Mono",monospace; font-size:10px; color:var(--muted); display:block; margin-top:2px}
+
+.cols{display:grid; grid-template-columns:1fr 1fr; gap:26px; margin-top:26px}
+.tbox{border:1px solid #0A0A0A; padding:22px 22px 20px}
+.tbox h4{margin:0 0 14px; font-size:12px; font-family:"IBM Plex Mono",monospace; font-weight:600;
+  letter-spacing:.14em; text-transform:uppercase; color:#5C6068}
+.trow{display:grid; grid-template-columns:1fr auto; gap:10px; align-items:baseline;
+  padding:9px 0; border-top:1px solid #D8DBE0}
+.trow:first-of-type{border-top:none}
+.trow .use{font-family:"IBM Plex Mono",monospace; font-size:11px; color:#5C6068; text-align:right}
+.spec-archivo-700{font-size:20px; font-weight:700; letter-spacing:-.03em}
+.spec-archivo-600{font-size:18px; font-weight:600; letter-spacing:-.02em}
+.spec-archivo-500{font-size:15px; font-weight:500}
+.spec-archivo-400{font-size:15px; font-weight:400}
+.spec-mono-500{font-family:"IBM Plex Mono",monospace; font-size:14px; font-weight:500}
+.spec-mono-400{font-family:"IBM Plex Mono",monospace; font-size:13px; font-weight:400}
+.rat{font-size:14.5px; line-height:1.62; margin:0; max-width:62ch}
+.aa{display:flex; gap:26px; margin-top:16px; font-family:"IBM Plex Mono",monospace; font-size:11px; color:#5C6068}
+</style>
+</head>
+<body>
+
+<!-- ===== the mark, defined once ===== -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true">
+  <symbol id="cat" viewBox="0 0 32 32">
+    <path fill="currentColor" d="M12.5 12L21.7 29.2H3.3ZM5.2 2.96L10.77 6.13L6.03 10.87ZM19.8 2.96L18.97 10.87L14.23 6.13ZM19.2 12.6A6.7 6.7 0 1 1 5.8 12.6A6.7 6.7 0 1 1 19.2 12.6ZM10.5 10.4A0.7 0.7 0 0 0 9.1 10.4L9.1 13.6A0.7 0.7 0 0 0 10.5 13.6ZM15.9 10.4A0.7 0.7 0 0 0 14.5 10.4L14.5 13.6A0.7 0.7 0 0 0 15.9 13.6Z"/>
+    <path fill="none" stroke="currentColor" stroke-width="2.9" stroke-linecap="round" d="M20.4 29C26 29.9 28.4 25.6 26.7 21.4"/>
+  </symbol>
+</svg>
+
+<div class="page">
+
+  <!-- ============ SHEET HEAD ============ -->
+  <header class="sheet-head">
+    <div class="sheet-kicker">Infercat · brand direction 01 of 5</div>
+    <h1 class="sheet-title">Swiss ink</h1>
+    <p class="sheet-sub">Black ink on white paper. A strict grid, hairline rules, big grotesk type, zero rounded corners, and exactly one accent: a printer's cobalt. Dark scheme is true black with the same cobalt.</p>
+    <div class="sheet-meta">
+      <span><b>Type</b> Archivo · IBM Plex Mono</span>
+      <span><b>Accent</b> #1F3BFF cobalt</span>
+      <span><b>Contrast</b> AA in both schemes</span>
+      <span><b>Both schemes shown</b> no interaction required</span>
+    </div>
+  </header>
+
+  <!-- ============ 01 MARK ============ -->
+  <section class="sec">
+    <div class="sec-h">
+      <span class="sec-n mono">01</span>
+      <span class="sec-t">Mark, wordmark, lockup</span>
+      <span class="sec-d mono">circle + 2 triangles + 1 arc · single path, one colour</span>
+    </div>
+    <p class="note">One shape, no outline, no second colour. The head is a circle, the ears and the body are triangles, the tail is one stroked curve, and the slit pupils are knocked out of the fill — so the whole mark is <em>currentColor</em> and survives being pasted into a terminal README, a favicon, or a sticker die-cut.</p>
+
+    <div class="pair">
+      <div>
+        <span class="tag mono">Light · ink #0A0A0A</span>
+        <div class="sw frame">
+          <div class="mark-row">
+            <div class="mark-item"><svg class="mark" width="160" height="160"><use href="#cat"/></svg><span class="cap">160 px</span></div>
+            <div class="mark-item"><svg class="mark" width="64" height="64"><use href="#cat"/></svg><span class="cap">64 px</span></div>
+            <div class="mark-item"><svg class="mark" width="32" height="32"><use href="#cat"/></svg><span class="cap">32 px</span></div>
+            <div class="mark-item"><svg class="mark" width="16" height="16"><use href="#cat"/></svg><span class="cap">16 px</span></div>
+          </div>
+          <div class="mark-hair"></div>
+          <div style="padding:26px 30px 30px">
+            <h2 class="wordmark">Infercat</h2>
+            <div style="height:26px"></div>
+            <div class="lockup">
+              <svg class="mark" width="44" height="44"><use href="#cat"/></svg>
+              <span class="wm" style="font-size:40px">Infercat</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div>
+        <span class="tag mono">Dark · paper #FFFFFF on true black</span>
+        <div class="sw dark frame">
+          <div class="mark-row">
+            <div class="mark-item"><svg class="mark" width="160" height="160"><use href="#cat"/></svg><span class="cap">160 px</span></div>
+            <div class="mark-item"><svg class="mark" width="64" height="64"><use href="#cat"/></svg><span class="cap">64 px</span></div>
+            <div class="mark-item"><svg class="mark" width="32" height="32"><use href="#cat"/></svg><span class="cap">32 px</span></div>
+            <div class="mark-item"><svg class="mark" width="16" height="16"><use href="#cat"/></svg><span class="cap">16 px</span></div>
+          </div>
+          <div class="mark-hair"></div>
+          <div style="padding:26px 30px 30px">
+            <h2 class="wordmark">Infercat</h2>
+            <div style="height:26px"></div>
+            <div class="lockup">
+              <svg class="mark" width="44" height="44"><use href="#cat"/></svg>
+              <span class="wm" style="font-size:40px">Infercat</span>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div style="height:22px"></div>
+    <span class="tag mono">One colour — the mark never needs two</span>
+    <div class="sw frame">
+      <div class="onecolour" style="margin:0; border:none">
+        <div class="oc" style="background:#FFFFFF; color:#0A0A0A"><svg class="mark" width="56" height="56"><use href="#cat"/></svg></div>
+        <div class="oc" style="background:#000000; color:#FFFFFF"><svg class="mark" width="56" height="56"><use href="#cat"/></svg></div>
+        <div class="oc" style="background:#1F3BFF; color:#FFFFFF"><svg class="mark" width="56" height="56"><use href="#cat"/></svg></div>
+        <div class="oc" style="background:#FFFFFF; color:#1F3BFF"><svg class="mark" width="56" height="56"><use href="#cat"/></svg></div>
+        <div class="oc" style="background:#E5E80B; color:#0A0A0A"><svg class="mark" width="56" height="56"><use href="#cat"/></svg></div>
+        <div class="oc" style="background:#F1F2F4; color:#0A0A0A">
+          <div class="lockup-stack" style="align-items:center">
+            <svg class="mark" width="34" height="34"><use href="#cat"/></svg>
+            <span class="wm" style="font-size:19px; font-weight:700; letter-spacing:-.035em">Infercat</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 02 CONNECT ============ -->
+  <section class="sec">
+    <div class="sec-h">
+      <span class="sec-n mono">02</span>
+      <span class="sec-t">Connect card</span>
+      <span class="sec-d mono">the whole product for a stranger: one field, one button</span>
+    </div>
+
+    <div class="pair">
+      <!-- LIGHT -->
+      <div>
+        <span class="tag mono">Light</span>
+        <div class="sw frame connect">
+          <div class="connect-top">
+            <div class="lockup"><svg class="mark" width="22" height="22"><use href="#cat"/></svg><span class="wm" style="font-size:19px">Infercat</span></div>
+            <span class="mono" style="font-size:11px; color:var(--muted)">v0.4.0</span>
+          </div>
+          <div class="connect-body">
+            <h1>Give friends a key to the AI on your machine.</h1>
+            <p class="desc">Chat with a friend’s GPU. They send you one code; you paste it here. No account, no install.</p>
+            <span class="field-label">Invite code</span>
+            <div class="input"><span>ic1.tco2FwWCAw8jPY9x…</span><span class="caret"></span></div>
+            <div class="connect-actions">
+              <button class="btn">Connect</button>
+              <button class="btn link">Forget this code</button>
+            </div>
+            <p class="privacy">Encrypted end-to-end from your device to Max’s computer — the relay in between can’t read it. Infercat records counts, never text. The model runs on their machine.</p>
+          </div>
+          <div class="connect-foot">
+            <span>Version 0.4.0 · MIT</span>
+            <span><a href="#">Source on GitHub</a></span>
+          </div>
+        </div>
+      </div>
+
+      <!-- DARK -->
+      <div>
+        <span class="tag mono">Dark</span>
+        <div class="sw dark frame connect">
+          <div class="connect-top">
+            <div class="lockup"><svg class="mark" width="22" height="22"><use href="#cat"/></svg><span class="wm" style="font-size:19px">Infercat</span></div>
+            <span class="mono" style="font-size:11px; color:var(--muted)">v0.4.0</span>
+          </div>
+          <div class="connect-body">
+            <h1>Give friends a key to the AI on your machine.</h1>
+            <p class="desc">Chat with a friend’s GPU. They send you one code; you paste it here. No account, no install.</p>
+            <span class="field-label">Invite code</span>
+            <div class="input"><span>ic1.tco2FwWCAw8jPY9x…</span><span class="caret"></span></div>
+            <div class="connect-actions">
+              <button class="btn">Connect</button>
+              <button class="btn link">Forget this code</button>
+            </div>
+            <p class="privacy">Encrypted end-to-end from your device to Max’s computer — the relay in between can’t read it. Infercat records counts, never text. The model runs on their machine.</p>
+          </div>
+          <div class="connect-foot">
+            <span>Version 0.4.0 · MIT</span>
+            <span><a href="#">Source on GitHub</a></span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 03 CHAT ============ -->
+  <section class="sec">
+    <div class="sec-h">
+      <span class="sec-n mono">03</span>
+      <span class="sec-t">Chat</span>
+      <span class="sec-d mono">header states the truth: whose machine, which model, which path</span>
+    </div>
+    <p class="note">The header carries the four facts the reader cannot verify for themselves — host, model, path and cost — and nothing else. Meters are 3&nbsp;px ink rules, not gauges. The reply's timing line is set in mono because it is a measurement, not prose.</p>
+
+    <!-- CHAT · LIGHT (direct) -->
+    <span class="tag mono">Light · direct path</span>
+    <div class="sw frame chat">
+      <aside class="side">
+        <div class="side-head"><button class="btn ghost sm wide">New chat</button></div>
+        <nav class="convs">
+          <div class="conv on">DERP relays, briefly</div>
+          <div class="conv">Rust lifetime elision</div>
+          <div class="conv">Reading a flame graph</div>
+        </nav>
+        <div class="side-foot"><button class="btn link">Disconnect</button></div>
+      </aside>
+      <div class="main">
+        <div class="topbar">
+          <div class="who"><b>Max’s laptop</b><span>gemma-4-E2B</span></div>
+          <div class="truth">
+            <span class="pill direct"><i class="dot"></i>direct · 12 ms</span>
+            <div class="meters">
+              <div class="meter">
+                <div class="mt"><span>context</span><b>6.2k / 32k</b></div>
+                <div class="bar"><i style="width:19%"></i></div>
+              </div>
+              <div class="meter wide">
+                <div class="mt"><span>today</span><b>18k / 50k tokens</b></div>
+                <div class="bar"><i style="width:36%"></i></div>
+              </div>
+            </div>
+            <button class="btn link">Settings</button>
+          </div>
+        </div>
+        <div class="scroll">
+          <div class="msg-user">Explain what a DERP relay is in two sentences.</div>
+          <div class="msg-edit">Edit</div>
+          <div>
+            <div class="think"><span class="tri">▸</span><b>Thinking</b><span>·</span><span>1.4 s</span></div>
+            <p class="answer">A DERP relay is a small public server that forwards already-encrypted packets between two machines when they cannot open a direct connection to each other. It never holds the keys, so it moves your bytes without being able to read a single one of them.<span class="cursor"></span></p>
+            <div class="reply-foot">
+              <span>TTFT 0.9 s · 42 tok/s · queued 0 s</span>
+              <span class="acts"><span>Copy</span><span>Regenerate</span></span>
+            </div>
+          </div>
+        </div>
+        <div class="composer">
+          <div class="composer-row">
+            <div class="box">Message the host’s model…</div>
+            <button class="tgl on"><span class="box"></span>Thinking</button>
+            <button class="btn">Send</button>
+          </div>
+          <p class="hint">Enter sends · Shift+Enter makes a new line</p>
+        </div>
+      </div>
+    </div>
+
+    <div style="height:22px"></div>
+
+    <!-- CHAT · DARK (relayed) -->
+    <span class="tag mono">Dark · relayed path</span>
+    <div class="sw dark frame chat">
+      <aside class="side">
+        <div class="side-head"><button class="btn ghost sm wide">New chat</button></div>
+        <nav class="convs">
+          <div class="conv on">DERP relays, briefly</div>
+          <div class="conv">Rust lifetime elision</div>
+          <div class="conv">Reading a flame graph</div>
+        </nav>
+        <div class="side-foot"><button class="btn link">Disconnect</button></div>
+      </aside>
+      <div class="main">
+        <div class="topbar">
+          <div class="who"><b>Max’s laptop</b><span>gemma-4-E2B</span></div>
+          <div class="truth">
+            <span class="pill relayed"><i class="dot"></i>relayed via derp.2185lab.com · 65 ms</span>
+            <div class="meters">
+              <div class="meter">
+                <div class="mt"><span>context</span><b>6.2k / 32k</b></div>
+                <div class="bar"><i style="width:19%"></i></div>
+              </div>
+              <div class="meter wide">
+                <div class="mt"><span>today</span><b>18k / 50k tokens</b></div>
+                <div class="bar"><i style="width:36%"></i></div>
+              </div>
+            </div>
+            <button class="btn link">Settings</button>
+          </div>
+        </div>
+        <div class="scroll">
+          <div class="msg-user">Explain what a DERP relay is in two sentences.</div>
+          <div class="msg-edit">Edit</div>
+          <div>
+            <div class="think"><span class="tri">▸</span><b>Thinking</b><span>·</span><span>1.4 s</span></div>
+            <p class="answer">A DERP relay is a small public server that forwards already-encrypted packets between two machines when they cannot open a direct connection to each other. It never holds the keys, so it moves your bytes without being able to read a single one of them.<span class="cursor"></span></p>
+            <div class="reply-foot">
+              <span>TTFT 0.9 s · 42 tok/s · queued 0 s</span>
+              <span class="acts"><span>Copy</span><span>Regenerate</span></span>
+            </div>
+          </div>
+        </div>
+        <div class="composer">
+          <div class="composer-row">
+            <div class="box">Message the host’s model…</div>
+            <button class="tgl on"><span class="box"></span>Thinking</button>
+            <button class="btn">Send</button>
+          </div>
+          <p class="hint">Enter sends · Shift+Enter makes a new line</p>
+        </div>
+      </div>
+    </div>
+
+    <div style="height:22px"></div>
+
+    <!-- PILL STATES -->
+    <span class="tag mono">Path pill · three states</span>
+    <div class="pair">
+      <div class="sw frame">
+        <div class="states">
+          <span class="lbl">light</span>
+          <span class="pill direct"><i class="dot"></i>direct · 12 ms</span>
+          <span class="pill relayed"><i class="dot"></i>relayed via derp.2185lab.com · 65 ms</span>
+          <span class="pill reconn"><i class="dot"></i>reconnecting…</span>
+        </div>
+      </div>
+      <div class="sw dark frame">
+        <div class="states">
+          <span class="lbl">dark</span>
+          <span class="pill direct"><i class="dot"></i>direct · 12 ms</span>
+          <span class="pill relayed"><i class="dot"></i>relayed via derp.2185lab.com · 65 ms</span>
+          <span class="pill reconn"><i class="dot"></i>reconnecting…</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 04 OG CARD ============ -->
+  <section class="sec">
+    <div class="sec-h">
+      <span class="sec-n mono">04</span>
+      <span class="sec-t">Open Graph card</span>
+      <span class="sec-d mono">1200 × 630, shown at 86.5 %</span>
+    </div>
+
+    <span class="tag mono">Dark — the default share card</span>
+    <div class="og-wrap frame sw dark">
+      <div class="og">
+        <svg class="og-bleed"><use href="#cat"/></svg>
+        <div class="og-in">
+          <div class="og-lock">
+            <svg class="mark" width="54" height="54"><use href="#cat"/></svg>
+          </div>
+          <div class="og-big">Infercat</div>
+          <p class="og-desc">Chat with a friend’s GPU. They send you one code; you paste it here. No account, no install.</p>
+          <div class="og-foot">
+            <span>Self-hosted · end-to-end encrypted · MIT</span>
+            <span class="r">infercat.dev</span>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div style="height:22px"></div>
+    <span class="tag mono">Light variant</span>
+    <div class="og-wrap frame sw">
+      <div class="og">
+        <svg class="og-bleed"><use href="#cat"/></svg>
+        <div class="og-in">
+          <div class="og-lock">
+            <svg class="mark" width="54" height="54"><use href="#cat"/></svg>
+          </div>
+          <div class="og-big">Infercat</div>
+          <p class="og-desc">Chat with a friend’s GPU. They send you one code; you paste it here. No account, no install.</p>
+          <div class="og-foot">
+            <span>Self-hosted · end-to-end encrypted · MIT</span>
+            <span class="r">infercat.dev</span>
+          </div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 05 README ============ -->
+  <section class="sec">
+    <div class="sec-h">
+      <span class="sec-n mono">05</span>
+      <span class="sec-t">README header strip</span>
+      <span class="sec-d mono">GitHub, light only</span>
+    </div>
+    <div class="readme">
+      <div class="readme-in">
+        <div class="readme-lock">
+          <svg class="mark" width="52" height="52" style="color:#0A0A0A"><use href="#cat"/></svg>
+          <span class="wm">Infercat</span>
+          <span class="readme-rule"></span>
+          <span class="readme-tag">Give friends a key to the AI on your machine.</span>
+        </div>
+        <div class="badges">
+          <span class="badge acc">MIT</span>
+          <span class="badge">self-hosted</span>
+          <span class="badge">end-to-end encrypted</span>
+          <span class="badge">no account</span>
+          <span class="badge">go 1.23 · wasm</span>
+          <span class="badge">built on tailcat</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 06 PALETTE / TYPE / RATIONALE ============ -->
+  <section class="sec">
+    <div class="sec-h">
+      <span class="sec-n mono">06</span>
+      <span class="sec-t">Palette, type, rationale</span>
+      <span class="sec-d mono">every value AA-checked against its own ground</span>
+    </div>
+
+    <span class="tag mono">Light scheme</span>
+    <div class="sw frame">
+      <div class="pal">
+        <div class="sw3"><span class="chip" style="background:#FFFFFF; box-shadow:inset 0 0 0 1px #D8DBE0"></span><span class="m"><b class="hex">#FFFFFF</b><span class="role">page bg</span></span></div>
+        <div class="sw3"><span class="chip" style="background:#F1F2F4"></span><span class="m"><b class="hex">#F1F2F4</b><span class="role">surface</span></span></div>
+        <div class="sw3"><span class="chip" style="background:#0A0A0A"></span><span class="m"><b class="hex">#0A0A0A</b><span class="role">text · 20.4:1</span></span></div>
+        <div class="sw3"><span class="chip" style="background:#5C6068"></span><span class="m"><b class="hex">#5C6068</b><span class="role">muted text · 6.3:1</span></span></div>
+        <div class="sw3"><span class="chip" style="background:#D8DBE0"></span><span class="m"><b class="hex">#D8DBE0</b><span class="role">border</span></span></div>
+        <div class="sw3"><span class="chip" style="background:#1F3BFF"></span><span class="m"><b class="hex">#1F3BFF</b><span class="role">accent · 6.7:1</span></span></div>
+        <div class="sw3"><span class="chip" style="background:#FFFFFF; box-shadow:inset 0 0 0 1px #D8DBE0"></span><span class="m"><b class="hex">#FFFFFF</b><span class="role">accent text</span></span></div>
+        <div class="sw3"><span class="chip" style="background:#0B7A4B"></span><span class="m"><b class="hex">#0B7A4B</b><span class="role">success · 5.4:1</span></span></div>
+        <div class="sw3"><span class="chip" style="background:#E5E80B"></span><span class="m"><b class="hex">#E5E80B</b><span class="role">warning (ink on it)</span></span></div>
+        <div class="sw3"><span class="chip" style="background:#D5182F"></span><span class="m"><b class="hex">#D5182F</b><span class="role">danger · 5.3:1</span></span></div>
+        <div class="sw3"><span class="chip" style="background:#EDEFF2"></span><span class="m"><b class="hex">#EDEFF2</b><span class="role">code bg</span></span></div>
+        <div class="sw3"><span class="chip" style="background:#E7E9ED"></span><span class="m"><b class="hex">#E7E9ED</b><span class="role">surface 2 · own msg</span></span></div>
+      </div>
+    </div>
+
+    <div style="height:18px"></div>
+    <span class="tag mono">Dark scheme</span>
+    <div class="sw dark frame">
+      <div class="pal">
+        <div class="sw3"><span class="chip" style="background:#000000; box-shadow:inset 0 0 0 1px #2A2D33"></span><span class="m"><b class="hex">#000000</b><span class="role">page bg</span></span></div>
+        <div class="sw3"><span class="chip" style="background:#101114"></span><span class="m"><b class="hex">#101114</b><span class="role">surface</span></span></div>
+        <div class="sw3"><span class="chip" style="background:#FFFFFF"></span><span class="m"><b class="hex">#FFFFFF</b><span class="role">text · 21:1</span></span></div>
+        <div class="sw3"><span class="chip" style="background:#9AA0AA"></span><span class="m"><b class="hex">#9AA0AA</b><span class="role">muted text · 8.0:1</span></span></div>
+        <div class="sw3"><span class="chip" style="background:#2A2D33"></span><span class="m"><b class="hex">#2A2D33</b><span class="role">border</span></span></div>
+        <div class="sw3"><span class="chip" style="background:#1F3BFF"></span><span class="m"><b class="hex">#1F3BFF</b><span class="role">accent (fills)</span></span></div>
+        <div class="sw3"><span class="chip" style="background:#FFFFFF"></span><span class="m"><b class="hex">#FFFFFF</b><span class="role">accent text · 6.7:1</span></span></div>
+        <div class="sw3"><span class="chip" style="background:#35D48D"></span><span class="m"><b class="hex">#35D48D</b><span class="role">success · 11:1</span></span></div>
+        <div class="sw3"><span class="chip" style="background:#F2F52E"></span><span class="m"><b class="hex">#F2F52E</b><span class="role">warning (ink on it)</span></span></div>
+        <div class="sw3"><span class="chip" style="background:#FF5266"></span><span class="m"><b class="hex">#FF5266</b><span class="role">danger · 6.7:1</span></span></div>
+        <div class="sw3"><span class="chip" style="background:#16181D"></span><span class="m"><b class="hex">#16181D</b><span class="role">code bg</span></span></div>
+        <div class="sw3"><span class="chip" style="background:#7E93FF"></span><span class="m"><b class="hex">#7E93FF</b><span class="role">accent as text · 7.5:1</span></span></div>
+      </div>
+    </div>
+
+    <div class="cols">
+      <div class="tbox">
+        <h4>Type stack</h4>
+        <div class="trow"><span class="spec-archivo-700">Infercat</span><span class="use">Archivo 700<br>wordmark · OG · display</span></div>
+        <div class="trow"><span class="spec-archivo-600">Give friends a key</span><span class="use">Archivo 600<br>headings · host name · buttons</span></div>
+        <div class="trow"><span class="spec-archivo-500">Max’s laptop</span><span class="use">Archivo 500<br>emphasis in UI chrome</span></div>
+        <div class="trow"><span class="spec-archivo-400">Chat with a friend’s GPU.</span><span class="use">Archivo 400<br>body · messages · descriptions</span></div>
+        <div class="trow"><span class="spec-mono-500">ic1.tco2FwWCAw8jPY9x…</span><span class="use">IBM Plex Mono 500<br>invite codes · path pill · labels</span></div>
+        <div class="trow"><span class="spec-mono-400">TTFT 0.9 s · 42 tok/s</span><span class="use">IBM Plex Mono 400<br>measurements · timings · footers</span></div>
+        <p class="note" style="margin:16px 0 0; font-size:12px">Two families only. Archivo tracked −0.02 to −0.045 em at display sizes; mono never tracked. Nothing is set in a serif, and no size below 10.5 px carries meaning.</p>
+      </div>
+
+      <div class="tbox">
+        <h4>Rationale · 112 words</h4>
+        <p class="rat">Swiss ink puts the product's argument in the typography: black ink on white paper, a strict grid, hairline rules, and one printer's cobalt for the single thing you can act on. Nothing is soft — no rounded corners, no tint washes, no warm neutrals. Where the beige-and-terracotta chat apps signal <em>friendly assistant, trust us</em>, Infercat signals infrastructure you own: a receipt, a spec sheet, a Unix tool with a face. The cat is drawn from a circle, two triangles and one arc — geometry, not a mascot. Dark mode is true black with the same cobalt, so a terminal-shaped audience sees the tool it expected rather than a chat product wearing a dark theme.</p>
+        <div class="aa">
+          <span>body AA ✓ light 20.4:1</span>
+          <span>body AA ✓ dark 21:1</span>
+          <span>muted AA ✓ 6.3 / 8.0:1</span>
+        </div>
+      </div>
+    </div>
+  </section>
+
+</div>
+</body>
+</html>
