@@ -24,6 +24,8 @@ const BASE = `http://127.0.0.1:${WEB_PORT}`;
 const INVITE = `ic1.tcDEMOaddressDEMOaddressDEMOaddressDEMO.${'D'.repeat(43)}`;
 const OFFLINE_INVITE = `ic1.tcOFFLINEaddressOFFLINEaddress.${'D'.repeat(43)}`;
 const SLOW = 'fake&connectMs=2200&tokenDelay=70';
+// The same fake host in a hurry, for the states where the wait is not the thing being shown.
+const FAST = 'fake&connectMs=200&tokenDelay=25';
 
 const children = [];
 function start(name, cmd, args, env) {
@@ -70,8 +72,34 @@ async function shot7(page, name) {
   return write(page, `07-${name}`);
 }
 
+/**
+ * Nothing is photographed with a hole in it. The mark is a separately-fetched `<img>` (039 comfort
+ * 1: the anchor of every layout), and a selector that resolves the moment the card exists can
+ * resolve before the image has arrived — which is how a committed shot came to show the page with
+ * no mark in the header and none over the headline. Both are waited for here, once, for every shot:
+ * the fonts, and then every image the page has asked for.
+ */
+async function settled(page) {
+  await page.evaluate(async () => {
+    const waited = Promise.all([
+      document.fonts.ready,
+      ...[...document.images].map(
+        (img) =>
+          img.complete ||
+          new Promise((done) => {
+            img.addEventListener('load', done, { once: true });
+            img.addEventListener('error', done, { once: true });
+          }),
+      ),
+    ]);
+    // A shot is evidence, not a hostage: an asset that never arrives is the shot's own story.
+    await Promise.race([waited, new Promise((done) => setTimeout(done, 4000))]);
+  });
+}
+
 async function write(page, base) {
   const file = join(shots, `${base}.png`);
+  await settled(page);
   await page.screenshot({ path: file });
   const kb = Math.round(statSync(file).size / 1024);
   console.log(`  ${file.replace(`${web}/`, '')}  ${kb} KB`);
@@ -130,7 +158,9 @@ async function main() {
   watch(page, 'desktop');
 
   await page.goto(BASE);
-  await page.waitForSelector('.connect-card h1');
+  // The card's own H1 is the phone card's; on the page above 900 px the statement column carries
+  // the name and the card is the task alone (039). The frame is what every layout has.
+  await page.waitForSelector('.connect-card');
   await shot(page, 'connect');
 
   await connectViaTunnel(page);
@@ -204,7 +234,7 @@ async function main() {
   const darkPage = await dark.newPage();
   watch(darkPage, 'dark');
   await darkPage.goto(BASE);
-  await darkPage.waitForSelector('.connect-card h1');
+  await darkPage.waitForSelector('.connect-card');
   await shot(darkPage, 'connect-dark');
   await connectViaTunnel(darkPage);
   await darkPage.waitForSelector('.empty', { timeout: 20_000 });
@@ -241,9 +271,171 @@ async function main() {
   // No horizontal scrolling at 360 px, ever.
   await fits(m, 'mobile: 360 px with the drawer open');
 
-  // --- ticket 007: the states that used to lie ---------------------------------------------
-  const FAST = 'fake&connectMs=200&tokenDelay=25';
+  // --- 039: the connect page across its range, and the About disclosure open ---
+  // One page, five widths. The two frames the mock draws are 1280 and 1024; 899 is one pixel below
+  // the breakpoint, where the chrome is gone and the card is the screen it always was.
+  // The code goes into the field the way a reader puts it there — a code in the URL is consent and
+  // would connect by itself (020 promise 8), and the state being drawn here is the card before that.
+  for (const [name, viewport, scheme] of [
+    ['page-1280-light', { width: 1280, height: 800 }, 'light'],
+    ['page-1280-dark', { width: 1280, height: 800 }, 'dark'],
+    ['page-1024', { width: 1024, height: 768 }, 'light'],
+    ['collapse-899', { width: 899, height: 760 }, 'light'],
+    ['phone-390', { width: 390, height: 844 }, 'light'],
+  ]) {
+    const ctx = await browser.newContext({ viewport, colorScheme: scheme, deviceScaleFactor: viewport.width < 500 ? 2 : 1 });
+    const p = await ctx.newPage();
+    watch(p, `39-${name}`);
+    // A code in the field, which is the state the mock draws: the hint reading it back, Connect live.
+    await p.goto(BASE);
+    await p.waitForSelector('.connect-card');
+    await p.locator('.connect textarea').fill(INVITE);
+    await p.waitForSelector('.code-hint .host');
+    await p.evaluate(() => document.fonts.ready);
+    await sleep(200);
+    // The page is a page above the breakpoint and the card alone below it: one of the two, never
+    // half of each, and never a column left orphaned across the fold (promise 1).
+    const frame = await p.evaluate(() => ({
+      head: document.querySelector('.page-head')?.getBoundingClientRect().height ?? 0,
+      statement: document.querySelector('.statement')?.getBoundingClientRect().height ?? 0,
+      foot: document.querySelector('.page-foot')?.getBoundingClientRect().height ?? 0,
+      cardH1: document.querySelector('.connect-card h1')?.getBoundingClientRect().height ?? 0,
+      over: document.documentElement.scrollWidth - window.innerWidth,
+      hint: document.querySelector('.code-hint')?.textContent ?? '',
+      paste: document.querySelectorAll('.paste').length,
+    }));
+    const page900 = viewport.width >= 900;
+    const chrome = frame.head > 0 && frame.statement > 0 && frame.foot > 0;
+    if (chrome !== page900) problems.push(`39-${name}: page chrome ${chrome ? 'shown' : 'missing'} at ${viewport.width}px`);
+    // The card's own head is the phone card's: on the page the statement says the name instead, so
+    // the reader meets the sentence once (039).
+    if (page900 === frame.cardH1 > 0) problems.push(`39-${name}: the card's H1 is ${frame.cardH1 > 0 ? 'shown' : 'missing'} at ${viewport.width}px`);
+    if (frame.over > 0) problems.push(`39-${name}: the page scrolls horizontally by ${frame.over}px at ${viewport.width}px`);
+    if (!frame.hint.includes('Reads as an invite')) problems.push(`39-${name}: the hint does not read the code back ("${frame.hint}")`);
+    if (frame.paste !== 1) problems.push(`39-${name}: ${frame.paste} Paste buttons, expected 1`);
+    console.log(`  39-${name}: ${page900 ? 'page' : 'card'} at ${viewport.width}px, hint "${frame.hint.trim()}"`);
+    await write(p, `39-${name}`);
+    await ctx.close();
+  }
 
+  // The attribution, open: one keystroke from the footer, on no screen by default (comfort 5).
+  const aboutCtx = await browser.newContext({ viewport: { width: 1280, height: 800 }, colorScheme: 'light' });
+  const about = await aboutCtx.newPage();
+  watch(about, '39-about-open');
+  await about.goto(BASE);
+  await about.waitForSelector('.page-foot .about-disc');
+  await about.locator('.connect textarea').fill(INVITE);
+  // Opened with the keyboard, because that is the promise (promise 2): focus the summary and press.
+  await about.locator('.page-foot .about-disc > summary').focus();
+  await about.keyboard.press('Enter');
+  // The sentence is the disclosure's sibling, not its child: a block inside an inline `<details>`
+  // splits the small-print line in two (styles.css says why), so `[open]` reaches it with `~`.
+  await about.waitForSelector('.page-foot .about-disc[open] ~ .about-body');
+  const said = await about.locator('.page-foot .about-body').innerText();
+  if (!said.includes('Tailscale')) problems.push(`39-about-open: the disclosure does not carry the attribution ("${said}")`);
+  await sleep(150);
+  await write(about, '39-about-open');
+  // And closes again on the same key: a disclosure that only opens is a paragraph with extra steps.
+  await about.keyboard.press('Enter');
+  if (await about.locator('.page-foot .about-disc[open]').count()) problems.push('39-about-open: the disclosure will not close from the keyboard');
+  await aboutCtx.close();
+
+  // Promise 3, measured: the left column is constant. One viewport, five card states, and the mark
+  // that anchors the statement is where the number below says it is in every one of them — the
+  // frozen decision is that only the card's content is stateful, and a page that centres the *pair*
+  // hangs the statement off the card's height instead (which is what it used to do: a failure card
+  // is 175 px taller than an empty one and dragged the whole column up with it). Two of the states
+  // are also written out at the same size, so the claim can be checked by eye and not only by
+  // number — the shots of a single state that this file used to carry could not show it either way.
+  async function cardState(name, go, keep = false) {
+    const ctx = await browser.newContext({ viewport: { width: 1280, height: 800 }, colorScheme: 'light' });
+    const p = await ctx.newPage();
+    watch(p, `39-state-${name}`);
+    await go(p);
+    await p.evaluate(() => document.fonts.ready);
+    const seen = await p.evaluate(() => ({
+      mark: document.querySelector('.statement .mark')?.getBoundingClientRect().top ?? null,
+      card: document.querySelector('.connect-card')?.getBoundingClientRect().height ?? null,
+      promise: document.querySelector('.promise')?.textContent ?? '',
+      says: document.body.innerText,
+    }));
+    if (keep) await write(p, `39-state-${name}`);
+    await ctx.close();
+    return seen;
+  }
+
+  const states = {
+    empty: await cardState('empty', async (p) => {
+      await p.goto(BASE);
+      await p.waitForSelector('.connect-card');
+    }, true),
+    typed: await cardState('typed', async (p) => {
+      await p.goto(BASE);
+      await p.waitForSelector('.connect-card');
+      await p.locator('.connect textarea').fill(INVITE);
+      await p.waitForSelector('.code-hint .host');
+    }),
+    connecting: await cardState('connecting', async (p) => {
+      await p.goto(`${BASE}/?${SLOW}&invite=${encodeURIComponent(INVITE)}&autoconnect`);
+      await p.waitForSelector('.steps li.now');
+    }),
+    failed: await cardState('failed', async (p) => {
+      await p.goto(`${BASE}/?${FAST}&invite=${encodeURIComponent(OFFLINE_INVITE)}&autoconnect`);
+      await p.waitForSelector('.failure', { timeout: 30_000 });
+    }, true),
+  };
+  const marks = Object.fromEntries(Object.entries(states).map(([k, v]) => [k, v.mark]));
+  const heights = Object.entries(states).map(([k, v]) => `${k} ${Math.round(v.card)}`);
+  const moved = Math.max(...Object.values(marks)) - Math.min(...Object.values(marks));
+  if (moved > 1) {
+    problems.push(`39-states: the statement's mark moves ${moved.toFixed(1)}px between card states (${JSON.stringify(marks)})`);
+  }
+  console.log(`  39-states: the left column holds at y=${marks.empty.toFixed(1)} ±${moved.toFixed(2)}px while the card is ${heights.join(', ')}`);
+
+  // Promise 12 of ticket 007, which only the page could break: above 900 px the privacy sentence
+  // lives in the statement column, so a gate that merely *added* its alert would leave the promise
+  // and its correction on screen together, a few centimetres apart, at the moment of consent. The
+  // sentence in the column is the same sentence's logging variant instead.
+  const gate = await cardState('log-prompts', async (p) => {
+    await p.goto(`${BASE}/?${FAST}&logPrompts&invite=${encodeURIComponent(INVITE)}&autoconnect`);
+    await p.waitForSelector('.failure', { timeout: 30_000 });
+  }, true);
+  if (gate.says.includes('records counts, never text')) {
+    problems.push('39-state-log-prompts: the page still promises "records counts, never text" beside the disclosure');
+  }
+  if (!gate.promise.includes('prompt logging on')) {
+    problems.push(`39-state-log-prompts: the statement's sentence was not corrected ("${gate.promise.trim()}")`);
+  }
+  console.log(`  39-state-log-prompts: the statement says "…${gate.promise.trim().slice(-58)}"`);
+
+  // Below the breakpoint the card is the screen and centres itself in it, as it did when it was the
+  // root's own child. The band from 761 px to 899 px is where that is worth checking: there is no
+  // page chrome to fill the window, and the height has to reach the card through the frame's three
+  // wrappers rather than one.
+  const bandCtx = await browser.newContext({ viewport: { width: 820, height: 1180 }, colorScheme: 'light' });
+  const band = await bandCtx.newPage();
+  watch(band, '39-centred-820');
+  await band.goto(BASE);
+  await band.waitForSelector('.connect-card');
+  const gaps = await band.evaluate(() => {
+    const r = document.querySelector('.connect-card').getBoundingClientRect();
+    const pad = window.getComputedStyle(document.querySelector('.connect'));
+    return {
+      above: r.top - parseFloat(pad.paddingTop),
+      below: window.innerHeight - r.bottom - parseFloat(pad.paddingBottom),
+      scrolls: document.documentElement.scrollHeight > window.innerHeight,
+    };
+  });
+  // Only when the window is taller than the card, which is the case this can get wrong: past its
+  // own height the card fills the screen and there is nothing left to centre.
+  if (!gaps.scrolls && Math.abs(gaps.above - gaps.below) > 8) {
+    problems.push(`39-centred-820: the card is not centred at 820×1180 — ${Math.round(gaps.above)}px of slack above, ${Math.round(gaps.below)}px below`);
+  }
+  console.log(`  39-centred-820: ${Math.round(gaps.above)}px of slack above the card, ${Math.round(gaps.below)}px below`);
+  await write(band, '39-centred-820');
+  await bandCtx.close();
+
+  // --- ticket 007: the states that used to lie ---------------------------------------------
   async function connected(query, label) {
     const p = await desktop.newPage();
     watch(p, label);
@@ -615,7 +807,7 @@ async function main() {
     if (!r.url().startsWith(previewBase) && !r.url().startsWith('data:')) offOrigin.push(r.url());
   });
   await prodPage.goto(previewBase);
-  await prodPage.waitForSelector('.connect-card h1');
+  await prodPage.waitForSelector('.connect-card');
   await shot(prodPage, 'production-landing');
   // Promise 7: the landing page fetches nothing off its own origin, and no wasm until Connect.
   if (offOrigin.length > 0) problems.push(`production: off-origin requests ${offOrigin.join(', ')}`);
