@@ -1,7 +1,10 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32">
+  <!-- One shape, one colour: ink on paper, paper on true black (docs/brand/swiss-ink.md). The
+       geometry is the interim cat and is what the mark contest will replace; only the fill is
+       this ticket's to set. -->
   <style>
-    .m { fill: #b0522b }
-    @media (prefers-color-scheme: dark) { .m { fill: #e9926a } }
+    .m { fill: #0A0A0A }
+    @media (prefers-color-scheme: dark) { .m { fill: #FFFFFF } }
   </style>
   <g class="m">
     <polygon points="8.14,12.49 6.2,4.3 14.33,8.55" />

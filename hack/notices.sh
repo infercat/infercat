@@ -1,14 +1,17 @@
 #!/bin/sh
 # notices.sh — build (or verify) THIRD_PARTY_NOTICES.md, the notice we owe every dependency whose
-# licence asks for one. Two halves, because we ship two things: the host binary's Go tree
-# (`go-licenses report`) and the web bundle's npm tree (`pnpm licenses list --json --prod`).
+# licence asks for one. Three parts, because we ship three things: the host binary's Go tree
+# (`go-licenses report`), the web bundle's npm tree (`pnpm licenses list --json --prod`), and the
+# two typefaces the web bundle carries as woff2 files (FONTS below — an inventory, because a font
+# checked into public/ has no package manager to ask).
 #
 #   sh hack/notices.sh write   # regenerate the file          (make notices)
 #   sh hack/notices.sh check   # fail if it is stale or wrong (make notices-check)
 #
-# check fails on three things: a licence that is unknown or outside ALLOWED, a file that no longer
-# matches what the trees say, and a missing verbatim BSD-3 text for the two licences the tunnel is
-# built on. The generator prints no date, so "regenerate and diff" is a real staleness test.
+# check fails on four things: a licence that is unknown or outside ALLOWED, a file that no longer
+# matches what the trees say, a bundled font whose woff2 or licence file is missing, and a missing
+# verbatim text for the licences reproduced in full — the two the tunnel is built on and the OFL of
+# each font. The generator prints no date, so "regenerate and diff" is a real staleness test.
 #
 # Prereqs: go-licenses (go install github.com/google/go-licenses@latest), pnpm, node.
 set -eu
@@ -29,10 +32,18 @@ command -v go-licenses >/dev/null 2>&1 ||
 
 # Permissive: a notice is the whole obligation. Anything else (copyleft, source-offer, unknown) is
 # a decision for the founder, not for this script — so it fails loudly instead of listing quietly.
-ALLOWED="0BSD Apache-2.0 BSD-2-Clause BSD-3-Clause CC0-1.0 ISC MIT MIT-0 Unlicense Zlib"
+ALLOWED="0BSD Apache-2.0 BSD-2-Clause BSD-3-Clause CC0-1.0 ISC MIT MIT-0 OFL-1.1 Unlicense Zlib"
 
 # The two whose full text the file must carry verbatim: the tunnel we are built on.
 VERBATIM="tailscale.com github.com/tailscale/tailcat"
+
+# The typefaces the web bundle ships as woff2 (ticket 038: self-hosted, so the app asks no third
+# party for a font). One row per family: name, upstream, the Google Fonts API revision the files
+# were taken at, licence, the woff2 files, and the licence text — which the OFL requires to travel
+# with the fonts, so it lives next to them in public/fonts and is reproduced in full below.
+# family|upstream URL|version|licence|licence file|woff2 files (space-separated), all under web/public
+FONTS="Archivo|https://github.com/Omnibus-Type/Archivo|Google Fonts API v25 (latin subset)|OFL-1.1|fonts/LICENSE-Archivo.txt|fonts/archivo-latin-var.woff2
+IBM Plex Mono|https://github.com/IBM/plex|Google Fonts API v20 (latin subset)|OFL-1.1|fonts/LICENSE-IBMPlexMono.txt|fonts/ibm-plex-mono-400-latin.woff2 fonts/ibm-plex-mono-500-latin.woff2"
 
 module=$(go list -m)
 
@@ -68,8 +79,22 @@ node -e '
 ' "$tmp/web.json" >"$tmp/web.tsv"
 [ -s "$tmp/web.tsv" ] || { echo "notices: pnpm reported no packages" >&2; exit 1; }
 
+# --- the bundled fonts -------------------------------------------------------------------------
+# No package manager knows about a woff2 checked into public/, so the inventory is the FONTS list
+# above and the check is that every file it names is really there: a font added or removed without
+# its notice fails `make notices-check` instead of shipping unnoticed.
+echo "$FONTS" | while IFS='|' read -r fname furl fver flic flicfile ffiles; do
+  [ -n "$fname" ] || continue
+  for f in $ffiles $flicfile; do
+    [ -f "web/public/$f" ] ||
+      { echo "notices: $fname declares web/public/$f, which is not there" >&2; exit 1; }
+  done
+  printf '%s\t%s\t%s\t%s\t%s\t%s\n' "$fname" "$furl" "$fver" "$flic" "$flicfile" "$ffiles"
+done >"$tmp/fonts.tsv" || exit 1
+[ -s "$tmp/fonts.tsv" ] || { echo "notices: the FONTS inventory is empty" >&2; exit 1; }
+
 # --- the licence gate --------------------------------------------------------------------------
-{ cut -f3 "$tmp/go.tsv"; cut -f3 "$tmp/web.tsv"; } | LC_ALL=C sort -u >"$tmp/seen"
+{ cut -f3 "$tmp/go.tsv"; cut -f3 "$tmp/web.tsv"; cut -f4 "$tmp/fonts.tsv"; } | LC_ALL=C sort -u >"$tmp/seen"
 bad=""
 while read -r lic; do
   case " $ALLOWED " in *" $lic "*) ;; *) bad="$bad $lic" ;; esac
@@ -77,7 +102,10 @@ done <"$tmp/seen"
 if [ -n "$bad" ]; then
   echo "notices: licence(s) not permissive or not recognised:$bad" >&2
   echo "notices: the dependencies concerned —" >&2
-  for lic in $bad; do awk -F'\t' -v l="$lic" '$3 == l { print "  " $1 "  " l }' "$tmp/go.tsv" "$tmp/web.tsv" >&2; done
+  for lic in $bad; do
+    awk -F'\t' -v l="$lic" '$3 == l { print "  " $1 "  " l }' "$tmp/go.tsv" "$tmp/web.tsv" >&2
+    awk -F'\t' -v l="$lic" '$4 == l { print "  " $1 "  " l }' "$tmp/fonts.tsv" >&2
+  done
   exit 1
 fi
 
@@ -89,10 +117,11 @@ fi
   echo "\`make notices-check\`, which fails if this file is stale or if a dependency's licence is"
   echo "not one of: $ALLOWED."
   echo
-  echo "Two trees ship: the host binary (Go — the union over every release platform: $TARGETS)"
-  echo "and the web app bundle (npm, production only)."
-  echo "Full licence texts live at the URLs below; the two the tunnel is built on are reproduced"
-  echo "verbatim at the end of this file."
+  echo "Three things ship: the host binary (Go — the union over every release platform: $TARGETS),"
+  echo "the web app bundle (npm, production only), and the two typefaces that bundle carries as"
+  echo "woff2 files under \`web/public/fonts\` (self-hosted, so the app asks no third party for a font)."
+  echo "Full licence texts live at the URLs below; the two the tunnel is built on and the Open Font"
+  echo "License of each typeface are reproduced verbatim at the end of this file."
   echo
   echo "## Host binary (Go)"
   echo
@@ -112,6 +141,12 @@ fi
       sed 's/, $//' | fold -s -w 96 | sed 's/[[:space:]]*$//'
     echo
   done <"$tmp/seen"
+  echo "## Bundled fonts (web app)"
+  echo
+  echo "| Typeface | Upstream | Version | Licence | Files |"
+  echo "|---|---|---|---|---|"
+  awk -F'\t' '{ gsub(/ /, ", ", $6); printf "| %s | %s | %s | %s | %s |\n", $1, $2, $3, $4, $6 }' "$tmp/fonts.tsv"
+  echo
   for pkg in $VERBATIM; do
     path=$(awk -F'\t' -v p="$pkg" '$1 == p { print $5; exit }' "$tmp/go.tsv")
     [ -n "$path" ] && [ -f "$path" ] ||
@@ -123,11 +158,21 @@ fi
     echo '```'
     echo
   done
+  # The OFL requires its own text to travel with the font, verbatim.
+  while IFS='	' read -r fname _ _ _ flicfile _; do
+    [ -n "$fname" ] || continue
+    echo "## $fname — full licence text (SIL Open Font License 1.1)"
+    echo
+    echo '```'
+    cat "web/public/$flicfile"
+    echo '```'
+    echo
+  done <"$tmp/fonts.tsv"
 } >"$tmp/notices.md"
 
 if [ "$mode" = write ]; then
   mv "$tmp/notices.md" "$out"
-  echo "notices: wrote $out ($(wc -l <"$out" | tr -d ' ') lines, $(wc -l <"$tmp/go.tsv" | tr -d ' ') Go, $(wc -l <"$tmp/web.tsv" | tr -d ' ') npm)"
+  echo "notices: wrote $out ($(wc -l <"$out" | tr -d ' ') lines, $(wc -l <"$tmp/go.tsv" | tr -d ' ') Go, $(wc -l <"$tmp/web.tsv" | tr -d ' ') npm, $(wc -l <"$tmp/fonts.tsv" | tr -d ' ') fonts)"
   exit 0
 fi
 
@@ -136,4 +181,4 @@ if ! diff -u "$out" "$tmp/notices.md"; then
   echo "notices: $out is stale — run 'make notices'" >&2
   exit 1
 fi
-echo "notices: OK — $(wc -l <"$tmp/go.tsv" | tr -d ' ') Go + $(wc -l <"$tmp/web.tsv" | tr -d ' ') npm dependencies, licences all in ALLOWED, verbatim texts present"
+echo "notices: OK — $(wc -l <"$tmp/go.tsv" | tr -d ' ') Go + $(wc -l <"$tmp/web.tsv" | tr -d ' ') npm dependencies + $(wc -l <"$tmp/fonts.tsv" | tr -d ' ') bundled fonts, licences all in ALLOWED, verbatim texts present"

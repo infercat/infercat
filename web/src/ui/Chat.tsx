@@ -503,7 +503,9 @@ export default function Chat({ state, live, dispatch, onRedial, reconnecting = f
             <span className="dim">{modelLabel(model)}</span>
           </div>
           <div className="truth">
-            <span className="path">{pathLine(live, now)}</span>
+            {/* The pill's three states are the same three the line already says; the modifier only
+                lets the stylesheet colour the dot (038). No new state, no new element, no new copy. */}
+            <span className={`path ${pathState(live)}`}>{pathLine(live, now)}</span>
             <Meters live={live} used={contextCarried(conv.messages, settings, me.host.upstream.model_context)} onOpen={() => setLimitsSheet(true)} />
           </div>
           <button className="ghost tiny" onClick={() => setSheet(true)}>
@@ -651,6 +653,12 @@ export default function Chat({ state, live, dispatch, onRedial, reconnecting = f
       {limitsSheet && <LimitsSheet live={live} messages={conv.messages} onClose={() => setLimitsSheet(false)} />}
     </div>
   );
+}
+
+/** Which of the path pill's three states `pathLine` is describing, for the stylesheet (038). */
+function pathState(l: Live): 'direct' | 'relayed' | 'reconnecting' {
+  if (!l.pathOk || !l.meOk) return 'reconnecting';
+  return l.path?.direct === true ? 'direct' : 'relayed';
 }
 
 /** A store with nothing in it still needs a chat to type into. */

@@ -1,35 +1,81 @@
-/* One accent, system fonts, generous whitespace, status as text. Light and dark from the OS. */
+/* Swiss ink (038, docs/brand/swiss-ink.md): black ink on white paper, a strict grid, hairline rules,
+   zero rounded corners, and exactly one accent — a printer's cobalt — for the thing you can act on.
+   Dark is true black with the same cobalt. Every colour in the app is a token below; no component
+   names a hex. Mono is reserved for what is measured or machine-issued; prose never borrows it. */
+
+/* ---------- type, self-hosted (promise 3: the app asks no third party for anything) ---------- */
+/* Archivo is one variable file (wght 400–700), latin subset; IBM Plex Mono is static per weight.
+   Both SIL OFL 1.1 — the texts sit next to the files and in THIRD_PARTY_NOTICES.md. */
+@font-face {
+  font-family: 'Archivo';
+  font-style: normal;
+  font-weight: 400 700;
+  font-display: swap;
+  src: url('/fonts/archivo-latin-var.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 400;
+  font-display: swap;
+  src: url('/fonts/ibm-plex-mono-400-latin.woff2') format('woff2');
+}
+@font-face {
+  font-family: 'IBM Plex Mono';
+  font-style: normal;
+  font-weight: 500;
+  font-display: swap;
+  src: url('/fonts/ibm-plex-mono-500-latin.woff2') format('woff2');
+}
+
+/* ---------- tokens ---------- */
 :root {
-  --bg: #fdfcfb;
-  --panel: #f5f3f0;
-  --raised: #ffffff;
-  --text: #1b1a18;
-  --muted: #6f6b64;
-  --faint: #716c65; /* small print; 4.5:1 or better on --bg, --panel and --raised */
-  --line: #e6e2dc;
-  --accent: #b0522b;
-  --accent-ink: #ffffff;
-  --accent-soft: #f7ece5;
-  --danger: #a03232;
-  --radius: 12px;
-  --font: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
-  --mono: ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
+  --paper: #ffffff;
+  --surface: #f1f2f4;
+  --surface-2: #e7e9ed;
+  --text: #0a0a0a;
+  --muted: #5c6068;
+  --border: #d8dbe0; /* hairlines */
+  --rule: #0a0a0a; /* ink rules: the frames that hold the layout together */
+  --accent: #1f3bff; /* printer's cobalt: fills */
+  --accent-ink: #ffffff; /* what sits on the cobalt */
+  --accent-text: #1f3bff; /* cobalt as text; 6.7:1 on paper */
+  --focus: #1f3bff;
+  --success: #0b7a4b;
+  --warning: #e5e80b; /* acid yellow; a fill only — it never carries text */
+  --danger: #d5182f;
+  --code: #edeff2;
+  --scrim: rgba(10, 10, 10, 0.4);
+  /* Syntax highlighting is drawn from the same five colours: no sixth hue enters the system. */
+  --syn-comment: var(--muted);
+  --syn-keyword: var(--accent-text);
+  --syn-string: var(--success);
+  --syn-literal: var(--danger);
+  --syn-name: var(--text);
+  --font: 'Archivo', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
   color-scheme: light dark;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #121110;
-    --panel: #1a1917;
-    --raised: #201f1c;
-    --text: #eceae5;
-    --muted: #a39e95;
-    --faint: #8e8981;
-    --line: #2d2b28;
-    --accent: #e9926a;
-    --accent-ink: #241a14;
-    --accent-soft: #2a201a;
-    --danger: #e78585;
+    --paper: #000000; /* true black, not slate */
+    --surface: #101114;
+    --surface-2: #1a1c21;
+    --text: #ffffff;
+    --muted: #9aa0aa;
+    --border: #2a2d33;
+    --rule: #ffffff;
+    --accent: #1f3bff;
+    --accent-ink: #ffffff;
+    /* Flat cobalt is 3.1:1 on black and must never carry text; this tint is 7.5:1. */
+    --accent-text: #7e93ff;
+    --focus: #7e93ff;
+    --success: #35d48d;
+    --warning: #f2f52e; /* fill only, as in light */
+    --danger: #ff5266;
+    --code: #16181d;
+    --scrim: rgba(0, 0, 0, 0.72);
   }
 }
 
@@ -39,7 +85,7 @@ html, body, #root { height: 100%; }
 
 body {
   margin: 0;
-  background: var(--bg);
+  background: var(--paper);
   color: var(--text);
   font-family: var(--font);
   font-size: 15px;
@@ -52,6 +98,7 @@ button {
   color: inherit;
   cursor: pointer;
   border: 0;
+  border-radius: 0;
   background: none;
 }
 button:disabled { cursor: default; opacity: 0.45; }
@@ -59,143 +106,175 @@ button:disabled { cursor: default; opacity: 0.45; }
 textarea, input, select {
   font: inherit;
   color: inherit;
-  background: var(--raised);
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  padding: 10px 12px;
+  background: var(--paper);
+  border: 1px solid var(--rule);
+  border-radius: 0;
+  padding: 11px 13px;
   width: 100%;
 }
 textarea { resize: none; }
-:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* Visible in both schemes: cobalt on paper, its tint on black — a flat cobalt ring is 3.1:1 there. */
+:focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 textarea:focus-visible, input[type='text']:focus-visible, select:focus-visible {
-  outline: none;
-  border-color: var(--accent);
-  box-shadow: 0 0 0 3px var(--accent-soft);
+  outline: 2px solid var(--focus);
+  outline-offset: 1px;
 }
 
 .primary {
   background: var(--accent);
   color: var(--accent-ink);
-  border-radius: 10px;
-  padding: 11px 20px;
-  font-weight: 550;
+  border: 1px solid var(--accent);
+  padding: 10px 22px;
+  font-weight: 600;
+  letter-spacing: -0.005em;
 }
-.primary.small { padding: 7px 14px; border-radius: 9px; }
+.primary.small { padding: 7px 14px; font-size: 12.5px; }
 .primary.wide { width: 100%; }
 .secondary {
-  border: 1px solid var(--line);
-  background: var(--raised);
-  border-radius: 10px;
+  border: 1px solid var(--rule);
+  background: transparent;
   padding: 8px 14px;
-  font-weight: 500;
+  font-weight: 600;
+  font-size: 13px;
 }
-.secondary:hover { border-color: var(--accent); color: var(--accent); }
+.secondary:hover { background: var(--surface); }
 .secondary.wide { width: 100%; }
-.ghost { color: var(--muted); padding: 7px 10px; border-radius: 8px; }
-.ghost:hover:not(:disabled) { background: var(--panel); color: var(--text); }
-.ghost.tiny { font-size: 13px; padding: 4px 8px; }
+.ghost { color: var(--muted); padding: 7px 10px; font-weight: 500; }
+.ghost:hover:not(:disabled) { background: var(--surface); color: var(--text); }
+.ghost.tiny { font-size: 12.5px; padding: 4px 6px; }
 .dim { color: var(--muted); }
 .booting { display: grid; place-items: center; height: 100%; color: var(--muted); }
 
 /* ---------- connect screen: the landing page ---------- */
 .connect { display: grid; place-items: center; min-height: 100%; padding: 32px 20px 64px; }
 .connect-card { width: 100%; max-width: 30rem; }
-.connect h1 { font-size: 30px; letter-spacing: -0.02em; margin: 0 0 10px; font-weight: 600; }
-.pitch { color: var(--muted); margin: 0 0 28px; font-size: 16px; }
+.connect h1 { font-size: 31px; letter-spacing: -0.035em; margin: 0 0 12px; font-weight: 700; line-height: 1.06; }
+.pitch { color: var(--muted); margin: 0 0 26px; font-size: 14.5px; line-height: 1.5; }
 .field { display: block; margin-bottom: 12px; }
-.field-label { display: block; font-size: 13px; color: var(--muted); margin-bottom: 6px; }
-.connect textarea { font-family: var(--mono); font-size: 13px; line-height: 1.5; }
-.connect-actions { display: flex; gap: 8px; align-items: center; }
+/* Labels are machine-issued names for machine-issued things: mono, tracked, uppercase (the mock). */
+.field-label {
+  display: block; font-family: var(--mono); font-size: 10.5px; font-weight: 500;
+  letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); margin-bottom: 7px;
+}
+.connect textarea { font-family: var(--mono); font-size: 13.5px; line-height: 1.5; }
+.connect-actions { display: flex; gap: 14px; align-items: center; }
 .inline-error { color: var(--danger); font-size: 13px; margin: -4px 0 12px; }
+/* No tint washes in this system: a notice is a block of surface behind an ink rule. */
 .notice {
-  background: var(--accent-soft);
-  border-radius: 10px;
+  background: var(--surface);
+  border-left: 3px solid var(--accent);
   padding: 10px 14px;
   font-size: 14px;
   margin: 0 0 20px;
 }
-.privacy { color: var(--faint); font-size: 13px; margin-top: 32px; line-height: 1.6; }
-.about { color: var(--faint); font-size: 12px; margin: 10px 0 0; }
-.about a, .small-print a { color: inherit; }
+.privacy {
+  color: var(--muted); font-size: 12.5px; line-height: 1.55;
+  margin-top: 26px; border-top: 1px solid var(--border); padding-top: 14px;
+}
+.about { color: var(--muted); font-size: 12px; margin: 12px 0 0; font-variant-numeric: tabular-nums; }
+.about a, .small-print a { color: var(--accent-text); }
 .devmode {
   display: flex; gap: 8px; align-items: center;
-  margin-top: 20px; padding-top: 14px; border-top: 1px dashed var(--line);
-  color: var(--faint); font-size: 12px;
+  margin-top: 20px; padding-top: 14px; border-top: 1px solid var(--border);
+  color: var(--muted); font-size: 12px;
 }
 .devmode input { width: auto; }
 
 .steps { list-style: none; margin: 24px 0 0; padding: 0; font-size: 14px; }
-.steps li { display: flex; justify-content: space-between; padding: 5px 0; color: var(--faint); }
+.steps li { display: flex; justify-content: space-between; padding: 6px 0; color: var(--muted); border-top: 1px solid var(--border); }
+.steps li:first-child { border-top: 0; }
 .steps li.done { color: var(--muted); }
-.steps li.now { color: var(--text); font-weight: 550; }
-.step-detail { font-variant-numeric: tabular-nums; color: var(--faint); }
+.steps li.now { color: var(--text); font-weight: 500; }
+.step-detail { font-family: var(--mono); font-size: 11px; color: var(--muted); }
 
-.failure { margin-top: 24px; border-left: 2px solid var(--danger); padding: 2px 0 2px 14px; }
-.failure strong { display: block; }
+.failure { margin-top: 24px; border-left: 3px solid var(--danger); padding: 2px 0 2px 14px; }
+.failure strong { display: block; font-weight: 600; }
 .failure p { color: var(--muted); font-size: 14px; margin: 4px 0 10px; }
 
 /* A raw transport string is evidence, not an explanation: it opens only when it is asked for. */
-.host-said { margin: 6px 0 10px; font-size: 12.5px; color: var(--faint); }
+.host-said { margin: 6px 0 10px; font-size: 12.5px; color: var(--muted); }
 .host-said summary { cursor: pointer; color: var(--muted); }
 .host-said p { margin: 6px 0 0; font-family: var(--mono); font-size: 12px; overflow-wrap: anywhere; }
 
 /* A remembered invite is still a secret sitting on a screen: shown as itself, opened on request. */
 .masked {
   display: flex; align-items: center; justify-content: space-between; gap: 8px;
-  background: var(--raised); border: 1px solid var(--line); border-radius: 10px; padding: 8px 8px 8px 12px;
+  background: var(--code); border: 1px solid var(--rule); padding: 8px 8px 8px 13px;
 }
-.masked code { font-family: var(--mono); font-size: 13px; color: var(--muted); }
-.field-hint { display: block; color: var(--faint); font-size: 12px; margin-top: 6px; }
-input[type='range'] { accent-color: var(--accent); padding: 0; }
+.masked code { font-family: var(--mono); font-size: 13px; color: var(--text); }
+.field-hint { display: block; color: var(--muted); font-size: 12px; margin-top: 6px; }
+input[type='range'] { accent-color: var(--accent); padding: 0; border: 0; }
 
 /* ---------- chat shell ---------- */
-.app { display: grid; grid-template-columns: 264px 1fr; height: 100dvh; }
+.app { display: grid; grid-template-columns: 248px 1fr; height: 100dvh; }
 .sidebar {
   display: grid;
   grid-template-rows: auto 1fr auto;
-  background: var(--panel);
-  border-right: 1px solid var(--line);
+  background: var(--paper);
+  border-right: 1px solid var(--rule);
   min-height: 0;
 }
-.sidebar-head { padding: 14px; }
-.sidebar-foot { padding: 10px 14px; border-top: 1px solid var(--line); }
-.conv-list { overflow-y: auto; padding: 0 8px; }
-.conv { display: flex; align-items: center; border-radius: 9px; }
-.conv:hover { background: var(--raised); }
-.conv.current { background: var(--raised); }
+.sidebar-head { padding: 12px; }
+.sidebar-foot { padding: 10px 12px; border-top: 1px solid var(--border); }
+.conv-list { overflow-y: auto; padding: 2px 12px; }
+.conv { display: flex; align-items: center; border: 1px solid transparent; margin-bottom: 1px; }
+.conv:hover { background: var(--surface); }
+.conv.current { background: var(--surface); border-color: var(--border); }
 .conv-open {
-  flex: 1; min-width: 0; text-align: left; padding: 8px 10px; font-size: 14px;
+  flex: 1; min-width: 0; text-align: left; padding: 7px 9px; font-size: 13.5px; color: var(--muted);
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
 }
+.conv.current .conv-open { color: var(--text); font-weight: 500; }
 /* 44 px, and set apart from the open target: deleting is next to opening, and a thumb is wide. */
 .conv-del {
-  color: var(--faint); font-size: 16px; opacity: 0;
+  color: var(--muted); font-size: 16px; opacity: 0;
   width: 44px; height: 44px; margin-left: 4px;
-  display: grid; place-items: center; border-radius: 9px;
+  display: grid; place-items: center;
 }
 .conv:hover .conv-del, .conv.current .conv-del { opacity: 1; }
-.conv-del:hover { background: var(--panel); color: var(--danger); }
+.conv-del:hover { background: var(--surface-2); color: var(--danger); }
 @media (pointer: coarse) { .conv-del { opacity: 1; } }
 
 .main { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
 
 .topbar {
   display: flex; align-items: center; gap: 14px; flex-wrap: wrap;
-  padding: 10px 20px; border-bottom: 1px solid var(--line); background: var(--bg);
+  padding: 10px 20px; border-bottom: 1px solid var(--rule); background: var(--paper);
 }
 .who { display: flex; gap: 8px; align-items: baseline; min-width: 0; }
-.who strong { font-weight: 600; white-space: nowrap; }
-.who .dim { font-size: 13px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.truth { margin-left: auto; display: flex; align-items: center; gap: 16px; font-size: 12.5px; color: var(--muted); }
-.path { font-variant-numeric: tabular-nums; white-space: nowrap; }
-.meters { display: flex; gap: 14px; padding: 2px 4px; border-radius: 8px; text-align: left; }
-.meters:hover { background: var(--panel); }
-.meter { display: grid; gap: 3px; }
-.meter-label { color: var(--faint); font-size: 11.5px; white-space: nowrap; font-variant-numeric: tabular-nums; }
-.meter-track { display: block; width: 96px; height: 3px; background: var(--line); border-radius: 2px; }
+.who strong { font-weight: 600; white-space: nowrap; letter-spacing: -0.012em; font-size: 14.5px; }
+/* The model id is machine-issued, so it is set in mono. */
+.who .dim { font-family: var(--mono); font-size: 11px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+/* Wraps within itself rather than running off the edge: the four truths in this header are long
+   sentences, and a clipped meter is a number nobody can read (022 promise 4). */
+.truth {
+  margin-left: auto; display: flex; align-items: center; flex-wrap: wrap;
+  gap: 4px 14px; min-width: 0; color: var(--muted);
+}
+/* The path pill: rectangular, hairline, mono, with the state in a 7 px square of colour. */
+.path {
+  display: inline-flex; align-items: center; gap: 5px;
+  border: 1px solid var(--border); padding: 3px 7px;
+  font-family: var(--mono); font-size: 11.5px; line-height: 1.4;
+  color: var(--text); white-space: nowrap; font-variant-numeric: tabular-nums;
+}
+.path::before { content: ''; width: 7px; height: 7px; flex: none; display: block; background: var(--muted); }
+.path.direct::before { background: var(--success); }
+.path.relayed::before { background: var(--accent); }
+.path.reconnecting { border-color: var(--rule); }
+.path.reconnecting::before { background: var(--warning); outline: 1px solid var(--rule); outline-offset: -1px; }
+.meters { display: flex; flex-wrap: wrap; gap: 4px 12px; min-width: 0; max-width: 100%; padding: 2px 0; text-align: left; }
+.meters:hover { background: var(--surface); }
+.meter { display: grid; gap: 4px; }
+.meter-label {
+  font-family: var(--mono); color: var(--muted); font-size: 10.5px;
+  white-space: nowrap; font-variant-numeric: tabular-nums;
+}
+/* A meter is a 3 px ink rule, not a gauge. */
+.meter-track { display: block; width: 96px; height: 3px; background: var(--surface-2); }
 /* An unknown number gets a dashed rail, never a bar at zero: an empty bar is a claim (promise 3). */
-.meter-track.unknown { background: none; border-top: 1px dashed var(--line); height: 0; margin-top: 1px; }
-.meter-fill { display: block; height: 100%; background: var(--accent); border-radius: 2px; transition: width 0.3s; }
+.meter-track.unknown { background: none; border-top: 1px dashed var(--border); height: 0; margin-top: 1px; }
+.meter-fill { display: block; height: 100%; background: var(--text); transition: width 0.3s; }
 .hamburger { display: none; font-size: 18px; padding: 2px 6px; }
 
 /* Nothing on screen outlives its measurement: while /me is stale the truths above it recede. */
@@ -209,10 +288,10 @@ input[type='range'] { accent-color: var(--accent); padding: 0; }
 .row { margin-bottom: 26px; }
 .row.user { display: flex; flex-direction: column; align-items: flex-end; }
 .bubble {
-  background: var(--panel);
-  border-radius: 16px 16px 4px 16px;
-  padding: 10px 14px;
+  background: var(--surface-2);
+  padding: 11px 14px;
   max-width: 85%;
+  font-size: 14.5px;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
 }
@@ -224,47 +303,55 @@ input[type='range'] { accent-color: var(--accent); padding: 0; }
 .meta {
   display: flex; align-items: center; justify-content: space-between; gap: 6px 12px; flex-wrap: wrap;
   min-height: 26px; /* reserved so the token count landing never shifts the page */
-  margin-top: 6px;
+  margin-top: 10px;
 }
-.meta-text { color: var(--faint); font-size: 12px; font-variant-numeric: tabular-nums; flex: 1 1 12em; min-width: 0; }
+/* Timings and token counts are measurements: mono, and never a sentence. */
+.meta-text {
+  font-family: var(--mono); color: var(--muted); font-size: 11px;
+  font-variant-numeric: tabular-nums; flex: 1 1 12em; min-width: 0;
+}
 .meta .actions { margin-left: auto; flex: none; }
-.waiting { color: var(--faint); font-size: 14px; margin: 0; }
+.waiting { color: var(--muted); font-size: 14px; margin: 0; }
 .msg-error { color: var(--danger); margin: 0; }
 
 /* A reply that stopped says how it stopped, right under what it managed to say. */
 .ended { color: var(--muted); font-size: 13px; margin: 6px 0 0; line-height: 1.45; }
 .ended.interrupted { color: var(--danger); }
 
-/* Host-level truths that are not about one message: they sit under the header, as text. */
+/* Host-level truths that are not about one message: they sit under the header, as text, behind an
+   ink rule — a fault in the danger colour, a fact in ink. No washes. */
 .degraded, .logging {
   margin: 0;
   padding: 8px 20px;
   font-size: 13px;
-  border-bottom: 1px solid var(--line);
+  background: var(--surface);
+  border-bottom: 1px solid var(--border);
+  border-left: 3px solid var(--rule);
   display: flex; flex-wrap: wrap; align-items: center; gap: 4px 12px;
 }
 .degraded .ghost.tiny { color: inherit; text-decoration: underline; padding-left: 0; padding-right: 0; }
-/* Another tab owns this chat: not a fault, a fact, in the host's colour. */
-.degraded.follower { color: var(--text); background: var(--accent-soft); }
-.degraded { color: var(--danger); background: var(--panel); }
-/* A paused invite is not a fault: it is a thing the host can undo, said in the host's colour. */
-.degraded.key { color: var(--text); background: var(--accent-soft); }
-.logging { color: var(--text); background: var(--accent-soft); }
+.degraded { color: var(--danger); border-left-color: var(--danger); }
+/* Another tab owns this chat, and a paused invite: not faults, facts — said in ink, not in red. */
+.degraded.follower, .degraded.key { color: var(--text); border-left-color: var(--rule); }
+.logging { color: var(--text); }
 
 /* The pending turn: the reader's words, still theirs, marked as not delivered (promise 1). */
-.bubble.pending { border: 1px dashed var(--danger); background: var(--bg); }
-.pending-mark { color: var(--danger); font-size: 12px; }
+.bubble.pending { border: 1px dashed var(--danger); background: var(--paper); }
+.pending-mark { font-family: var(--mono); color: var(--danger); font-size: 11px; }
 
 /* Deleting is undoable, so the answer to "are you sure?" is six seconds instead of a dialog. */
 .toast {
   display: flex; gap: 12px; align-items: center; justify-content: space-between;
   margin: 0 auto; max-width: 46rem; width: 100%;
-  padding: 8px 20px; border-top: 1px solid var(--line); background: var(--panel); font-size: 13.5px;
+  padding: 9px 20px; border-top: 1px solid var(--border); background: var(--surface); font-size: 13.5px;
 }
 
-.thinking { border-left: 2px solid var(--line); padding-left: 12px; margin-bottom: 12px; }
-.thinking-toggle { display: flex; gap: 8px; align-items: baseline; color: var(--muted); font-size: 13px; padding: 2px 0; }
-.thinking-hint { color: var(--faint); font-size: 12px; }
+.thinking { border-left: 2px solid var(--rule); padding-left: 12px; margin-bottom: 14px; }
+.thinking-toggle {
+  display: flex; gap: 9px; align-items: baseline; color: var(--muted);
+  font-family: var(--mono); font-size: 11.5px; padding: 2px 0;
+}
+.thinking-hint { font-family: var(--mono); color: var(--muted); font-size: 11px; }
 .thinking-clip { display: grid; grid-template-rows: 0fr; transition: grid-template-rows 0.22s ease; }
 .thinking.open .thinking-clip { grid-template-rows: 1fr; }
 .thinking-body {
@@ -277,49 +364,56 @@ input[type='range'] { accent-color: var(--accent); padding: 0; }
 /* The answer a regenerate replaced. Kept, and out of the way until it is wanted (promise 16). */
 .previous { margin: 0 0 10px; font-size: 13px; color: var(--muted); }
 .previous summary { cursor: pointer; }
-.previous .md { margin-top: 8px; padding-left: 12px; border-left: 2px solid var(--line); }
+.previous .md { margin-top: 8px; padding-left: 12px; border-left: 2px solid var(--border); }
 
 /* Running out of allowance is not finishing: it reads as an ending, with the one useful action. */
 .ended.capped, .ended.wall { display: flex; gap: 6px 10px; align-items: baseline; flex-wrap: wrap; }
 /* The one wall that decides whether the chat survives is not quiet meta text (022 promise 3). */
 .ended.wall {
   color: var(--text); font-size: 14px; margin-top: 12px; padding: 10px 14px;
-  background: var(--accent-soft); border-radius: 10px;
+  background: var(--surface); border-left: 3px solid var(--rule);
 }
-.ended.wall .ghost.tiny { color: var(--accent); font-weight: 550; padding-left: 0; }
+.ended.wall .ghost.tiny { color: var(--accent-text); font-weight: 600; padding-left: 0; }
 
 .empty { padding: 12vh 0 0; text-align: center; }
-.empty h2 { font-size: 22px; font-weight: 600; margin: 0 0 6px; letter-spacing: -0.01em; }
+.empty h2 { font-size: 22px; font-weight: 600; margin: 0 0 6px; letter-spacing: -0.02em; }
 .empty p { margin: 0 auto 26px; max-width: 30rem; }
 .suggestions { display: grid; gap: 8px; max-width: 26rem; margin: 0 auto; }
 .suggestion {
-  border: 1px solid var(--line); border-radius: 10px; padding: 10px 14px;
-  text-align: left; color: var(--muted); font-size: 14px; background: var(--raised);
+  border: 1px solid var(--border); padding: 10px 14px;
+  text-align: left; color: var(--muted); font-size: 14px; background: var(--paper);
 }
-.suggestion:hover { color: var(--text); border-color: var(--accent); }
+.suggestion:hover { color: var(--text); border-color: var(--rule); }
 
 .banner {
   display: flex; gap: 12px; align-items: center; justify-content: space-between; flex-wrap: wrap;
   margin: 0 auto; max-width: 46rem; width: 100%;
-  padding: 10px 20px; border-top: 1px solid var(--line); background: var(--accent-soft);
+  padding: 10px 20px; border-top: 1px solid var(--border); background: var(--surface);
+  border-left: 3px solid var(--rule);
   font-size: 13.5px;
 }
 .banner-actions { display: flex; gap: 4px; }
 
-.composer { padding: 12px 20px 16px; border-top: 1px solid var(--line); }
+.composer { padding: 12px 20px 12px; border-top: 1px solid var(--rule); }
 .composer-box {
   display: flex; gap: 10px; align-items: flex-end;
   max-width: 46rem; margin: 0 auto; width: 100%;
 }
-.composer textarea { flex: 1 1 auto; min-width: 0; width: auto; max-height: 200px; }
+.composer textarea { flex: 1 1 auto; min-width: 0; width: auto; max-height: 200px; font-size: 14px; }
 .composer-box > button { flex: 0 0 auto; }
-.hint { max-width: 46rem; margin: 8px auto 0; color: var(--faint); font-size: 12px; text-align: center; }
+.hint {
+  max-width: 46rem; margin: 9px auto 0; color: var(--muted);
+  font-family: var(--mono); font-size: 10.5px; text-align: center;
+}
 
-.sheet-wrap { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.35); display: grid; place-items: center; padding: 20px; z-index: 30; }
-.sheet { background: var(--bg); border: 1px solid var(--line); border-radius: var(--radius); padding: 22px; width: min(28rem, 100%); max-height: 86dvh; overflow-y: auto; }
-.sheet h3 { margin: 0 0 18px; font-size: 17px; font-weight: 600; }
+.sheet-wrap { position: fixed; inset: 0; background: var(--scrim); display: grid; place-items: center; padding: 20px; z-index: 30; }
+.sheet {
+  background: var(--paper); border: 1px solid var(--rule); padding: 22px;
+  width: min(28rem, 100%); max-height: 86dvh; overflow-y: auto;
+}
+.sheet h3 { margin: 0 0 18px; font-size: 18px; font-weight: 600; letter-spacing: -0.02em; }
 .sheet p { margin: 0 0 14px; }
-.sheet-actions { display: flex; gap: 8px; align-items: center; justify-content: flex-end; margin-top: 18px; }
+.sheet-actions { display: flex; gap: 12px; align-items: center; justify-content: flex-end; margin-top: 18px; }
 .small-print { font-size: 12.5px; line-height: 1.6; margin: 18px 0; }
 .small-print code { font-family: var(--mono); font-size: 12px; }
 
@@ -330,43 +424,37 @@ input[type='range'] { accent-color: var(--accent); padding: 0; }
 .md > :last-child { margin-bottom: 0; }
 /* A model writing a list or a stanza uses single newlines; markdown would fold them into one
    paragraph, so the reader gets a wall of text where the model wrote lines (014 promise 17). */
-.md p { margin: 0 0 14px; overflow-wrap: anywhere; white-space: pre-wrap; }
+.md p { margin: 0 0 14px; overflow-wrap: anywhere; white-space: pre-wrap; line-height: 1.62; }
 .md ul, .md ol, .md blockquote { margin: 0 0 14px; overflow-wrap: anywhere; }
-.md h1, .md h2, .md h3, .md h4 { margin: 22px 0 10px; font-weight: 600; line-height: 1.3; }
+.md h1, .md h2, .md h3, .md h4 { margin: 22px 0 10px; font-weight: 600; line-height: 1.3; letter-spacing: -0.02em; }
 .md h1 { font-size: 21px; } .md h2 { font-size: 18px; } .md h3 { font-size: 16px; }
 .md ul, .md ol { padding-left: 22px; }
 .md li { margin: 3px 0; }
-.md blockquote { border-left: 2px solid var(--line); padding-left: 14px; color: var(--muted); }
-.md a { color: var(--accent); }
-.md hr { border: 0; border-top: 1px solid var(--line); margin: 22px 0; }
-.md code { font-family: var(--mono); font-size: 0.87em; background: var(--panel); padding: 1px 5px; border-radius: 5px; }
+.md blockquote { border-left: 2px solid var(--rule); padding-left: 14px; color: var(--muted); }
+.md a { color: var(--accent-text); }
+.md hr { border: 0; border-top: 1px solid var(--border); margin: 22px 0; }
+.md code { font-family: var(--mono); font-size: 0.87em; background: var(--code); padding: 1px 5px; }
 .md pre { margin: 0; padding: 14px 16px; overflow-x: auto; }
 .md pre code { background: none; padding: 0; font-size: 12.8px; line-height: 1.55; }
-.codeblock { position: relative; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; margin: 0 0 14px; }
-.copy { position: absolute; top: 6px; right: 8px; font-size: 11.5px; color: var(--faint); padding: 3px 7px; border-radius: 6px; background: var(--panel); }
+.codeblock { position: relative; background: var(--code); border: 1px solid var(--border); margin: 0 0 14px; }
+.copy { position: absolute; top: 6px; right: 8px; font-size: 11.5px; color: var(--muted); padding: 3px 7px; background: var(--code); }
 .copy:hover { color: var(--text); }
 .table-scroll { overflow-x: auto; margin: 0 0 14px; }
 .md table { border-collapse: collapse; font-size: 14px; }
-.md th, .md td { border: 1px solid var(--line); padding: 6px 12px; text-align: left; }
-.md th { background: var(--panel); font-weight: 600; }
-.img-link { color: var(--accent); font-size: 13px; }
+.md th, .md td { border: 1px solid var(--border); padding: 6px 12px; text-align: left; }
+.md th { background: var(--surface); font-weight: 600; }
+.img-link { color: var(--accent-text); font-size: 13px; }
 
-/* Highlighting, themed with our own tokens rather than a highlight.js stylesheet. */
-.hljs-comment, .hljs-quote { color: var(--faint); font-style: italic; }
-.hljs-keyword, .hljs-selector-tag, .hljs-literal, .hljs-doctag { color: var(--accent); }
-.hljs-string, .hljs-regexp, .hljs-addition { color: #3f7d54; }
-.hljs-number, .hljs-symbol, .hljs-bullet, .hljs-attr, .hljs-variable, .hljs-template-variable { color: #8a5a9e; }
-.hljs-title, .hljs-section, .hljs-name, .hljs-selector-id, .hljs-selector-class { color: #2f6a9c; font-weight: 600; }
-.hljs-built_in, .hljs-type, .hljs-attribute { color: #2f6a9c; }
-.hljs-meta, .hljs-deletion { color: var(--muted); }
+/* Highlighting, drawn from the palette's own colours rather than a highlight.js stylesheet. */
+.hljs-comment, .hljs-quote { color: var(--syn-comment); font-style: italic; }
+.hljs-keyword, .hljs-selector-tag, .hljs-literal, .hljs-doctag { color: var(--syn-keyword); }
+.hljs-string, .hljs-regexp, .hljs-addition { color: var(--syn-string); }
+.hljs-number, .hljs-symbol, .hljs-bullet, .hljs-attr, .hljs-variable, .hljs-template-variable { color: var(--syn-literal); }
+.hljs-title, .hljs-section, .hljs-name, .hljs-selector-id, .hljs-selector-class { color: var(--syn-name); font-weight: 600; }
+.hljs-built_in, .hljs-type, .hljs-attribute { color: var(--syn-name); font-weight: 500; }
+.hljs-meta, .hljs-deletion { color: var(--syn-comment); }
 .hljs-emphasis { font-style: italic; }
 .hljs-strong { font-weight: 700; }
-@media (prefers-color-scheme: dark) {
-  .hljs-string, .hljs-regexp, .hljs-addition { color: #86c99b; }
-  .hljs-number, .hljs-symbol, .hljs-bullet, .hljs-attr, .hljs-variable, .hljs-template-variable { color: #c9a3dd; }
-  .hljs-title, .hljs-section, .hljs-name, .hljs-selector-id, .hljs-selector-class,
-  .hljs-built_in, .hljs-type, .hljs-attribute { color: #85b7e0; }
-}
 
 /* ---------- 360 px and up ---------- */
 @media (max-width: 760px) {
@@ -380,7 +468,7 @@ input[type='range'] { accent-color: var(--accent); padding: 0; }
     transition: transform 0.18s ease;
   }
   .drawer-open .sidebar { transform: none; }
-  .backdrop { position: fixed; inset: 0; background: rgba(0, 0, 0, 0.35); z-index: 35; }
+  .backdrop { position: fixed; inset: 0; background: var(--scrim); z-index: 35; }
   .drawer-open .backdrop { display: block; }
   .hamburger { display: inline-flex; }
   .topbar { padding: 8px 14px; gap: 10px; row-gap: 4px; }
@@ -388,10 +476,11 @@ input[type='range'] { accent-color: var(--accent); padding: 0; }
   .topbar > .ghost { order: 2; margin-left: auto; }
   /* The path and the counters drop to their own row; the bars themselves are the first thing
      to go, because the numbers next to them are what actually says something. */
-  .truth { order: 3; margin-left: 0; width: 100%; gap: 14px; flex-wrap: wrap; row-gap: 2px; }
+  .truth { order: 3; margin-left: 0; width: 100%; gap: 12px; flex-wrap: wrap; row-gap: 4px; }
   .meter-track { display: none; }
   /* Three counters wrap to a second line rather than run off the edge (022 promise 4). */
-  .meters { gap: 2px 14px; flex-wrap: wrap; min-width: 0; max-width: 100%; }
+  .meters { gap: 2px 14px; }
+  .path { white-space: normal; }
   .thread { padding: 20px 14px 32px; }
   .composer { padding: 10px 14px 12px; }
   .banner { padding: 10px 14px; }

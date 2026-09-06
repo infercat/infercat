@@ -6,7 +6,8 @@
 //
 // Checks — any failure exits 1: nothing on the console at load (warnings included); title,
 // description, Open Graph and Twitter metas, theme-color, manifest and apple-touch-icon links; the
-// manifest parses and carries the product name; every icon and og.png is served; every control in
+// manifest parses and carries the product name; every icon and og.png is served; the connect screen
+// asks no third party for anything, fonts included (038 promise 3, Protection 3); every control in
 // the accessibility tree has a name; text contrast is 4.5:1 or better (3:1 for large text) in light
 // and dark; Tab lands on the invite field first; no horizontal overflow at 390 px. Screenshots go to
 // dev/screenshots/30-*.png; with INVITE, the recording goes to ../docs/media/friend-chat.gif (+ .png)
@@ -38,6 +39,41 @@ function watch(page, label) {
     if (m.type() === 'warning' || m.type() === 'error') problems.push(`${label}: console.${m.type()} ${m.text()}`);
   });
   page.on('pageerror', (e) => problems.push(`${label}: pageerror ${e.message}`));
+}
+
+/**
+ * Every URL the page asks for, in order. Protection 3 says a friend's IP goes to the host and the
+ * relay and nobody else, so the built app must ask no third party for anything — no font CDN, no
+ * analytics, no map, no icon host. `thirdParty` turns that into a failure rather than a promise.
+ */
+function netWatch(page) {
+  const seen = [];
+  page.on('request', (r) => seen.push(r.url()));
+  return seen;
+}
+
+/** The origins a request may legitimately have; everything else is a third party. */
+function thirdParty(urls, allowed) {
+  const ok = new Set(allowed);
+  const out = new Set();
+  for (const u of urls) {
+    if (/^(data|blob|about):/.test(u)) continue;
+    let origin;
+    try {
+      origin = new URL(u).origin;
+    } catch {
+      continue;
+    }
+    if (!ok.has(origin)) out.add(origin);
+  }
+  return [...out];
+}
+
+/** The connect screen is static: nothing may leave the app's own origin. */
+async function firstParty(urls, label) {
+  const strangers = thirdParty(urls, [new URL(APP).origin]);
+  for (const o of strangers) problems.push(`${label}: the app requested ${o}, a third party (promise 3)`);
+  say(`${label}: ${urls.length} requests, ${strangers.length} to a third party — ${strangers.length ? strangers.join(', ') : 'none, all same-origin'}`);
 }
 
 async function waitFor(url) {
@@ -259,9 +295,13 @@ async function connectScreen(browser) {
     const ctx = await browser.newContext({ viewport, colorScheme: scheme, deviceScaleFactor: viewport.width < 500 ? 2 : 1 });
     const page = await ctx.newPage();
     watch(page, name);
+    const asked = netWatch(page);
     await page.goto(`${APP}/`);
     await page.waitForSelector('.connect-card');
     await page.waitForTimeout(300);
+    // After the fonts have settled, so a font that was fetched from a CDN would be in the log.
+    await page.evaluate(() => document.fonts.ready);
+    await firstParty(asked, name);
     await names(page, name);
     await contrast(page, name);
     const order = await tabOrder(page, name, 6);
@@ -292,6 +332,9 @@ async function chat(browser) {
   const ctx = await browser.newContext({ viewport: size, colorScheme: 'light', recordVideo: { dir: tmp, size } });
   const page = await ctx.newPage();
   watch(page, 'chat');
+  // Not an assertion: once connected the app is *meant* to reach the relay it was told about, which
+  // Protection 3 allows by name. Printed so a reviewer can see exactly who that was.
+  const asked = netWatch(page);
   const t0 = Date.now();
   await page.goto(`${APP}/#${INVITE}`);
   await page.waitForSelector('.composer textarea', { timeout: 90_000 });
@@ -312,6 +355,8 @@ async function chat(browser) {
   await names(page, 'chat');
   await contrast(page, 'chat (light)');
   await tabOrder(page, 'chat', 10);
+  const offOrigin = thirdParty(asked, [new URL(APP).origin]);
+  say(`chat: ${asked.length} requests, off-origin — ${offOrigin.length ? offOrigin.join(', ') : 'none'} (the relay is the only one Protection 3 allows)`);
   const desktop = join(shots, '30-chat-desktop.png');
   await page.screenshot({ path: desktop });
   shot(desktop);
