@@ -1,6 +1,6 @@
 # HANDOFF — state of the work (succession document)
 
-Updated: 2026-09-06 04:10 EDT — Infercat named (037) and dressed (038, Swiss ink) on main; repo `2185Lab/infercat`; demo host on the new build, link in `~/.claude/jobs/12b4a99c/tmp/founder-url.txt`. MARK FINAL 2026-09-06 (`docs/brand/mark.svg`, the loaf, landed `a68dcc2`). Ticket 039 (connect page) in flight on `t039-connect-page`; at its landing regenerate rasters (main now carries the final mark). Waiting on the founder: domain (infercat.dev/.app/.ai free; .com speculator, expires 2026-09-11 → backorder) → WebURL → Vercel → 027 QR; GitHub org (optional); security@ address; F6 history rewrite → public → tag v0.1.0.
+Updated: 2026-09-06 04:10 EDT — Infercat named (037) and dressed (038, Swiss ink) on main; repo `2185Lab/infercat`; demo host on the new build, link in `~/.claude/jobs/12b4a99c/tmp/founder-url.txt`. MARK FINAL 2026-09-06 (`docs/brand/mark.svg`, the loaf, landed `a68dcc2`). Ticket 039 (connect page) LANDED on main; demo host on it. Waiting on the founder: domain (infercat.dev/.app/.ai free; .com speculator, expires 2026-09-11 → backorder) → WebURL → Vercel → 027 QR; GitHub org (optional); security@ address; F6 history rewrite → public → tag v0.1.0.
 
 ## What this is
 
