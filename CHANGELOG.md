@@ -1,6 +1,6 @@
 # Changelog
 
-Versions are tags (`v0.1.0`); the binary prints its own with `bunny-network version` and the web
+Versions are tags (`v0.1.0`); the binary prints its own with `infercat version` and the web
 app shows the same one under Settings. Dates are the tag's.
 
 ## v0.1.0 — unreleased
@@ -15,7 +15,7 @@ The first release: what the demo proved, made into something a stranger can inst
 - The web app, as a static bundle (`web-<version>.zip`) any file server can host: paste an invite,
   chat. It shows the path it is on (`relayed via nyc · 64 ms`), the model, and the usage against the
   limits; conversations stay in the browser.
-- Invites: `bn1.<host address>.<secret>`, or a link when the host serves with `--web-url`. Shown
+- Invites: `ic1.<host address>.<secret>`, or a link when the host serves with `--web-url`. Shown
   once; stored hashed. Pause, resume, rotate, revoke, and per-key limits (requests and tokens per
   minute, concurrency, output and context ceilings, tokens per day, a model allowlist) take effect on
   the running host without a restart.

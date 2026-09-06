@@ -14,8 +14,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/2185Lab/bunny-network/internal/keys"
-	"github.com/2185Lab/bunny-network/internal/upstream"
+	"github.com/2185Lab/infercat/internal/keys"
+	"github.com/2185Lab/infercat/internal/upstream"
 )
 
 // waitUntil polls cond for up to d.

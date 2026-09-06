@@ -8,11 +8,11 @@ let session;
 
 async function loadWasm() {
   const go = new Go();
-  const { instance } = await WebAssembly.instantiateStreaming(fetch("/public/bunny.wasm"), go.importObject);
-  go.run(instance); // runs main() until it blocks, so BunnyTunnel is set when this returns
-  const gz = await fetch("/public/bunny.wasm.gz", { method: "HEAD" });
+  const { instance } = await WebAssembly.instantiateStreaming(fetch("/public/infercat.wasm"), go.importObject);
+  go.run(instance); // runs main() until it blocks, so InfercatTunnel is set when this returns
+  const gz = await fetch("/public/infercat.wasm.gz", { method: "HEAD" });
   window.__demo.wasmGzBytes = Number(gz.headers.get("content-length"));
-  log(`wasm loaded; bunny.wasm.gz is ${window.__demo.wasmGzBytes} bytes`);
+  log(`wasm loaded; infercat.wasm.gz is ${window.__demo.wasmGzBytes} bytes`);
 }
 
 // httpGet sends one raw HTTP/1.1 request over a fresh tunnel stream and returns the response
@@ -40,11 +40,11 @@ async function httpGet(path, onChunk) {
 const fmt = (r) => `dial ${r.dialMs.toFixed(0)} ms, first byte ${r.firstMs.toFixed(0)} ms, total ${r.totalMs.toFixed(0)} ms, ${r.bytes} bytes`;
 
 async function connect() {
-  if (!window.BunnyTunnel) await loadWasm();
+  if (!window.InfercatTunnel) await loadWasm();
   const addr = $("addr").value.trim();
   log(`connecting to ${addr.slice(0, 20)}… (DERP map ${$("derp").value})`);
   const t0 = performance.now();
-  session = await window.BunnyTunnel.connect({ addr, derpMapURL: $("derp").value, verbose: $("verbose").checked, onLog: (l) => log("  bridge: " + l) });
+  session = await window.InfercatTunnel.connect({ addr, derpMapURL: $("derp").value, verbose: $("verbose").checked, onLog: (l) => log("  bridge: " + l) });
   const connectMs = performance.now() - t0;
   log(`connected in ${connectMs.toFixed(0)} ms; client identity ${session.privateKeyJSON.length} bytes of key JSON`);
   const pings = [];

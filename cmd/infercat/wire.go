@@ -7,13 +7,13 @@ import (
 	"net"
 	"time"
 
-	"github.com/2185Lab/bunny-network/internal/admin"
-	"github.com/2185Lab/bunny-network/internal/gateway"
-	"github.com/2185Lab/bunny-network/internal/invite"
-	"github.com/2185Lab/bunny-network/internal/keys"
-	"github.com/2185Lab/bunny-network/internal/tunnel"
-	"github.com/2185Lab/bunny-network/internal/upstream"
-	"github.com/2185Lab/bunny-network/internal/usage"
+	"github.com/2185Lab/infercat/internal/admin"
+	"github.com/2185Lab/infercat/internal/gateway"
+	"github.com/2185Lab/infercat/internal/invite"
+	"github.com/2185Lab/infercat/internal/keys"
+	"github.com/2185Lab/infercat/internal/tunnel"
+	"github.com/2185Lab/infercat/internal/upstream"
+	"github.com/2185Lab/infercat/internal/usage"
 )
 
 func newPlatform() platform {

@@ -26,11 +26,11 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/2185Lab/bunny-network/internal/admin"
-	"github.com/2185Lab/bunny-network/internal/invite"
-	"github.com/2185Lab/bunny-network/internal/product"
-	"github.com/2185Lab/bunny-network/internal/tunnel"
-	"github.com/2185Lab/bunny-network/internal/usage"
+	"github.com/2185Lab/infercat/internal/admin"
+	"github.com/2185Lab/infercat/internal/invite"
+	"github.com/2185Lab/infercat/internal/product"
+	"github.com/2185Lab/infercat/internal/tunnel"
+	"github.com/2185Lab/infercat/internal/usage"
 )
 
 const connectListen = "127.0.0.1:11435"
@@ -458,7 +458,7 @@ var dropHeaders = map[string]bool{"Authorization": true, "Connection": true, "Ke
 // connection per request like the web client.
 func outbound(r *http.Request, secret string) *http.Request {
 	out := &http.Request{Method: r.Method, URL: &url.URL{Path: r.URL.Path, RawQuery: r.URL.RawQuery}, Proto: "HTTP/1.1",
-		ProtoMajor: 1, ProtoMinor: 1, Header: make(http.Header, len(r.Header)), Host: "bunny", Close: true, ContentLength: r.ContentLength}
+		ProtoMajor: 1, ProtoMinor: 1, Header: make(http.Header, len(r.Header)), Host: "infercat", Close: true, ContentLength: r.ContentLength}
 	copyHeaders(out.Header, r.Header)
 	out.Header.Set("Authorization", "Bearer "+secret)
 	if r.ContentLength != 0 {
@@ -530,7 +530,7 @@ func (c *connector) fetch(ctx context.Context, path string) (*http.Response, err
 		_ = conn.SetDeadline(d)
 	}
 	req := &http.Request{Method: http.MethodGet, URL: &url.URL{Path: path}, Proto: "HTTP/1.1", ProtoMajor: 1, ProtoMinor: 1,
-		Header: http.Header{"Authorization": {"Bearer " + c.secret}}, Host: "bunny", Close: true}
+		Header: http.Header{"Authorization": {"Bearer " + c.secret}}, Host: "infercat", Close: true}
 	resp, err := (*http.Response)(nil), req.Write(conn)
 	if err == nil {
 		resp, err = http.ReadResponse(bufio.NewReader(conn), req)
@@ -681,13 +681,13 @@ func (c *connector) reconnect(ctx context.Context) tunnel.Path {
 	}
 }
 
-const connectHelp = `Usage: bunny-network connect <invite> [--listen 127.0.0.1:11435]
+const connectHelp = `Usage: infercat connect <invite> [--listen 127.0.0.1:11435]
 
 Uses an invite from this machine instead of the browser: opens the tunnel to the host once, then
 serves an OpenAI-compatible API on loopback that any app can use — the OpenAI SDKs, curl, Open
 WebUI, Cursor, Claude Code. The invite's key is added to every request, so the app needs none.
 
-  bunny-network connect bn1.tc….…
+  infercat connect ic1.tc….…
   OPENAI_BASE_URL=http://127.0.0.1:11435/v1 OPENAI_API_KEY=x python3 app.py
   curl http://127.0.0.1:11435/v1/models
 

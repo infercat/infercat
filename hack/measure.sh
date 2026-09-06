@@ -1,13 +1,13 @@
 #!/bin/sh
 # measure.sh — TTFT and tokens/s for one prompt, N times, via Direct (loopback dev-listen), via
 # Tunnel (the public relay, reached through a `tailcat socks` proxy), and — when CONNECT is set —
-# via a running `bunny-network connect` (ticket 026). Reproduces the numbers in docs/MEASURE.md.
+# via a running `infercat connect` (ticket 026). Reproduces the numbers in docs/MEASURE.md.
 # It sends requests only; it never starts, stops, or reconfigures the engine or the host (ticket
 # 005 promise 8).
 #
-# Prereqs: a running `bunny-network serve --dev-listen $DIRECT --upstream <engine>`, a key SECRET,
+# Prereqs: a running `infercat serve --dev-listen $DIRECT --upstream <engine>`, a key SECRET,
 # and the tunnel ADDR (from `serve` or `status`). tailcat, curl, python3 on PATH. For the connect
-# mode, a running `bunny-network connect <invite> --listen $CONNECT`.
+# mode, a running `infercat connect <invite> --listen $CONNECT`.
 #
 #   DIRECT=127.0.0.1:9090 ADDR=tc… SECRET=… MODEL=gemma-4-E2B-it-Q4_K_M.gguf \
 #     N=3 PROMPT="Why is the sky blue? Answer in three sentences." sh hack/measure.sh
@@ -72,7 +72,7 @@ done
 [ -n "${PROXY:-}" ] || { echo "tailcat socks printed no address"; cat "$PROXY_LOG"; exit 1; }
 echo "# tunnel: tailcat socks proxy $PROXY → http://$ADDR:80"
 ;; esac
-[ -n "${CONNECT:-}" ] && echo "# connect: bunny-network connect at http://$CONNECT (the app's key is ignored; the invite's is used)"
+[ -n "${CONNECT:-}" ] && echo "# connect: infercat connect at http://$CONNECT (the app's key is ignored; the invite's is used)"
 
 for mode in $MODES; do
   echo "## $mode"

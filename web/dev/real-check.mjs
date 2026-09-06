@@ -1,5 +1,5 @@
 // Real-stack evidence for tickets 014, 020 and 022: the built bundle, over the real relay, against
-// a real `bunny-network serve` that this script starts, kills and restarts. The fakes cannot prove
+// a real `infercat serve` that this script starts, kills and restarts. The fakes cannot prove
 // what this proves — what a send costs the friend's meter, what a host going to sleep looks like,
 // that a broken session is replaced rather than retried (014), (020) that a paused invite marks
 // exactly one turn, that a host dying mid-reply ends the reply on its own, that the context wall
@@ -9,7 +9,7 @@
 // what happens next, that the phone header fits and its Disconnect is reachable and durable, and
 // that a revoked invite's card keeps every chat.
 //
-//   BN_BIN=/path/bunny-network BN_DATA_DIR=/path/data GW=http://127.0.0.1:6720 PREVIEW_PORT=6721 \
+//   BN_BIN=/path/infercat BN_DATA_DIR=/path/data GW=http://127.0.0.1:6720 PREVIEW_PORT=6721 \
 //     UPSTREAM=http://127.0.0.1:18080 node dev/real-check.mjs [cost|asleep|reconnect|heal|race|paused|wall|stall|tabs|phone|revoke|meter|emptydeath|all]
 //
 // Keys are minted in BN_DATA_DIR (alice for everything, bob for the revoke) unless INVITE is set.

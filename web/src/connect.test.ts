@@ -2,17 +2,17 @@
 // HTTP/1.1 conversation on a fake Conn, /me, /v1/models, and a streamed reply with reasoning,
 // content and usage. This is the test that would catch a break in the seam ticket 001 owns.
 import { afterEach, describe, expect, it } from 'vitest';
-import { installFakeTunnel, OFFLINE_ADDR_PREFIX } from '../dev/fake-bunny-tunnel.ts';
+import { installFakeTunnel, OFFLINE_ADDR_PREFIX } from '../dev/fake-infercat-tunnel.ts';
 import { chatEvents, getMe, getModels, logsPrompts, type StreamEvent } from './api';
 import { decodeInvite } from './invite';
 import { TunnelTransport, cityFor, describePath, openTransport, type Transport } from './transport';
 import { NEW_REPLY, reduceReply } from './stream';
 
-const INVITE = `bn1.tcFAKEaddressFAKEaddressFAKEaddress.${'s'.repeat(43)}`;
+const INVITE = `ic1.tcFAKEaddressFAKEaddressFAKEaddress.${'s'.repeat(43)}`;
 const FAST = { connectMs: 10, tokenDelayMs: 0, ttftMs: 0 };
 
 afterEach(() => {
-  delete (globalThis as { BunnyTunnel?: unknown }).BunnyTunnel;
+  delete (globalThis as { InfercatTunnel?: unknown }).InfercatTunnel;
 });
 
 async function connect(opts: Record<string, unknown> = {}) {

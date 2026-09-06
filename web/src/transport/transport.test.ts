@@ -1,7 +1,7 @@
 // Promise 6 (abort during the dial) and promise 10 (two tabs, one stored identity), against the
 // same fake tunnel the connect flow uses.
 import { afterEach, describe, expect, it } from 'vitest';
-import { FakeSession, makeFakeTunnel } from '../../dev/fake-bunny-tunnel.ts';
+import { FakeSession, makeFakeTunnel } from '../../dev/fake-infercat-tunnel.ts';
 import { claimTunnelIdentity, dialOrAbort, TunnelTransport } from './index';
 
 const FAST = { connectMs: 4, tokenDelayMs: 0, ttftMs: 0 };

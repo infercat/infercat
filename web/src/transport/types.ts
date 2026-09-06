@@ -1,6 +1,6 @@
 // The wasm bridge's JS API (docs/ARCHITECTURE.md §wasm bridge, built by ticket 001) and the
 // Transport seam the rest of the app talks to. These declarations are the contract; the fake in
-// web/dev/fake-bunny-tunnel.ts implements the same shapes so everything below can be tested.
+// web/dev/fake-infercat-tunnel.ts implements the same shapes so everything below can be tested.
 
 export interface Conn {
   /** Resolves null at EOF. No concurrent reads. */
@@ -35,14 +35,14 @@ export interface TunnelConnectOptions {
   onLog?: (line: string) => void;
 }
 
-export interface BunnyTunnel {
+export interface InfercatTunnel {
   /** Resolves after the first successful ping (handshake up); rejects on a 60 s timeout. */
   connect(opts: TunnelConnectOptions): Promise<Session>;
 }
 
 declare global {
   interface Window {
-    BunnyTunnel: BunnyTunnel;
+    InfercatTunnel: InfercatTunnel;
   }
 }
 
@@ -56,7 +56,7 @@ export interface Transport {
   close(): void;
 }
 
-/** window.BunnyTunnel, reachable from Node too so the connect flow is unit-testable. */
-export function tunnelGlobal(): BunnyTunnel | undefined {
-  return (globalThis as unknown as Partial<Window>).BunnyTunnel;
+/** window.InfercatTunnel, reachable from Node too so the connect flow is unit-testable. */
+export function tunnelGlobal(): InfercatTunnel | undefined {
+  return (globalThis as unknown as Partial<Window>).InfercatTunnel;
 }

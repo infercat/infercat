@@ -6,7 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/2185Lab/bunny-network/internal/product"
+	"github.com/2185Lab/infercat/internal/product"
 )
 
 // configName holds the `serve` settings so a later `serve` with no flags reuses them.

@@ -5,7 +5,7 @@
 // host's own usage events for the run's keys), tailcat.log, and summary.md — the tables that
 // docs/MEASURE.md quotes.
 //
-//	go run ./hack/load --host-dir DIR --bin bin/bunny-network --host-pid PID \
+//	go run ./hack/load --host-dir DIR --bin bin/infercat --host-pid PID \
 //	  --engine http://127.0.0.1:18080 --engine-pid PID --relay-ssh root@206.189.207.168 \
 //	  --n 12 --minutes 3 --relay-only --out /tmp/bn028-out --name llama-n12
 //
@@ -28,8 +28,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/2185Lab/bunny-network/internal/invite"
-	"github.com/2185Lab/bunny-network/internal/usage"
+	"github.com/2185Lab/infercat/internal/invite"
+	"github.com/2185Lab/infercat/internal/usage"
 	"tailscale.com/envknob"
 )
 
@@ -83,7 +83,7 @@ func (h *hooks) Set(v string) error {
 func main() {
 	var (
 		hostDir    = flag.String("host-dir", "", "the host's data dir (admin.sock, keys.json, usage.jsonl)")
-		bin        = flag.String("bin", "bin/bunny-network", "host binary, for `keys add --json`")
+		bin        = flag.String("bin", "bin/infercat", "host binary, for `keys add --json`")
 		hostPid    = flag.Int("host-pid", 0, "host process id, for RSS")
 		engine     = flag.String("engine", "", "engine base URL, for /metrics (and /slots on llama.cpp)")
 		enginePid  = flag.Int("engine-pid", 0, "engine process id when local, for RSS")

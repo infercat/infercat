@@ -65,7 +65,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # The Homebrew tap lives in another repository, which GITHUB_TOKEN cannot push to. A
           # fine-grained PAT with contents:write on 2185Lab/homebrew-tap, stored as this secret,
-          # lets goreleaser commit the formula there (.goreleaser.yaml `brews`). TODO(rename day).
+          # lets goreleaser commit the formula there (.goreleaser.yaml `homebrew_casks`). TODO(tap): store the PAT the day 2185Lab/homebrew-tap exists.
           HOMEBREW_TAP_GITHUB_TOKEN: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}
 
       - uses: actions/upload-artifact@v4

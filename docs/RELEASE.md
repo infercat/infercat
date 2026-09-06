@@ -29,10 +29,10 @@ git push origin v0.1.0
 
 The tag runs `.github/workflows/release.yml`: `make release-publish` → goreleaser builds the five
 binaries, the six archives, the checksums file, and a **draft** GitHub Release named
-`bunny-network 0.1.0`; the cask is committed to the tap. Then:
+`infercat 0.1.0`; the cask is committed to the tap. Then:
 
 1. Open the draft. Paste the `CHANGELOG.md` entry above the generated notes. Publish.
-2. `brew install 2185Lab/tap/bunny-network` on a machine that has never had it; `bunny-network
+2. `brew install 2185Lab/tap/infercat` on a machine that has never had it; `infercat
    version` prints the tag.
 3. Deploy `web-0.1.0.zip` to the web app's host (F3) — the bundle is static; unzip at the site root.
 4. Bump `Version` in `product.go` to the next `-dev` (e.g. `0.1.1-dev`) on main.

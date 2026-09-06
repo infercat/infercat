@@ -1,7 +1,7 @@
-# Bunny Network (working name)
+# Infercat
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![CI](https://github.com/2185Lab/bunny-network/actions/workflows/ci.yml/badge.svg)](https://github.com/2185Lab/bunny-network/actions/workflows/ci.yml)
+[![CI](https://github.com/2185Lab/infercat/actions/workflows/ci.yml/badge.svg)](https://github.com/2185Lab/infercat/actions/workflows/ci.yml)
 
 Share the model on your machine with friends. You run one binary in front of the inference server
 you already have — llama.cpp, vLLM, Ollama or LM Studio — and give each friend one invite code. They
@@ -15,7 +15,7 @@ and see counts, never their conversations.
 
 ## How it works
 
-- **The host** runs `bunny-network serve`. It finds the inference server, opens a WireGuard tunnel to
+- **The host** runs `infercat serve`. It finds the inference server, opens a WireGuard tunnel to
   a relay, and serves a small gateway inside the tunnel: OpenAI-compatible, one key per friend.
 - **The friend** opens the web app and pastes the invite. The app carries the tunnel's client side as
   WebAssembly, so the browser connects to your host directly — through the relay, encrypted end to end.
@@ -28,27 +28,27 @@ and see counts, never their conversations.
 You need an inference server running (llama.cpp, vLLM, Ollama or LM Studio; any OpenAI-compatible
 `/v1/chat/completions` works). Your friends need a browser.
 
-**Homebrew (macOS)** <!-- TODO(rename day): the tap does not exist yet; docs/RELEASE.md creates it -->
+**Homebrew (macOS)** <!-- TODO(tap): 2185Lab/homebrew-tap does not exist yet; docs/RELEASE.md creates it -->
 
 ```
-brew install 2185Lab/tap/bunny-network
+brew install 2185Lab/tap/infercat
 ```
 
-**Download** — from [Releases](https://github.com/2185Lab/bunny-network/releases): pick your platform,
-unpack, put `bunny-network` on your `PATH`. Verify the download against the checksums file that
+**Download** — from [Releases](https://github.com/2185Lab/infercat/releases): pick your platform,
+unpack, put `infercat` on your `PATH`. Verify the download against the checksums file that
 ships next to it:
 
 ```
-shasum -a 256 --ignore-missing -c bunny-network_<version>_checksums.txt
+shasum -a 256 --ignore-missing -c infercat_<version>_checksums.txt
 ```
 
-**From source** — Go 1.22+ (the right toolchain downloads itself): `make build` → `bin/bunny-network`.
+**From source** — Go 1.22+ (the right toolchain downloads itself): `make build` → `bin/infercat`.
 
 Then:
 
 ```
-bunny-network serve --name "Max's laptop"     # finds llama.cpp, Ollama, LM Studio or vLLM
-bunny-network keys add alice                  # prints alice's invite once (and a QR code)
+infercat serve --name "Max's laptop"     # finds llama.cpp, Ollama, LM Studio or vLLM
+infercat keys add alice                  # prints alice's invite once (and a QR code)
 ```
 
 `serve` prints what it found, the tunnel address, the relay, and exactly what friends can reach.
@@ -58,7 +58,7 @@ Send it to alice however you like; it is shown once and stored only as a hash.
 If your engine is on another port or another machine:
 
 ```
-bunny-network serve --upstream http://127.0.0.1:18080
+infercat serve --upstream http://127.0.0.1:18080
 ```
 
 Flags you pass to `serve` are remembered in `config.json`, so the next `serve` needs none.
@@ -70,7 +70,7 @@ The binaries are not signed yet. macOS blocks a downloaded, unsigned program the
 run it from Terminal after removing the quarantine flag —
 
 ```
-xattr -d com.apple.quarantine ./bunny-network
+xattr -d com.apple.quarantine ./infercat
 ```
 
 — or Control-click the file in Finder, choose **Open**, and confirm once. The Homebrew install does
@@ -91,7 +91,7 @@ not have this problem.
 | `--log-prompts`, `--ephemeral`, `--verbose` | per-run: log message content; throwaway host identity; tunnel log on the terminal |
 | `--data-dir DIR` | where keys, usage, config and the host key live |
 
-`bunny-network serve -h` says the same, with the data directory's files.
+`infercat serve -h` says the same, with the data directory's files.
 </details>
 
 ## Quickstart (friend)
@@ -130,8 +130,8 @@ exposes the gateway and only the gateway; `serve` prints this line every time it
 Every key has limits from the moment it exists — nothing is unlimited unless the host says so:
 
 ```
-bunny-network keys add bob --rpm 6 --daily-tokens 50000          # tight, for a stranger
-bunny-network keys limits alice --rpm 60 --daily-tokens 1000000 --max-output-tokens 8192
+infercat keys add bob --rpm 6 --daily-tokens 50000          # tight, for a stranger
+infercat keys limits alice --rpm 60 --daily-tokens 1000000 --max-output-tokens 8192
 ```
 
 Defaults: 20 requests a minute · 20 000 tokens a minute · 1 request at a time · 2048 output tokens ·
@@ -182,10 +182,10 @@ were local. Between two machines the path goes direct once they find each other;
 only the rendezvous.
 
 ```
-bin/bunny-network connect bn1.tc….…          # paste the invite
+bin/infercat connect ic1.tc….…          # paste the invite
 ```
 ```
-Bunny Network 0.0.1-dev
+Infercat 0.0.1-dev
 host      Max's laptop  ·  gemma-4-E2B-it-Q4_K_M.gguf
 path      relayed via New York City · 27 ms       # re-checked every 30 s, printed when it changes
 local     http://127.0.0.1:11435
@@ -206,8 +206,8 @@ for e in c.chat.completions.create(model=c.models.list().data[0].id, messages=[{
 
 ## Data directory
 
-`~/Library/Application Support/bunny-network` (macOS), `~/.config/bunny-network` (Linux),
-`%AppData%\bunny-network` (Windows), or `--data-dir`:
+`~/Library/Application Support/infercat` (macOS), `~/.config/infercat` (Linux),
+`%AppData%\infercat` (Windows), or `--data-dir`:
 
 | File | What it is |
 |---|---|
@@ -221,8 +221,8 @@ for e in c.chat.completions.create(model=c.models.list().data[0].id, messages=[{
 
 ```
 make check        # go vet + go test
-make build        # bin/bunny-network
-make wasm         # web/public/bunny.wasm (+ wasm_exec.js), needed by the web app
+make build        # bin/infercat
+make wasm         # web/public/infercat.wasm (+ wasm_exec.js), needed by the web app
 make web          # web/dist (builds the wasm first)
 make notices      # regenerate THIRD_PARTY_NOTICES.md; make notices-check verifies it
 make release-dry  # goreleaser snapshot for darwin/linux/windows into dist/ (publishes nothing)
@@ -231,12 +231,15 @@ make launch-check # what a stranger's browser sees: metas, manifest, console, a1
 ```
 
 Web checks: `cd web && pnpm install --frozen-lockfile && pnpm typecheck && pnpm test && pnpm lint`.
-Every binary and archive ships `LICENSE` and `THIRD_PARTY_NOTICES.md`; `bunny-network version`
+Every binary and archive ships `LICENSE` and `THIRD_PARTY_NOTICES.md`; `infercat version`
 prints the stamped version, commit and date, and the web app shows the same version under Settings.
 Releases: `docs/RELEASE.md`. Design records: `pm/`; the seam contract: `docs/ARCHITECTURE.md`.
 
 ## License
 
-MIT — see [LICENSE](LICENSE). The tunnel is [tailcat](https://github.com/tailscale/tailcat) (BSD-3);
+MIT — see [LICENSE](LICENSE). Built on [tailcat](https://github.com/tailscale/tailcat), Tailscale's
+open-source library. Infercat is not affiliated with or endorsed by Tailscale Inc. tailcat is BSD-3;
 every dependency's licence is listed in [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md).
 Security reports: [SECURITY.md](SECURITY.md). Contributing: [CONTRIBUTING.md](CONTRIBUTING.md).
+
+Made by [2185 Lab](https://2185lab.com). MIT.

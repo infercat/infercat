@@ -2,12 +2,12 @@
 /dist/
 web/node_modules/
 web/dist/
-web/public/bunny.wasm
-web/public/bunny.wasm.gz
+web/public/infercat.wasm
+web/public/infercat.wasm.gz
 web/public/wasm_exec.js
 *.log
 .DS_Store
 /.claude/worktrees/
-/bunny-network
-/bunny-network.exe
+/infercat
+/infercat.exe
 /load

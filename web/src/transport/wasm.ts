@@ -1,6 +1,6 @@
-// Loads the wasm bridge from ticket 001 (web/public/bunny.wasm + wasm_exec.js) with byte progress.
+// Loads the wasm bridge from ticket 001 (web/public/infercat.wasm + wasm_exec.js) with byte progress.
 // Nothing here runs until the user presses Connect, so the landing page costs no wasm download.
-import { tunnelGlobal, type BunnyTunnel } from './types';
+import { tunnelGlobal, type InfercatTunnel } from './types';
 
 export interface WasmProgress {
   loaded: number;
@@ -14,13 +14,13 @@ interface GoRuntime {
   run(instance: WebAssembly.Instance): Promise<void>;
 }
 
-let booting: Promise<BunnyTunnel> | null = null;
+let booting: Promise<InfercatTunnel> | null = null;
 
-/** Resolves window.BunnyTunnel, loading and starting the wasm module the first time. */
-export function loadBunnyTunnel(
+/** Resolves window.InfercatTunnel, loading and starting the wasm module the first time. */
+export function loadInfercatTunnel(
   onProgress?: (p: WasmProgress) => void,
   base = '/',
-): Promise<BunnyTunnel> {
+): Promise<InfercatTunnel> {
   const ready = tunnelGlobal();
   if (ready) return Promise.resolve(ready);
   booting ??= boot(base, onProgress).catch((err: unknown) => {
@@ -30,7 +30,7 @@ export function loadBunnyTunnel(
   return booting;
 }
 
-async function boot(base: string, onProgress?: (p: WasmProgress) => void): Promise<BunnyTunnel> {
+async function boot(base: string, onProgress?: (p: WasmProgress) => void): Promise<InfercatTunnel> {
   const scope = globalThis as { Go?: new () => GoRuntime };
   if (!scope.Go) await loadScript(`${base}wasm_exec.js`);
   if (!scope.Go) throw new Error('wasm_exec.js loaded but did not define Go');
@@ -42,7 +42,7 @@ async function boot(base: string, onProgress?: (p: WasmProgress) => void): Promi
   return waitForTunnel();
 }
 
-async function waitForTunnel(timeoutMs = 15_000): Promise<BunnyTunnel> {
+async function waitForTunnel(timeoutMs = 15_000): Promise<InfercatTunnel> {
   const deadline = Date.now() + timeoutMs;
   for (;;) {
     const t = tunnelGlobal();
@@ -52,12 +52,12 @@ async function waitForTunnel(timeoutMs = 15_000): Promise<BunnyTunnel> {
   }
 }
 
-// Static hosts cannot negotiate Content-Encoding for .wasm, so ticket 001 also emits bunny.wasm.gz.
+// Static hosts cannot negotiate Content-Encoding for .wasm, so ticket 001 also emits infercat.wasm.gz.
 // Prefer it and decompress in the page — unless the host labelled it `Content-Encoding: gzip`, in
 // which case the browser has already decoded it and decompressing again destroys the module.
 async function fetchWasm(base: string, onProgress?: (p: WasmProgress) => void): Promise<Response> {
   const headers = { 'content-type': 'application/wasm' };
-  const gz = await fetch(`${base}bunny.wasm.gz`, { signal: assetTimeout() }).catch(() => null);
+  const gz = await fetch(`${base}infercat.wasm.gz`, { signal: assetTimeout() }).catch(() => null);
   if (gz?.ok && gz.body && !isHTML(gz)) {
     // Header values are case-insensitive: a host that says `GZIP` has decoded it just the same.
     const decoded = (gz.headers.get('content-encoding') ?? '').toLowerCase().includes('gzip');
@@ -72,7 +72,7 @@ async function fetchWasm(base: string, onProgress?: (p: WasmProgress) => void): 
       { headers },
     );
   }
-  const raw = await fetch(`${base}bunny.wasm`, { signal: assetTimeout() });
+  const raw = await fetch(`${base}infercat.wasm`, { signal: assetTimeout() });
   if (!raw.ok || !raw.body) throw new Error(`could not download the tunnel module (${raw.status})`);
   const size = Number(raw.headers.get('content-length')) || 0;
   return new Response(counted(raw.body, size, onProgress), { headers });

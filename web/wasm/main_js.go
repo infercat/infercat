@@ -1,7 +1,7 @@
 //go:build js && wasm
 
 // Command wasm is the browser side of the tunnel: tailcat's client compiled to WebAssembly and
-// exposed as window.BunnyTunnel (docs/ARCHITECTURE.md §wasm bridge). connect() brings up one
+// exposed as window.InfercatTunnel (docs/ARCHITECTURE.md §wasm bridge). connect() brings up one
 // tailcat.Client (DERP over WebSocket, WireGuard in netstack) and resolves after the first
 // handshake; dial() opens TCP streams over that session with no new handshake.
 //
@@ -65,7 +65,7 @@ var errClosed = errors.New("the connection is closed")
 func resolved(v js.Value) js.Value { return js.Global().Get("Promise").Call("resolve", v) }
 
 func main() {
-	js.Global().Set("BunnyTunnel", map[string]any{
+	js.Global().Set("InfercatTunnel", map[string]any{
 		"connect": fn(connect),
 		// stats is a debug hook for leak checks: live js.Func handles and the Go heap after a GC.
 		"stats": fn(func(this js.Value, args []js.Value) any {
@@ -78,7 +78,7 @@ func main() {
 	select {}
 }
 
-// connect implements BunnyTunnel.connect(opts): see the TS interface in docs/ARCHITECTURE.md.
+// connect implements InfercatTunnel.connect(opts): see the TS interface in docs/ARCHITECTURE.md.
 func connect(this js.Value, args []js.Value) any {
 	if len(args) != 1 || args[0].Type() != js.TypeObject {
 		return rejectedPromise(errors.New("connect requires an options object"))

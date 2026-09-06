@@ -1,9 +1,9 @@
-// An in-page fake of window.BunnyTunnel (docs/ARCHITECTURE.md §wasm bridge), so the whole connect
+// An in-page fake of window.InfercatTunnel (docs/ARCHITECTURE.md §wasm bridge), so the whole connect
 // flow and TunnelTransport's HTTP/1.1 parsing run for real — in unit tests and in the browser —
 // before ticket 001's wasm artifact exists. The bytes on the fake Conn are genuine HTTP/1.1:
 // chunked for the SSE stream, content-length for the JSON routes.
 import { handleFake, type FakeOptions, type FakeRequest } from './fake-backend.ts';
-import type { BunnyTunnel, Conn, PingResult, Session, TunnelConnectOptions } from '../src/transport/types.ts';
+import type { InfercatTunnel, Conn, PingResult, Session, TunnelConnectOptions } from '../src/transport/types.ts';
 
 export interface FakeTunnelOptions extends FakeOptions {
   /** How long the simulated relay connection takes, in ms. */
@@ -21,7 +21,7 @@ export interface FakeTunnelOptions extends FakeOptions {
 /** An address starting with this makes connect() time out, for the "host offline" screen. */
 export const OFFLINE_ADDR_PREFIX = 'tcOFFLINE';
 
-export function makeFakeTunnel(opts: FakeTunnelOptions = {}): BunnyTunnel {
+export function makeFakeTunnel(opts: FakeTunnelOptions = {}): InfercatTunnel {
   return {
     async connect(o: TunnelConnectOptions): Promise<Session> {
       const total = opts.connectMs ?? 900;
@@ -39,9 +39,9 @@ export function makeFakeTunnel(opts: FakeTunnelOptions = {}): BunnyTunnel {
 }
 
 /** Puts the fake on the global, exactly where the wasm bridge would put the real one. */
-export function installFakeTunnel(opts: FakeTunnelOptions = {}): BunnyTunnel {
+export function installFakeTunnel(opts: FakeTunnelOptions = {}): InfercatTunnel {
   const tunnel = makeFakeTunnel(opts);
-  (globalThis as unknown as Partial<Window>).BunnyTunnel = tunnel;
+  (globalThis as unknown as Partial<Window>).InfercatTunnel = tunnel;
   return tunnel;
 }
 

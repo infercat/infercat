@@ -1,4 +1,4 @@
-// Command bunny-network is the host side: one command to serve, one to mint a friend, one to see
+// Command infercat is the host side: one command to serve, one to mint a friend, one to see
 // what is happening.
 package main
 
@@ -16,11 +16,11 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/2185Lab/bunny-network/internal/admin"
-	"github.com/2185Lab/bunny-network/internal/keys"
-	"github.com/2185Lab/bunny-network/internal/product"
-	"github.com/2185Lab/bunny-network/internal/upstream"
-	"github.com/2185Lab/bunny-network/internal/usage"
+	"github.com/2185Lab/infercat/internal/admin"
+	"github.com/2185Lab/infercat/internal/keys"
+	"github.com/2185Lab/infercat/internal/product"
+	"github.com/2185Lab/infercat/internal/upstream"
+	"github.com/2185Lab/infercat/internal/usage"
 )
 
 // The tunnel (ticket 001) and the gateway (ticket 002) land in parallel with this CLI, so the
@@ -152,8 +152,8 @@ func run(ctx context.Context, args []string, out, errw io.Writer, in io.Reader, 
 
 // splitGlobal pulls a leading --data-dir off the argument list so both spellings work:
 //
-//	bunny-network --data-dir DIR serve
-//	bunny-network serve --data-dir DIR
+//	infercat --data-dir DIR serve
+//	infercat serve --data-dir DIR
 func splitGlobal(args []string) (dataDir string, rest []string, err error) {
 	for len(args) > 0 && strings.HasPrefix(args[0], "-") {
 		a := args[0]
@@ -192,7 +192,7 @@ func peekDataDir(args []string, fallback string) string {
 	return fallback
 }
 
-// resolveDataDir defaults to os.UserConfigDir()/bunny-network (docs/ARCHITECTURE.md).
+// resolveDataDir defaults to os.UserConfigDir()/infercat (docs/ARCHITECTURE.md).
 func resolveDataDir(s string) (string, error) {
 	if s != "" {
 		return filepath.Abs(s)
@@ -274,10 +274,10 @@ func (e *env) logf(format string, a ...any) {
 	fmt.Fprintf(e.errw, format+"\n", a...)
 }
 
-const rootHelp = `Bunny Network — share your local inference with a friend. They paste one code.
+const rootHelp = `Infercat — share your local inference with a friend. They paste one code.
 
 Usage:
-  bunny-network <command> [flags]
+  infercat <command> [flags]
 
 Commands:
   serve      run the host: the tunnel and the gateway in front of your inference server
@@ -288,14 +288,14 @@ Commands:
   version    print the version
 
 Start here:
-  bunny-network serve                  # finds llama.cpp, Ollama, LM Studio, or vLLM
-  bunny-network keys add alice         # prints Alice's invite, once
-  bunny-network status
-  bunny-network connect bn1.tc….…      # a friend's side: any app, base URL http://127.0.0.1:11435/v1
+  infercat serve                  # finds llama.cpp, Ollama, LM Studio, or vLLM
+  infercat keys add alice         # prints Alice's invite, once
+  infercat status
+  infercat connect ic1.tc….…      # a friend's side: any app, base URL http://127.0.0.1:11435/v1
 
 Global flags:
   --data-dir DIR   where keys, usage, config, and the host key live
-                   (default: <user config dir>/bunny-network)
+                   (default: <user config dir>/infercat)
 
-bunny-network <command> -h explains one command.
+infercat <command> -h explains one command.
 `

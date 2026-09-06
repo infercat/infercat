@@ -4,7 +4,7 @@
 
 ```
 ~/Desktop/repos/2185Lab/bunny-kit/binaries/llama-server/b9553/llama-server \
-  -m ~/.cache/bunny-network/models/gemma-4-E2B-it-Q4_K_M.gguf \
+  -m ~/.cache/infercat/models/gemma-4-E2B-it-Q4_K_M.gguf \
   --host 127.0.0.1 --port 18080 -np 2 -c 65536 --no-mmproj --metrics   # 32K per request
 ```
 
@@ -16,7 +16,7 @@ Note: llama.cpp divides `-c` across `-np` slots; with `-c 8192 -np 2` the engine
 |---|---|---|---|
 | 2026-09-02 | Browser → public relay (nyc) → host on same laptop, headless Chromium | `node web/wasm/demo-check.mjs` against `go run ./hack/tunneldemo` | connect 183 ms; ping 77.6 / 31.2 / 32.9 ms via DERP(nyc), direct=false; `GET /healthz` 64 ms first dial, 33 ms repeat dial (no re-handshake); `/stream` 20 SSE events at 100 ms cadence intact |
 | 2026-09-02 | CLI cross-check | `tailcat ping <addr>` | 27.9–29 ms via DERP(nyc) |
-| 2026-09-02 | wasm download | `ls -l web/public/bunny.wasm.gz` | 6,182,826 bytes gz (26,912,436 raw) |
+| 2026-09-02 | wasm download | `ls -l web/public/infercat.wasm.gz` | 6,182,826 bytes gz (26,912,436 raw) |
 
 ## Integration measurements (ticket 005, 2026-09-02)
 
@@ -51,8 +51,8 @@ loopback. The relay adds no perceptible latency to the stream here.
 | Tunnel mode (built `web/dist`, wasm bridge, public relay) | 1124 ms | `relayed via nyc · 64–71 ms` | 152–163 ms | 167–169 | `/me` bar `2/20 per minute · 2.2k/200k today` |
 
 Browser TTFT runs ~40–60 ms higher than the host CLI (one relay round trip plus the browser's
-render), still well under the "feels instant" bar. Connect (`BunnyTunnel.connect` → first handshake →
-`GET /me`) is ~1.1 s on this relay. wasm bundle: `bunny.wasm` 26,928,804 B raw / 6,189,248 B gz
+render), still well under the "feels instant" bar. Connect (`InfercatTunnel.connect` → first handshake →
+`GET /me`) is ~1.1 s on this relay. wasm bundle: `infercat.wasm` 26,928,804 B raw / 6,189,248 B gz
 (`make wasm`). The wasm bridge holds no js.Func or heap across 300 tunnel dials
 (`web/wasm/leak-check.mjs`: liveFuncs 5→5, heap Δ<2 MiB, GC'd).
 
@@ -85,11 +85,11 @@ operational (uptime, regions, cost), not latency. No switch made.
 ### `connect` — the host binary as a client (ticket 026, 2026-09-03 03:41 EDT)
 
 Test host on this laptop (`serve --dev-listen 127.0.0.1:6810 --data-dir …/bn026-data`, relay `nyc`),
-`bunny-network connect <invite>` on the same laptop at `127.0.0.1:11435`, engine as above (`-c 65536 -np 2`).
+`infercat connect <invite>` on the same laptop at `127.0.0.1:11435`, engine as above (`-c 65536 -np 2`).
 
 | Path | Command | Result |
 |---|---|---|
-| connect startup | `bunny-network connect <invite>` | banner in ~1.5 s from the handshake: `host t026 host · gemma-4-E2B-it-Q4_K_M.gguf`, `path direct · 0.2 ms` (same machine: the first disco ping already found the loopback endpoint), `local http://127.0.0.1:11435` |
+| connect startup | `infercat connect <invite>` | banner in ~1.5 s from the handshake: `host t026 host · gemma-4-E2B-it-Q4_K_M.gguf`, `path direct · 0.2 ms` (same machine: the first disco ping already found the loopback endpoint), `local http://127.0.0.1:11435` |
 | CLI, until direct | `tailcat ping --until-direct --timeout=30s <addr>` | `pong in 540µs via 192.168.199.132:53267` — direct on the first pong |
 | curl, streamed chat | `curl -sN http://127.0.0.1:11435/v1/chat/completions -d '{"stream":true,…}'` | TTFT 24 ms, `[DONE]` at 3641 ms, usage `prompt 22 / completion 566` in the final chunk |
 | OpenAI Python SDK 2.48 | `OpenAI(base_url="http://127.0.0.1:11435/v1", api_key="any-key")`, `chat.completions.create(stream=True, stream_options={"include_usage":true})` | first content delta 927 ms (the model thinks first), 5 deltas, total 959 ms, `finish_reason=stop`, usage `27 / 147`; `models.list()` and a non-stream `create` also complete |
@@ -125,7 +125,7 @@ relay, same llama-server) stayed up throughout and was not touched.
 
 ```
 go build -o $T/bn028-bin/load ./hack/load
-$T/bn028-bin/load --host-dir $T/bn028-a-llama-ours --bin $T/bn028-bin/bunny-network --host-pid <pid> \
+$T/bn028-bin/load --host-dir $T/bn028-a-llama-ours --bin $T/bn028-bin/infercat --host-pid <pid> \
   --engine http://127.0.0.1:18080 --engine-pid <pid> --relay-ssh root@206.189.207.168 \
   --relay-only --n 12 --minutes 3 --out $T/bn028-out --name R3-llama-ours-n12
 # sessions only:  --mode sessions --n 100 --settle 150s      spike: --mode sessions --n 30 --stagger 0

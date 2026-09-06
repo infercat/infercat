@@ -1,7 +1,7 @@
 # Architecture contract (v1, 2026-09-02 evening — v0 was the build-night seam contract; v1 folds in tickets 005–011 and `docs/DESIGN.md`)
 
 This file is the seam contract every engineer codes against. It is binding where it says MUST.
-Change it by contesting to the PM, never silently. Product name is a working name; it lives in
+Change it by contesting to the PM, never silently. The product name lives in
 `internal/product/product.go` (Go) and `web/src/product.ts` (TS) and nowhere else.
 
 ## The shape
@@ -26,11 +26,11 @@ Browser traffic is relay-only until tailcat ships WebRTC (issue #4). Native clie
 
 | Path | Owner ticket | Purpose |
 |---|---|---|
-| `cmd/bunny-network/` | 003 | CLI: `serve`, `keys …`, `status`, `usage`, `invite` |
+| `cmd/infercat/` | 003 | CLI: `serve`, `keys …`, `status`, `usage`, `invite` |
 | `internal/product/` | PM | name constants |
-| `internal/invite/` | 001 | invite encode/decode (`bn1.<tc>.<secret>`) |
+| `internal/invite/` | 001 | invite encode/decode (`ic1.<tc>.<secret>`) |
 | `internal/tunnel/` | 001 | tailcat server wrapper → `net.Listener` |
-| `web/wasm/` | 001 | wasm bridge (Go, GOOS=js) → `web/public/bunny.wasm` |
+| `web/wasm/` | 001 | wasm bridge (Go, GOOS=js) → `web/public/infercat.wasm` |
 | `internal/gateway/` | 002 | http.Handler: auth, limits, queue, clamps, proxy, errors, CORS(dev) |
 | `internal/keys/` | PM (types) / 003 (file store) | key types, Store interface, FileStore with hot reload |
 | `internal/usage/` | PM (types) / 003 (recorder) | usage events, Recorder interface, JSONL recorder + aggregates |
@@ -39,11 +39,11 @@ Browser traffic is relay-only until tailcat ships WebRTC (issue #4). Native clie
 | `web/` (except `web/wasm/`) | 004 | the web client |
 | `docs/`, `pm/` | PM | contract, measurement, PM records |
 
-Module: `github.com/2185Lab/bunny-network`, Go 1.27 (auto toolchain), tailcat pinned `v0.4.0`.
+Module: `github.com/2185Lab/infercat`, Go 1.27 (auto toolchain), tailcat pinned `v0.4.0`.
 
 ## Data directory
 
-`--data-dir` default: `os.UserConfigDir()/bunny-network` (mac: `~/Library/Application Support/bunny-network`).
+`--data-dir` default: `os.UserConfigDir()/infercat` (mac: `~/Library/Application Support/infercat`).
 
 | File | Owner | Format |
 |---|---|---|
@@ -57,9 +57,9 @@ Module: `github.com/2185Lab/bunny-network`, Go 1.27 (auto toolchain), tailcat pi
 ## Invite format (001 defines in Go, 004 mirrors in TS; MUST match)
 
 ```
-bn1.<tailcat ConnBlob>.<secret>
+ic1.<tailcat ConnBlob>.<secret>
 ```
-- `bn1` = format version. Unknown prefix → "this invite needs a newer app".
+- `ic1` = format version. Unknown prefix → "this invite needs a newer app".
 - `<tailcat ConnBlob>` = the `tc…` string exactly as `Server.ConnBlob()` returns it (base64url, no dots).
 - `<secret>` = 32 random bytes, base64url unpadded (43 chars). Never contains `.`.
 - Whitespace trimmed; the whole string is case-sensitive.
@@ -82,13 +82,13 @@ MUST: `OnTCP` returns nil for any port ≠ 80 (Protection 1). No `OnTCPForward`,
 
 ## wasm bridge (001) — JS API, MUST match exactly (004 codes against this)
 
-Built from `web/wasm/main_js.go` to `web/public/bunny.wasm` (+ `web/public/wasm_exec.js` copied from
+Built from `web/wasm/main_js.go` to `web/public/infercat.wasm` (+ `web/public/wasm_exec.js` copied from
 `$(go env GOROOT)/lib/wasm/wasm_exec.js`). Build tags: same list tailcat's `internal/buildtags.WasmTags()`
 produces for v0.4.0, pinned in `web/wasm/build-tags.txt` with a test that the file compiles. Global:
 
 ```ts
-declare global { interface Window { BunnyTunnel: BunnyTunnel } }
-interface BunnyTunnel {
+declare global { interface Window { InfercatTunnel: InfercatTunnel } }
+interface InfercatTunnel {
   connect(opts: {
     addr: string;            // tc… ConnBlob (from the invite)
     derpMapURL?: string;     // default https://tailcat.dev/derpmap.json

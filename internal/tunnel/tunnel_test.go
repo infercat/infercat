@@ -607,11 +607,11 @@ func TestChooseRegion(t *testing.T) {
 }
 
 // TestSavedAddrLive is an opt-in check against a real data dir (e.g. one hack/tunneldemo is
-// running from): BUNNY_TUNNEL_DATA_DIR=/path go test ./internal/tunnel -run SavedAddrLive -v
+// running from): INFERCAT_TUNNEL_DATA_DIR=/path go test ./internal/tunnel -run SavedAddrLive -v
 func TestSavedAddrLive(t *testing.T) {
-	dir := os.Getenv("BUNNY_TUNNEL_DATA_DIR")
+	dir := os.Getenv("INFERCAT_TUNNEL_DATA_DIR")
 	if dir == "" {
-		t.Skip("BUNNY_TUNNEL_DATA_DIR not set")
+		t.Skip("INFERCAT_TUNNEL_DATA_DIR not set")
 	}
 	addr, err := SavedAddr(dir)
 	if err != nil {

@@ -927,7 +927,7 @@ function SettingsSheet({
             : ''}
           {live.pathOk ? '' : ` The path last measured ${ago(Date.now() - live.pathAt)}.`}
         </p>
-        {/* The app's half of a bug report; the host's half is `bunny-network version`. */}
+        {/* The app's half of a bug report; the host's half is `infercat version`. */}
         <p className="dim small-print">
           App version {VERSION} · MIT · <a href={SOURCE_URL}>Source on GitHub</a>
         </p>

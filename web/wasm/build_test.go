@@ -45,7 +45,7 @@ func TestBuildTags(t *testing.T) {
 	if testing.Short() {
 		t.Skip("-short: skipping the js/wasm compile")
 	}
-	out := filepath.Join(t.TempDir(), "bunny.wasm")
+	out := filepath.Join(t.TempDir(), "infercat.wasm")
 	cmd := exec.Command("go", "build", "-tags", line, "-o", out, ".")
 	cmd.Env = append(os.Environ(), "GOOS=js", "GOARCH=wasm")
 	if msg, err := cmd.CombinedOutput(); err != nil {
@@ -55,5 +55,5 @@ func TestBuildTags(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Logf("bunny.wasm: %d bytes (unstripped, uncompressed)", fi.Size())
+	t.Logf("infercat.wasm: %d bytes (unstripped, uncompressed)", fi.Size())
 }
