@@ -1,0 +1,9 @@
+# Cloudflare Pages configuration for the web app. `make deploy-web` assembles web/deploy from the
+# built app plus this directory and publishes it (hosting/README.md).
+name = "infercat"
+compatibility_date = "2026-09-01"
+pages_build_output_dir = "../../web/deploy"
+
+[[analytics_engine_datasets]]
+binding = "LOADS"
+dataset = "infercat_loads"
