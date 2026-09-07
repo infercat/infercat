@@ -12,7 +12,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/2185Lab/infercat/internal/admin"
+	"github.com/infercat/infercat/internal/admin"
 )
 
 // One line of samples.jsonl per second: the instrument's own counters, the host (admin socket +

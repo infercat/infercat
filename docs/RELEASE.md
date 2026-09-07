@@ -6,7 +6,7 @@ founder's decisions in `pm/LAUNCH.md` are closed (name, URL, public repo, histor
 ## Before the first release (once)
 
 1. `docs/RENAME.md` — the rename, top to bottom, on a branch; `make brand`; `make launch-check`.
-2. Create the tap repository `2185Lab/homebrew-tap` (empty, public, with a `Casks/` directory) and a
+2. Create the tap repository `infercat/homebrew-tap` (empty, public, with a `Casks/` directory) and a
    fine-grained PAT with **contents: write** on it; store it as the repository secret
    `HOMEBREW_TAP_GITHUB_TOKEN`.
 3. In `.goreleaser.yaml`, flip `homebrew_casks[].skip_upload` from `true` to `"auto"` (uploads on
@@ -32,7 +32,7 @@ binaries, the six archives, the checksums file, and a **draft** GitHub Release n
 `infercat 0.1.0`; the cask is committed to the tap. Then:
 
 1. Open the draft. Paste the `CHANGELOG.md` entry above the generated notes. Publish.
-2. `brew install 2185Lab/tap/infercat` on a machine that has never had it; `infercat
+2. `brew install infercat/tap/infercat` on a machine that has never had it; `infercat
    version` prints the tag.
 3. Deploy `web-0.1.0.zip` to the web app's host (F3) — the bundle is static; unzip at the site root.
 4. Bump `Version` in `product.go` to the next `-dev` (e.g. `0.1.1-dev`) on main.

@@ -39,7 +39,7 @@ Browser traffic is relay-only until tailcat ships WebRTC (issue #4). Native clie
 | `web/` (except `web/wasm/`) | 004 | the web client |
 | `docs/`, `pm/` | PM | contract, measurement, PM records |
 
-Module: `github.com/2185Lab/infercat`, Go 1.27 (auto toolchain), tailcat pinned `v0.4.0`.
+Module: `github.com/infercat/infercat`, Go 1.27 (auto toolchain), tailcat pinned `v0.4.0`.
 
 ## Data directory
 

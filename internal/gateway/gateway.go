@@ -17,9 +17,9 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/2185Lab/infercat/internal/keys"
-	"github.com/2185Lab/infercat/internal/upstream"
-	"github.com/2185Lab/infercat/internal/usage"
+	"github.com/infercat/infercat/internal/keys"
+	"github.com/infercat/infercat/internal/upstream"
+	"github.com/infercat/infercat/internal/usage"
 )
 
 // Config is everything the gateway needs beyond its collaborators. The queue's capacity is not

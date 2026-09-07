@@ -13,7 +13,7 @@ const (
 )
 
 // The build stamp. A release overwrites these at link time (.goreleaser.yaml passes
-// -X github.com/2185Lab/infercat/internal/product.Version=<tag> and friends); a plain
+// -X github.com/infercat/infercat/internal/product.Version=<tag> and friends); a plain
 // `go build` keeps the defaults, which is how a developer build says it is one. Version is
 // also the single place the Makefile and the web bundle read the version from (pm/BELIEFS.md:
 // the product name lives in one constant), so keep the literal on one line.

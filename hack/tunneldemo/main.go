@@ -21,7 +21,7 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/2185Lab/infercat/internal/tunnel"
+	"github.com/infercat/infercat/internal/tunnel"
 )
 
 func main() {

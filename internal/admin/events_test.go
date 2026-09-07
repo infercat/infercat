@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/2185Lab/infercat/internal/usage"
+	"github.com/infercat/infercat/internal/usage"
 )
 
 type memRecorder struct {

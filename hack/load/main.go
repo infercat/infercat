@@ -28,8 +28,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/2185Lab/infercat/internal/invite"
-	"github.com/2185Lab/infercat/internal/usage"
+	"github.com/infercat/infercat/internal/invite"
+	"github.com/infercat/infercat/internal/usage"
 	"tailscale.com/envknob"
 )
 

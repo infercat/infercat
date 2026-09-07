@@ -27,9 +27,9 @@ builds:
       - -trimpath
     ldflags:
       - -s -w
-      - -X github.com/2185Lab/infercat/internal/product.Version={{ .Version }}
-      - -X github.com/2185Lab/infercat/internal/product.Commit={{ .FullCommit }}
-      - -X github.com/2185Lab/infercat/internal/product.Date={{ .CommitDate }}
+      - -X github.com/infercat/infercat/internal/product.Version={{ .Version }}
+      - -X github.com/infercat/infercat/internal/product.Commit={{ .FullCommit }}
+      - -X github.com/infercat/infercat/internal/product.Date={{ .CommitDate }}
     goos: [darwin, linux, windows]
     goarch: [amd64, arm64]
     ignore:
@@ -73,7 +73,7 @@ release:
   # The GitHub Release a v* tag produces (release.yml). Draft, so the founder reads the generated
   # notes and the CHANGELOG entry side by side before anyone sees it; prerelease decided by the tag.
   github:
-    owner: 2185Lab
+    owner: infercat
     name: infercat
   draft: true
   prerelease: auto
@@ -81,7 +81,7 @@ release:
 
 homebrew_casks:
   # The Homebrew cask (goreleaser 2.18 deprecates `brews` for pre-built binaries in favour of casks):
-  # `brew install 2185Lab/tap/<CLI_NAME>`. Written to dist/homebrew/ on every run so it can be read
+  # `brew install infercat/tap/<CLI_NAME>`. Written to dist/homebrew/ on every run so it can be read
   # and installed locally (docs/RELEASE.md); committed to the tap repository only when skip_upload is
   # flipped to "auto" on the day the tap exists, with a PAT in HOMEBREW_TAP_GITHUB_TOKEN.
   # "auto" then still skips prereleases and snapshots.
@@ -89,7 +89,7 @@ homebrew_casks:
     ids: [cli]
     binaries: ["{{ .Env.CLI_NAME }}"]
     repository:
-      owner: 2185Lab
+      owner: infercat
       name: homebrew-tap
       branch: main
       token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"

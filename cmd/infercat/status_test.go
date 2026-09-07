@@ -8,10 +8,10 @@ import (
 	"testing"
 	"time"
 
-	"github.com/2185Lab/infercat/internal/admin"
-	"github.com/2185Lab/infercat/internal/keys"
-	"github.com/2185Lab/infercat/internal/upstream"
-	"github.com/2185Lab/infercat/internal/usage"
+	"github.com/infercat/infercat/internal/admin"
+	"github.com/infercat/infercat/internal/keys"
+	"github.com/infercat/infercat/internal/upstream"
+	"github.com/infercat/infercat/internal/usage"
 )
 
 // The request line (029 promises 1, 2, 5): the ticket's example, and the three ways a request

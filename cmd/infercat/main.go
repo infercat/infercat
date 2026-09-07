@@ -16,11 +16,11 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/2185Lab/infercat/internal/admin"
-	"github.com/2185Lab/infercat/internal/keys"
-	"github.com/2185Lab/infercat/internal/product"
-	"github.com/2185Lab/infercat/internal/upstream"
-	"github.com/2185Lab/infercat/internal/usage"
+	"github.com/infercat/infercat/internal/admin"
+	"github.com/infercat/infercat/internal/keys"
+	"github.com/infercat/infercat/internal/product"
+	"github.com/infercat/infercat/internal/upstream"
+	"github.com/infercat/infercat/internal/usage"
 )
 
 // The tunnel (ticket 001) and the gateway (ticket 002) land in parallel with this CLI, so the

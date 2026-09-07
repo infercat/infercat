@@ -18,8 +18,8 @@ import (
 	"testing"
 	"time"
 
-	"github.com/2185Lab/infercat/internal/admin"
-	"github.com/2185Lab/infercat/internal/tunnel"
+	"github.com/infercat/infercat/internal/admin"
+	"github.com/infercat/infercat/internal/tunnel"
 )
 
 const testSecret = "s3cr3t-s3cr3t-s3cr3t-s3cr3t-s3cr3t-s3cr3t-0"

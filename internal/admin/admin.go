@@ -13,8 +13,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/2185Lab/infercat/internal/product"
-	"github.com/2185Lab/infercat/internal/usage"
+	"github.com/infercat/infercat/internal/product"
+	"github.com/infercat/infercat/internal/usage"
 )
 
 // File names inside the data dir.

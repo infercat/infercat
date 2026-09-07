@@ -11,8 +11,8 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/2185Lab/infercat/internal/keys"
-	"github.com/2185Lab/infercat/internal/usage"
+	"github.com/infercat/infercat/internal/keys"
+	"github.com/infercat/infercat/internal/usage"
 )
 
 // endpoint is which proxied POST a request is. The pipeline is the same; only the body shaping differs.

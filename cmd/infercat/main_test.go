@@ -21,11 +21,11 @@ import (
 
 	qrcode "github.com/skip2/go-qrcode"
 
-	"github.com/2185Lab/infercat/internal/admin"
-	"github.com/2185Lab/infercat/internal/keys"
-	"github.com/2185Lab/infercat/internal/product"
-	"github.com/2185Lab/infercat/internal/upstream"
-	"github.com/2185Lab/infercat/internal/usage"
+	"github.com/infercat/infercat/internal/admin"
+	"github.com/infercat/infercat/internal/keys"
+	"github.com/infercat/infercat/internal/product"
+	"github.com/infercat/infercat/internal/upstream"
+	"github.com/infercat/infercat/internal/usage"
 )
 
 // testPlatform stands in for tickets 001 and 002 with a fixed address, so the CLI's own

@@ -16,14 +16,14 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/2185Lab/infercat/internal/admin"
-	"github.com/2185Lab/infercat/internal/keys"
-	"github.com/2185Lab/infercat/internal/product"
+	"github.com/infercat/infercat/internal/admin"
+	"github.com/infercat/infercat/internal/keys"
+	"github.com/infercat/infercat/internal/product"
 	// only for tunnel.KeyFile: the host identity's file name is the tunnel's to define, and a
 	// second copy of it here would be a lie waiting to happen.
-	"github.com/2185Lab/infercat/internal/tunnel"
-	"github.com/2185Lab/infercat/internal/upstream"
-	"github.com/2185Lab/infercat/internal/usage"
+	"github.com/infercat/infercat/internal/tunnel"
+	"github.com/infercat/infercat/internal/upstream"
+	"github.com/infercat/infercat/internal/usage"
 )
 
 // refreshEvery is how often a running host re-probes the upstream. An engine that was down at

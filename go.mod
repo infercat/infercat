@@ -1,4 +1,4 @@
-module github.com/2185Lab/infercat
+module github.com/infercat/infercat
 
 go 1.27.0
 

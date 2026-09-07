@@ -8,7 +8,7 @@
 **Give friends a key to the AI on your machine.**
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-1F3BFF?style=flat-square)](LICENSE)
-[![CI](https://github.com/2185Lab/infercat/actions/workflows/ci.yml/badge.svg)](https://github.com/2185Lab/infercat/actions/workflows/ci.yml)
+[![CI](https://github.com/infercat/infercat/actions/workflows/ci.yml/badge.svg)](https://github.com/infercat/infercat/actions/workflows/ci.yml)
 
 ---
 
@@ -37,13 +37,13 @@ and see counts, never their conversations.
 You need an inference server running (llama.cpp, vLLM, Ollama or LM Studio; any OpenAI-compatible
 `/v1/chat/completions` works). Your friends need a browser.
 
-**Homebrew (macOS)** <!-- TODO(tap): 2185Lab/homebrew-tap does not exist yet; docs/RELEASE.md creates it -->
+**Homebrew (macOS)** <!-- TODO(tap): infercat/homebrew-tap does not exist yet; docs/RELEASE.md creates it -->
 
 ```
-brew install 2185Lab/tap/infercat
+brew install infercat/tap/infercat
 ```
 
-**Download** — from [Releases](https://github.com/2185Lab/infercat/releases): pick your platform,
+**Download** — from [Releases](https://github.com/infercat/infercat/releases): pick your platform,
 unpack, put `infercat` on your `PATH`. Verify the download against the checksums file that
 ships next to it:
 

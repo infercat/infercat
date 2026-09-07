@@ -12,7 +12,7 @@ import (
 	"testing"
 	"time"
 
-	"github.com/2185Lab/infercat/internal/usage"
+	"github.com/infercat/infercat/internal/usage"
 )
 
 // The race, forced. B joins the queue with a context that is already cancelled and, from its own

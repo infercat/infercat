@@ -21,9 +21,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/2185Lab/infercat/internal/keys"
-	"github.com/2185Lab/infercat/internal/upstream"
-	"github.com/2185Lab/infercat/internal/usage"
+	"github.com/infercat/infercat/internal/keys"
+	"github.com/infercat/infercat/internal/upstream"
+	"github.com/infercat/infercat/internal/usage"
 )
 
 // The one secret every test uses, so TestMain can prove it never reached a log line or a body.

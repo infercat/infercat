@@ -12,7 +12,7 @@ import (
 	"sync"
 	"time"
 
-	"github.com/2185Lab/infercat/internal/usage"
+	"github.com/infercat/infercat/internal/usage"
 )
 
 // tokenWindow is the span the tokens-per-second figure is averaged over.

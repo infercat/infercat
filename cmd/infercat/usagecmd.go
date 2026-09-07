@@ -10,8 +10,8 @@ import (
 	"text/tabwriter"
 	"time"
 
-	"github.com/2185Lab/infercat/internal/keys"
-	"github.com/2185Lab/infercat/internal/usage"
+	"github.com/infercat/infercat/internal/keys"
+	"github.com/infercat/infercat/internal/usage"
 )
 
 func (e *env) cmdUsage(ctx context.Context, pre string, args []string) error {

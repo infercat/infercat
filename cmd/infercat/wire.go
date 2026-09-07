@@ -7,13 +7,13 @@ import (
 	"net"
 	"time"
 
-	"github.com/2185Lab/infercat/internal/admin"
-	"github.com/2185Lab/infercat/internal/gateway"
-	"github.com/2185Lab/infercat/internal/invite"
-	"github.com/2185Lab/infercat/internal/keys"
-	"github.com/2185Lab/infercat/internal/tunnel"
-	"github.com/2185Lab/infercat/internal/upstream"
-	"github.com/2185Lab/infercat/internal/usage"
+	"github.com/infercat/infercat/internal/admin"
+	"github.com/infercat/infercat/internal/gateway"
+	"github.com/infercat/infercat/internal/invite"
+	"github.com/infercat/infercat/internal/keys"
+	"github.com/infercat/infercat/internal/tunnel"
+	"github.com/infercat/infercat/internal/upstream"
+	"github.com/infercat/infercat/internal/usage"
 )
 
 func newPlatform() platform {

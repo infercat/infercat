@@ -26,11 +26,11 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/2185Lab/infercat/internal/admin"
-	"github.com/2185Lab/infercat/internal/invite"
-	"github.com/2185Lab/infercat/internal/product"
-	"github.com/2185Lab/infercat/internal/tunnel"
-	"github.com/2185Lab/infercat/internal/usage"
+	"github.com/infercat/infercat/internal/admin"
+	"github.com/infercat/infercat/internal/invite"
+	"github.com/infercat/infercat/internal/product"
+	"github.com/infercat/infercat/internal/tunnel"
+	"github.com/infercat/infercat/internal/usage"
 )
 
 const connectListen = "127.0.0.1:11435"

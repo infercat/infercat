@@ -11,7 +11,7 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/2185Lab/infercat/internal/product"
+	"github.com/infercat/infercat/internal/product"
 )
 
 // Invite is the decoded form. Addr is the tailcat ConnBlob ("tc…"); Secret is the friend's key.
