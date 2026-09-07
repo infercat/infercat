@@ -635,8 +635,11 @@ input[type='range']::-moz-range-thumb {
   display: flex; gap: 10px; align-items: flex-end;
   max-width: 46rem; margin: 0 auto; width: 100%;
 }
-.composer textarea { flex: 1 1 auto; min-width: 0; width: auto; max-height: 200px; font-size: var(--field-size); overflow-y: hidden; }
-.composer-box > button { flex: 0 0 auto; }
+/* One row of the field and the Send button are the same box: the field's line-height is fixed so its
+   one-row height is (font-size × 1.5 + 22 px padding + 2 px border), and the button is given exactly
+   that height instead of its own padding — on every device, whatever the field size (founder nit). */
+.composer textarea { flex: 1 1 auto; min-width: 0; width: auto; max-height: 200px; font-size: var(--field-size); line-height: 1.5; overflow-y: hidden; }
+.composer-box > button { flex: 0 0 auto; height: calc(var(--field-size) * 1.5 + 24px); padding-top: 0; padding-bottom: 0; }
 .hint {
   max-width: 46rem; margin: 9px auto 0; color: var(--muted);
   font-family: var(--mono); font-size: 10.5px; text-align: center;

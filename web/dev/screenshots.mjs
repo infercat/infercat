@@ -172,6 +172,15 @@ async function main() {
   await shot(page, 'chat-empty');
 
   await page.locator('.composer textarea').fill('Explain what just happened when I pasted that code.');
+  {
+    const rows = await page.evaluate(() => {
+      const t = document.querySelector('.composer textarea').getBoundingClientRect().height;
+      const s = document.querySelector('.composer-box > button').getBoundingClientRect().height;
+      return { field: +t.toFixed(1), send: +s.toFixed(1) };
+    });
+    if (Math.abs(rows.field - rows.send) > 1) problems.push(`desktop: Send is ${rows.send}px against a ${rows.field}px one-row field`);
+    console.log(`  desktop: one-row field ${rows.field}px · Send ${rows.send}px`);
+  }
   // 040: one line never grows a scrollbar; the field scrolls only once it has hit its cap.
   {
     const box = page.locator('.composer textarea');
@@ -284,6 +293,13 @@ async function main() {
     const px = await m.evaluate(() => parseFloat(window.getComputedStyle(document.querySelector('.composer textarea')).fontSize));
     if (px < 16) problems.push(`mobile: the composer is ${px}px on a touch device (iOS will zoom)`);
     console.log(`  mobile: composer ${px}px`);
+    const rows = await m.evaluate(() => {
+      const t = document.querySelector('.composer textarea').getBoundingClientRect().height;
+      const s = document.querySelector('.composer-box > button').getBoundingClientRect().height;
+      return { field: +t.toFixed(1), send: +s.toFixed(1) };
+    });
+    if (Math.abs(rows.field - rows.send) > 1) problems.push(`mobile: Send is ${rows.send}px against a ${rows.field}px one-row field`);
+    console.log(`  mobile: one-row field ${rows.field}px · Send ${rows.send}px`);
   }
   await m.locator('.composer textarea').fill('Does this fit on a phone?');
   await m.getByRole('button', { name: 'Send' }).click();
