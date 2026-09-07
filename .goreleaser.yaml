@@ -98,7 +98,7 @@ homebrew_casks:
     commit_author:
       name: goreleaser
       email: noreply@2185lab.com
-    homepage: https://github.com/2185Lab/infercat # TODO(F3): the web app URL, when the founder registers a domain (product.WebURL)
+    homepage: https://infercat.ai
     description: "Share the model on your machine with friends: one binary, one invite code, a browser"
     # The binaries are not signed yet (pm/tickets/034-notarization.md): Homebrew quarantines what it
     # downloads, and macOS refuses to run a quarantined unsigned binary. This is the hook goreleaser

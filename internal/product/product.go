@@ -9,7 +9,7 @@ const (
 	// WebURL is where a friend opens the web app. Empty until hosting is decided; a host can
 	// name their own with `serve --web-url`. When it is known, an invite is printed as a link
 	// (<WebURL>#<invite>) that the friend can click instead of copying a code.
-	WebURL = ""
+	WebURL = "https://infercat.ai"
 )
 
 // The build stamp. A release overwrites these at link time (.goreleaser.yaml passes
