@@ -30,6 +30,10 @@
 
 /* ---------- tokens ---------- */
 :root {
+  /* Text-field sizes. On touch devices they are 16 px: iOS Safari auto-zooms the page on focus for
+     anything smaller and often leaves it zoomed on blur (founder, 2026-09-07). Every field derives
+     from these two, so no field can be smaller by accident. */
+  --field-size: 14px; --code-field-size: 13.5px;
   --paper: #ffffff;
   --surface: #f1f2f4;
   --surface-2: #e7e9ed;
@@ -120,11 +124,9 @@ textarea, input, select {
   width: 100%;
 }
 textarea { resize: none; }
-/* On touch devices every text field is at least 16 px: iOS Safari auto-zooms the page on focus for
-   anything smaller and often leaves it a step zoomed in on blur (founder, 2026-09-07). One rule for
-   the class of fields rather than a size per field; desktop keeps its sizes. */
+textarea, input[type='text'], input[type='number'], select { font-size: var(--field-size); }
 @media (hover: none) and (pointer: coarse) {
-  textarea, input[type='text'], input[type='number'], select { font-size: 16px; }
+  :root { --field-size: 16px; --code-field-size: 16px; }
 }
 /* Visible in both schemes: cobalt on paper, its tint on black — a flat cobalt ring is 3.1:1 there. */
 :focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
@@ -216,7 +218,7 @@ textarea:focus-visible, input[type='text']:focus-visible, select:focus-visible {
   display: block; font-family: var(--mono); font-size: 10.5px; font-weight: 500;
   letter-spacing: 0.14em; text-transform: uppercase; color: var(--muted); margin-bottom: 7px;
 }
-.connect textarea { font-family: var(--mono); font-size: 13.5px; line-height: 1.5; }
+.connect textarea { font-family: var(--mono); font-size: var(--code-field-size); line-height: 1.5; }
 .connect-actions { display: flex; gap: 14px; align-items: center; flex-wrap: wrap; }
 .inline-error { color: var(--danger); font-size: 13px; margin: -4px 0 12px; }
 /* No tint washes in this system: a notice is a block of surface behind an ink rule. */
@@ -633,7 +635,7 @@ input[type='range']::-moz-range-thumb {
   display: flex; gap: 10px; align-items: flex-end;
   max-width: 46rem; margin: 0 auto; width: 100%;
 }
-.composer textarea { flex: 1 1 auto; min-width: 0; width: auto; max-height: 200px; font-size: 14px; overflow-y: hidden; }
+.composer textarea { flex: 1 1 auto; min-width: 0; width: auto; max-height: 200px; font-size: var(--field-size); overflow-y: hidden; }
 .composer-box > button { flex: 0 0 auto; }
 .hint {
   max-width: 46rem; margin: 9px auto 0; color: var(--muted);
