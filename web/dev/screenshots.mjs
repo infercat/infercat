@@ -267,9 +267,24 @@ async function main() {
   watch(m, 'mobile');
   await m.goto(BASE);
   await m.waitForSelector('.connect-card h1');
+  // Touch devices get 16 px fields, or iOS Safari zooms the page on focus and stays zoomed (2026-09-07).
+  {
+    const f = await m.evaluate(() => ({
+      touch: matchMedia('(hover: none) and (pointer: coarse)').matches,
+      invite: parseFloat(window.getComputedStyle(document.querySelector('.connect textarea')).fontSize),
+    }));
+    if (!f.touch) problems.push('mobile: the context does not report a touch device, so the field-size rule is untested');
+    if (f.invite < 16) problems.push(`mobile: the invite field is ${f.invite}px on a touch device (iOS will zoom)`);
+    console.log(`  mobile: touch media ${f.touch ? 'matches' : 'MISSING'} · invite field ${f.invite}px`);
+  }
   await shot(m, 'mobile-connect');
   await connectViaTunnel(m);
   await m.waitForSelector('.empty', { timeout: 20_000 });
+  {
+    const px = await m.evaluate(() => parseFloat(window.getComputedStyle(document.querySelector('.composer textarea')).fontSize));
+    if (px < 16) problems.push(`mobile: the composer is ${px}px on a touch device (iOS will zoom)`);
+    console.log(`  mobile: composer ${px}px`);
+  }
   await m.locator('.composer textarea').fill('Does this fit on a phone?');
   await m.getByRole('button', { name: 'Send' }).click();
   await m.waitForSelector('.meta-text:has-text("out")', { timeout: 60_000 });
@@ -432,7 +447,7 @@ async function main() {
   await band.waitForSelector('.connect-card');
   const gaps = await band.evaluate(() => {
     const r = document.querySelector('.connect-card').getBoundingClientRect();
-    const pad = window.getComputedStyle(document.querySelector('.connect'));
+    const pad = window.window.getComputedStyle(document.querySelector('.connect'));
     return {
       above: r.top - parseFloat(pad.paddingTop),
       below: window.innerHeight - r.bottom - parseFloat(pad.paddingBottom),
