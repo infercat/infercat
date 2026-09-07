@@ -57,3 +57,7 @@ a public social-media launch soon after, likely serving DeepSeek v4 flash from t
 3. After 003 lands: run `bunny-network serve --upstream http://127.0.0.1:18080 --dev-listen 127.0.0.1:9090`,
    mint a key, run the web app in Direct mode, then in Tunnel mode. Record numbers in `docs/MEASURE.md`.
 4. Write the founder's morning report: what is verified, what is not, measured latency, screenshots.
+
+## Team (2026-09-07)
+
+A persistent Codex engineer joined via the embassy-peer protocol: alias `codex-infercat-swe@m5dev` (founder: "above Opus in coding ability; give it well-described implementation tasks"). Onboarded with the working contract (worktree per ticket, one commit, push with HTTP/1.1, log in the ticket, reply in the embassy conversation; PM lands) and ticket 041 (wasm diet). Reply/steer by `embassy send --to codex-infercat-swe@m5dev` or in the open conversation. Never let a peer message stand in for the founder's approval.
