@@ -203,3 +203,5 @@ relay-only (browser) friend — the direct path costs the relay essentially noth
 (macOS `MADV_FREE` keeps the pages counted in RSS until memory pressure), not growth. A fresh host is
 30 MB; RSS never grew run-over-run at steady load (83 MB flat across the N=100 session test). Goroutines
 rise with connected clients and drain on tailcat's ~9-minute lazy-peer timer, not ours.
+
+2026-09-07 (041): `make wasm` with Go `-trimpath` and Binaryen 132 `-Oz --strip-debug --strip-producers` prints 24,507,300 raw / 6,116,514 gzip bytes (baseline 26,933,654 / 6,189,634; gzip −1.18%); full variants and real-tunnel gates in `pm/tickets/041-wasm-diet.md`.
