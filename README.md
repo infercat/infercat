@@ -105,10 +105,12 @@ not have this problem.
 
 ## Quickstart (friend)
 
-Open the web app, paste the invite, press Connect. That is the whole thing.
+Open **[infercat.ai](https://infercat.ai)**, paste the invite, press Connect. That is the whole thing.
+Your host's `keys add` prints the invite as a link (and a QR code) that opens the app with the code
+already in the field, so usually you just tap it.
 
-Until the app is hosted <!-- TODO(F3): the web app URL -->, the host serves it locally from the
-`web-<version>.zip` in Releases (any static file server; `index.html` at the root):
+Prefer to host the app yourself? It is a static bundle: `web-<version>.zip` in Releases, any static
+file server, `index.html` at the root:
 
 ```
 unzip web-<version>.zip -d web && python3 -m http.server 8080 --directory web --bind 127.0.0.1
