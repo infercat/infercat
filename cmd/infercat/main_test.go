@@ -803,9 +803,10 @@ func TestInviteNamesItsDestination(t *testing.T) {
 	dir := t.TempDir()
 	plat := testPlatform(fakeAddr, nil)
 
+	// The product ships with a hosted web app (product.WebURL), so an unconfigured host names it.
 	r := exec(t, plat, "keys", "add", "alice", "--data-dir", dir)
-	if !strings.Contains(r.out, "alice pastes this code into the web app (serve web/dist yourself for now — see README).") {
-		t.Errorf("no destination sentence when there is no web app:\n%s", r.out)
+	if !strings.Contains(r.out, "Send alice this link:") || !strings.Contains(r.out, product.WebURL+"#"+product.InvitePrefix+".") {
+		t.Errorf("an unconfigured host did not name the hosted web app as the destination:\n%s", r.out)
 	}
 
 	if err := saveConfig(dir, config{WebURL: "https://app.example"}); err != nil {
@@ -868,9 +869,10 @@ func TestInviteIsRepeatedUnderTheQR(t *testing.T) {
 	qrEnd := func(out string) int { return strings.LastIndex(out, "\x1b[0m") }
 
 	r := exec(t, plat, "keys", "add", "alice", "--data-dir", dir)
-	inv := strings.Fields(r.out[strings.Index(r.out, product.InvitePrefix+"."):])[0]
+	// The line to copy is the link (the QR carries it too); the bare invite is only ever part of it.
+	inv := strings.Fields(r.out[strings.Index(r.out, product.WebURL+"#"):])[0]
 	if n := strings.Count(r.out, inv); n != 2 {
-		t.Fatalf("the invite appears %d time(s); want once above the QR and once under it:\n%s", n, r.out)
+		t.Fatalf("the link appears %d time(s); want once above the QR and once under it:\n%s", n, r.out)
 	}
 	if strings.LastIndex(r.out, inv) < qrEnd(r.out) {
 		t.Errorf("the repeat is not under the QR:\n%s", r.out)
