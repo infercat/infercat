@@ -203,3 +203,14 @@ relay-only (browser) friend — the direct path costs the relay essentially noth
 (macOS `MADV_FREE` keeps the pages counted in RSS until memory pressure), not growth. A fresh host is
 30 MB; RSS never grew run-over-run at steady load (83 MB flat across the N=100 session test). Goroutines
 rise with connected clients and drain on tailcat's ~9-minute lazy-peer timer, not ours.
+
+## The wasm on a diet (ticket 041, 2026-09-07; declined)
+
+Tried on the browser tunnel (`web/wasm/build.sh`, `-s -w` already set): `-trimpath` saves 2 KB gzip;
+Binaryen `wasm-opt -Oz --strip-debug --strip-producers` (one pass; a second serialization *grows* the
+gzip) saves 9.0% raw but only **1.18% gzip** (6,189,634 → 6,116,514 bytes), and would make Binaryen a
+build prerequisite for every contributor, CI and the release workflow. The gzip is what crosses the
+wire, so the friend gains 73 KB on 6 MB for a new toolchain dependency. Not landed; the finding stays
+here so nobody re-runs it. Brotli is not an option: the app decompresses in the browser with
+`DecompressionStream`, which does gzip and deflate only. The real size lever, if ever needed, is
+upstream: the Go runtime and the netstack are the weight.
