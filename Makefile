@@ -11,7 +11,7 @@ export VITE_APP_VERSION := $(PRODUCT_VERSION)
 # image URL in index.html, which must be absolute to be picked up.
 export VITE_WEB_URL := $(shell sed -n 's/^[[:space:]]*WebURL[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' internal/product/product.go)
 
-.PHONY: build test vet wasm web web-test check clean release-dry notices notices-check brand launch-check
+.PHONY: build test vet wasm web web-test check clean release-dry notices notices-check brand launch-check deploy-web
 
 build:
 	go build -o bin/infercat ./cmd/infercat
@@ -69,3 +69,10 @@ release-publish: notices-check web
 
 clean:
 	rm -rf bin dist web/dist
+
+# Publish the web app to Cloudflare Pages (hosting/README.md): the built app minus the raw wasm,
+# plus the headers, routes and the first-party counter. Needs `wrangler login` (OAuth).
+deploy-web: web
+	rm -rf web/deploy && mkdir -p web/deploy && cp -R web/dist/. web/deploy/ && rm -f web/deploy/infercat.wasm
+	cp hosting/cloudflare/_headers hosting/cloudflare/_routes.json hosting/cloudflare/404.html web/deploy/ && cp -R hosting/cloudflare/functions web/deploy/
+	cd hosting/cloudflare && env -u CLOUDFLARE_API_TOKEN wrangler pages deploy --project-name infercat --branch main --commit-dirty=true
