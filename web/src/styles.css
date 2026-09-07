@@ -627,7 +627,7 @@ input[type='range']::-moz-range-thumb {
   display: flex; gap: 10px; align-items: flex-end;
   max-width: 46rem; margin: 0 auto; width: 100%;
 }
-.composer textarea { flex: 1 1 auto; min-width: 0; width: auto; max-height: 200px; font-size: 14px; }
+.composer textarea { flex: 1 1 auto; min-width: 0; width: auto; max-height: 200px; font-size: 14px; overflow-y: hidden; }
 .composer-box > button { flex: 0 0 auto; }
 .hint {
   max-width: 46rem; margin: 9px auto 0; color: var(--muted);

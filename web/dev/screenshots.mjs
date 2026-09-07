@@ -172,6 +172,19 @@ async function main() {
   await shot(page, 'chat-empty');
 
   await page.locator('.composer textarea').fill('Explain what just happened when I pasted that code.');
+  // 040: one line never grows a scrollbar; the field scrolls only once it has hit its cap.
+  {
+    const box = page.locator('.composer textarea');
+    const one = await box.evaluate((el) => ({ over: el.scrollHeight > el.clientHeight, oy: el.ownerDocument.defaultView.getComputedStyle(el).overflowY }));
+    if (one.over || one.oy !== 'hidden') problems.push(`composer: one line shows a scrollbar (${JSON.stringify(one)})`);
+    await box.fill(Array.from({ length: 14 }, (_, i) => `line ${i + 1}`).join('\n'));
+    const many = await box.evaluate((el) => ({ h: el.getBoundingClientRect().height, oy: el.ownerDocument.defaultView.getComputedStyle(el).overflowY, over: el.scrollHeight > el.clientHeight }));
+    if (many.h > 200 || many.oy !== 'auto' || !many.over) problems.push(`composer: 14 lines did not cap and scroll (${JSON.stringify(many)})`);
+    await box.fill('Explain what just happened when I pasted that code.');
+    const back = await box.evaluate((el) => ({ over: el.scrollHeight > el.clientHeight, oy: el.ownerDocument.defaultView.getComputedStyle(el).overflowY }));
+    if (back.over || back.oy !== 'hidden') problems.push(`composer: did not shrink back (${JSON.stringify(back)})`);
+    console.log(`  composer: one line ${one.over ? 'SCROLLS' : 'clean'} · 14 lines cap at ${Math.round(many.h)} px and scroll · shrinks back ${back.over ? 'NO' : 'yes'}`);
+  }
   await page.getByRole('button', { name: 'Send' }).click();
   await page.waitForSelector('.thinking.open .thinking-body');
   await sleep(900);

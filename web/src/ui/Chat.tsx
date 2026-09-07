@@ -13,6 +13,9 @@ import {
   type Me,
 } from '../api';
 import { privacyLine, SOURCE_URL, VERSION } from '../product';
+
+/** The composer grows with its text up to this many pixels, then scrolls (040). */
+const COMPOSER_MAX = 200;
 import {
   ago,
   compact,
@@ -798,11 +801,25 @@ function Composer({
   onSend: (t: string) => void;
   onStop: () => void;
 }) {
-  const resize = (el: HTMLTextAreaElement | null) => {
-    if (!el) return;
-    el.style.height = 'auto';
-    el.style.height = `${Math.min(200, el.scrollHeight)}px`;
-  };
+  // The field's height follows its content, never the other way round: measured from the text on
+  // every change and on every viewport change, so a cleared field shrinks back and a rotated phone
+  // re-fits. `scrollHeight` excludes the border and the box is border-box, so the border is added or
+  // a one-line field is two pixels short and grows a scrollbar the moment you type. The scrollbar
+  // exists only once the field has hit its cap (040).
+  useLayoutEffect(() => {
+    const fit = () => {
+      const el = ref.current;
+      if (!el) return;
+      el.style.height = 'auto';
+      const border = el.offsetHeight - el.clientHeight;
+      const full = el.scrollHeight + border;
+      el.style.height = `${Math.min(COMPOSER_MAX, full)}px`;
+      el.style.overflowY = full > COMPOSER_MAX ? 'auto' : 'hidden';
+    };
+    fit();
+    window.addEventListener('resize', fit);
+    return () => window.removeEventListener('resize', fit);
+  }, [ref, text]);
   return (
     <div className="composer">
       <div className="composer-box">
@@ -813,20 +830,14 @@ function Composer({
           aria-label="Message"
           placeholder="Message the host’s model…"
           disabled={disabled}
-          onChange={(e) => {
-            onText(e.target.value);
-            resize(e.target);
-          }}
+          onChange={(e) => onText(e.target.value)}
           onKeyDown={(e) => {
             // On a touch keyboard Return is the only way to make a new line, so Send is the only
             // way to send (014 promise 6). Enter mid-composition commits an IME candidate and must
             // not send either (007 promise 9).
             if (touch || e.key !== 'Enter' || e.shiftKey || composing(e)) return;
             e.preventDefault();
-            if (!streaming && !disabled && text.trim() !== '') {
-              onSend(text);
-              resize(e.currentTarget);
-            }
+            if (!streaming && !disabled && text.trim() !== '') onSend(text);
           }}
         />
         {streaming ? (
@@ -839,7 +850,6 @@ function Composer({
             disabled={disabled || text.trim() === ''}
             onClick={() => {
               onSend(text);
-              resize(ref.current);
               ref.current?.focus();
             }}
           >
