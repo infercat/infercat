@@ -5,7 +5,7 @@ import reactHooks from 'eslint-plugin-react-hooks';
 export default tseslint.config(
   // web/wasm/** and web/public/** belong to ticket 001 (the Go bridge and its build output);
   // dist/** is generated. None of them are this ticket's source.
-  { ignores: ['dist/**', 'node_modules/**', 'public/**', 'wasm/**'] },
+  { ignores: ['deploy/**', 'dist/**', 'node_modules/**', 'public/**', 'wasm/**'] },
   js.configs.recommended,
   tseslint.configs.recommended,
   {
