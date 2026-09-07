@@ -18,7 +18,7 @@ paste it into a web page and chat with your model: no account, no VPN, nothing t
 connection is encrypted end to end; the relay in between sees ciphertext. You set limits per friend
 and see counts, never their conversations.
 
-![A friend pastes an invite and chats with the host's model](docs/media/friend-chat.gif)
+![Share a local model with a friend in a browser or terminal](docs/media/demo.gif)
 
 *Recorded from the real app: a friend's browser, through the relay, to a laptop running llama.cpp.*
 

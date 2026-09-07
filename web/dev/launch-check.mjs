@@ -14,7 +14,7 @@
 // and must stay under 2 MB. The GIF needs a full ffmpeg (`brew install ffmpeg`, or FFMPEG=path to
 // one — Playwright's own ffmpeg records WebM and cannot write GIF).
 import { spawn, spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync } from 'node:fs';
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -23,12 +23,16 @@ import { chromium } from 'playwright';
 const here = dirname(fileURLToPath(import.meta.url));
 const web = join(here, '..');
 const shots = join(here, 'screenshots');
-const media = join(web, '..', 'docs', 'media');
+// Recording-only framing; the normal launch gate remains unchanged.
+const demoAt = process.argv.indexOf('--demo-dir');
+const demoDir = demoAt < 0 ? '' : process.argv[demoAt + 1];
+if (demoAt >= 0 && !demoDir) throw new Error('--demo-dir needs an output directory');
+const media = demoDir || join(web, '..', 'docs', 'media');
 const PORT = Number(process.env.CHECK_PORT ?? 6833);
 const APP = (process.env.APP ?? `http://127.0.0.1:${PORT}`).replace(/\/+$/, '');
 const INVITE = process.env.INVITE ?? '';
 const NAME = /PRODUCT_NAME = '([^']+)'/.exec(readFileSync(join(web, 'src/product.ts'), 'utf8'))?.[1] ?? 'app';
-const QUESTION = 'Why is the sky blue? Answer in three sentences.';
+const QUESTION = demoDir ? 'Why is the sky blue? Answer in one sentence.' : 'Why is the sky blue? Answer in three sentences.';
 
 const problems = [];
 const say = (s) => console.log(`  ${s}`);
@@ -344,8 +348,8 @@ function ffmpeg() {
 async function chat(browser) {
   mkdirSync(media, { recursive: true });
   const tmp = mkdtempSync(join(tmpdir(), 'bn-launch-'));
-  const size = { width: 880, height: 640 };
-  const ctx = await browser.newContext({ viewport: size, colorScheme: 'light', recordVideo: { dir: tmp, size } });
+  const size = demoDir ? { width: 390, height: 720 } : { width: 880, height: 640 };
+  const ctx = await browser.newContext({ viewport: size, isMobile: Boolean(demoDir), hasTouch: Boolean(demoDir), colorScheme: 'light', recordVideo: { dir: tmp, size } });
   const page = await ctx.newPage();
   watch(page, 'chat');
   // Not an assertion: once connected the app is *meant* to reach the relay it was told about, which
@@ -360,11 +364,29 @@ async function chat(browser) {
   await box.click();
   await box.pressSequentially(QUESTION, { delay: 30 });
   await page.waitForTimeout(400);
-  await page.keyboard.press('Enter');
+  if (demoDir) await page.getByRole('button', { name: 'Send' }).click();
+  else await page.keyboard.press('Enter');
   const stop = page.getByRole('button', { name: 'Stop' });
   await stop.waitFor({ timeout: 30_000 });
+  if (demoDir) {
+    // Capture the first rendered streamed token, including reasoning when it arrives first.
+    await page.waitForFunction(() => [...document.querySelectorAll('.row.assistant .md')].some((e) => e.textContent.trim()));
+    await page.screenshot({ path: join(media, 'browser-first-token.png') });
+  }
   await stop.waitFor({ state: 'detached', timeout: 180_000 });
-  await page.waitForTimeout(1800);
+  await page.waitForTimeout(demoDir ? 6000 : 1800);
+  if (demoDir) {
+    const answer = await page.locator('.row.assistant > .md').innerText();
+    if (!answer.trim()) throw new Error('demo: model produced no answer');
+    await page.locator('.thinking-toggle').waitFor();
+    await page.screenshot({ path: join(media, 'browser-answer.png') });
+    const video = page.video();
+    await ctx.close();
+    copyFileSync(await video.path(), join(media, 'browser.webm'));
+    rmSync(tmp, { recursive: true, force: true });
+    say('demo: real phone chat, Thinking line, first-token poster captured');
+    return;
+  }
   const png = join(media, 'friend-chat.png');
   await page.screenshot({ path: png });
   shot(png);
@@ -426,7 +448,8 @@ async function chat(browser) {
 }
 
 async function main() {
-  mkdirSync(shots, { recursive: true });
+  if (demoDir && (!INVITE || !process.env.APP)) throw new Error('demo needs INVITE and APP');
+  if (!demoDir) mkdirSync(shots, { recursive: true });
   let preview = null;
   if (!process.env.APP) {
     preview = spawn(process.execPath, ['node_modules/vite/bin/vite.js', 'preview', '--port', String(PORT), '--strictPort'], {
@@ -438,7 +461,7 @@ async function main() {
   try {
     await waitFor(`${APP}/`);
     console.log(`launch-check on ${APP}`);
-    await connectScreen(browser);
+    if (!demoDir) await connectScreen(browser);
     if (INVITE) await chat(browser);
     else say('no INVITE: the chat was not exercised (set INVITE=ic1.… APP=… against a running host)');
   } finally {
