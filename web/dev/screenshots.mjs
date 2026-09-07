@@ -270,7 +270,7 @@ async function main() {
   // Touch devices get 16 px fields, or iOS Safari zooms the page on focus and stays zoomed (2026-09-07).
   {
     const f = await m.evaluate(() => ({
-      touch: matchMedia('(hover: none) and (pointer: coarse)').matches,
+      touch: window.matchMedia('(hover: none) and (pointer: coarse)').matches,
       invite: parseFloat(window.getComputedStyle(document.querySelector('.connect textarea')).fontSize),
     }));
     if (!f.touch) problems.push('mobile: the context does not report a touch device, so the field-size rule is untested');
