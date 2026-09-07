@@ -120,6 +120,12 @@ textarea, input, select {
   width: 100%;
 }
 textarea { resize: none; }
+/* On touch devices every text field is at least 16 px: iOS Safari auto-zooms the page on focus for
+   anything smaller and often leaves it a step zoomed in on blur (founder, 2026-09-07). One rule for
+   the class of fields rather than a size per field; desktop keeps its sizes. */
+@media (hover: none) and (pointer: coarse) {
+  textarea, input[type='text'], input[type='number'], select { font-size: 16px; }
+}
 /* Visible in both schemes: cobalt on paper, its tint on black — a flat cobalt ring is 3.1:1 there. */
 :focus-visible { outline: 2px solid var(--focus); outline-offset: 2px; }
 textarea:focus-visible, input[type='text']:focus-visible, select:focus-visible {
