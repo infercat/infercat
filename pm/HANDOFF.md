@@ -52,7 +52,7 @@ a public social-media launch soon after, likely serving DeepSeek v4 flash from t
 
 ## Next actions for whoever resumes
 
-1. Check branch status: `git -C ~/Desktop/repos/2185Lab/bunny-network branch -a` and each ticket's Report.
+1. Check branch status: `git -C ~/Desktop/repos/2185Lab/infercat branch -a` and each ticket's Report.
 2. Land in order; run the printed checks; never chain verify && push.
 3. After 003 lands: run `bunny-network serve --upstream http://127.0.0.1:18080 --dev-listen 127.0.0.1:9090`,
    mint a key, run the web app in Direct mode, then in Tunnel mode. Record numbers in `docs/MEASURE.md`.
