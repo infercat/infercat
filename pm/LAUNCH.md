@@ -24,7 +24,8 @@ gates the public ones (BELIEFS: Authority). Nothing ships while a line in **Foun
       stamping, `make release-dry` from a fresh clone (law 4). Landed `f5e6081`.
 - [~] Relay (F2): `derp.2185lab.com` is LIVE on the founder's droplet (Let's Encrypt, DERP + STUN verified with tailscale's client), a TEST host pinned to it measured equal to Tailscale NYC (docs/MEASURE.md); **the demo host has NOT been switched** — founder green light required. Relay admission (ticket 025) before anyone has a reason to look for the hostname.
 - [ ] Web app deployed to F3's URL from the release commit; the invite link form verified end to end
-      from a phone on cellular.
+      from a phone on cellular (027).
+- [x] Contact addresses: security and conduct reports go to max@2185lab.com (founder, 2026-09-07); the two TODO(address) comments are gone.
 - [x] `docs/ARCHITECTURE.md` and README match the shipped flags (`serve --help` diffed against README; four flags were missing and were added, 18:40).
 - [x] Full checks from a fresh clone re-run on the final main (`4fe3810`, 07:20): CHECK OK · wasm · 257 web tests · lint · build · 3 cross-compiles · notices OK (49 Go + 110 npm) · launch-check OK · 6 release archives. Earlier run (`647f62b`, 18:50): `make check` OK · wasm 6.19 MB gz · web build + 190 tests · darwin/linux/windows amd64 + linux arm64 · `notices: OK` · `make release-dry` 6 artifacts. One observation: `TestI6SettleTable` failed once in a verbose run under machine load and passed 7× after (ticket 019 makes it deterministic).
 - [ ] Live proof on the published artifacts: install the release binary the way a stranger would
