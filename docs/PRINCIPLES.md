@@ -14,7 +14,7 @@ goes to the backlog.
   host says so.
 - **One concept per thing.** An invite is an address plus a key. A key is a person. Limits live on
   the key. No groups, roles or plans.
-- **The product name lives in one constant** (Go: `internal/product`; TS: `web/src/product.ts`).
+- **The product name lives in one constant** (Go: `internal/product`; TS: `web/src/product.ts`). Copy tables (`web/src/i18n/*`) and docs may carry the name as text; the rename runbook greps them.
 - **Prompts are never logged by default.** Friends' conversations are theirs; the host sees counts,
   not content. `--log-prompts` exists for debugging and says so loudly, to the host and to friends.
 - **The relay is never metered or charged per byte.** People run their own models to avoid paying

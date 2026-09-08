@@ -135,7 +135,7 @@ infercat keys add bob --rpm 6 --daily-tokens 50000          # tight, for a stran
 infercat keys limits alice --rpm 60 --daily-tokens 1000000 --max-output-tokens 8192
 ```
 
-Defaults: 20 requests a minute · 20 000 tokens a minute · 1 request at a time · 2048 output tokens ·
+Defaults: 20 requests a minute · 20 000 tokens a minute · 1 request at a time · 4096 output tokens ·
 the engine's context · 200 000 tokens a day · every model. A friend over a limit gets `429` with
 `Retry-After`; a burst beyond the engine's slots queues briefly, then `503` — never a stalled engine.
 The web app shows each friend their own meters.
