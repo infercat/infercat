@@ -1007,3 +1007,19 @@ func TestStatusWordsForTheEngineState(t *testing.T) {
 		t.Errorf("status for a healthy engine:\n%s", s)
 	}
 }
+
+func TestNoEnginePointsToEngineQuickstart(t *testing.T) {
+	// Cancellation makes every signature probe fail even on a developer's machine with engines.
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+	var output bytes.Buffer
+	e := env{errw: &output}
+	_, err := e.openUpstream(ctx, t.TempDir(), "", "", 0)
+	if !errors.Is(err, upstream.ErrNoUpstream) {
+		t.Fatalf("error = %v, want no engine", err)
+	}
+	want := "Start llama.cpp, Ollama, LM Studio or vLLM: https://github.com/infercat/infercat#no-engine-yet\n"
+	if output.String() != want {
+		t.Fatalf("hint = %q, want %q", output.String(), want)
+	}
+}

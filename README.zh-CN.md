@@ -30,6 +30,46 @@
 
 你需要先启动一个推理服务（llama.cpp、vLLM、Ollama 或 LM Studio 均可；任何兼容 OpenAI `/v1/chat/completions` 的服务都能用）。朋友那边只要有个浏览器就行。
 
+<a id="no-engine-yet"></a>
+<details>
+<summary><b>还没有推理引擎？每个引擎一条命令</b></summary>
+
+任选一个。这条命令会下载并启动一个小模型（Gemma 4 E2B，约 4 GB，8 GB 内存的笔记本也能跑，支持图片）：
+
+**llama.cpp**
+
+`brew install llama.cpp`
+
+```sh
+llama-server -hf unsloth/gemma-4-E2B-it-qat-GGUF:UD-Q4_K_XL -c 65536 -np 2 --host 127.0.0.1
+```
+
+**Ollama** — 下方启动 Infercat 时使用 `infercat serve --slots 2`。
+
+`brew install ollama`
+
+```sh
+(OLLAMA_CONTEXT_LENGTH=32768 OLLAMA_NUM_PARALLEL=2 ollama serve & until ollama list >/dev/null 2>&1; do sleep 1; done; ollama run hf.co/unsloth/gemma-4-E2B-it-qat-GGUF:UD-Q4_K_XL "" && wait)
+```
+
+**LM Studio** — 下方启动 Infercat 时使用 `infercat serve --slots 2`。
+
+[安装 LM Studio](https://lmstudio.ai/download)，并打开一次。
+
+```sh
+~/.lmstudio/bin/lms get https://huggingface.co/unsloth/gemma-4-E2B-it-qat-GGUF/resolve/main/gemma-4-E2B-it-qat-UD-Q4_K_XL.gguf --yes && ~/.lmstudio/bin/lms load gemma-4-e2b-it-qat --context-length 32768 --parallel 2 --yes && ~/.lmstudio/bin/lms server start --port 1234
+```
+
+**vLLM** — 未在 macOS 上验证；需要 CUDA 显卡
+
+[安装 vLLM](https://docs.vllm.ai/en/latest/getting_started/installation/gpu/)
+
+```sh
+vllm serve google/gemma-4-E2B-it-qat-w4a16-ct --host 127.0.0.1 --max-model-len 32768 --max-num-seqs 2
+```
+
+</details>
+
 - `curl -fsSL https://infercat.ai/install.sh | sh`（[备用链接](https://raw.githubusercontent.com/infercat/infercat/main/hack/install.sh)）。
 - `brew install infercat/tap/infercat`（macOS 与 Linux）。
 - 其他平台请前往 [Releases](https://github.com/infercat/infercat/releases)；使用 `shasum -a 256 --ignore-missing -c infercat_<version>_checksums.txt` 校验。

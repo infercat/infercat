@@ -39,6 +39,46 @@ and see counts, never their conversations.
 You need an inference server running (llama.cpp, vLLM, Ollama or LM Studio; any OpenAI-compatible
 `/v1/chat/completions` works). Your friends need a browser.
 
+<a id="no-engine-yet"></a>
+<details>
+<summary><b>No engine yet? One command each</b></summary>
+
+Pick one. This command downloads and starts a small model (Gemma 4 E2B, about 4 GB, runs on an 8 GB laptop, supports images):
+
+**llama.cpp**
+
+`brew install llama.cpp`
+
+```sh
+llama-server -hf unsloth/gemma-4-E2B-it-qat-GGUF:UD-Q4_K_XL -c 65536 -np 2 --host 127.0.0.1
+```
+
+**Ollama** — use `infercat serve --slots 2` below.
+
+`brew install ollama`
+
+```sh
+(OLLAMA_CONTEXT_LENGTH=32768 OLLAMA_NUM_PARALLEL=2 ollama serve & until ollama list >/dev/null 2>&1; do sleep 1; done; ollama run hf.co/unsloth/gemma-4-E2B-it-qat-GGUF:UD-Q4_K_XL "" && wait)
+```
+
+**LM Studio** — use `infercat serve --slots 2` below.
+
+[Install LM Studio](https://lmstudio.ai/download) and open it once.
+
+```sh
+~/.lmstudio/bin/lms get https://huggingface.co/unsloth/gemma-4-E2B-it-qat-GGUF/resolve/main/gemma-4-E2B-it-qat-UD-Q4_K_XL.gguf --yes && ~/.lmstudio/bin/lms load gemma-4-e2b-it-qat --context-length 32768 --parallel 2 --yes && ~/.lmstudio/bin/lms server start --port 1234
+```
+
+**vLLM** — not verified on macOS; needs a CUDA GPU
+
+[Install vLLM](https://docs.vllm.ai/en/latest/getting_started/installation/gpu/)
+
+```sh
+vllm serve google/gemma-4-E2B-it-qat-w4a16-ct --host 127.0.0.1 --max-model-len 32768 --max-num-seqs 2
+```
+
+</details>
+
 - `curl -fsSL https://infercat.ai/install.sh | sh` ([raw fallback](https://raw.githubusercontent.com/infercat/infercat/main/hack/install.sh)).
 - `brew install infercat/tap/infercat` (macOS and Linux).
 - [Releases](https://github.com/infercat/infercat/releases) for everything else; verify with `shasum -a 256 --ignore-missing -c infercat_<version>_checksums.txt`.
