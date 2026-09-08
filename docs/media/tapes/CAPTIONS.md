@@ -1,6 +1,6 @@
 # Infercat demo — caption system
 
-Spec for `docs/media/demo.mp4` (1280×800, 25 fps, 33.52 s, three scenes, no narration, no music). Companion sheet: `captions.html` (same directory; open at 1400 px; `?alone` exports the overlays). Brand: Swiss ink (`docs/brand/swiss-ink.md`); mark: `docs/brand/mark.svg`.
+Spec for `docs/media/demo.mp4` (1280×800, 25 fps, 31.68 s, three scenes, no narration, no music). Companion sheet: `captions.html` (same directory; open at 1400 px; `?alone` exports the overlays). Brand: Swiss ink (`docs/brand/swiss-ink.md`); mark: `docs/brand/mark.svg`.
 
 ## Point of view
 
@@ -67,19 +67,19 @@ No right-hand footer on the end card — the URL is the card. The GIF loops from
 
 ## Timing
 
-Measured from the retained 048 recording, with cuts only: browser answer complete at about 6.48 s clip-local, cut at 8.48; terminal answer at about 7.68, cut at 10.20. The raw clips are 12.32 / 13.88 / 13.72 s; the retained clips are 12.32 / 8.48 / 10.20 s. The six label boundaries follow this take; the Send mark at 4.464 s appears on the 4.48 s frame. Final duration is 33.52 s after 25 fps quantization of the 2.50 s end card.
+Measured from the retained 048 recording, with cuts only: browser answer complete at about 6.48 s clip-local, cut at 8.48; terminal answer at about 7.68, cut at 10.20. The raw clips are 12.32 / 13.88 / 13.72 s; the retained clips are 10.48 / 8.48 / 10.20 s. In this take the QR and complete link are visible by 7.48 s; the host cut at 10.48 leaves about 3 s to read them. The six label boundaries follow this take; the Send mark at 4.464 s appears on the 4.48 s frame. Final duration is 31.68 s after 25 fps quantization of the 2.50 s end card.
 
 | overlay | scene / clip | clip-local s | recording s | final s | dur s | copy key | what the footage is doing |
 |---|---|---|---|---|---|---|---|
 | 01 | 1 · host.mp4 | 0.00 – 5.96 | 0.00 – 5.96 | 0.00 – 5.96 | 5.96 | `step-01` | serve output, then clear |
-| 02 | 1 · host.mp4 | 5.96 – 12.32 | 5.96 – 12.32 | 5.96 – 12.32 | 6.36 | `step-02` | keys add, full QR and link |
-| 03 | 2 · browser.webm | 0.00 – 4.48 | 12.32 – 16.80 | 12.32 – 16.80 | 4.48 | `step-03` | automatic connection, real relayed pill, question |
-| 04 | 2 · browser.webm | 4.48 – 8.48 | 16.80 – 20.80 | 16.80 – 20.80 | 4.00 | `step-04` | streamed answer and about 2 s reading hold |
-| 05 | 3 · friend.mp4 | 0.00 – 3.88 | 26.20 – 30.08 | 20.80 – 24.68 | 3.88 | `step-05` | connect and its real direct path |
-| 06 | 3 · friend.mp4 | 3.88 – 10.20 | 30.08 – 36.40 | 24.68 – 31.00 | 6.32 | `step-06` | curl, readable answer and about 2.5 s hold |
-| end | card | — | — | 31.00 – 33.52 | 2.52 | tagline / licence | host sentence and URL |
+| 02 | 1 · host.mp4 | 5.96 – 10.48 | 5.96 – 10.48 | 5.96 – 10.48 | 4.52 | `step-02` | keys add, full QR and link held about 3 s |
+| 03 | 2 · browser.webm | 0.00 – 4.48 | 12.32 – 16.80 | 10.48 – 14.96 | 4.48 | `step-03` | automatic connection, real relayed pill, question |
+| 04 | 2 · browser.webm | 4.48 – 8.48 | 16.80 – 20.80 | 14.96 – 18.96 | 4.00 | `step-04` | streamed answer and about 2 s reading hold |
+| 05 | 3 · friend.mp4 | 0.00 – 3.88 | 26.20 – 30.08 | 18.96 – 22.84 | 3.88 | `step-05` | connect and its real direct path |
+| 06 | 3 · friend.mp4 | 3.88 – 10.20 | 30.08 – 36.40 | 22.84 – 29.16 | 6.32 | `step-06` | curl, readable answer and about 2.5 s hold |
+| end | card | — | — | 29.16 – 31.68 | 2.52 | tagline / licence | host sentence and URL |
 
-Future recordings keep these reading holds at the source: the browser's demo-only post-answer wait is 2 s; friend.tape waits 2.5 s after the answer. Inference time and therefore clip boundaries may vary; no absolute cutoff is imposed on a new answer.
+Future recordings keep these reading holds at the source: host.tape waits 3 s after the QR/link; the browser's demo-only post-answer wait is 2 s; friend.tape waits 2.5 s after the answer. Inference time and therefore clip boundaries may vary; no absolute cutoff is imposed on a new answer.
 
 ## Motion
 
@@ -97,7 +97,7 @@ Everything is a cut: every label change, scene 3 → end card. No fades, no slid
    -map [out] -an -c:v libx264 -crf 24 -preset slow -color_range tv -colorspace bt470bg scene-0.mp4
    ```
    Scene 2 uses step-03/04 with the boundary at 4.48 (clip-local); scene 3 uses step-05/06 at 3.88.
-3. **The end card is a looped still.** Encode `end.png` for 2.50 s with the scene encoder flags. Concat scene-0, scene-1, scene-2, end (33.52 s on this retained take). Record once; composite both languages from those same clips and boundaries. Duration and byte gates run on both variants.
+3. **The end card is a looped still.** Encode `end.png` for 2.50 s with the scene encoder flags. Concat scene-0, scene-1, scene-2, end (31.68 s on this retained take). Record once; composite both languages from those same clips and boundaries. Duration and byte gates run on both variants.
 4. **Derive the three in-clip boundaries per recording; do not hard-code them.** Real inference moves them run to run. Two of them sit at the end of a tape's only `Sleep 2s`: the first run of ≥ 1.9 s of unchanged frames after output begins is the clear (host) and the curl keystroke (friend) — read it from `ffmpeg -vf "select='gt(scene,0.0005)',showinfo"` timestamps, or compare consecutive frames. The third is the moment `launch-check.mjs` presses Send: have it write the elapsed recording time to `browser.marks.json`. Zero-detection alternative for the host: split `host.tape` at the Ctrl+L into two tapes — the clear becomes a cut to a fresh blank shell, visually identical — and 01/02 become per-clip static overlays exactly like today's captions. Do not split `friend.tape`: the answer must keep the path line above it.
 5. **Poster and GIF.** Poster = `browser-first-token.png` + `step-04.png` (was caption-1). The GIF command is unchanged; the end card holds 2.5 s and loops into step 01.
 6. **Nothing here needs more than this.** No animation, no fades, no text rendered by ffmpeg (no `drawtext`, no fonts on the render host beyond what vhs already needs), no per-frame compositing. Seven static PNGs per language, `overlay` with `enable`, `-loop 1` for the cards, concat.

@@ -21,4 +21,4 @@ Ctrl+L
 Type `infercat --data-dir host keys add alice`
 Enter
 Wait+Screen /Send alice this link/
-Sleep 5s
+Sleep 3s
