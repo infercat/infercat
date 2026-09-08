@@ -1,7 +1,7 @@
 # The real launch demo
 
 Run `make demo` from the repository root on the recording laptop. Prerequisites:
-`brew install vhs`, `brew install --cask font-ibm-plex-mono`, the pinned web dependencies
+`brew install vhs jq`, `brew install --cask font-ibm-plex-mono`, the pinned web dependencies
 (`cd web && pnpm install --frozen-lockfile`), Playwright's Chromium, and the model
 engine answering at `http://127.0.0.1:18080`. Network access to infercat.ai and its
 relay is required. Nothing is published by this command.
@@ -10,9 +10,9 @@ relay is required. Nothing is published by this command.
 QR. `launch-check.mjs --demo-dir` opens that link on the real infercat.ai at 390×720,
 records the automatic connection and a default-settings streamed answer, and holds
 it for reading. `friend.tape` runs the native bridge on a free loopback port and
-streams a real curl request; `question.json` asks "Say hello in one sentence." The
-terminal capture accepts reasoning or answer tokens and ends with Ctrl-C after four
-seconds of streaming. The browser and native path labels are whatever each actually
+prints a real non-streaming curl reply through `jq`; `question.json` asks "Say hello
+in one sentence." The answer stays on screen for six seconds with the connection
+path above it. The renderer checks that the curl/jq pipeline succeeded. The browser and native path labels are whatever each actually
 observes. No transport, response or screen text is substituted.
 
 `render.mjs` assembles the three captures with the three frozen Archivo captions.

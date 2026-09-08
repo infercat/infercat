@@ -1,5 +1,5 @@
 // Run from make demo. All transient keys, transcripts and uncaptioned captures stay outside git.
-// Prerequisites: brew install vhs; brew install --cask font-ibm-plex-mono; pnpm install in web.
+// Prerequisites: brew install vhs jq; brew install --cask font-ibm-plex-mono; pnpm install in web.
 import { spawn, spawnSync } from 'node:child_process';
 import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, statSync, writeFileSync } from 'node:fs';
 import { createServer } from 'node:net';
@@ -73,7 +73,7 @@ function cleanup() {
 let cleaned = false;
 for (const signal of ['SIGINT', 'SIGTERM']) process.once(signal, () => { cleanup(); process.exit(1); });
 try {
-  for (const cmd of ['vhs', 'ffmpeg', 'ffprobe', 'go']) {
+  for (const cmd of ['vhs', 'ffmpeg', 'ffprobe', 'go', 'jq']) {
     const r = spawnSync('which', [cmd], { env, stdio: 'ignore' });
     if (r.status !== 0) throw new Error(`missing ${cmd}; install the recording prerequisites`);
   }
@@ -81,7 +81,7 @@ try {
   await run('go', ['build', '-o', join(dir, 'infercat'), './cmd/infercat'], { cwd: root });
   for (const file of ['style.tape', 'host.tape']) copyFileSync(join(tapes, file), join(dir, file));
   // A request file keeps the terminal's curl command legible; it contains only the real API body.
-  writeFileSync(join(dir, 'question.json'), JSON.stringify({ messages: [{ role: 'user', content: 'Say hello in one sentence.' }], stream: true }) + '\n');
+  writeFileSync(join(dir, 'question.json'), JSON.stringify({ messages: [{ role: 'user', content: 'Say hello in one sentence.' }], stream: false }) + '\n');
   await run('vhs', ['host.tape']);
   const transcript = readFileSync(join(dir, 'host.ascii'), 'utf8');
   const invite = transcript.replace(/\r?\n/g, '').match(/ic1\.[A-Za-z0-9_-]+\.[A-Za-z0-9_-]{43}/)?.[0];
@@ -94,8 +94,7 @@ try {
   writeFileSync(join(dir, 'friend.tape'), friend);
   await run('vhs', ['friend.tape']);
   const native = readFileSync(join(dir, 'friend.ascii'), 'utf8');
-  const response = readFileSync(join(dir, 'response.txt'), 'utf8');
-  if (!/data:.*"(?:reasoning_content|content)":"[^"\r\n]/.test(response)) throw new Error('native tape did not receive streamed tokens');
+  if (readFileSync(join(dir, 'response.status'), 'utf8').trim() !== '0') throw new Error('native curl/jq did not produce an answer');
   console.log(`demo: native ${native.match(/path[^\r\n]+/)?.[0] || 'path unavailable'}`);
   cleanup();
   cleaned = true;

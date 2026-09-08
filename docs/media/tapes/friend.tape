@@ -17,9 +17,11 @@ Enter
 Show
 Wait+Screen@60s /path.*(direct|relayed)/
 Sleep 2s
-Type `curl -N 127.0.0.1:@LISTEN@/v1/chat/completions --json @question.json | tee response.txt`
+Type `curl -fsS 127.0.0.1:@LISTEN@/v1/chat/completions --json @question.json | jq -er '.choices[0].message.content'`
 Enter
-Wait+Screen@60s /data:/
-Sleep 4s
-Ctrl+C
-Sleep 2s
+Wait+Line@60s /^\$\s*$/
+Sleep 6s
+Hide
+Type@1ms `echo $? > response.status`
+Enter
+Sleep 200ms
