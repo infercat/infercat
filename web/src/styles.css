@@ -924,3 +924,16 @@ input[type='range']::-moz-range-thumb {
 .app.zh { font-family:var(--cjk); font-synthesis:none; }
 .app.zh :is(button,input,textarea,select,.sheet h3) { font-family:var(--cjk); }
 .app.zh :is(.meter-label,.meta,.small-print,.build,.thinking-hint,.path,.field-label) { font-family:var(--mono-cjk); }
+
+/* Section 01's demo follows the figure on phones and stays under the prose on desktop. */
+.landing-demo { margin:24px 0 0; min-width:0; }
+.demo-frame { position:relative; border:1px solid var(--rule); }
+.landing-demo video { display:block; width:100%; aspect-ratio:8/5; border-radius:0; }
+.demo-still { position:absolute; inset:0; width:100%; height:100%; pointer-events:none; }
+.demo-play { position:absolute; inset:50% auto auto 50%; transform:translate(-50%,-50%); display:grid; place-items:center; width:52px; height:52px; padding:0; border:1px solid var(--rule); border-radius:0; background:var(--paper); color:var(--accent-text); }
+.landing-demo figcaption { margin-top:8px; font-size:13.5px; }
+@media (min-width:900px) {
+  #p-s1 .st { grid-column:1; grid-row:1; }
+  #p-s1 .art { grid-column:2; grid-row:1 / span 2; }
+  .landing-demo { grid-column:1; grid-row:2; }
+}

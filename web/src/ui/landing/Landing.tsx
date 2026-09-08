@@ -2,6 +2,33 @@ import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { useLanguage } from './Language';
 import { Signup } from './Signup';
 
+function Demo() {
+  const { t, lang } = useLanguage();
+  const video = useRef<HTMLVideoElement>(null);
+  const [started, setStarted] = useState(false);
+  return (
+    <figure className="landing-demo">
+      <div className="demo-frame">
+        <video
+          ref={video} tabIndex={started ? 0 : -1}
+          controls playsInline preload="none"
+          src={lang === 'zh' ? '/demo.zh.mp4' : '/demo.mp4'}
+          poster={lang === 'zh' ? '/demo-poster.zh.png' : '/demo-poster.png'}
+          onPlay={() => { setStarted(true); video.current?.focus(); }}
+        />
+        {!started && <img className="demo-still" alt=""
+          src={lang === 'zh' ? '/demo-poster.zh.png' : '/demo-poster.png'} />}
+        {!started && <button type="button" className="demo-play"
+          data-copy-aria="demo_label" aria-label={t.demo_label}
+          onClick={() => { void video.current?.play().catch(() => { video.current?.focus(); }); }}>
+          <svg viewBox="0 0 24 24" width="24" height="24" aria-hidden="true"><path d="M7 3 21 12 7 21Z" fill="currentColor" /></svg>
+        </button>}
+      </div>
+      <figcaption data-copy="demo_caption">{t.demo_caption}</figcaption>
+    </figure>
+  );
+}
+
 export function Landing() {
   const { t, lang } = useLanguage();
   const [path, setPath] = useState<'relayed' | 'direct'>('relayed');
@@ -234,6 +261,7 @@ export function Landing() {
                 </div>
               </div>
             </div>
+            <Demo key={lang} />
           </div>
         </div>
       </section>

@@ -48,7 +48,8 @@ export async function landingEvidence(browser, base, shots, inspect = async () =
     const label = `043-${width}-${scheme}-${lang}`;
     const context = await browser.newContext({ viewport: { width, height: 900 }, colorScheme: scheme, locale: lang === 'zh' ? 'zh-CN' : 'en-US' });
     const page = await context.newPage();
-    const errors = [], foreign = [];
+    const errors = [], foreign = [], videoRequests = [];
+    page.on('request', (r) => { if (/\.mp4(?:$|\?)/.test(r.url())) videoRequests.push(r.url()); });
     page.on('pageerror', (e) => errors.push(e.message));
     page.on('request', (r) => { if (new URL(r.url()).origin !== new URL(base).origin) foreign.push(r.url()); });
     await page.goto(base);
@@ -106,11 +107,37 @@ export async function landingEvidence(browser, base, shots, inspect = async () =
     assert(boxes.length === 0, `overflowing labels: ${boxes.join(', ')}`);
     await page.locator('.landing details').evaluateAll((els) => els.forEach((e) => { e.open = false; }));
     await page.screenshot({ path: join(shots, `${label}.png`), fullPage: true });
+    const video = page.locator('.landing-demo video');
+    const media = await video.evaluate((v) => ({
+      autoplay: v.autoplay || v.hasAttribute('autoplay'), preload: v.preload,
+      source: v.src, poster: v.poster, controls: v.controls, inline: v.playsInline, paused: v.paused,
+    }));
+    const suffix = lang === 'zh' ? '.zh' : '';
+    assert(!videoRequests.length, 'no MP4 request before play');
+    assert(!media.autoplay && media.preload === 'none' && media.paused, 'demo does not load or play automatically');
+    assert(media.source === new URL(`/demo${suffix}.mp4`, base).href, 'same-origin language video');
+    assert(media.poster === new URL(`/demo-poster${suffix}.png`, base).href, 'language poster');
+    assert(media.controls && media.inline, 'native inline controls');
+    assert(await page.locator('.demo-play').getAttribute('aria-label') === tables[lang].demo_label, 'play accessible name');
+    const placement = await page.locator('#p-s1 .s-grid').evaluate((grid) => {
+      const text = grid.querySelector('.st').getBoundingClientRect();
+      const art = grid.querySelector('.art').getBoundingClientRect();
+      const demo = grid.querySelector('.landing-demo').getBoundingClientRect();
+      return window.innerWidth < 900 ? demo.top >= art.bottom : demo.top >= text.bottom && Math.abs(demo.left - text.left) < 1;
+    });
+    assert(placement, 'demo follows the prose on desktop and figure on phone');
+    await page.waitForFunction(() => document.querySelector('.demo-still')?.naturalWidth > 0);
+    if (width !== 1024) await page.locator('#p-s1').screenshot({ path: join(shots, `049-${width}-${lang}.png`) });
+    await page.locator('.demo-play').click();
+    await page.waitForFunction(() => { const v = document.querySelector('.landing-demo video'); return !v.paused && v.currentTime > 0; });
+    assert(await page.locator('.demo-play').count() === 0, 'play control yields to native controls');
+    await video.evaluate((v) => v.pause());
     const keys = await checkCopy(page, lang, assert);
     for (const key of ['ml_label', 'ml_ph', 'ml_btn', 'ml_note']) assert(keys.includes(key), `form copy coverage ${key}`);
     const other = lang === 'en' ? 'zh' : 'en';
     await page.locator(`.language-links a[lang="${other === 'zh' ? 'zh-Hans' : 'en'}"]`).last().click();
     await checkCopy(page, other, assert);
+    assert(await video.getAttribute('src') === (other === 'zh' ? '/demo.zh.mp4' : '/demo.mp4'), 'video follows language toggle');
     await page.reload();
     assert(await page.locator('.landing').evaluate((e, other) => e.classList.contains(other), other), 'language choice not remembered');
     await page.locator('.node.n-r').click();
@@ -152,5 +179,6 @@ export async function landingEvidence(browser, base, shots, inspect = async () =
     checked++;
     console.log(`  ${label}: PASS — layout, labels, language, controls, signup, same-origin`);
   }
+  console.log(`049 video: ${checked} passed / 0 failed / 0 skipped of ${checked}`);
   console.log(`043 landing: ${checked} passed / 0 failed / 0 skipped of ${checked}`);
 }

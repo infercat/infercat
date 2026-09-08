@@ -1,5 +1,7 @@
 // Approved landing spec, with PM copy rulings. HTML is authored here, never user input.
 export const zh = {
+  demo_caption: '看演示',
+  demo_label: '播放演示',
   nav_host: '自建主机',
   nav_src: '源码',
   h_display: '和朋友的 GPU 聊天。',

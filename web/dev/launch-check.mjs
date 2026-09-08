@@ -484,6 +484,8 @@ async function main() {
   if (!demoDir) mkdirSync(shots, { recursive: true });
   let preview = null;
   if (!process.env.APP) {
+    // Preview the same first-party media that deploy-web copies alongside the built app.
+    for (const file of ['demo.mp4', 'demo.zh.mp4', 'demo-poster.png', 'demo-poster.zh.png']) copyFileSync(join(web, '../docs/media', file), join(web, 'dist', file));
     preview = spawn(process.execPath, ['node_modules/vite/bin/vite.js', 'preview', '--port', String(PORT), '--strictPort'], {
       cwd: web,
       stdio: ['ignore', 'ignore', 'inherit'],

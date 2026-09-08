@@ -1,5 +1,7 @@
 // Approved landing spec, with PM copy rulings. HTML is authored here, never user input.
 export const en = {
+  demo_caption: 'Watch the demo',
+  demo_label: 'Play the demo',
   nav_host: 'Host your own',
   nav_src: 'Source',
   h_display: 'Chat with a friend’s GPU.',

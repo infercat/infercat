@@ -7,7 +7,7 @@
 // Any console error or page error in the browser fails the run, so the shots are evidence that the
 // app was clean when they were taken, not just that it rendered.
 import { spawn, spawnSync } from 'node:child_process';
-import { mkdirSync, readdirSync, statSync } from 'node:fs';
+import { copyFileSync, existsSync, mkdirSync, readdirSync, statSync, unlinkSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
@@ -16,6 +16,8 @@ import { landingEvidence } from '../src/ui/landing/verify.mjs';
 const here = dirname(fileURLToPath(import.meta.url));
 const web = join(here, '..');
 const shots = join(here, 'screenshots');
+const demoCopies = [];
+process.on('exit', () => { for (const file of demoCopies) unlinkSync(file); });
 
 const WEB_PORT = Number(process.env.WEB_PORT ?? 49173);
 const GATEWAY_PORT = Number(process.env.FAKE_GATEWAY_PORT ?? 49090);
@@ -164,6 +166,10 @@ async function chineseChat(browser) {
 
 async function main() {
   mkdirSync(shots, { recursive: true });
+  for (const file of ['demo.mp4', 'demo.zh.mp4', 'demo-poster.png', 'demo-poster.zh.png']) {
+    const target = join(web, 'public', file);
+    if (!existsSync(target)) { copyFileSync(join(web, '../docs/media', file), target); demoCopies.push(target); }
+  }
 
   start('gateway', process.execPath, ['--experimental-strip-types', 'dev/fake-gateway.ts'], {
     FAKE_GATEWAY_PORT: String(GATEWAY_PORT),
