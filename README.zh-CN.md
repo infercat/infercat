@@ -30,9 +30,20 @@
 
 你需要先启动一个推理服务（llama.cpp、vLLM、Ollama 或 LM Studio 均可；任何兼容 OpenAI `/v1/chat/completions` 的服务都能用）。朋友那边只要有个浏览器就行。
 
+**可选——还没有推理引擎？** [安装 Ollama](https://ollama.com/download)，然后：
+
+```sh
+ollama serve &      # Ollama 应用已在运行的话可跳过
+ollama run gemma4
+```
+
+会下载 Gemma 4（约 10 GB，需要 16 GB 内存，支持图片）并打开对话。保持运行或输入 `/bye`，引擎会继续运行。`infercat serve` 会自动找到它。
+
 <a id="no-engine-yet"></a>
 <details>
-<summary><b>还没有推理引擎？每个引擎一条命令</b></summary>
+<summary><b>进阶引擎配置</b></summary>
+
+同一个小模型，分别为 llama.cpp、Ollama、LM Studio 和 vLLM 调整上下文与并行处理位。
 
 任选一个。这条命令会下载并启动一个小模型（Gemma 4 E2B，约 4 GB，8 GB 内存的笔记本也能跑，支持图片）：
 

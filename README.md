@@ -30,9 +30,20 @@ Share the model on your machine with friends. You run one binary in front of the
 
 You need an inference server running (llama.cpp, vLLM, Ollama or LM Studio; any OpenAI-compatible `/v1/chat/completions` works). Your friends need a browser.
 
+**Optional — no engine yet?** [Install Ollama](https://ollama.com/download), then:
+
+```sh
+ollama serve &      # skip if the Ollama app is already running
+ollama run gemma4
+```
+
+That downloads Gemma 4 (about 10 GB; needs 16 GB of memory; reads images) and opens a chat. Leave it running or type `/bye`; the engine stays up. `infercat serve` finds it.
+
 <a id="no-engine-yet"></a>
 <details>
-<summary><b>No engine yet? One command each</b></summary>
+<summary><b>Advanced engine configuration</b></summary>
+
+The same small model, tuned for context and parallel slots on llama.cpp, Ollama, LM Studio and vLLM.
 
 Pick one. This command downloads and starts a small model (Gemma 4 E2B, about 4 GB, runs on an 8 GB laptop, supports images):
 
