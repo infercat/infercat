@@ -3,6 +3,29 @@
 Versions are tags (`v0.1.0`); the binary prints its own with `infercat version` and the web
 app shows the same one under Settings. Dates are the tag's.
 
+## v0.1.1 — 2026-09-08
+
+A small release the same day, for shared invites and the first-run path.
+
+**Fixed**
+
+- A friend refused by a shared invite's concurrency cap is told the truth: "This invite is busy — all
+  N seats are in use. Try again in a moment." (web app, both languages, and `connect`). The gateway's
+  `concurrency_limited` error now carries `limit` and `in_flight`. Invites with one seat keep the
+  old wording. (060)
+- `serve --log-requests` no longer misses the first request's line: the printer subscribes before
+  the gateway starts serving.
+
+**Docs and web**
+
+- Quickstart: an optional two-line Ollama start in the body; the tuned per-engine commands are under
+  "Advanced engine configuration"; the install commands sit in one code block. READMEs are modular,
+  with Chinese editions. (051, 054, 058, 059)
+- Landing: full-width header and footer rules frame the page; the demo video sits in its own row;
+  invite anatomy shows the tunnel address and the gateway key; social cards read at feed size;
+  light theme only. (043–057)
+- Relay map for `derp.infercat.ai` ships with the site.
+
 ## v0.1.0 — 2026-09-08
 
 The first release: what the demo proved, made into something a stranger can install.
