@@ -1,3 +1,4 @@
+import { tr } from './i18n/text';
 // The session state machine: one pure reducer that owns the answer to "are we connected, and is
 // that still true". Everything that could make the app lie about a host — a transport left open
 // after a failed /me, a path pill still showing the last good number, a revoked key swallowed by a
@@ -306,14 +307,14 @@ export function handshakeFailure(log: string[], host: string): FriendlyError {
   const map = /fetching DERPMap for region (\S+): Get "https?:\/\/([^/"]+)/.exec(last);
   if (map) {
     return {
-      title: 'Can’t reach the relay from this network',
-      detail: `The relay directory at ${map[2]} (region ${map[1]}) did not answer, so nothing left this device — the invite itself is fine. Check the connection, or try another network.`,
+      title: tr('app_can_t_reach_the_relay_from_this_network'),
+      detail: tr('app_relay_directory_unreachable', { directory: map[2]!, region: map[1]! }),
       ...said,
     };
   }
   return {
-    title: `${host.trim() || 'The host'} didn’t answer`,
-    detail: 'It’s probably asleep or offline. Ask them to check that the host is running, then try again.',
+    title: tr('app_host_didn_t_answer', { host: host.trim() || tr('app_the_host') }),
+    detail: tr('app_it_s_probably_asleep_or_offline_ask_them_to'),
     ...said,
   };
 }
@@ -327,9 +328,9 @@ export function handshakeFailure(log: string[], host: string): FriendlyError {
  */
 export function pathLine(l: Live, now: number): string {
   if (l.pathOk && l.meOk) return describePath(l.path, l.me.host.relay.region);
-  const who = l.me.host.name.trim() || 'The host';
-  if (!l.path) return `${who} — not answering`;
-  return `${who} — not answering · last ${Math.round(l.path.rttMs)} ms ${ago(now - l.pathAt)}`;
+  const who = l.me.host.name.trim() || tr('app_the_host');
+  if (!l.path) return tr('app_path_not_answering', { host: who });
+  return tr('app_path_not_answering_last', { host: who, rtt: Math.round(l.path.rttMs), ago: ago(now - l.pathAt) });
 }
 
 /**
@@ -361,19 +362,19 @@ export function meters(l: Live): [MeterView, MeterView] {
   return [
     {
       label: unknown
-        ? `— / ${rpm} per minute`
+        ? tr('app_meter_minute_unknown', { limit: rpm })
         : rpm > 0
-          ? `${left} message${left === 1 ? '' : 's'} left this minute`
-          : `${used} messages this minute`,
+          ? tr(left === 1 ? 'app_meter_message_left' : 'app_meter_messages_left', { count: left })
+          : tr('app_meter_messages_used', { count: used }),
       value: unknown || rpm === 0 ? 0 : used / rpm,
       unknown,
     },
     {
       label: unknown
-        ? `— / ${compact(daily)} tokens today`
+        ? tr('app_meter_daily_unknown', { limit: compact(daily) })
         : daily > 0
-          ? `${compact(today)}/${compact(daily)} tokens today`
-          : `${compact(today)} tokens today`,
+          ? tr('app_meter_daily', { used: compact(today), limit: compact(daily) })
+          : tr('app_meter_daily_uncapped', { used: compact(today) }),
       value: unknown || daily === 0 ? 0 : today / daily,
       unknown,
     },
@@ -391,7 +392,7 @@ export function contextMeter(used: number | null, modelContext: number): MeterVi
   if (modelContext <= 0) return null;
   const unknown = used === null;
   return {
-    label: unknown ? `— / ${compact(modelContext)} context` : `${compact(used)}/${compact(modelContext)} context`,
+    label: unknown ? tr('app_meter_context_unknown', { limit: compact(modelContext) }) : tr('app_meter_context', { used: compact(used), limit: compact(modelContext) }),
     value: unknown ? 0 : Math.min(1, used / modelContext),
     unknown,
   };
@@ -409,20 +410,20 @@ export function compact(n: number): string {
  */
 export function degradedLine(reason: Degradation, l: Live): string | null {
   if (reason === 'path') return null;
-  const who = l.me.host.name.trim() || 'Your host';
+  const who = l.me.host.name.trim() || tr('app_your_host_variant');
   if (reason === 'key') {
     switch (l.key) {
       case 'paused':
-        return `${who} paused your invite. Your message is still here — try again once they resume.`;
+        return tr('app_invite_paused_banner', { host: who });
       case 'revoked':
-        return `This invite was revoked — ask ${who} for a new code.`;
+        return tr('app_invite_revoked_banner', { host: who });
       case 'invalid':
-        return `${who} no longer recognises this invite — ask them for a new code.`;
+        return tr('app_invite_invalid_banner', { host: who });
       default:
         return null;
     }
   }
-  return `${l.me.host.upstream.kind} is not answering on the host — messages will fail until it is back`;
+  return tr('app_engine_offline_banner', { engine: l.me.host.upstream.kind });
 }
 
 /** An invite that no waiting can bring back: the only move is a new code (020 promise 5). */
@@ -432,9 +433,9 @@ export function keyDead(l: Live): boolean {
 
 export function ago(ms: number): string {
   const s = Math.max(0, Math.round(ms / 1000));
-  if (s < 60) return `${s} s ago`;
-  if (s < 3600) return `${Math.round(s / 60)} min ago`;
-  return `${Math.round(s / 3600)} h ago`;
+  if (s < 60) return tr('app_ago_seconds', { count: s });
+  if (s < 3600) return tr('app_ago_minutes', { count: Math.round(s / 60) });
+  return tr('app_ago_hours', { count: Math.round(s / 3600) });
 }
 
 /** A wait, rendered as a wait: seconds up to ten minutes, then something a human can plan around. */

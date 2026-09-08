@@ -836,7 +836,7 @@ input[type='range']::-moz-range-thumb {
 .landing .ok-t .ck{ color:var(--success); }
 .landing .ok-b{ font-size:12.5px; line-height:1.5; color:var(--muted); margin:0; }
 
-@font-face { font-family: 'Noto Sans SC'; font-style: normal; font-weight: 100 900; font-display: swap; src: url('/fonts/noto-sans-sc-landing.woff2') format('woff2'); }
+@font-face { font-family: 'Noto Sans SC'; font-style: normal; font-weight: 100 900; font-display: swap; src: url('/fonts/noto-sans-sc.woff2') format('woff2'); }
 
 .landing-hero { min-height: 100svh; display:flex; flex-direction:column; }
 .landing-fold { padding:13px var(--gut,20px); display:flex; align-items:baseline; justify-content:space-between; gap:24px; max-width:1280px; width:100%; margin-inline:auto; font:11.5px var(--mono); }
@@ -858,7 +858,7 @@ input[type='range']::-moz-range-thumb {
 .landing .pop > div { font-size:13px; line-height:1.5; color:var(--muted); }
 
 /* Chinese gets its own reading face even on the measured surfaces, not the OS fallback. */
-.landing-page { --cjk:'Noto Sans SC',var(--font); --mono-cjk:'IBM Plex Mono','Noto Sans SC',monospace; --landing-sans:'Archivo','Noto Sans SC',sans-serif; }
+.landing-page, .app { --cjk:'Noto Sans SC',var(--font); --mono-cjk:'IBM Plex Mono','Noto Sans SC',monospace; --landing-sans:'Archivo','Noto Sans SC',sans-serif; }
 .landing-page.zh { font-family:var(--cjk); font-synthesis:none; }
 .landing-page.zh :is(.display,.h2,.node b,.node span,.brk-l,.pop h4,.tip,.rm .bx,.rm .u,.def-l,.language-links,.paste) { font-family:var(--cjk); letter-spacing:0; }
 .landing-page.zh :is(.field-label,.code-hint,.foot-line,.build,.landing-fold,.facts,.seg-ctl button,.verbs,.pop .x,.def-v,.seg,.seg .n,.eyebrow,.tag,.fact .k) { font-family:var(--mono-cjk); }
@@ -919,3 +919,8 @@ input[type='range']::-moz-range-thumb {
   .landing .vertical { display:block; }
   .landing-fold.page-only { display:none; }
 }
+
+/* App prose and measured labels use the same self-hosted CJK face as the landing. */
+.app.zh { font-family:var(--cjk); font-synthesis:none; }
+.app.zh :is(button,input,textarea,select,.sheet h3) { font-family:var(--cjk); }
+.app.zh :is(.meter-label,.meta,.small-print,.build,.thinking-hint,.path,.field-label) { font-family:var(--mono-cjk); }

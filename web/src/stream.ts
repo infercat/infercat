@@ -1,3 +1,4 @@
+import { tr } from './i18n/text';
 // The message lifecycle: one pure reducer from the stream events in api.ts to what the bubble
 // says. The rule it exists to enforce is that a reply is finished only when the host says it is —
 // running out of tokens is not an ending, and must never render as one (docs/PRINCIPLES.md, "Surfaces
@@ -49,12 +50,12 @@ export function reduceReply(r: Reply, e: StreamEvent, now = Date.now()): Reply {
       return finish(
         r,
         'interrupted',
-        'The connection dropped before the host finished this reply — what is above is only part of it.',
+        tr('app_the_connection_dropped_before_the_host_finished_this_reply'),
       );
     // "You stopped this reply" is reserved for the reader's own Stop (020 promise 2): an abort the
     // app asked for carries its reason and is a cut, not a choice.
     case 'aborted':
-      return e.why ? finish(r, 'interrupted', e.why) : finish(r, 'stopped', 'You stopped this reply.');
+      return e.why ? finish(r, 'interrupted', e.why) : finish(r, 'stopped', tr('app_you_stopped_this_reply'));
     case 'error':
       // Said once (014 promise 10). A wait the reader has to sit out is explained by the banner,
       // with its countdown, so the message only says it did not go; everything else is explained
@@ -68,8 +69,8 @@ export function reduceReply(r: Reply, e: StreamEvent, now = Date.now()): Reply {
         saidInBanner(e.code)
           ? SHORT[e.code]
           : e.code === 'host_stalled' && r.content.trim() === ''
-            ? `${e.error.title} — nothing of the answer had arrived yet${(r.reasoning ?? '').trim() !== '' ? ', only its thinking' : ''}. Try again — if it keeps happening, their machine may have gone to sleep.`
-            : `${e.error.title}. ${e.error.detail}`,
+            ? tr((r.reasoning ?? '').trim() !== '' ? 'app_stalled_after_thinking' : 'app_stalled_before_answer', { title: e.error.title })
+            : tr('app_error_title_detail', { title: e.error.title, detail: e.error.detail }),
         e.error.hostSaid,
       );
   }
@@ -82,13 +83,13 @@ export function reduceReply(r: Reply, e: StreamEvent, now = Date.now()): Reply {
  * it, so the message says only that it did not go (020 promise 5).
  */
 const SHORT: Record<string, string> = {
-  rate_limited: 'Too fast — not sent.',
-  concurrency_limited: 'Not sent — one reply at a time.',
-  queue_timeout: 'Not sent — every slot was taken.',
-  budget_exhausted: 'Not sent — today’s tokens are used up.',
-  key_paused: 'Not sent — your invite is paused.',
-  key_revoked: 'Not sent — this invite was revoked.',
-  invalid_key: 'Not sent — this invite no longer works.',
+  get rate_limited() { return tr('app_too_fast_not_sent'); },
+  get concurrency_limited() { return tr('app_not_sent_one_reply_at_a_time'); },
+  get queue_timeout() { return tr('app_not_sent_every_slot_was_taken'); },
+  get budget_exhausted() { return tr('app_not_sent_today_s_tokens_are_used_up'); },
+  get key_paused() { return tr('app_not_sent_your_invite_is_paused'); },
+  get key_revoked() { return tr('app_not_sent_this_invite_was_revoked'); },
+  get invalid_key() { return tr('app_not_sent_this_invite_no_longer_works'); },
 };
 
 export function saidInBanner(code: string): boolean {
@@ -109,15 +110,15 @@ function finish(r: Reply, status: MessageStatus, note?: string, details?: string
       ...base,
       status: 'no_answer',
       note: thought
-        ? 'The model used its whole reply thinking and never got to an answer. Regenerate, or ask for a shorter answer.'
-        : 'The host finished without sending an answer.',
+        ? tr('app_the_model_used_its_whole_reply_thinking_and_never')
+        : tr('app_the_host_finished_without_sending_an_answer'),
     };
   }
   if (empty && status === 'stopped') {
     return {
       ...base,
       status,
-      note: thought ? 'You stopped this while it was still thinking.' : 'You stopped this before it began.',
+      note: thought ? tr('app_you_stopped_this_while_it_was_still_thinking') : tr('app_you_stopped_this_before_it_began'),
     };
   }
   return { ...base, status, ...(note ? { note } : {}) };
@@ -265,14 +266,14 @@ export function speed(m: Pick<Message, 'timing' | 'tokens'>): Speed | null {
 
 /** The footer's words for a reply's speed, and the fuller sentence behind them. */
 export function speedLine(s: Speed): { text: string; title: string } {
-  const wait = s.queuedMs === undefined ? '' : ` (≥${msText(s.queuedMs)} of it in line for a slot)`;
+  const wait = s.queuedMs === undefined ? '' : tr('app_queued_time', { duration: msText(s.queuedMs) });
   const rate = s.tokPerS === undefined ? '' : ` · ${rateText(s.tokPerS)}`;
   return {
     text: `ttft ${msText(s.ttftMs)}${wait}${rate}`,
     title:
-      `Measured on this device. Time to first token: from Send to the first token, thinking or answer, with the relay hop and this app inside it.` +
-      (s.queuedMs === undefined ? '' : ` The host said this request was in line for a slot for at least ${msText(s.queuedMs)} of that; it says so every 5 s and nothing when the slot comes, so the rest is not all the model's.`) +
-      (s.tokPerS === undefined ? '' : ` ${rateText(s.tokPerS)} is ${msText(1000 / s.tokPerS)} per token: completion tokens over first-to-last token, thinking included.`),
+      tr('app_measured_on_this_device_time_to_first_token_from') +
+      (s.queuedMs === undefined ? '' : tr('app_queue_timing_explanation', { duration: msText(s.queuedMs) })) +
+      (s.tokPerS === undefined ? '' : tr('app_token_speed_explanation', { rate: rateText(s.tokPerS), duration: msText(1000 / s.tokPerS) })),
   };
 }
 

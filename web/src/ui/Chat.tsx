@@ -1,3 +1,5 @@
+import { Text } from '../i18n/RichText';
+import { tr, privacy, appLanguage } from '../i18n/text';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import {
   chatEvents,
@@ -12,7 +14,7 @@ import {
   type FriendlyError,
   type Me,
 } from '../api';
-import { privacyLine, SOURCE_URL, VERSION } from '../product';
+import { SOURCE_URL, VERSION } from '../product';
 
 /** The composer grows with its text up to this many pixels, then scrolls (040). */
 const COMPOSER_MAX = 200;
@@ -89,7 +91,7 @@ const UNDO_MS = 6000;
 const CHECKPOINT_MS = 2000;
 /** The one poll behind everything the header claims (020 promise 4): the path and /me, together. */
 const POLL_MS = 30_000;
-const TAKEN_OVER = 'Another tab took over this chat — what is above is only part of it.';
+const TAKEN_OVER = () => tr('app_another_tab_took_over_this_chat_what_is_above');
 
 export default function Chat({ state, live, dispatch, onRedial, reconnecting = false }: Props) {
   // Conversations and settings belong to this host and this invite, never to "the browser".
@@ -176,7 +178,7 @@ export default function Chat({ state, live, dispatch, onRedial, reconnecting = f
       leaderRef.current = isLeader;
       setLeader(isLeader);
       if (isLeader) setConvs(orNew(reopenChats(loadChats(scope))));
-      else abort.current?.abort(TAKEN_OVER);
+      else abort.current?.abort(TAKEN_OVER());
     });
     takeOver.current = store.takeOver;
     return store.release;
@@ -285,8 +287,8 @@ export default function Chat({ state, live, dispatch, onRedial, reconnecting = f
     async (convId: string, history: Message[], previous?: string) => {
       if (model === '') {
         setBanner({
-          title: 'No model available',
-          detail: 'This host has not shared a model with your invite.',
+          title: tr('app_no_model_available'),
+          detail: tr('app_this_host_has_not_shared_a_model_with_your'),
         });
         return;
       }
@@ -298,7 +300,7 @@ export default function Chat({ state, live, dispatch, onRedial, reconnecting = f
       const note =
         leftOut.length === 0
           ? undefined
-          : `${leftOut.length === 1 ? 'One earlier message was' : `${leftOut.length} earlier messages were`} too long for the ${compact(ctx)} memory on ${host || 'the host'} and ${leftOut.length === 1 ? 'was' : 'were'} left out of this question.`;
+          : (leftOut.length === 1 ? tr('app_earlier_message_omitted', { context: compact(ctx), host: host || tr('app_the_host_lowercase') }) : tr('app_earlier_messages_omitted', { count: leftOut.length, context: compact(ctx), host: host || tr('app_the_host_lowercase') }));
       patch(convId, (c) => ({
         ...c,
         updatedAt: Date.now(),
@@ -445,20 +447,20 @@ export default function Chat({ state, live, dispatch, onRedial, reconnecting = f
     readOnly || locked
       ? null
       : !live.meOk
-        ? { label: 'Reconnect', run: () => onRedial(live) }
+        ? { label: tr('app_reconnect'), run: () => onRedial(live) }
         : lost.size > 0
-          ? { label: cooling ? `Try again in ${waitText(waiting)}` : 'Try again', run: regenerate, disabled: cooling }
-          : { label: 'Regenerate', run: regenerate };
+          ? { label: cooling ? tr('app_try_again_in', { duration: waitText(waiting) }) : tr('app_try_again'), run: regenerate, disabled: cooling }
+          : { label: tr('app_regenerate'), run: regenerate };
   const degraded = state.name === 'degraded' ? degradedLine(state.reason, live) : null;
   const unknown = metersUnknown(live);
   const limits = { maxOutputTokens: me.limits.max_output_tokens, modelContext: me.host.upstream.model_context };
 
   return (
-    <div className={`app ${drawer ? 'drawer-open' : ''}`}>
+    <div lang={appLanguage() === 'zh' ? 'zh-Hans' : 'en'} className={`app ${appLanguage()} ${drawer ? 'drawer-open' : ''}`}>
       <aside className="sidebar">
         <div className="sidebar-head">
           <button className="secondary wide" onClick={startNew} disabled={readOnly}>
-            New chat
+            {tr('app_new_chat')}
           </button>
         </div>
         <nav className="conv-list">
@@ -474,7 +476,7 @@ export default function Chat({ state, live, dispatch, onRedial, reconnecting = f
                 {c.title}
               </button>
               {!readOnly && (
-                <button className="conv-del" aria-label={`Delete ${c.title}`} onClick={() => remove(c)}>
+                <button className="conv-del" aria-label={tr('app_delete_chat', { title: c.title })} onClick={() => remove(c)}>
                   ×
                 </button>
               )}
@@ -489,7 +491,7 @@ export default function Chat({ state, live, dispatch, onRedial, reconnecting = f
               dispatch({ t: 'abort', error: null });
             }}
           >
-            Disconnect
+            {tr('app_disconnect')}
           </button>
         </div>
       </aside>
@@ -498,7 +500,7 @@ export default function Chat({ state, live, dispatch, onRedial, reconnecting = f
 
       <main className={`main ${unknown ? 'stale' : ''}`}>
         <header className="topbar">
-          <button className="hamburger" aria-label="Conversations" onClick={() => setDrawer(true)}>
+          <button className="hamburger" aria-label={tr('app_conversations')} onClick={() => setDrawer(true)}>
             ☰
           </button>
           <div className="who">
@@ -512,7 +514,7 @@ export default function Chat({ state, live, dispatch, onRedial, reconnecting = f
             <Meters live={live} used={contextCarried(conv.messages, settings, me.host.upstream.model_context)} onOpen={() => setLimitsSheet(true)} />
           </div>
           <button className="ghost tiny" onClick={() => setSheet(true)}>
-            Settings
+            {tr('app_settings')}
           </button>
         </header>
 
@@ -521,23 +523,22 @@ export default function Chat({ state, live, dispatch, onRedial, reconnecting = f
             <span>{degraded}</span>
             {keyDead(live) && (
               <button className="ghost tiny" onClick={pasteNewCode}>
-                Paste a new code
+                {tr('app_paste_a_new_code')}
               </button>
             )}
           </p>
         )}
         {leader === false && (
           <p className="degraded follower" role="status">
-            <span>This chat is open in another tab.</span>
+            <span>{tr('app_this_chat_is_open_in_another_tab')}</span>
             <button className="ghost tiny" onClick={() => takeOver.current()}>
-              Use this tab instead
+              {tr('app_use_this_tab_instead')}
             </button>
           </p>
         )}
         {logsPrompts(me) && (
           <p className="logging" role="status">
-            This host records prompts and replies to a log on its machine.
-          </p>
+            {tr('app_this_host_records_prompts_and_replies_to_a_log')}</p>
         )}
 
         <div
@@ -573,7 +574,7 @@ export default function Chat({ state, live, dispatch, onRedial, reconnecting = f
                   action={action}
                   limits={limits}
                   saved={tokensSaved(conv.messages, i)}
-                  onContinue={() => send('Continue from where you stopped.')}
+                  onContinue={() => send(tr('app_continue_from_where_you_stopped'))}
                   onNewChat={startNew}
                   onResend={resend}
                 />
@@ -584,7 +585,7 @@ export default function Chat({ state, live, dispatch, onRedial, reconnecting = f
 
         {undo && (
           <div className="toast" role="status">
-            <span>Chat deleted</span>
+            <span>{tr('app_chat_deleted')}</span>
             <button
               className="ghost tiny"
               onClick={() => {
@@ -595,7 +596,7 @@ export default function Chat({ state, live, dispatch, onRedial, reconnecting = f
                 setUndo(null);
               }}
             >
-              Undo
+              {tr('app_undo')}
             </button>
           </div>
         )}
@@ -608,7 +609,7 @@ export default function Chat({ state, live, dispatch, onRedial, reconnecting = f
             <div className="banner-actions">
               {banner.retryAfterS !== undefined && (
                 <button className="ghost tiny" disabled={waiting > 0} onClick={regenerate}>
-                  {waiting > 0 ? `Try again in ${waitText(waiting)}` : 'Try again'}
+                  {waiting > 0 ? tr('app_try_again_in', { duration: waitText(waiting) }) : tr('app_try_again')}
                 </button>
               )}
               <button
@@ -618,7 +619,7 @@ export default function Chat({ state, live, dispatch, onRedial, reconnecting = f
                   setRetryUntil(0);
                 }}
               >
-                Dismiss
+                {tr('app_dismiss')}
               </button>
             </div>
           </div>
@@ -633,10 +634,10 @@ export default function Chat({ state, live, dispatch, onRedial, reconnecting = f
           disabled={locked || readOnly}
           hint={
             live.key === 'paused'
-              ? 'Send will work again the moment your host resumes your invite.'
+              ? tr('app_send_will_work_again_the_moment_your_host_resumes')
               : locked || readOnly || touch
                 ? null
-                : 'Enter sends · Shift+Enter makes a new line'
+                : tr('app_enter_sends_shift_enter_makes_a_new_line')
           }
           onSend={send}
           onStop={() => abort.current?.abort()}
@@ -673,7 +674,7 @@ function Meters({ live, used, onOpen }: { live: Live; used: number | null; onOpe
   const context = contextMeter(used, live.me.host.upstream.model_context);
   const all: MeterView[] = context ? [...meters(live), context] : meters(live);
   return (
-    <button className="meters" onClick={onOpen} aria-label="What these limits mean">
+    <button className="meters" onClick={onOpen} aria-label={tr('app_what_these_limits_mean')}>
       {all.map((m) => (
         <span className="meter" key={m.label} title={m.label}>
           <span className="meter-label">{m.label}</span>
@@ -697,41 +698,31 @@ function LimitsSheet({ live, messages, onClose }: { live: Live; messages: readon
   return (
     <div className="sheet-wrap" onClick={onClose}>
       <div className="sheet" onClick={(e) => e.stopPropagation()}>
-        <h3>Your limits</h3>
+        <h3>{tr('app_your_limits')}</h3>
         <p>
-          <strong>About {rpm} messages a minute.</strong> Your host caps how fast one invite can
-          send, so a burst from you never stalls their machine for everyone else.
-        </p>
+          <strong>{tr('app_limits_rpm', { rpm })}</strong> {tr('app_your_host_caps_how_fast_one_invite_can_send')}</p>
         <p>
-          <strong>{compact(daily)} tokens a day.</strong> A token is roughly three quarters of a
-          word, counting both what you write and what the model answers. The count resets daily.
-        </p>
+          <strong>{tr('app_limits_daily', { daily: compact(daily) })}</strong> {tr('app_a_token_is_roughly_three_quarters_of_a_word')}</p>
         {context > 0 && (
           <p>
-            <strong>{compact(context)} tokens of context.</strong> The model’s memory. The meter is what
-            the next message will carry — the chat so far, minus thinking, minus anything left out to
-            fit. As it fills, replies get shorter; a message that alone is too long for the memory is
-            left out of the next question; a new chat starts empty.
-          </p>
+            <strong>{tr('app_limits_context', { context: compact(context) })}</strong> {tr('app_the_model_s_memory_the_meter_is_what_the')}</p>
         )}
         {/* Speed, from where the reader sits (032): this chat's medians and what is inside them. The
             relay round trip is quoted only when there is one: direct mode has no hop. */}
         {pace.n > 0 && (
           <p>
             <strong>
-              {pace.ttftMs !== undefined ? `${msText(pace.ttftMs)} to the first token` : 'Every reply so far waited for a slot first'}
-              {pace.tokPerS !== undefined ? ` · ${rateText(pace.tokPerS)}, ${msText(1000 / pace.tokPerS)} per token` : ''}.
+              {pace.ttftMs !== undefined ? tr('app_first_token_time', { duration: msText(pace.ttftMs) }) : tr('app_every_reply_so_far_waited_for_a_slot_first')}
+              {pace.tokPerS !== undefined ? tr('app_per_token_speed', { rate: rateText(pace.tokPerS), duration: msText(1000 / pace.tokPerS) }) : ''}.
             </strong>{' '}
-            The median over {pace.n === 1 ? 'the one reply' : `the ${pace.n} replies`} in this chat, measured on this device:
-            Send to the first token, thinking or answer; completion tokens over first-to-last token, thinking included.
+            {tr(pace.n === 1 ? 'app_median_one_reply' : 'app_median_replies', { count: pace.n })}
             {live.mode === 'tunnel' && live.pathOk && live.path
-              ? ` The relay hop is inside both — the ${Math.round(live.path.rttMs)} ms round trip in the header right now.`
+              ? tr('app_relay_hop_in_timing', { rtt: Math.round(live.path.rttMs) })
               : ''}{' '}
-            A reply that waited for a free slot says so on the reply and is left out of the first-token median.
-          </p>
+            {tr('app_a_reply_that_waited_for_a_free_slot_says')}</p>
         )}
         <button className="primary small" onClick={onClose}>
-          Got it
+          {tr('app_got_it')}
         </button>
       </div>
     </div>
@@ -752,22 +743,22 @@ function Empty({
   onPick: (t: string) => void;
 }) {
   const prompts = [
-    'How can you answer me if you are running on someone else’s computer?',
-    'Write a haiku about borrowing a stranger’s GPU.',
-    'What can you help me with?',
+    tr('app_how_can_you_answer_me_if_you_are_running'),
+    tr('app_write_a_haiku_about_borrowing_a_stranger_s_gpu'),
+    tr('app_what_can_you_help_me_with'),
   ];
   return (
     <div className="empty">
       {/* A gateway need not have a name for itself; "You’re on ." is not a sentence. */}
-      {host !== '' && <h2>You’re on {host}.</h2>}
+      {host !== '' && <h2>{tr('app_you_are_on_host', { host })}</h2>}
       <p className="dim">
         {engineDown
-          ? `${modelLabel(model) || 'The model'} is not answering right now.`
+          ? tr('app_model_unavailable', { model: modelLabel(model) || tr('app_the_model') })
           : model !== ''
-            ? `${modelLabel(model)} is listening.`
-            : 'Waiting for a model.'}
+            ? tr('app_model_listening', { model: modelLabel(model) })
+            : tr('app_waiting_for_a_model')}
       </p>
-      <p className="dim">{privacyLine(host, logging)}</p>
+      <p className="dim">{privacy(host, logging)}</p>
       <div className="suggestions">
         {prompts.map((p) => (
           <button key={p} className="suggestion" onClick={() => onPick(p)}>
@@ -827,8 +818,8 @@ function Composer({
           ref={ref}
           value={text}
           rows={1}
-          aria-label="Message"
-          placeholder="Message the host’s model…"
+          aria-label={tr('app_message')}
+          placeholder={tr('app_message_the_host_s_model')}
           disabled={disabled}
           onChange={(e) => onText(e.target.value)}
           onKeyDown={(e) => {
@@ -842,7 +833,7 @@ function Composer({
         />
         {streaming ? (
           <button className="primary small" onClick={onStop}>
-            Stop
+            {tr('app_stop')}
           </button>
         ) : (
           <button
@@ -853,7 +844,7 @@ function Composer({
               ref.current?.focus();
             }}
           >
-            Send
+            {tr('app_send')}
           </button>
         )}
       </div>
@@ -885,9 +876,9 @@ function SettingsSheet({
   return (
     <div className="sheet-wrap" onClick={onClose}>
       <div className="sheet" onClick={(e) => e.stopPropagation()}>
-        <h3>Settings</h3>
+        <h3>{tr('app_settings')}</h3>
         <label className="field">
-          <span className="field-label">Model</span>
+          <span className="field-label">{tr('app_model')}</span>
           <select value={chosen} onChange={(e) => setDraft({ ...draft, model: e.target.value })}>
             {models.map((m) => (
               <option key={m} value={m}>
@@ -897,16 +888,16 @@ function SettingsSheet({
           </select>
         </label>
         <label className="field">
-          <span className="field-label">System prompt</span>
+          <span className="field-label">{tr('app_system_prompt')}</span>
           <textarea
             rows={4}
             value={draft.systemPrompt}
-            placeholder="Optional. Sent ahead of every message in this browser."
+            placeholder={tr('app_optional_sent_ahead_of_every_message_in_this_browser')}
             onChange={(e) => setDraft({ ...draft, systemPrompt: e.target.value })}
           />
         </label>
         <label className="field">
-          <span className="field-label">Temperature · {draft.temperature.toFixed(2)}</span>
+          <span className="field-label">{tr('app_temperature', { value: draft.temperature.toFixed(2) })}</span>
           <input
             type="range"
             min={0}
@@ -915,43 +906,41 @@ function SettingsSheet({
             value={draft.temperature}
             onChange={(e) => setDraft({ ...draft, temperature: Number(e.target.value) })}
           />
-          <span className="field-hint">Lower is more predictable, higher is more surprising.</span>
+          <span className="field-hint">{tr('app_lower_is_more_predictable_higher_is_more_surprising')}</span>
         </label>
         {/* Truthful surface (031): a switch for something this model has never done is a claim, so
             until it has thought here the row only says what is in force. */}
         <label className="field">
-          <span className="field-label">Thinking{thinks ? '' : ' · model default'}</span>
+          <span className="field-label">{tr('app_thinking')}{thinks ? '' : ' ' + tr('app_thinking_model_default')}</span>
           {thinks ? (
             <select value={draft.thinking} onChange={(e) => setDraft({ ...draft, thinking: e.target.value as Thinking })}>
-              <option value="default">Model default</option>
-              <option value="on">On — better answers on hard questions</option>
-              <option value="off">Off — faster, shorter, fewer of your tokens</option>
+              <option value="default">{tr('app_model_default')}</option>
+              <option value="on">{tr('app_on_better_answers_on_hard_questions')}</option>
+              <option value="off">{tr('app_off_faster_shorter_fewer_of_your_tokens')}</option>
             </select>
           ) : (
-            <span className="field-hint">The switch appears once the model has shown its thinking in this chat.</span>
+            <span className="field-hint">{tr('app_the_switch_appears_once_the_model_has_shown_its')}</span>
           )}
         </label>
         <p className="dim small-print">
-          {privacyLine(hostName(me), logsPrompts(me))} Your invite is <code>{me.key.name}</code> (
-          {me.key.id}). Limits: about {me.limits.rpm} messages a minute,{' '}
-          {compact(me.limits.daily_tokens)} tokens a day, {me.limits.max_concurrent} at a time, and
-          up to {compact(me.limits.max_output_tokens)} tokens in any one reply.
-          Engine: {me.host.upstream.kind}
-          {me.host.upstream.model_context > 0 ? `, ${compact(me.host.upstream.model_context)} context` : ''}
-          {live.meOk && !me.host.upstream.healthy ? ' — not answering right now' : ''}. Model id:{' '}
-          <code>{chosen || 'none'}</code>.
+          {privacy(hostName(me), logsPrompts(me))} <Text name="app_settings_invite" values={{ name: <code>{me.key.name}</code>, id: me.key.id }} />{' '}
+          {tr('app_settings_limits', { rpm: me.limits.rpm, daily: compact(me.limits.daily_tokens), concurrent: me.limits.max_concurrent, output: compact(me.limits.max_output_tokens) })}{' '}
+          {tr('app_settings_engine', { engine: me.host.upstream.kind })}
+          {me.host.upstream.model_context > 0 ? tr('app_settings_context', { context: compact(me.host.upstream.model_context) }) : ''}
+          {live.meOk && !me.host.upstream.healthy ? tr('app_not_answering_right_now') : ''}.{' '}
+          <Text name="app_settings_model_id" values={{ model: <code>{chosen || tr('app_none')}</code> }} />
           {live.ephemeral
-            ? ' Another tab of this browser holds the saved tunnel identity, so this tab connected as a second client.'
+            ? tr('app_another_tab_of_this_browser_holds_the_saved_tunnel')
             : ''}
-          {live.pathOk ? '' : ` The path last measured ${ago(Date.now() - live.pathAt)}.`}
+          {live.pathOk ? '' : tr('app_path_last_measured', { ago: ago(Date.now() - live.pathAt) })}
         </p>
         {/* The app's half of a bug report; the host's half is `infercat version`. */}
         <p className="dim small-print build">
-          App version {VERSION} · MIT · <a href={SOURCE_URL}>Source on GitHub</a>
+          {tr('app_app_version')} {VERSION} · MIT · <a href={SOURCE_URL}>{tr('source')}</a>
         </p>
         <div className="sheet-actions">
           <button className="ghost" onClick={onClose}>
-            Cancel
+            {tr('app_cancel')}
           </button>
           <button
             className="primary small"
@@ -960,7 +949,7 @@ function SettingsSheet({
               onClose();
             }}
           >
-            Done
+            {tr('app_done')}
           </button>
         </div>
       </div>

@@ -120,7 +120,7 @@ unist-util-visit-parents@6.0.2, vfile@6.0.3, vfile-message@4.0.3, zwitch@2.0.4
 |---|---|---|---|---|
 | Archivo | https://github.com/Omnibus-Type/Archivo | Google Fonts API v25 (latin subset) | OFL-1.1 | fonts/archivo-latin-var.woff2 |
 | IBM Plex Mono | https://github.com/IBM/plex | Google Fonts API v20 (latin subset) | OFL-1.1 | fonts/ibm-plex-mono-400-latin.woff2, fonts/ibm-plex-mono-500-latin.woff2 |
-| Noto Sans SC | https://github.com/google/fonts/tree/main/ofl/notosanssc | landing glyph subset | OFL-1.1 | fonts/noto-sans-sc-landing.woff2 |
+| Noto Sans SC | https://github.com/google/fonts/tree/main/ofl/notosanssc | app glyph subset | OFL-1.1 | fonts/noto-sans-sc.woff2 |
 
 ## tailscale.com — full licence text
 

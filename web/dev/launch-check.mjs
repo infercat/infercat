@@ -348,6 +348,42 @@ function ffmpeg() {
 }
 
 /** A friend's first chat, against a real host, recorded. Then the same on a phone. */
+// 047: real connect states from local storage and the real parser; no host is needed.
+async function chineseCards(browser) {
+  let count = 0, failed = 0;
+  for (const width of [1280, 390]) for (const state of ['idle', 'invalid', 'returning']) {
+    const before = problems.length;
+    const label = `047-${width}-${state}-zh`;
+    const ctx = await browser.newContext({ viewport: { width, height: 900 }, colorScheme: 'light', locale: 'zh-CN' });
+    const page = await ctx.newPage();
+    watch(page, label);
+    const asked = netWatch(page);
+    await page.addInitScript(({ state }) => {
+      window.localStorage.setItem('bn.language', JSON.stringify('zh'));
+      if (state === 'returning') {
+        window.localStorage.setItem('bn.invite', JSON.stringify(`ic1.tcDEMOaddressDEMOaddressDEMOaddressDEMO.${'D'.repeat(43)}`));
+        window.localStorage.setItem('bn.lastHost', JSON.stringify({ name: "Max's laptop", scope: '047', left: true }));
+        window.localStorage.setItem('bn.conversations.047', JSON.stringify(['047-chat']));
+      }
+    }, { state });
+    await page.goto(APP);
+    await page.locator('.connect-card').waitFor();
+    if (state === 'invalid') await page.locator('textarea').fill('bad');
+    await page.evaluate(() => document.fonts.ready);
+    const card = await page.locator('.connect-card').innerText();
+    // Names, format examples and the bilingual language links are machine/identity strings.
+    const remainder = card.replaceAll("Max's laptop", '').replaceAll('Infercat', '').replaceAll('EN', '').replaceAll('GPU', '')
+      .replace(/ic1\.[A-Za-z0-9_.…-]*/g, '').replace(/\btc[\w…]*/g, '').replaceAll('bad', '');
+    if (/[A-Za-z]/.test(remainder)) problems.push(`${label}: untranslated card text: ${remainder}`);
+    if (state === 'returning' && !card.includes('1')) problems.push(`${label}: missing retained chat count`);
+    if (state === 'invalid' && await page.locator('.inline-error').count() !== 1) problems.push(`${label}: parser error not shown`);
+    await names(page, label); await contrast(page, label); await noOverflow(page, label); await firstParty(asked, label);
+    const file = join(shots, `${label}.png`); await page.screenshot({ path: file }); shot(file);
+    await ctx.close(); count++; if (problems.length > before) failed++;
+  }
+  say(`047 Chinese cards: ${count - failed} passed / ${failed} failed / 0 skipped of ${count}`);
+}
+
 async function chat(browser) {
   mkdirSync(media, { recursive: true });
   const tmp = mkdtempSync(join(tmpdir(), 'bn-launch-'));
@@ -459,6 +495,7 @@ async function main() {
     console.log(`launch-check on ${APP}`);
     if (!demoDir) {
       await connectScreen(browser);
+      await chineseCards(browser);
       await landingEvidence(browser, APP, shots, async (page, label) => { await contrast(page, label); await names(page, label); });
     }
     if (INVITE) await chat(browser);

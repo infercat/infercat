@@ -1,3 +1,4 @@
+import { tr } from './i18n/text';
 // The gateway HTTP API (docs/ARCHITECTURE.md §Gateway HTTP API) and the friendly copy for every
 // error code it can return. Nothing else in the app parses a gateway response.
 import { PRODUCT_NAME } from './product';
@@ -83,7 +84,7 @@ async function call(
 }
 
 async function gatewayError(res: Response): Promise<GatewayError> {
-  let message = `The host answered ${res.status}.`;
+  let message = tr('app_host_http_answer', { status: res.status });
   let code = '';
   let type = '';
   try {
@@ -344,7 +345,7 @@ async function* rawChatEvents(
       signal,
     });
     onAnswered();
-    if (!res.body) throw new Error('the host sent a reply with no body');
+    if (!res.body) throw new Error(tr('app_the_host_sent_a_reply_with_no_body'));
     for await (const block of sseData(res.body)) {
       if ('comment' in block) {
         // The gateway's word that the request is in line for a slot (018): a comment, so every
@@ -508,46 +509,46 @@ const COPY: Record<
   string,
   { title: string; detail: string; fatal?: boolean; retry?: boolean; paused?: boolean }
 > = {
-  invalid_request: { title: 'The host could not read that request',
-    detail: 'This is the app’s fault, not yours. Start a new chat; if it keeps happening the host and this app disagree about the API.' },
-  not_found: { title: 'The host has no such endpoint',
-    detail: `This app is talking to something that is not an ${PRODUCT_NAME} gateway, or to an older one.` },
-  invalid_key: { fatal: true, title: 'The host does not recognise this invite',
-    detail: 'It may have been rotated or deleted. Ask {host} for a fresh code.' },
+  invalid_request: { get title() { return tr('app_the_host_could_not_read_that_request'); },
+    get detail() { return tr('app_this_is_the_app_s_fault_not_yours_start'); } },
+  not_found: { get title() { return tr('app_the_host_has_no_such_endpoint'); },
+    get detail() { return tr('app_wrong_gateway', { product: PRODUCT_NAME }); } },
+  invalid_key: { fatal: true, get title() { return tr('app_the_host_does_not_recognise_this_invite'); },
+    get detail() { return tr('app_it_may_have_been_rotated_or_deleted_ask_host'); } },
   // Paused is a pause, not an ending. Mid-session the chat stays where it is (the header says so,
   // session.degradedLine); this copy is for the one place a pause really is a dead end — a connect
   // attempt, where there is no chat to keep.
-  key_paused: { paused: true, title: 'Your invite is paused',
-    detail: 'Ask {host} to resume it, then try again — your chats are still on this device.' },
-  key_revoked: { fatal: true, title: 'This invite was revoked',
-    detail: 'Ask {host} for a new code.' },
+  key_paused: { paused: true, get title() { return tr('app_your_invite_is_paused'); },
+    get detail() { return tr('app_ask_host_to_resume_it_then_try_again_your'); } },
+  key_revoked: { fatal: true, get title() { return tr('app_this_invite_was_revoked'); },
+    get detail() { return tr('app_ask_host_for_a_new_code'); } },
   // The blocker: the machine on the other end is not there (014 promise 1).
-  host_asleep: { retry: true, title: '{host} didn’t answer',
-    detail: 'It’s probably asleep or offline — your message is saved, try again in a minute.' },
+  host_asleep: { retry: true, get title() { return tr('app_host_didn_t_answer'); },
+    get detail() { return tr('app_it_s_probably_asleep_or_offline_your_message_is'); } },
   // The fourth silence (020 promise 2): it was answering, and then it was not, and /me agrees.
-  host_stalled: { retry: true, title: '{host} stopped answering mid-reply',
-    detail: 'What arrived is above. Try again — if it keeps happening, their machine may have gone to sleep.' },
-  model_not_allowed: { title: 'That model is not shared with you',
-    detail: 'Pick one of the models in the picker — those are the ones this invite may use.' },
-  body_too_large: { title: 'That message is too large to send',
-    detail: 'Shorten it, or split what you are pasting into a couple of messages.' },
-  context_too_long: { title: 'This conversation no longer fits the model',
-    detail: 'Start a new chat, or shorten what you just sent.' },
-  rate_limited: { retry: true, title: 'Too fast for this invite',
-    detail: '{host} allows a set number of messages a minute. The count clears on its own.' },
-  concurrency_limited: { retry: true, title: 'One reply at a time',
-    detail: 'This invite may have one request in flight. Wait for the current reply to finish.' },
-  budget_exhausted: { title: "Today's token budget is used up",
-    detail: 'The host sets a daily cap per invite. It resets, or they can raise it.' },
+  host_stalled: { retry: true, get title() { return tr('app_host_stopped_answering_mid_reply'); },
+    get detail() { return tr('app_what_arrived_is_above_try_again_if_it_keeps'); } },
+  model_not_allowed: { get title() { return tr('app_that_model_is_not_shared_with_you'); },
+    get detail() { return tr('app_pick_one_of_the_models_in_the_picker_those'); } },
+  body_too_large: { get title() { return tr('app_that_message_is_too_large_to_send'); },
+    get detail() { return tr('app_shorten_it_or_split_what_you_are_pasting_into'); } },
+  context_too_long: { get title() { return tr('app_this_conversation_no_longer_fits_the_model'); },
+    get detail() { return tr('app_start_a_new_chat_or_shorten_what_you_just'); } },
+  rate_limited: { retry: true, get title() { return tr('app_too_fast_for_this_invite'); },
+    get detail() { return tr('app_host_allows_a_set_number_of_messages_a_minute'); } },
+  concurrency_limited: { retry: true, get title() { return tr('app_one_reply_at_a_time'); },
+    get detail() { return tr('app_this_invite_may_have_one_request_in_flight_wait'); } },
+  budget_exhausted: { get title() { return tr('app_today_s_token_budget_is_used_up'); },
+    get detail() { return tr('app_the_host_sets_a_daily_cap_per_invite_it'); } },
   // The host is there and every slot is taken (018): a wait that ran out inside the stream, or a
   // line already full at the door — one code, so the copy claims only what both share; the host's
   // own sentence (how long, how many) is in Details, and the countdown is the banner's.
-  queue_timeout: { retry: true, title: '{host} is busy',
-    detail: 'Every slot was taken — your message is still here.' },
-  upstream_down: { retry: true, title: "The host's engine is offline",
-    detail: 'Their machine is reachable but the model server is not running. Nothing you can fix.' },
-  upstream_error: { title: "The host's engine returned an error",
-    detail: 'The tunnel and the gateway are fine; the model server itself failed.' },
+  queue_timeout: { retry: true, get title() { return tr('app_host_is_busy'); },
+    get detail() { return tr('app_every_slot_was_taken_your_message_is_still_here'); } },
+  upstream_down: { retry: true, get title() { return tr('app_the_host_s_engine_is_offline'); },
+    get detail() { return tr('app_their_machine_is_reachable_but_the_model_server_is'); } },
+  upstream_error: { get title() { return tr('app_the_host_s_engine_returned_an_error'); },
+    get detail() { return tr('app_the_tunnel_and_the_gateway_are_fine_the_model'); } },
 };
 
 /**
@@ -556,7 +557,7 @@ const COPY: Record<
  * nameless gateway falls back to "your host" so no sentence ever has a hole in it.
  */
 export function describeError(err: unknown, host?: string): FriendlyError {
-  const who = (host ?? '').trim() || 'your host';
+  const who = (host ?? '').trim() || tr('app_your_host');
   const fill = (s: string): string => s.replaceAll('{host}', who);
   if (err instanceof GatewayError) {
     const copy = COPY[err.code];
@@ -580,17 +581,17 @@ export function describeError(err: unknown, host?: string): FriendlyError {
     // status 0 = the error arrived inside an already-flushed 200 stream.
     const code = err.code ? { code: err.code } : {};
     return err.status > 0
-      ? { title: `${who} answered ${err.status}`, detail: said, ...code, ...retry }
-      : { title: `${who} stopped the reply`, detail: said || 'The stream ended with an error.', ...code, ...retry };
+      ? { title: tr('app_host_answered_status', { host: who, status: err.status }), detail: said, ...code, ...retry }
+      : { title: tr('app_host_stopped_reply', { host: who }), detail: said || tr('app_the_stream_ended_with_an_error'), ...code, ...retry };
   }
   if (isAbort(err)) {
-    return { title: 'Stopped', detail: 'You stopped this reply.' };
+    return { title: tr('app_stopped'), detail: tr('app_you_stopped_this_reply') };
   }
   // A raw transport string ("dial port 80: context deadline exceeded") is never the primary copy:
   // it goes to `hostSaid`, which every surface renders as evidence behind a "Details" disclosure.
   return {
-    title: `The connection to ${who} broke`,
-    detail: 'The tunnel dropped part way through. Try again — if it keeps happening, their machine may have gone to sleep.',
+    title: tr('app_connection_broke', { host: who }),
+    detail: tr('app_the_tunnel_dropped_part_way_through_try_again_if'),
     ...(err instanceof Error && err.message.trim() !== '' ? { hostSaid: err.message.trim() } : {}),
   };
 }

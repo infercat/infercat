@@ -138,6 +138,30 @@ async function lead(page) {
   }
 }
 
+// 047: supplemental app layout evidence against the harness's local fake host.
+async function chineseChat(browser) {
+  for (const width of [1280, 390]) {
+    const ctx = await browser.newContext({ viewport: { width, height: 900 }, locale: 'zh-CN', colorScheme: 'light' });
+    const page = await ctx.newPage(); watch(page, `047-chat-${width}`);
+    await page.addInitScript(() => window.localStorage.setItem('bn.language', JSON.stringify('zh')));
+    await connectViaTunnel(page);
+    await page.locator('.composer textarea').waitFor();
+    await page.locator('.composer textarea').fill('你好');
+    await page.locator('.composer button.primary').click();
+    await page.locator('.row.assistant.streaming').waitFor();
+    await page.locator('.row.assistant.streaming').waitFor({ state: 'detached' });
+    await fits(page, `047-chat-${width}`);
+    const controls = await page.locator('.topbar button, .meter-label, .composer button').evaluateAll((els) => els.filter((e) => e.scrollWidth > e.clientWidth + 1).map((e) => e.textContent));
+    if (controls.length) problems.push(`047-chat-${width}: overflowing controls: ${controls}`);
+    await write(page, `047-${width}-chat-zh`);
+    await page.locator('.topbar > button.ghost').click();
+    await page.locator('.sheet').waitFor();
+    await fits(page, `047-settings-${width}`);
+    await write(page, `047-${width}-settings-zh`);
+    await ctx.close();
+  }
+}
+
 async function main() {
   mkdirSync(shots, { recursive: true });
 
@@ -152,6 +176,11 @@ async function main() {
   await waitFor(BASE, 'vite dev server');
 
   const browser = await chromium.launch();
+  if (process.argv.includes('--app-zh-only')) {
+    await chineseChat(browser); await browser.close(); stopAll();
+    if (problems.length) throw new Error(problems.join('\n'));
+    console.log('047 Chinese chat: 2 passed / 0 failed / 0 skipped'); return;
+  }
   await landingEvidence(browser, BASE, shots);
   if (process.argv.includes('--landing-only')) { await browser.close(); stopAll(); return; }
 

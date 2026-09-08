@@ -1,3 +1,4 @@
+import { tr } from '../i18n/text';
 import { useEffect, useRef, useState } from 'react';
 import { modelLabel } from '../api';
 import { compact } from '../session';
@@ -64,11 +65,11 @@ export default function MessageView({
             <textarea value={draft} rows={Math.min(10, draft.split('\n').length + 1)} autoFocus onChange={(e) => setDraft(e.target.value)} />
             <div className="edit-actions">
               <button className="ghost" onClick={() => { setEditing(false); setDraft(m.content); }}>
-                Cancel
+                {tr('app_cancel')}
               </button>
               {/* It replaces the answer below it, so it says so before it is pressed (promise 16). */}
               <button className="primary small" onClick={() => { setEditing(false); onResend(draft); }} disabled={draft.trim() === ''}>
-                Replace answer
+                {tr('app_replace_answer')}
               </button>
             </div>
           </div>
@@ -83,10 +84,10 @@ export default function MessageView({
         <div className={`bubble ${pending ? 'pending' : ''}`}>{m.content}</div>
         <div className="actions">
           {/* The pending turn (014 promise 1): the reader's words are still here and still theirs. */}
-          {pending && <span className="pending-mark">Not delivered</span>}
+          {pending && <span className="pending-mark">{tr('app_not_delivered')}</span>}
           {last && !busy && !readOnly && (
             <button className="ghost tiny" onClick={() => { setDraft(m.content); setEditing(true); }}>
-              Edit
+              {tr('app_edit')}
             </button>
           )}
         </div>
@@ -114,7 +115,7 @@ export default function MessageView({
     <div className={`row assistant ${streaming ? 'streaming' : ''}`}>
       {m.previous !== undefined && m.previous !== '' && (
         <details className="previous">
-          <summary>Previous answer</summary>
+          <summary>{tr('app_previous_answer')}</summary>
           <Markdown text={m.previous} />
         </details>
       )}
@@ -131,19 +132,19 @@ export default function MessageView({
       {live && m.content === '' && !m.reasoning && (
         <p className="waiting">
           {m.queued === true
-            ? `Waiting for a free slot on ${host || 'the host'}…`
+            ? tr('app_waiting_slot', { host: host || tr('app_the_host_lowercase') })
             : m.waiting === true
-              ? `Still waiting for ${host || 'the host'}…`
-              : 'Waiting for the first token…'}
+              ? tr('app_still_waiting_host', { host: host || tr('app_the_host_lowercase') })
+              : tr('app_waiting_for_the_first_token')}
         </p>
       )}
       {/* A reply another tab is writing (020 promise 6): read as it is checkpointed, never as ours. */}
-      {!live && m.status === undefined && <p className="waiting">Arriving in another tab…</p>}
+      {!live && m.status === undefined && <p className="waiting">{tr('app_arriving_in_another_tab')}</p>}
       {/* The reply did not simply stop, or something was left out of its question (024): said
           under the text it kept. */}
       {m.note && !inThinking && (
         carried ? (
-          <p className="ended carried">Your message was carried into the next question.</p>
+          <p className="ended carried">{tr('app_your_message_was_carried_into_the_next_question')}</p>
         ) : (
           <p className={`ended ${m.status ?? ''}`}>{m.note}</p>
         )
@@ -153,8 +154,8 @@ export default function MessageView({
           model's memory is what filled, a new chat (020 promise 3). */}
       {ending === 'capped' && (
         <p className="ended capped">
-          This stopped at your invite’s {limits.maxOutputTokens}-token reply limit.{' '}
-          {!readOnly && <button className="ghost tiny" onClick={onContinue}>Continue</button>}
+          {tr('app_reply_limit', { limit: limits.maxOutputTokens })}{' '}
+          {!readOnly && <button className="ghost tiny" onClick={onContinue}>{tr('app_continue')}</button>}
         </p>
       )}
       {/* The one wall that ends chats, said in the register it deserves (022 promise 3). What is
@@ -165,17 +166,15 @@ export default function MessageView({
       {ending === 'context' && (
         <p className="ended wall">
           <span>
-            This chat has filled the {compact(limits.modelContext)} memory on {host || 'the host'}, so this reply
-            stopped short. Replies will keep getting shorter until a message no longer fits — start a new chat for
-            a clean slate.
+            {tr('app_context_filled', { context: compact(limits.modelContext), host: host || tr('app_the_host_lowercase') })}
           </span>
-          {!readOnly && <button className="ghost tiny" onClick={onNewChat}>New chat</button>}
+          {!readOnly && <button className="ghost tiny" onClick={onNewChat}>{tr('app_new_chat')}</button>}
         </p>
       )}
       {ending === 'length' && (
         <p className="ended capped">
-          This stopped at a length limit on the host’s engine.{' '}
-          {!readOnly && <button className="ghost tiny" onClick={onContinue}>Continue</button>}
+          {tr('app_this_stopped_at_a_length_limit_on_the_host')}{' '}
+          {!readOnly && <button className="ghost tiny" onClick={onContinue}>{tr('app_continue')}</button>}
         </p>
       )}
       {/* The host's raw sentence is evidence, never what a stranger has to read first. */}
@@ -183,17 +182,17 @@ export default function MessageView({
       <div className="meta">
         <span className="meta-text">
           {m.model ? modelLabel(m.model) : ''}
-          {m.tokens ? ` · ${m.tokens.in} tokens in · ${m.tokens.out} out` : ''}
+          {m.tokens ? tr('app_message_usage', { input: m.tokens.in, output: m.tokens.out }) : ''}
           {/* A stopped reply never gets its usage chunk, but the host counted what it made. */}
-          {!m.tokens && m.status === 'stopped' ? ' · still counted against today’s tokens' : ''}
+          {!m.tokens && m.status === 'stopped' ? tr('app_still_counted_against_today_s_tokens') : ''}
           {/* What was asked of the engine, and what it did (031): an engine that thought anyway is
               not called quiet. */}
-          {m.thinking === 'off' ? (m.reasoning ? ' · thought despite thinking off' : ' · thinking off') : ''}
-          {saved !== null ? ` · ${saved} fewer tokens than the previous reply` : ''}
+          {m.thinking === 'off' ? (m.reasoning ? tr('app_thought_despite_thinking_off') : tr('app_thinking_off')) : ''}
+          {saved !== null ? tr('app_tokens_saved', { count: saved }) : ''}
           {pace && <span className="speed" title={pace.title}>{` · ${pace.text}`}</span>}
           {/* Said only of text that is on screen: a reply with nothing in it is not "part" of anything,
               and under a turn that was never answered it read as a claim about the turn (022 promise 2). */}
-          {!isAnswer(m) && m.content.trim() !== '' ? ' · not part of the next question' : ''}
+          {!isAnswer(m) && m.content.trim() !== '' ? tr('app_not_part_of_the_next_question') : ''}
         </span>
         <span className="actions">
           {!live && m.content !== '' && <CopyButton text={m.content} />}
@@ -212,7 +211,7 @@ export default function MessageView({
 function Details({ text }: { text: string }) {
   return (
     <details className="host-said">
-      <summary>Details</summary>
+      <summary>{tr('app_details')}</summary>
       <p>{text}</p>
     </details>
   );
@@ -229,7 +228,7 @@ function CopyButton({ text }: { text: string }) {
         setTimeout(() => setDone(false), 2000);
       }}
     >
-      {done ? 'Copied' : 'Copy'}
+      {done ? tr('app_copied') : tr('app_copy')}
     </button>
   );
 }
@@ -252,8 +251,7 @@ function Thinking({ text, answering, note }: { text: string; answering: boolean;
   return (
     <div className={`thinking ${open ? 'open' : ''} ${answering ? 'full' : ''}`}>
       <button className="thinking-toggle" aria-expanded={open} onClick={() => setManual(!open)}>
-        Thinking
-        <span className="thinking-hint">{open ? 'hide' : `${words(text)} words`}</span>
+        {tr('app_thinking')}<span className="thinking-hint">{open ? tr('app_hide') : tr('app_thinking_words', { count: words(text) })}</span>
       </button>
       <div className="thinking-clip">
         {/* Thinking is model output like any other: it arrives as markdown and reads as raw

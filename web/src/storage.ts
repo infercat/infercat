@@ -1,3 +1,4 @@
+import { tr } from './i18n/text';
 // Conversations, messages, settings, and the localStorage they survive in. Every access is behind
 // try/catch: a browser with storage disabled loses history but must still chat.
 
@@ -234,7 +235,7 @@ export function newConversation(): Conversation {
   const now = Date.now();
   // Not "New chat": that is the button that makes one, and a list where every row is named after
   // the button is a list that says nothing (014 promise 17).
-  return { id: newId(), title: 'Untitled chat', createdAt: now, updatedAt: now, messages: [] };
+  return { id: newId(), title: tr('app_untitled_chat'), createdAt: now, updatedAt: now, messages: [] };
 }
 
 /** The first user message becomes the sidebar title. */
@@ -379,7 +380,7 @@ export function reopenChats(convs: Conversation[]): Conversation[] {
                   waiting: false,
                   queued: false,
                   status: 'interrupted' as const,
-                  note: 'This reply was still arriving when its tab was closed or reloaded — what is above is only part of it.',
+                  note: tr('app_this_reply_was_still_arriving_when_its_tab_was'),
                 }
               : m,
           ),

@@ -1,3 +1,4 @@
+import { tr } from '../i18n/text';
 // Assistant replies as markdown. Images are deliberately rendered as links: the page makes no
 // external network requests except the DERP map the wasm fetches, and a model can emit any URL.
 import { memo, useRef, useState, type ComponentProps } from 'react';
@@ -19,7 +20,7 @@ function CodeBlock({ node: _node, ...rest }: ComponentProps<'pre'> & { node?: un
           setTimeout(() => setCopied(false), 1400);
         }}
       >
-        {copied ? 'copied' : 'copy'}
+        {copied ? tr('app_copied_lowercase') : tr('app_copy_lowercase')}
       </button>
       <pre ref={pre} {...rest} />
     </div>
@@ -31,7 +32,7 @@ const COMPONENTS: Components = {
   a: ({ node: _node, ...rest }) => <a {...rest} target="_blank" rel="noreferrer noopener" />,
   img: ({ node: _node, src, alt }) => (
     <a className="img-link" href={typeof src === 'string' ? src : undefined} target="_blank" rel="noreferrer noopener">
-      {alt || 'image'} ↗
+      {alt || tr('app_image')} ↗
     </a>
   ),
   table: ({ node: _node, ...rest }) => (

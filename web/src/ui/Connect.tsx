@@ -1,3 +1,5 @@
+import { Text } from '../i18n/RichText';
+import { tr, privacy } from '../i18n/text';
 // The connect screen: the landing page a stranger meets. One sentence about what this is, one
 // field, one button, and progress that says what is actually happening. It owns no connection
 // state of its own — it dispatches into the session machine (src/session.ts) and renders it.
@@ -9,7 +11,7 @@
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { describeError, getMe, hostName, logsPrompts, type FriendlyError, type Me } from '../api';
 import { decodeInvite, inviteFromHash, InviteError, inviteHint, maskInvite } from '../invite';
-import { HOST_URL, PRODUCT_NAME, privacyLine, SOURCE_URL, VERSION } from '../product';
+import { HOST_URL, PRODUCT_NAME, SOURCE_URL, VERSION } from '../product';
 import { boundHandshake, handshakeFailure, type Live, type SessionEvent, type SessionState } from '../session';
 import {
   countChats,
@@ -62,9 +64,9 @@ function takeHashInvite(): string {
 }
 
 const STEPS: { at: SessionState['name']; label: string }[] = [
-  { at: 'loadingWasm', label: 'Loading the tunnel' },
-  { at: 'connecting', label: 'Connecting to the relay' },
-  { at: 'verifying', label: 'Checking your invite' },
+  { at: 'loadingWasm', get label() { return tr('app_loading_the_tunnel'); } },
+  { at: 'connecting', get label() { return tr('app_connecting_to_the_relay'); } },
+  { at: 'verifying', get label() { return tr('app_checking_your_invite'); } },
 ];
 
 interface Props {
@@ -295,7 +297,7 @@ function ConnectBody({ state, dispatch }: Props) {
   const needsNewCode = failure?.fatal === true;
   // The one button that removes anything says what it removes, and what it keeps (022 promise 6).
   const forgetHint = (
-    <p className="field-hint">Forget removes the code and this device’s tunnel identity. Your chats stay.</p>
+    <p className="field-hint">{tr('app_forget_removes_the_code_and_this_device_s_tunnel')}</p>
   );
 
   /**
@@ -341,7 +343,7 @@ function ConnectBody({ state, dispatch }: Props) {
         <CardHead />
         {/* News, not the pitch: this one is the card's own in both layouts. */}
         <p className="pitch">
-          {`${state.name === 'connecting' && state.slow ? 'Still connecting' : 'Connecting'}${who ? ` to ${who}` : ''}…`}
+          {state.name === 'connecting' && state.slow ? (who ? tr('app_still_connecting_host', { host: who }) : tr('app_still_connecting')) : (who ? tr('app_connecting_host', { host: who }) : tr('app_connecting'))}
         </p>
         <ol className="steps" aria-live="polite">
           {steps.map((step, i) => (
@@ -353,7 +355,7 @@ function ConnectBody({ state, dispatch }: Props) {
         </ol>
         <div className="connect-actions">
           <button className="ghost" onClick={cancel}>
-            Cancel
+            {tr('app_cancel')}
           </button>
         </div>
         <CardFoot who={who} />
@@ -366,13 +368,11 @@ function ConnectBody({ state, dispatch }: Props) {
       <CardHead />
       {returning ? (
         <p className="pitch">
-          <strong>Welcome back.</strong> Your {chats} {chats === 1 ? 'chat' : 'chats'} with {who || 'your host'}{' '}
-          {chats === 1 ? 'is' : 'are'} still on this device.
+          <strong>{tr('app_welcome_back')}</strong> {tr(chats === 1 ? 'app_kept_chat' : 'app_kept_chats', { count: chats, host: who || tr('app_your_host') })}
         </p>
       ) : kept ? (
         <p className="pitch">
-          Your {chats} {chats === 1 ? 'chat' : 'chats'} with {who || 'your host'} {chats === 1 ? 'is' : 'are'} still on
-          this device.
+          {tr(chats === 1 ? 'app_kept_chat' : 'app_kept_chats', { count: chats, host: who || tr('app_your_host') })}
         </p>
       ) : (
         // The one line the statement column already carries: on the page the reader meets it once,
@@ -384,7 +384,7 @@ function ConnectBody({ state, dispatch }: Props) {
 
       {/* Never above a failure: a code that just failed is not "ready" (020 promise 5). */}
       {HASH_INVITE !== '' && text === HASH_INVITE && !failure && (
-        <p className="notice">Invite from your link is ready.</p>
+        <p className="notice">{tr('app_invite_from_your_link_is_ready')}</p>
       )}
 
       {known && !showCode ? (
@@ -393,7 +393,7 @@ function ConnectBody({ state, dispatch }: Props) {
           <div className="masked">
             <code>{maskInvite(text)}</code>
             <button className="ghost tiny" onClick={() => setShowCode(true)}>
-              Show
+              {tr('app_show')}
             </button>
           </div>
         </div>
@@ -452,12 +452,12 @@ function ConnectBody({ state, dispatch }: Props) {
           onClick={() => void connect()}
           disabled={text.trim() === '' || malformed || needsNewCode}
         >
-          {returning ? 'Reconnect' : <Copy name="f_connect" />}
+          {returning ? tr('app_reconnect') : <Copy name="f_connect" />}
         </button>
         {/* While a failure is showing, the same action lives inside it, next to the reason. */}
         {remembered !== '' && !failure && (
           <button className="ghost" onClick={forgetInvite}>
-            Forget this invite
+            {tr('app_forget_this_invite')}
           </button>
         )}
       </div>
@@ -469,23 +469,23 @@ function ConnectBody({ state, dispatch }: Props) {
           <p>{failure.detail}</p>
           {failure.hostSaid && (
             <details className="host-said">
-              <summary>Details</summary>
+              <summary>{tr('app_details')}</summary>
               <p>{failure.hostSaid}</p>
             </details>
           )}
           <div className="connect-actions">
             {needsNewCode ? (
               <button className="primary" onClick={newCode}>
-                Paste a new code
+                {tr('app_paste_a_new_code')}
               </button>
             ) : (
               <button className="ghost" onClick={() => void connect()}>
-                Try again
+                {tr('app_try_again')}
               </button>
             )}
             {remembered !== '' && !needsNewCode && (
               <button className="ghost" onClick={forgetInvite}>
-                Forget this invite
+                {tr('app_forget_this_invite')}
               </button>
             )}
           </div>
@@ -502,7 +502,7 @@ function ConnectBody({ state, dispatch }: Props) {
       {dev && (
         <label className="devmode">
           <input type="checkbox" checked={direct} onChange={(e) => setDirect(e.target.checked)} />
-          Direct mode (dev) — talk to {__DEFAULT_DIRECT_URL__} instead of the tunnel
+          {tr('app_direct_mode_dev', { url: __DEFAULT_DIRECT_URL__ })}
         </label>
       )}
     </Page>
@@ -596,7 +596,7 @@ function CardHead() {
 function CardFoot({ who }: { who: string }) {
   return (
     <>
-      <p className="privacy card-only">{who ? privacyLine(who, false) : <Copy name="h_promise" />}</p>
+      <p className="privacy card-only">{who ? privacy(who, false) : <Copy name="h_promise" />}</p>
       <div className="about card-only">
         {/* On phones the fold links live in the card; the build and attribution are in the footer. */}
         <div className="build">
@@ -645,7 +645,7 @@ function Hint({ text }: { text: string }) {
   const { state, host } = inviteHint(text);
   if (state === 'empty') return <p className="code-hint"><Copy name="f_hint_empty" /></p>;
   if (state === 'invalid') {
-    return <p className="code-hint bad">That doesn’t look like an {PRODUCT_NAME} invite yet.</p>;
+    return <p className="code-hint bad">{tr('app_invalid_invite_hint', { product: PRODUCT_NAME })}</p>;
   }
   return (
     <p className="code-hint">
@@ -667,24 +667,21 @@ function Hint({ text }: { text: string }) {
  */
 function LogPromptsGate({ me, onAccept }: { me: Me; onAccept: () => void }) {
   return (
-    <Page promise={privacyLine(hostName(me), true)}>
+    <Page promise={privacy(hostName(me), true)}>
       <CardHead />
       <div className="failure" role="alert">
-        <strong>{hostName(me) || 'This host'} is recording what you write</strong>
+        <strong>{tr('app_host_records_input', { host: hostName(me) || tr('app_this_host') })}</strong>
         <p>
-          This host is running with prompt logging on. Everything you send, and everything the
-          model answers, is written to a log on their machine. That is not the normal setting and
-          it is not something this app can turn off.
-        </p>
+          {tr('app_this_host_is_running_with_prompt_logging_on_everything')}</p>
         <p className="dim">
-          Connected as <code>{me.key.name}</code> ({me.key.id}). Nothing has been sent yet.
+          <Text name="app_connected_identity" values={{ name: <code>{me.key.name}</code>, id: me.key.id }} />
         </p>
         <div className="connect-actions">
           <button className="primary" onClick={onAccept}>
-            I understand — start chatting
+            {tr('app_i_understand_start_chatting')}
           </button>
           <button className="ghost" onClick={() => location.reload()}>
-            Not now
+            {tr('app_not_now')}
           </button>
         </div>
       </div>
@@ -693,7 +690,7 @@ function LogPromptsGate({ me, onAccept }: { me: Me; onAccept: () => void }) {
 }
 
 function stepDetail(state: SessionState, i: number, at: number): string {
-  if (i < at) return 'done';
+  if (i < at) return tr('app_done_lowercase');
   if (i !== at) return '';
   if (state.name === 'loadingWasm') return state.pct === null ? '…' : `${state.pct}%`;
   return '…';
@@ -713,8 +710,8 @@ function inviteProblem(text: string): string | null {
 function describeConnectError(err: unknown, at: SessionState['name'], host: string, log: string[]): FriendlyError {
   if (at === 'loadingWasm') {
     return {
-      title: 'Could not load the tunnel',
-      detail: 'Reload the page; if it keeps failing, this copy of the app was published without its tunnel module.',
+      title: tr('app_could_not_load_the_tunnel'),
+      detail: tr('app_reload_the_page_if_it_keeps_failing_this_copy'),
       ...(err instanceof Error && err.message.trim() !== '' ? { hostSaid: err.message.trim() } : {}),
     };
   }

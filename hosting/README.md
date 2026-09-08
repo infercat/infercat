@@ -42,12 +42,14 @@ The Function is tested with fake KV by `cd web && pnpm test`; no cloud resources
 ### Rebuilding the Chinese font subset
 
 Source: Google Fonts `ofl/notosanssc/NotoSansSC[wght].ttf`, with its adjacent `OFL.txt`.
-Using Python fontTools 4.60.2 with its WOFF extra (`pip install 'fonttools[woff]==4.60.2'`),
-concatenate `web/src/i18n/en.ts` and `zh.ts` to a temporary glyph text file, then run:
+Using the existing Python fontTools 4.60.2 WOFF extra (`pip install 'fonttools[woff]==4.60.2'`):
 
 ```sh
-python3 -m fontTools.subset 'NotoSansSC[wght].ttf' --text-file=glyphs.txt --flavor=woff2 --output-file=web/public/fonts/noto-sans-sc-landing.woff2
+python3 hack/subset-font.py 'NotoSansSC[wght].ttf'
+python3 hack/subset-font.py --check
 make notices
 ```
 
-The font and OFL are served from `web/public/fonts/`; no runtime font CDN is used.
+The script subsets the union of both tables to `web/public/fonts/noto-sans-sc.woff2` and verifies
+CJK coverage. The normal web tests independently read the shipped font's cmap to catch copy/font
+drift without requiring Python. The same font and OFL are self-hosted; no runtime font CDN is used.

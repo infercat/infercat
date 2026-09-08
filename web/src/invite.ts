@@ -1,3 +1,4 @@
+import { tr } from './i18n/text';
 // Invite parsing, mirroring internal/invite on the Go side (docs/ARCHITECTURE.md §Invite format):
 //
 //   ic1.<tailcat ConnBlob>.<secret>
@@ -39,7 +40,7 @@ const BASE64URL = /^[A-Za-z0-9_-]+$/;
 // The prefix family without its version number ("ic" of "ic1"), from the constant: the family
 // changes with the product name (037), and the Go side derives it the same way.
 const VERSION_TAG = new RegExp(`^${INVITE_PREFIX.replace(/\d+$/, '')}(\\d+)$`);
-const NEWER = 'This invite needs a newer version of the app.';
+const NEWER = () => tr('app_this_invite_needs_a_newer_version_of_the_app');
 
 export function encodeInvite(addr: string, secret: string): string {
   return `${INVITE_PREFIX}.${addr}.${secret}`;
@@ -48,37 +49,37 @@ export function encodeInvite(addr: string, secret: string): string {
 export function decodeInvite(raw: string): Invite {
   const s = raw.trim();
   if (s === '') {
-    throw new InviteError('empty', 'Paste the invite code your host sent you.');
+    throw new InviteError('empty', tr('app_paste_the_invite_code_your_host_sent_you'));
   }
   const parts = s.split('.');
   // The prefix is checked before the part count, so an invite from a newer app says so even if
   // that app's layout differs — same order as the Go side.
   const tag = parts[0] as string;
   if (tag !== INVITE_PREFIX) {
-    if (isNewerVersion(tag)) throw new InviteError('newer_version', NEWER);
+    if (isNewerVersion(tag)) throw new InviteError('newer_version', NEWER());
     throw new InviteError(
       'missing_prefix',
-      `An invite starts with "${INVITE_PREFIX}." — this one starts with "${clip(tag)}".`,
+      tr('app_invite_bad_prefix', { prefix: INVITE_PREFIX, found: clip(tag) }),
     );
   }
   if (parts.length !== 3) {
     throw new InviteError(
       'wrong_part_count',
-      `An invite has three dot-separated parts (${INVITE_PREFIX}.address.secret); this one has ${parts.length}.`,
+      tr('app_invite_part_count', { prefix: INVITE_PREFIX, count: parts.length }),
     );
   }
   const addr = parts[1] as string;
   const secret = parts[2] as string;
   if (addr === '' || secret === '') {
-    throw new InviteError('empty_part', 'This invite is missing a part — it looks cut off.');
+    throw new InviteError('empty_part', tr('app_this_invite_is_missing_a_part_it_looks_cut'));
   }
   if (!addr.startsWith('tc') || addr.length === 2 || !BASE64URL.test(addr)) {
-    throw new InviteError('bad_addr', 'The address in the middle of this invite is not a host address.');
+    throw new InviteError('bad_addr', tr('app_the_address_in_the_middle_of_this_invite_is'));
   }
   if (!BASE64URL.test(secret)) {
     throw new InviteError(
       'bad_secret',
-      'The secret at the end of this invite contains characters that do not belong in it.',
+      tr('app_the_secret_at_the_end_of_this_invite_contains'),
     );
   }
   return { addr, secret };

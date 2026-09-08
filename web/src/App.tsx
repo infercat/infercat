@@ -1,3 +1,4 @@
+import { tr } from './i18n/text';
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { describeError, getMe, hostName, ME_TIMEOUT_MS, timeoutSignal } from './api';
 import Connect from './ui/Connect';
@@ -188,7 +189,7 @@ export default function App() {
   if (!l) return <Connect state={state} dispatch={dispatch} />;
 
   return (
-    <Suspense fallback={<div className="booting">Opening…</div>}>
+    <Suspense fallback={<div className="booting">{tr('app_opening')}</div>}>
       {/* Remounting per host is what makes the host-scoped store load cleanly for the new one. */}
       <Chat
         key={l.addr}
