@@ -78,7 +78,7 @@ deploy-web: web
 	rm -rf web/deploy && mkdir -p web/deploy && cp -R web/dist/. web/deploy/ && rm -f web/deploy/infercat.wasm
 	cp hack/install.sh web/deploy/install.sh
 	cp docs/media/demo.mp4 docs/media/demo.zh.mp4 docs/media/demo-poster.png docs/media/demo-poster.zh.png web/deploy/
-	cp hosting/cloudflare/_headers hosting/cloudflare/_routes.json hosting/cloudflare/404.html web/deploy/ && cp -R hosting/cloudflare/functions web/deploy/
+	cp hosting/cloudflare/_headers hosting/cloudflare/_routes.json hosting/cloudflare/404.html hosting/cloudflare/derpmap.json web/deploy/ && cp -R hosting/cloudflare/functions web/deploy/
 	cd hosting/cloudflare && env -u CLOUDFLARE_API_TOKEN -u CLOUDFLARE_ACCOUNT_ID wrangler pages deploy --project-name infercat --branch main --commit-dirty=true
 
 # Real three-scene launch recording; needs VHS, ffmpeg, IBM Plex Mono and the local model engine.

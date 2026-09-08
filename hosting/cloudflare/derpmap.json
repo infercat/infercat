@@ -1,0 +1,18 @@
+{
+  "Regions": {
+    "900": {
+      "RegionID": 900,
+      "RegionCode": "ic",
+      "RegionName": "Infercat",
+      "Nodes": [
+        {
+          "Name": "900a",
+          "RegionID": 900,
+          "HostName": "derp.infercat.ai",
+          "DERPPort": 443,
+          "STUNPort": 3478
+        }
+      ]
+    }
+  }
+}

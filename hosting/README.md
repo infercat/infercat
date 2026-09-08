@@ -19,6 +19,9 @@ and publishes it with wrangler (OAuth login; run from a directory without a `.en
   (`/infercat.wasm.gz`), by country and browser family. No script on the page, no cookie, no third
   party; the invite in the fragment never reaches a server. Query in the dashboard (Analytics Engine,
   dataset `infercat_loads`): `SELECT index1 AS kind, blob1 AS country, blob4 AS from, SUM(_sample_interval) AS n FROM infercat_loads WHERE timestamp > NOW() - INTERVAL '7' DAY GROUP BY kind, country, from`.
+- `derpmap.json`: the relay map for Infercat's own DERP relay (`derp.infercat.ai`, region 900). Hosts
+  pin it with `infercat serve --derpmap-url https://infercat.ai/derpmap.json`; the region is then
+  embedded in every invite that host mints, so the hostname must not change once keys are out.
 - infercat.dev is a separate Pages project that only redirects to infercat.ai (`hosting/cloudflare/redirect/`).
 
 ## Roadmap signup list
