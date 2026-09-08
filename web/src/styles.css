@@ -937,3 +937,9 @@ input[type='range']::-moz-range-thumb {
   #p-s1 .art { grid-column:2; grid-row:1 / span 2; }
   .landing-demo { grid-column:1; grid-row:2; }
 }
+
+.landing .invite-phone { display:none; }
+@media (max-width:899px) {
+  .landing .invite-wide { display:none; }
+  .landing .invite-phone { display:inline; }
+}

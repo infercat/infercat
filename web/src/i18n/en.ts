@@ -51,15 +51,15 @@ export const en = {
   fact3_v: 'your own. One flag.',
   s2_eye: '02 · The invite',
   s2_h: 'One code, two keys.',
-  s2_lead: 'The address finds the host. The secret says who you are and how much you may use.',
+  s2_lead: "The tunnel address finds the host. The gateway key says who you are and how much you may use.",
   s2_mut:
     'Your machine makes one code per friend and keeps only a hash of the secret. Revoke one friend and only their code stops.',
   seg_v: 'version',
-  seg_a: 'address',
-  seg_s: 'your secret',
+  seg_a: "Tunnel address",
+  seg_s: "Gateway key",
   tt_v: '<b>Format version.</b> If a code needs a newer app, the app says so.',
-  tt_a: '<b>The host’s address on the tunnel,</b> the same for every friend. The app uses it to find the machine. It is not a secret.',
-  tt_s: 'Yours alone. 32 random bytes, made when the host adds you. The host keeps only a hash of it, next to your limits and usage.',
+  tt_a: "Where the host is, from the tunnel library. It carries the host's public key, so your tunnel can only end at their machine. Same for every friend; not a secret.",
+  tt_s: "Your API key for the host's gateway, like OPENAI_API_KEY. The app sends it with every request; the host keeps only a hash. Made when the host adds you.",
   verbs: 'keys add · limits · pause · rotate · revoke · applied at once, no restart',
   lim_sum: 'Limits a host can set',
   d1_l: 'requests a minute',
@@ -111,7 +111,7 @@ export const en = {
   path_label: 'Path',
   roadmap_label: 'any client, a public gateway that is not built, your machine',
   terminal:
-    '$ infercat connect ic1.tco2Fw8yq3zn.rrMAuK…\nInfercat 0.1.0\nhost    Max’s laptop · gemma-4-E2B-it-Q4_K_M.gguf\npath    relayed via New York City · 27 ms\nlocal   http://127.0.0.1:11435\n        base URL http://127.0.0.1:11435/v1, any API key\n\n$ export OPENAI_BASE_URL=http://127.0.0.1:11435/v1 OPENAI_API_KEY=x\n$ python3 chat.py',
+    '$ infercat connect {invite}\nInfercat 0.1.0\nhost    Max’s laptop · gemma-4-E2B-it-Q4_K_M.gguf\npath    relayed via New York City · 27 ms\nlocal   http://127.0.0.1:11435\n        base URL http://127.0.0.1:11435/v1, any API key\n\n$ export OPENAI_BASE_URL=http://127.0.0.1:11435/v1 OPENAI_API_KEY=x\n$ python3 chat.py',
   f_hint_empty: 'Paste the code your friend sent you.',
 
   // 047 app copy. Named placeholders are substituted as text, never HTML.

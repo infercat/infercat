@@ -2,6 +2,14 @@ import { useEffect, useRef, useState, type KeyboardEvent } from 'react';
 import { useLanguage } from './Language';
 import { Signup } from './Signup';
 
+// Random, fixed example bytes: never an address or credential from a real host.
+const EXAMPLE_ADDRESS = 'tce0qQCccgxvj9O_4PhT0l2PsJk7_4fjmS8Yia25APkXD1OPzql6IRfXGcwMO4CiVx84sqD4_tUDDahahHgFcymfQhSYgIr4HtxQ';
+const EXAMPLE_SECRET = 'PKZzH90SyKq_v43kucCy4fIXG5gYeXayAfN4dizIHZY';
+const abbreviate = (value: string, edge: number) => `${value.slice(0, edge)}…${value.slice(-edge)}`;
+const DISPLAY_KEY = abbreviate(EXAMPLE_SECRET, 8);
+const DISPLAY_INVITE = `ic1.${abbreviate(EXAMPLE_ADDRESS, 22)}.${DISPLAY_KEY}`;
+const PHONE_INVITE = `ic1.${abbreviate(EXAMPLE_ADDRESS, 16)}.${DISPLAY_KEY}`;
+
 function Demo() {
   const { t, lang } = useLanguage();
   const video = useRef<HTMLVideoElement>(null);
@@ -283,7 +291,7 @@ export function Landing() {
                   aria-expanded={open === 'p-tt-v'}
                   onClick={(e) => toggle('p-tt-v', e.currentTarget)}
                 >
-                  {'ic1'}
+                  <span className="invite-part">ic1</span>
                   <span className="n" data-copy="seg_v" dangerouslySetInnerHTML={{ __html: t.seg_v }} />
                 </button>
                 <span className="dot">{'.'}</span>
@@ -294,7 +302,10 @@ export function Landing() {
                   aria-expanded={open === 'p-tt-a'}
                   onClick={(e) => toggle('p-tt-a', e.currentTarget)}
                 >
-                  {'tco2Fw8yq3zn'}
+                  <span className="invite-part" title={EXAMPLE_ADDRESS}>
+                    <span className="invite-wide">{abbreviate(EXAMPLE_ADDRESS, 22)}</span>
+                    <span className="invite-phone">{abbreviate(EXAMPLE_ADDRESS, 16)}</span>
+                  </span>
                   <span className="n" data-copy="seg_a" dangerouslySetInnerHTML={{ __html: t.seg_a }} />
                 </button>
                 <span className="dot">{'.'}</span>
@@ -305,7 +316,7 @@ export function Landing() {
                   aria-expanded={open === 'p-tt-s'}
                   onClick={(e) => toggle('p-tt-s', e.currentTarget)}
                 >
-                  {'rrMAuKdLMEAcv3ODDkyCMa07oXrpwKXc4MDOr4C7nNU'}
+                  <span className="invite-part" title={EXAMPLE_SECRET}>{DISPLAY_KEY}</span>
                   <span className="n" data-copy="seg_s" dangerouslySetInnerHTML={{ __html: t.seg_s }} />
                 </button>
                 <div className="tips">
@@ -385,7 +396,8 @@ export function Landing() {
             </div>
             <div className="art">
               <pre className="code" data-copy="terminal">
-                {t.terminal}
+                <span className="invite-wide">{t.terminal.replace('{invite}', DISPLAY_INVITE)}</span>
+                <span className="invite-phone">{t.terminal.replace('{invite}', PHONE_INVITE)}</span>
               </pre>
               <details className="dis">
                 <summary data-copy="reach_sum" dangerouslySetInnerHTML={{ __html: t.reach_sum }} />

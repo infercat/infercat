@@ -27,8 +27,9 @@ async function checkCopy(page, lang, assert) {
         template.innerHTML = expected[key];
         // The copy owns the words; the product constant supplies the host quickstart URL.
         if (key === 'f_quiet') template.content.querySelector('a').setAttribute('href', document.querySelector('.page-nav a').getAttribute('href'));
-        const wanted = attribute ? expected[key] : template.innerHTML;
-        const actual = attribute ? el.getAttribute(attribute) : el.innerHTML;
+        if (key === 'terminal') template.content.textContent = expected[key].replace('{invite}', [...document.querySelectorAll('.anat .invite-part')].map((p) => p.innerText).join('.'));
+        const wanted = attribute ? expected[key] : key === 'terminal' ? template.content.textContent : template.innerHTML;
+        const actual = attribute ? el.getAttribute(attribute) : key === 'terminal' ? el.innerText : el.innerHTML;
         if (actual !== wanted) issues.push(`${key}: ${actual}`);
         keys.push(key);
       }
@@ -132,6 +133,31 @@ export async function landingEvidence(browser, base, shots, inspect = async () =
     await page.waitForFunction(() => { const v = document.querySelector('.landing-demo video'); return !v.paused && v.currentTime > 0; });
     assert(await page.locator('.demo-play').count() === 0, 'play control yields to native controls');
     await video.evaluate((v) => v.pause());
+    const anatomy = await page.locator('.anat').evaluate((figure) => {
+      const failures = [], parts = [...figure.querySelectorAll('.invite-part')];
+      const address = parts[1].title, secret = parts[2].title;
+      if (!/^tc[A-Za-z0-9_-]{98}$/.test(address) || !/^[A-Za-z0-9_-]{43}$/.test(secret)) failures.push('fake invite shape');
+      const edge = window.innerWidth < 900 ? 16 : 22;
+      if (parts[1].innerText !== `${address.slice(0, edge)}…${address.slice(-edge)}` || parts[2].innerText !== `${secret.slice(0, 8)}…${secret.slice(-8)}`) failures.push('middle abbreviation');
+      if (parts[1].innerText.length <= parts[2].innerText.length) failures.push('address must read longer than key');
+      const bounds = figure.getBoundingClientRect();
+      for (const part of parts) {
+        const row = part.parentElement, box = row.getBoundingClientRect(), value = part.getBoundingClientRect();
+        const label = row.querySelector('.n').getBoundingClientRect();
+        if (value.left < box.left - 1 || value.right > box.right + 1 || box.right > bounds.right + 1) failures.push('part outside its row');
+        if (label.left < bounds.left - 1 || label.right > bounds.right + 1) failures.push('label outside figure');
+        // The unchanged version label is wider than ic1 and sits above it, aligned left.
+        const aligned = window.innerWidth < 900 || row.classList.contains('v') ? Math.abs(label.left - value.left) < 1 : Math.abs(label.left + label.width / 2 - (box.left + box.width / 2)) < 1;
+        if (!aligned || (window.innerWidth < 900 && (label.top < box.top || label.bottom > box.bottom))) failures.push('label does not belong to its part');
+        const bracket = window.getComputedStyle(row, '::after');
+        if (window.innerWidth >= 900 && (parseFloat(bracket.left) !== 0 || parseFloat(bracket.right) !== 0 || Math.abs(value.width - box.width) > 1)) failures.push('bracket does not span its part');
+      }
+      const invite = parts.map((p) => p.innerText).join('.');
+      if (!document.querySelector('.code').innerText.startsWith(`$ infercat connect ${invite}\n`)) failures.push('transcript differs from figure');
+      return failures;
+    });
+    assert(!anatomy.length, `invite anatomy: ${anatomy.join(', ')}`);
+    if (width !== 1024) await page.locator('#p-s2').screenshot({ path: join(shots, `052-${width}-${lang}.png`) });
     const keys = await checkCopy(page, lang, assert);
     for (const key of ['ml_label', 'ml_ph', 'ml_btn', 'ml_note']) assert(keys.includes(key), `form copy coverage ${key}`);
     const other = lang === 'en' ? 'zh' : 'en';
@@ -180,5 +206,6 @@ export async function landingEvidence(browser, base, shots, inspect = async () =
     console.log(`  ${label}: PASS — layout, labels, language, controls, signup, same-origin`);
   }
   console.log(`049 video: ${checked} passed / 0 failed / 0 skipped of ${checked}`);
+  console.log(`052 anatomy: ${checked} passed / 0 failed / 0 skipped of ${checked}`);
   console.log(`043 landing: ${checked} passed / 0 failed / 0 skipped of ${checked}`);
 }
