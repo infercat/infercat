@@ -16,7 +16,7 @@
 
 把你电脑上的模型分享给朋友。在你现有的推理服务（llama.cpp、vLLM、Ollama 或 LM Studio）前面跑一个二进制程序，给每个朋友发一个邀请码。他们把邀请码粘贴到网页版就能和你的模型聊天：免账号、免 VPN、什么都不用装。连接全程端到端加密，中间的中继只能看到密文。你可以给每个朋友单独设置限额，只看得到数字，看不到他们聊了什么。
 
-![Share a local model with a friend in a browser or terminal](docs/media/demo.gif)
+![Share a local model with a friend in a browser or terminal](docs/media/demo.zh.gif)
 
 *真实运行录屏：朋友的浏览器通过中继连上一台运行 llama.cpp 的笔记本电脑。*
 
