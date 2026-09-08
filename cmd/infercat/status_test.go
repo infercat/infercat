@@ -148,7 +148,7 @@ func TestStatusWatchStreamsRequests(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	var out, errw bytes.Buffer
+	var out, errw lockedBuffer
 	code := make(chan int, 1)
 	go func() {
 		code <- run(ctx, []string{"status", "--data-dir", dir, "--watch", "--interval", "50ms"}, &out, &errw, nil, true, testPlatform(fakeAddr, nil))
@@ -163,9 +163,11 @@ func TestStatusWatchStreamsRequests(t *testing.T) {
 		}
 	}
 	waitFor("upstream  llama.cpp  http://e  healthy")
-	time.Sleep(200 * time.Millisecond) // the watcher's stream must be open before the event
-	hub.Record(ctx, usage.Event{TS: time.Now(), KeyID: "k_1", Endpoint: "/v1/chat/completions", Model: "m", Status: 200, PromptTokens: 5, CompletionTokens: 7, TTFTMS: 9, TotalMS: 1200, Prompt: "hidden"})
-	waitFor("alice  chat  m  5→7 tok  ttft 9ms  1.2s  ok")
+	// Events are live-only: publish until the watcher demonstrably receives one.
+	waitUntil(t, "watch receives a request line", func() bool {
+		hub.Record(ctx, usage.Event{TS: time.Now(), KeyID: "k_1", Endpoint: "/v1/chat/completions", Model: "m", Status: 200, PromptTokens: 5, CompletionTokens: 7, TTFTMS: 9, TotalMS: 1200, Prompt: "hidden"})
+		return strings.Contains(out.String(), "alice  chat  m  5→7 tok  ttft 9ms  1.2s  ok")
+	})
 	if !strings.Contains(out.String(), "\x1b[H\x1b[2J") {
 		t.Fatal("the watch did not redraw with an ANSI clear")
 	}
@@ -227,15 +229,12 @@ func TestServeLogRequestsPrintsTheLine(t *testing.T) {
 		}
 		r := <-rec
 		r.Record(ctx, usage.Event{TS: time.Now(), KeyID: k.ID, Endpoint: "/v1/chat/completions", Model: "m", Status: 200, PromptTokens: 3, CompletionTokens: 4, TotalMS: 500, Prompt: "hidden"})
-		// The line is printed by the recorder's own goroutine; wait for it with a deadline instead of a
-		// fixed sleep, which a loaded CI runner turned into a flake (2026-09-09).
-		deadline := time.Now().Add(5 * time.Second)
-		for on && !strings.Contains(out.String(), "alice  chat  m  3→4 tok  500ms  ok") && time.Now().Before(deadline) {
-			time.Sleep(20 * time.Millisecond)
+		if on {
+			waitUntil(t, "serve prints the first request line", func() bool {
+				return strings.Contains(out.String(), "alice  chat  m  3→4 tok  500ms  ok")
+			})
 		}
-		if !on {
-			time.Sleep(200 * time.Millisecond)
-		}
+		// Shutdown flushes the durable recorder; no elapsed-time guess is needed for off.
 		cancel()
 		select {
 		case <-code:
@@ -263,3 +262,20 @@ func (l *lockedBuffer) Write(p []byte) (int, error) {
 	return l.b.Write(p)
 }
 func (l *lockedBuffer) String() string { l.mu.Lock(); defer l.mu.Unlock(); return l.b.String() }
+
+func (l *lockedBuffer) Reset() { l.mu.Lock(); defer l.mu.Unlock(); l.b.Reset() }
+
+func waitUntil(t *testing.T, what string, ready func() bool) {
+	t.Helper()
+	deadline := time.NewTimer(10 * time.Second)
+	defer deadline.Stop()
+	tick := time.NewTicker(10 * time.Millisecond)
+	defer tick.Stop()
+	for !ready() {
+		select {
+		case <-deadline.C:
+			t.Fatalf("timed out waiting for %s", what)
+		case <-tick.C:
+		}
+	}
+}

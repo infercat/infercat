@@ -8,7 +8,6 @@ package gateway
 import (
 	"context"
 	"net/http"
-	"sync"
 	"testing"
 	"time"
 
@@ -73,11 +72,10 @@ func TestQueueDepartureWinsTheHandover(t *testing.T) {
 	}
 }
 
-// The same rule through the pipeline, where what is at stake is the settle row: A holds the only
-// slot, B queues and leaves, C queues behind B, and B's departure and A's release are fired
-// together. However that falls, B is QueueLost/client gone — nothing counted, nothing charged, no
-// reservation left standing — and C gets the slot. (The interleaving here is the machine's; the
-// round-by-round proof is the fixture above.)
+// Through the HTTP pipeline, B's cancellation must reach the server before A
+// releases its slot: cancelling the client and releasing concurrently does not
+// establish that order. The fixture above forces the simultaneous handover case.
+// Here B must leave uncharged, and C must get the slot.
 func TestQueueDepartureIsNeverCharged(t *testing.T) {
 	h := newHarness(t, Config{}, nil)
 	h.gw.queueTimeout = time.Minute
@@ -86,6 +84,7 @@ func TestQueueDepartureIsNeverCharged(t *testing.T) {
 	releaseA := h.hold(bob)
 
 	ctxB, leaveB := context.WithCancel(context.Background())
+	defer leaveB()
 	bDone := make(chan struct{})
 	go func() { defer close(bDone); _, _ = h.streamReq(ctxB, chatBody("m1", 1, `"user":"B"`)) }()
 	waitUntil(t, 3*time.Second, "alice queued", func() bool { _, w := h.gw.Queue(); return w == 1 })
@@ -98,16 +97,22 @@ func TestQueueDepartureIsNeverCharged(t *testing.T) {
 	waitUntil(t, 3*time.Second, "C behind alice", func() bool { _, w := h.gw.Queue(); return w == 2 })
 
 	h.shortStreams() // C's stream, once it gets the slot; A keeps the events it started with
-	var wg sync.WaitGroup
-	fire := make(chan struct{})
-	for _, act := range []func(){leaveB, releaseA} {
-		wg.Add(1)
-		go func(act func()) { defer wg.Done(); <-fire; act() }(act)
+	leaveB()
+	waitUntil(t, 3*time.Second, "B removed, only C queued", func() bool {
+		in, waiting := h.gw.Queue()
+		return in == 1 && waiting == 1
+	})
+	select {
+	case <-bDone:
+	case <-time.After(3 * time.Second):
+		t.Fatal("B did not finish after cancellation")
 	}
-	close(fire)
-	wg.Wait()
-	<-bDone
-	<-cDone
+	releaseA()
+	select {
+	case <-cDone:
+	case <-time.After(10 * time.Second):
+		t.Fatal("C did not finish after receiving the slot")
+	}
 
 	waitUntil(t, 3*time.Second, "the slot to reach C", func() bool {
 		for _, tag := range h.up.order() {

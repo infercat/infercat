@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -63,7 +62,7 @@ func exec(t *testing.T, plat platform, args ...string) result {
 // confirmation prompt the way a person at a terminal would.
 func execIn(t *testing.T, plat platform, stdin string, args ...string) result {
 	t.Helper()
-	var out, errw bytes.Buffer
+	var out, errw lockedBuffer
 	code := run(context.Background(), args, &out, &errw, strings.NewReader(stdin), true, plat)
 	return result{code, out.String(), errw.String()}
 }
@@ -188,7 +187,7 @@ func TestRotatePrintsANewInviteAndRetiresTheOld(t *testing.T) {
 // The QR must carry the invite verbatim; a mistyped one is a friend who cannot connect.
 func TestQRMatchesTheInvite(t *testing.T) {
 	invite := product.InvitePrefix + "." + fakeAddr + ".GEcLTxHfEEc1nkOJcHYzDbJmMBLbEwXAJfDBrjE8CQA"
-	var buf bytes.Buffer
+	var buf lockedBuffer
 	if err := writeQR(&buf, invite); err != nil {
 		t.Fatal(err)
 	}
@@ -533,7 +532,7 @@ func TestServeRoutesTunnelLogAndFollowsSlots(t *testing.T) {
 			args = append(args, "--verbose")
 		}
 		ctx, cancel := context.WithCancel(context.Background())
-		var out, errw bytes.Buffer
+		var out, errw lockedBuffer
 		code := make(chan int, 1)
 		go func() { code <- run(ctx, args, &out, &errw, nil, false, plat) }()
 		select {
@@ -610,7 +609,7 @@ func serveOnce(t *testing.T, dir string, args ...string) result {
 	}
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	var out, errw bytes.Buffer
+	var out, errw lockedBuffer
 	code := make(chan int, 1)
 	go func() {
 		code <- run(ctx, append([]string{"serve", "--data-dir", dir}, args...), &out, &errw, nil, false, plat)
@@ -848,7 +847,7 @@ func TestQRIsForTerminalsOnly(t *testing.T) {
 	if r := execIn(t, plat, "", "keys", "add", "alice", "--data-dir", dir); !strings.Contains(r.out, "\x1b[30;47m") {
 		t.Errorf("no QR on a terminal:\n%s", r.out)
 	}
-	var out, errw bytes.Buffer
+	var out, errw lockedBuffer
 	if code := run(context.Background(), []string{"keys", "add", "bob", "--data-dir", dir}, &out, &errw, nil, false, plat); code != 0 {
 		t.Fatal(errw.String())
 	}
@@ -901,7 +900,7 @@ func TestInviteIsRepeatedUnderTheQR(t *testing.T) {
 	if n := strings.Count(r.out, carol); n != 1 {
 		t.Errorf("--no-qr repeated the link %d time(s):\n%s", n, r.out)
 	}
-	var out, errw bytes.Buffer
+	var out, errw lockedBuffer
 	if code := run(context.Background(), []string{"keys", "add", "dave", "--data-dir", dir}, &out, &errw, nil, false, plat); code != 0 {
 		t.Fatal(errw.String())
 	}
@@ -996,7 +995,7 @@ func TestKeyWritesPokeTheRunningHost(t *testing.T) {
 // `status` reads the same words off the admin API: an engine nobody has met and one that stopped
 // answering, with since when (ticket 011).
 func TestStatusWordsForTheEngineState(t *testing.T) {
-	var out bytes.Buffer
+	var out lockedBuffer
 	writeStatus(&out, admin.Status{Upstream: admin.Upstream{Kind: "unknown", URL: "http://127.0.0.1:1", Since: time.Now().Add(-12 * time.Second)}})
 	if s := out.String(); !strings.Contains(s, "upstream  (not identified yet)  http://127.0.0.1:1  NOT ANSWERING for 12s") {
 		t.Errorf("status for an unknown engine:\n%s", s)
@@ -1012,7 +1011,7 @@ func TestNoEnginePointsToEngineQuickstart(t *testing.T) {
 	// Cancellation makes every signature probe fail even on a developer's machine with engines.
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
-	var output bytes.Buffer
+	var output lockedBuffer
 	e := env{errw: &output}
 	_, err := e.openUpstream(ctx, t.TempDir(), "", "", 0)
 	if !errors.Is(err, upstream.ErrNoUpstream) {

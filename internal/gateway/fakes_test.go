@@ -225,7 +225,6 @@ func newFakeUpstream() *fakeUpstream {
 }
 
 func (f *fakeUpstream) handle(w http.ResponseWriter, r *http.Request) {
-	f.requests.Add(1)
 	body, _ := io.ReadAll(r.Body)
 	var sent map[string]any
 	_ = json.Unmarshal(body, &sent)
@@ -235,6 +234,9 @@ func (f *fakeUpstream) handle(w http.ResponseWriter, r *http.Request) {
 		f.tags = append(f.tags, tag)
 	}
 	mode, events, gap, stallAfter, delay := f.mode, f.events, f.gap, f.stallAfter, f.delay
+	// Tests use this count as readiness: publish only after the tag/body and
+	// response configuration are captured, not merely after accepting HTTP.
+	f.requests.Add(1)
 	f.mu.Unlock()
 	f.startOnce.Do(func() { close(f.started) })
 

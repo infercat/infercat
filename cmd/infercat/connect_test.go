@@ -2,7 +2,6 @@ package main
 
 import (
 	"bufio"
-	"bytes"
 	"context"
 	"encoding/json"
 	"errors"
@@ -11,6 +10,7 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
+	"os"
 	"regexp"
 	"strings"
 	"sync"
@@ -170,9 +170,9 @@ func (g *fakeHost) lastAuth(t *testing.T) string {
 }
 
 // serveConnector runs the relay on a loopback port with the given session, the way cmdConnect does.
-func serveConnector(t *testing.T, sess session) (*connector, string, *bytes.Buffer) {
+func serveConnector(t *testing.T, sess session) (*connector, string, *lockedBuffer) {
 	t.Helper()
-	var out bytes.Buffer
+	var out lockedBuffer
 	c := &connector{secret: testSecret, host: "Testhost", relayName: "Testville", sess: sess, out: &out, logRequests: true, events: admin.NewEvents(nil),
 		logf: func(f string, a ...any) { fmt.Fprintf(&out, f+"\n", a...) }, wake: make(chan struct{}, 1)}
 	srv := httptest.NewServer(c)
@@ -180,13 +180,12 @@ func serveConnector(t *testing.T, sess session) (*connector, string, *bytes.Buff
 	return c, srv.URL, &out
 }
 
-func hurry(t *testing.T, d time.Duration) {
-	t.Helper()
-	prev := []time.Duration{dialTimeout, silenceTimeout, probeTimeout, pathEvery, connectTimeout}
-	dialTimeout, silenceTimeout, probeTimeout, pathEvery, connectTimeout = d, d, d, d, d
-	t.Cleanup(func() {
-		dialTimeout, silenceTimeout, probeTimeout, pathEvery, connectTimeout = prev[0], prev[1], prev[2], prev[3], prev[4]
-	})
+// Set test timings once: timer callbacks may outlive a request, so per-test
+// restoration would race with their reads of these package variables.
+func TestMain(m *testing.M) {
+	dialTimeout, connectTimeout = 300*time.Millisecond, 300*time.Millisecond
+	silenceTimeout, probeTimeout, pathEvery = 300*time.Millisecond, 300*time.Millisecond, 50*time.Millisecond
+	os.Exit(m.Run())
 }
 
 type gwErr struct {
@@ -352,7 +351,6 @@ func TestConnectMapsErrorsToTheFriendsWords(t *testing.T) {
 // Promise 3: a host that does not answer the dial is declared asleep at the web client's bound,
 // as a 503 with Retry-After and the friend's words — and the keeper is told to look at the session.
 func TestConnectDeclaresAnAsleepHostWithinTheBound(t *testing.T) {
-	hurry(t, 300*time.Millisecond)
 	sess := &fakeSession{addr: "127.0.0.1:1"}
 	sess.dead.Store(true)
 	c, base, _ := serveConnector(t, sess)
@@ -384,37 +382,55 @@ func TestConnectDeclaresAnAsleepHostWithinTheBound(t *testing.T) {
 // A host that answers is a slow model — the stream continues and completes; a host that does not
 // answer ends the stream with a host_stalled event and [DONE], not a silent truncation.
 func TestConnectSilenceIsProbedNotAssumed(t *testing.T) {
-	hurry(t, 200*time.Millisecond)
 	g := newFakeHost(t)
 	_, base, _ := serveConnector(t, &fakeSession{addr: g.Listener.Addr().String()})
-	events := func(kase string) []string {
+	events := func(kase string, afterHeaders func()) []string {
 		t.Helper()
-		resp, err := http.Post(base+"/v1/chat/completions?case="+kase, "application/json", strings.NewReader(`{"stream":true}`))
+		client := &http.Client{Timeout: 10 * time.Second}
+		resp, err := client.Post(base+"/v1/chat/completions?case="+kase, "application/json", strings.NewReader(`{"stream":true}`))
 		if err != nil {
 			t.Fatal(err)
 		}
 		defer resp.Body.Close()
-		b, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+		if afterHeaders != nil {
+			afterHeaders()
+		}
+		b, err := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+		if err != nil {
+			t.Fatal(err)
+		}
 		return strings.Split(strings.TrimSpace(string(b)), "\n\n")
 	}
 
-	// slow: the host keeps answering /me while the model takes 4 silences to say anything.
-	go func() {
-		time.Sleep(4 * silenceTimeout)
-		g.release <- struct{}{}
-	}()
-	evs := events("slow")
+	// Release the slow model only after two real probes, however long CI takes.
+	evs := events("slow", func() {
+		waitUntil(t, "two healthy silence probes", func() bool { return g.meServed.Load() >= 2 })
+		select {
+		case g.release <- struct{}{}:
+		case <-time.After(10 * time.Second):
+			t.Fatal("slow stream ended before release")
+		}
+	})
 	if len(evs) != 3 || evs[0] != ": queued" || !strings.Contains(evs[1], `"late"`) || evs[2] != "data: [DONE]" {
 		t.Fatalf("slow host: %q", evs)
 	}
 	if g.meServed.Load() < 2 {
-		t.Fatalf("/me was asked %d times during 4 silences; want probes, not patience", g.meServed.Load())
+		t.Fatalf("/me was asked %d times before release; want probes, not patience", g.meServed.Load())
 	}
 
+	// A separate host keeps a late healthy probe from satisfying the stalled case.
+	g = newFakeHost(t)
+	_, base, _ = serveConnector(t, &fakeSession{addr: g.Listener.Addr().String()})
 	// stall: one token, then nothing, and /me hangs too.
 	g.meHangs.Store(true)
+	probes := g.meServed.Load()
 	t0 := time.Now()
-	evs = events("stall")
+	evs = events("stall", func() {
+		waitUntil(t, "stalled stream probed before completion", func() bool { return g.meServed.Load() > probes })
+	})
+	if elapsed := time.Since(t0); elapsed < silenceTimeout+probeTimeout || elapsed > 10*time.Second {
+		t.Fatalf("silence + failed probe took %v", elapsed)
+	}
 	if len(evs) != 3 || !strings.Contains(evs[0], `"one"`) || evs[2] != "data: [DONE]" {
 		t.Fatalf("stalled host: %q", evs)
 	}
@@ -429,14 +445,22 @@ func TestConnectSilenceIsProbedNotAssumed(t *testing.T) {
 // is replaced with backoff under the same identity, requests fail fast meanwhile, and the
 // reconnect is announced with the new path.
 func TestConnectReprintsThePathAndReconnectsWithBackoff(t *testing.T) {
-	hurry(t, 50*time.Millisecond)
 	g := newFakeHost(t)
 	sess := &fakeSession{addr: g.Listener.Addr().String()}
 	sess.setPath(tunnel.Path{Via: "nyc", RTT: 27 * time.Millisecond}, nil)
 	c, base, out := serveConnector(t, sess)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	go c.keep(ctx, tunnel.Path{Via: "nyc", RTT: 27 * time.Millisecond})
+	kept := make(chan struct{})
+	go func() { defer close(kept); c.keep(ctx, tunnel.Path{Via: "nyc", RTT: 27 * time.Millisecond}) }()
+	t.Cleanup(func() {
+		cancel()
+		select {
+		case <-kept:
+		case <-time.After(10 * time.Second):
+			t.Error("path keeper did not stop")
+		}
+	})
 
 	waitFor := func(what string) {
 		t.Helper()
@@ -504,7 +528,7 @@ func TestConnectCommandBannerAndRefusals(t *testing.T) {
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	var out, errw bytes.Buffer
+	var out, errw lockedBuffer
 	code := make(chan int, 1)
 	go func() {
 		code <- run(ctx, []string{"connect", inv, "--listen", "127.0.0.1:0"}, &out, &errw, nil, false, plat)
@@ -518,6 +542,9 @@ func TestConnectCommandBannerAndRefusals(t *testing.T) {
 		}
 		time.Sleep(10 * time.Millisecond)
 	}
+	waitUntil(t, "complete connect banner", func() bool {
+		return strings.Contains(out.String(), "set your app's base URL to "+base+"/v1, any API key")
+	})
 	banner := out.String()
 	order := []string{"host      Testhost  ·  m1 (+1 more)", "path      relayed via Testville · 27 ms", "local     " + base, "set your app's base URL to " + base + "/v1, any API key"}
 	at := -1
