@@ -589,3 +589,41 @@ func TestConnectCommandBannerAndRefusals(t *testing.T) {
 	}
 	t.Logf("banner:\n%s", banner)
 }
+
+func TestConnectConcurrencyCopyUsesTheInviteCap(t *testing.T) {
+	c := &connector{}
+	for _, limit := range []int{0, 1, 30} {
+		e := map[string]any{"code": "concurrency_limited", "type": "rate_limit_error", "message": "diagnostic", "retry_after": 7}
+		if limit > 0 {
+			e["limit"], e["in_flight"] = limit, 31
+		}
+		body, _ := json.Marshal(map[string]any{"error": e})
+		resp := &http.Response{StatusCode: 429, Header: http.Header{"Retry-After": {"7"}}, Body: io.NopCloser(strings.NewReader(string(body)))}
+		httpErr := c.hostErr(resp)
+		_, streamErr := c.rewriteEvent(append([]byte("data: "), body...))
+		want := "one reply at a time — this invite may have one request in flight (host said: diagnostic)"
+		if limit > 1 {
+			want = "this invite is busy — all 30 seats are in use; try again in a moment (host said: diagnostic)"
+		}
+		for _, got := range []hostError{httpErr, streamErr} {
+			if got.Message != want || got.RetryAfter != 7 || got.Limit != limit {
+				t.Fatalf("limit %d: %+v", limit, got)
+			}
+			var wire struct {
+				Error map[string]any `json:"error"`
+			}
+			if err := json.Unmarshal(errorJSON(got, true), &wire); err != nil {
+				t.Fatal(err)
+			}
+			if limit > 0 && (wire.Error["limit"] != float64(limit) || wire.Error["in_flight"] != float64(31)) {
+				t.Fatalf("lost snapshot: %+v", wire.Error)
+			}
+			if limit == 0 && wire.Error["limit"] != nil {
+				t.Fatal("invented a cap")
+			}
+		}
+		if httpErr.Status != 429 {
+			t.Fatal(httpErr)
+		}
+	}
+}

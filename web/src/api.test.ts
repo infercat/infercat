@@ -1,4 +1,6 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+import { NEW_REPLY, reduceReply } from './stream';
+import { tr } from './i18n/text';
 import {
   chatEvents,
   describeError,
@@ -609,4 +611,31 @@ describe('a capped reply on the wire', () => {
     for await (const ev of chatEvents(t, 's', { model: 'm', messages: [] })) kinds.push(ev.kind);
     expect(kinds).toEqual(['content', 'done']);
   });
+});
+
+it('uses the shared invite cap in HTTP/SSE notices, preserving one-seat copy and retry', async () => {
+  try {
+    for (const lang of ['en', 'zh']) {
+      vi.stubGlobal('navigator', { language: lang });
+      for (const limit of [undefined, 1, 30]) for (const inStream of [false, true]) {
+        const error = { code: 'concurrency_limited', type: 'rate_limit_error', message: 'diagnostic', retry_after: 7, ...(limit === undefined ? {} : { limit, in_flight: 31 }) };
+        const body = JSON.stringify({ error });
+        const res = inStream ? new Response(`data: ${body}\n\ndata: [DONE]\n\n`) : new Response(body, { status: 429, headers: { 'retry-after': '7' } });
+        const events = await collect(chatEvents(transportOf(res), 'k', { model: 'm', messages: [] }));
+        const event = events[0];
+        expect(event?.kind).toBe('error');
+        if (!event || event.kind !== 'error') throw new Error('missing error');
+        expect(event.error.retryAfterS).toBe(7);
+        expect(event.error.hostSaid).toBe('diagnostic');
+        const note = reduceReply(NEW_REPLY, event).note;
+        if (limit === 30) {
+          expect(note).toBe(lang === 'en' ? 'This invite is busy — all 30 seats are in use. Try again in a moment.' : '这个邀请码正忙：所有 30 个名额都在使用中。稍后再试。');
+        } else {
+          expect(event.error.title).toBe(tr('app_one_reply_at_a_time'));
+          expect(event.error.detail).toBe(tr('app_this_invite_may_have_one_request_in_flight_wait'));
+          expect(note).toBe(tr('app_not_sent_one_reply_at_a_time'));
+        }
+      }
+    }
+  } finally { vi.unstubAllGlobals(); }
 });

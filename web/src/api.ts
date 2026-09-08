@@ -64,6 +64,8 @@ export class GatewayError extends Error {
     readonly type: string,
     message: string,
     readonly retryAfterS?: number,
+    readonly limit?: number,
+    readonly inFlight?: number,
   ) {
     super(message);
     this.name = 'GatewayError';
@@ -87,12 +89,14 @@ async function gatewayError(res: Response): Promise<GatewayError> {
   let message = tr('app_host_http_answer', { status: res.status });
   let code = '';
   let type = '';
+  let limit: number | undefined, inFlight: number | undefined;
   try {
-    const parsed = (await res.json()) as { error?: { message?: string; code?: string; type?: string } };
+    const parsed = (await res.json()) as { error?: { message?: string; code?: string; type?: string; limit?: number; in_flight?: number } };
     if (parsed?.error) {
       message = parsed.error.message ?? message;
       code = parsed.error.code ?? '';
       type = parsed.error.type ?? '';
+      limit = parsed.error.limit; inFlight = parsed.error.in_flight;
     }
   } catch {
     /* not the documented error shape; the status alone is the message */
@@ -104,6 +108,7 @@ async function gatewayError(res: Response): Promise<GatewayError> {
     type,
     message,
     Number.isFinite(retry) && retry > 0 ? Math.ceil(retry) : undefined,
+    limit, inFlight,
   );
 }
 
@@ -372,7 +377,7 @@ async function* rawChatEvents(
           kind: 'error',
           code,
           error: describeError(
-            new GatewayError(0, code, chunk.error.type ?? '', chunk.error.message ?? '', chunk.error.retry_after),
+            new GatewayError(0, code, chunk.error.type ?? '', chunk.error.message ?? '', chunk.error.retry_after, chunk.error.limit, chunk.error.in_flight),
             hostName,
           ),
         };
@@ -428,7 +433,7 @@ export function isAbort(err: unknown): boolean {
 interface ChatChunk {
   choices?: { delta?: { content?: string; reasoning_content?: string }; finish_reason?: string | null }[];
   usage?: { prompt_tokens?: number; completion_tokens?: number };
-  error?: { message?: string; code?: string; type?: string; retry_after?: number };
+  error?: { message?: string; code?: string; type?: string; retry_after?: number; limit?: number; in_flight?: number };
 }
 
 /**
@@ -485,6 +490,8 @@ function parseBlock(block: string): SSEBlock | null {
 }
 
 export interface FriendlyError {
+  /** A concurrency cap supplied by the host; lets the message agree with the banner. */
+  limit?: number;
   title: string;
   detail: string;
   /** The gateway's code, when there was one: the session reducer tells a revoked key from a deleted one by it. */
@@ -567,9 +574,11 @@ export function describeError(err: unknown, host?: string): FriendlyError {
     const seconds = err.retryAfterS ?? (copy?.retry ? 5 : undefined);
     const retry = seconds ? { retryAfterS: seconds } : {};
     if (copy) {
-      const detail = fill(copy.detail);
+      const shared = err.code === 'concurrency_limited' && Number.isSafeInteger(err.limit) && (err.limit ?? 0) > 1;
+      const detail = shared ? '' : fill(copy.detail);
       return {
-        title: fill(copy.title),
+        title: shared ? tr('app_busy_invite_seats', { count: err.limit! }) : fill(copy.title),
+        ...(shared ? { limit: err.limit } : {}),
         detail,
         code: err.code,
         ...(said && said !== detail ? { hostSaid: said } : {}),

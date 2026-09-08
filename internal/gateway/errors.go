@@ -58,9 +58,10 @@ var codeTable = map[Code]codeRow{
 // whole seconds the friend should wait. It is the single value every rejection path returns so the
 // handler has one place that writes error bodies and one place that records usage.
 type gwError struct {
-	Code       Code
-	Message    string
-	RetryAfter int // seconds; 0 = no header
+	Code            Code
+	Message         string
+	RetryAfter      int // seconds; 0 = no header
+	Limit, InFlight int // per-key concurrency snapshot; absent for other errors
 }
 
 func (e *gwError) Error() string { return string(e.Code) + ": " + e.Message }
@@ -79,9 +80,11 @@ func errf(code Code, retryAfter int, format string, args ...any) *gwError {
 // errorBody is the OpenAI-shaped JSON every error response carries.
 type errorBody struct {
 	Error struct {
-		Message string `json:"message"`
-		Type    string `json:"type"`
-		Code    Code   `json:"code"`
+		Message  string `json:"message"`
+		Limit    int    `json:"limit,omitempty"`
+		InFlight int    `json:"in_flight,omitempty"`
+		Type     string `json:"type"`
+		Code     Code   `json:"code"`
 		// RetryAfter is set only in a stream error event (018): once the head is out the
 		// Retry-After header has nowhere to go, so the seconds ride inside the event.
 		RetryAfter int `json:"retry_after,omitempty"`
@@ -91,6 +94,7 @@ type errorBody struct {
 func errorJSON(e *gwError, inStream bool) []byte {
 	var b errorBody
 	b.Error.Message = e.Message
+	b.Error.Limit, b.Error.InFlight = e.Limit, e.InFlight
 	b.Error.Type = codeTable[e.Code].typ
 	b.Error.Code = e.Code
 	if inStream {

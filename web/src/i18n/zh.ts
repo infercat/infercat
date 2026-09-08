@@ -212,6 +212,8 @@ export const zh = {
   app_start_a_new_chat_or_shorten_what_you_just: '请开启新对话，或缩短刚才发送的内容。',
   app_too_fast_for_this_invite: '发得太快，超出这个邀请码的限制',
   app_host_allows_a_set_number_of_messages_a_minute: '{host} 限制了每分钟可发送的消息数。额度会自动恢复。',
+  // Shared-invite concurrency cap; count is the host-provided limit.
+  app_busy_invite_seats: "这个邀请码正忙：所有 {count} 个名额都在使用中。稍后再试。",
   app_one_reply_at_a_time: '同时只能生成一条回复',
   app_this_invite_may_have_one_request_in_flight_wait: '这个邀请码同时只能有一个请求。请等当前这条回复生成完再发。',
   app_today_s_token_budget_is_used_up: '今日 token 额度已用完',

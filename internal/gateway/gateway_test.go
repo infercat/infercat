@@ -586,6 +586,10 @@ func TestPerKeyConcurrency(t *testing.T) {
 	}
 	r := h.post("/v1/chat/completions", chatBody("m1", 1, ""))
 	h.expectErr(r, CodeConcurrencyLimited)
+	var body errorBody
+	if err := json.Unmarshal(r.body, &body); err != nil || body.Error.Limit != 1 || body.Error.InFlight != 1 {
+		t.Fatalf("concurrency snapshot: %s (%v)", r.body, err)
+	}
 	if r.header.Get("Retry-After") != "1" {
 		t.Fatalf("Retry-After: %q", r.header.Get("Retry-After"))
 	}
@@ -1126,7 +1130,7 @@ func TestLimiterWindowsWithFakeClock(t *testing.T) {
 	l2 := newLimiter()
 	a1 := must(l2.admitAll("k", keys.Limits{MaxConcurrent: 2}, 0))
 	must(l2.admitAll("k", keys.Limits{MaxConcurrent: 2}, 0))
-	if _, e := l2.admitAll("k", keys.Limits{MaxConcurrent: 2}, 0); e == nil || e.Code != CodeConcurrencyLimited || e.RetryAfter != 1 {
+	if _, e := l2.admitAll("k", keys.Limits{MaxConcurrent: 2}, 0); e == nil || e.Code != CodeConcurrencyLimited || e.RetryAfter != 1 || e.Limit != 2 || e.InFlight != 2 {
 		t.Fatalf("concurrency: %+v", e)
 	}
 	l2.settle(a1, true, 0)

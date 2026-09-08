@@ -325,6 +325,8 @@ export const en = {
   // api.ts:537 — PropertyAssignment
   app_host_allows_a_set_number_of_messages_a_minute: "{host} allows a set number of messages a minute. The count clears on its own.",
   // api.ts:538 — PropertyAssignment
+  // Shared-invite concurrency cap; count is the host-provided limit.
+  app_busy_invite_seats: "This invite is busy — all {count} seats are in use. Try again in a moment.",
   app_one_reply_at_a_time: "One reply at a time",
   // api.ts:539 — PropertyAssignment
   app_this_invite_may_have_one_request_in_flight_wait: "This invite may have one request in flight. Wait for the current reply to finish.",

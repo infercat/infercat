@@ -66,7 +66,9 @@ export function reduceReply(r: Reply, e: StreamEvent, now = Date.now()): Reply {
       return finish(
         r,
         'interrupted',
-        saidInBanner(e.code)
+        e.code === 'concurrency_limited' && (e.error.limit ?? 0) > 1
+          ? e.error.title
+          : saidInBanner(e.code)
           ? SHORT[e.code]
           : e.code === 'host_stalled' && r.content.trim() === ''
             ? tr((r.reasoning ?? '').trim() !== '' ? 'app_stalled_after_thinking' : 'app_stalled_before_answer', { title: e.error.title })

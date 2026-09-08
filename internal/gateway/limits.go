@@ -156,7 +156,9 @@ func (l *limiter) admit(id string, lim keys.Limits) (*admission, *gwError) {
 	st.lastSeen = now
 
 	if lim.MaxConcurrent > 0 && st.inFlight >= lim.MaxConcurrent {
-		return nil, errf(CodeConcurrencyLimited, 1, "this key allows %d request(s) at a time; %d in flight", lim.MaxConcurrent, st.inFlight)
+		e := errf(CodeConcurrencyLimited, 1, "this key allows %d request(s) at a time; %d in flight", lim.MaxConcurrent, st.inFlight)
+		e.Limit, e.InFlight = lim.MaxConcurrent, st.inFlight
+		return nil, e
 	}
 	reqs, _ := st.used()
 	if lim.RPM > 0 && reqs >= lim.RPM {

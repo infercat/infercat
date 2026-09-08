@@ -96,7 +96,7 @@ func (e *env) cmdConnect(ctx context.Context, pre string, args []string) error {
 	sess, err := e.plat.dialTunnel(dctx, inv.Addr, tunLogf)
 	cancel()
 	if err != nil {
-		return fmt.Errorf("%s (%v)", (&connector{}).words("host_asleep", ""), err)
+		return fmt.Errorf("%s (%v)", (&connector{}).words("host_asleep", "", 0), err)
 	}
 	c := &connector{secret: inv.Secret, sess: sess, out: e.out, logf: e.logf, wake: make(chan struct{}, 1), handshake: time.Since(t0),
 		logRequests: *logRequests, events: admin.NewEvents(nil), addr: inv.Addr, local: "http://" + ln.Addr().String(), started: time.Now()}
@@ -215,10 +215,11 @@ func (c *connector) status() admin.Status {
 
 // hostError is one failure the app sees: the gateway's status and code, the friend's sentence.
 type hostError struct {
-	Status     int
-	Code, Type string
-	Message    string
-	RetryAfter int
+	Status          int
+	Code, Type      string
+	Message         string
+	RetryAfter      int
+	Limit, InFlight int
 }
 
 // friendWords is the friend's sentence for each code the web app has one for (web/src/api.ts
@@ -239,8 +240,11 @@ var friendWords = map[string]string{
 	"context_too_long":    "this conversation no longer fits the model — start a new chat, or shorten what you sent",
 }
 
-func (c *connector) words(code, said string) string {
+func (c *connector) words(code, said string, limit int) string {
 	w, ok := friendWords[code]
+	if code == "concurrency_limited" && limit > 1 {
+		w = fmt.Sprintf("this invite is busy — all %d seats are in use; try again in a moment", limit)
+	}
 	if !ok {
 		return said
 	}
@@ -252,7 +256,7 @@ func (c *connector) words(code, said string) string {
 }
 
 func (c *connector) asleep() hostError {
-	return hostError{Status: http.StatusServiceUnavailable, Code: "host_asleep", Type: "upstream_error", Message: c.words("host_asleep", ""), RetryAfter: 30}
+	return hostError{Status: http.StatusServiceUnavailable, Code: "host_asleep", Type: "upstream_error", Message: c.words("host_asleep", "", 0), RetryAfter: 30}
 }
 
 func (c *connector) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -362,7 +366,7 @@ func (c *connector) pipeStream(ctx context.Context, w http.ResponseWriter, rc *h
 			if ctx.Err() != nil {
 				return "client_closed", "the app went away"
 			}
-			he := hostError{Code: "host_stalled", Type: "upstream_error", Message: c.words("host_stalled", "")}
+			he := hostError{Code: "host_stalled", Type: "upstream_error", Message: c.words("host_stalled", "", 0)}
 			fmt.Fprintf(w, "data: %s\n\ndata: [DONE]\n\n", errorJSON(he, true))
 			_ = rc.Flush()
 			return he.Code, he.Message
@@ -376,6 +380,8 @@ func (c *connector) rewriteEvent(line []byte) ([]byte, hostError) {
 	var ev struct {
 		Error struct {
 			Message    string `json:"message"`
+			Limit      int    `json:"limit"`
+			InFlight   int    `json:"in_flight"`
 			Type       string `json:"type"`
 			Code       string `json:"code"`
 			RetryAfter int    `json:"retry_after,omitempty"`
@@ -384,7 +390,7 @@ func (c *connector) rewriteEvent(line []byte) ([]byte, hostError) {
 	if json.Unmarshal(bytes.TrimPrefix(bytes.TrimSpace(line), []byte("data:")), &ev) != nil || ev.Error.Code == "" {
 		return line, hostError{}
 	}
-	he := hostError{Code: ev.Error.Code, Type: ev.Error.Type, Message: c.words(ev.Error.Code, ev.Error.Message), RetryAfter: ev.Error.RetryAfter}
+	he := hostError{Code: ev.Error.Code, Type: ev.Error.Type, Message: c.words(ev.Error.Code, ev.Error.Message, ev.Error.Limit), RetryAfter: ev.Error.RetryAfter, Limit: ev.Error.Limit, InFlight: ev.Error.InFlight}
 	return append(append([]byte("data: "), errorJSON(he, true)...), '\n'), he
 }
 
@@ -393,9 +399,11 @@ func (c *connector) rewriteEvent(line []byte) ([]byte, hostError) {
 func (c *connector) hostErr(resp *http.Response) hostError {
 	var body struct {
 		Error struct {
-			Message string `json:"message"`
-			Type    string `json:"type"`
-			Code    string `json:"code"`
+			Message  string `json:"message"`
+			Limit    int    `json:"limit"`
+			InFlight int    `json:"in_flight"`
+			Type     string `json:"type"`
+			Code     string `json:"code"`
 		} `json:"error"`
 	}
 	raw, _ := io.ReadAll(io.LimitReader(resp.Body, 64<<10))
@@ -403,11 +411,14 @@ func (c *connector) hostErr(resp *http.Response) hostError {
 	retry, _ := strconv.Atoi(resp.Header.Get("Retry-After"))
 	said := cmp.Or(body.Error.Message, strings.TrimSpace(string(raw)))
 	return hostError{Status: resp.StatusCode, Code: body.Error.Code, Type: cmp.Or(body.Error.Type, "upstream_error"),
-		Message: c.words(body.Error.Code, said), RetryAfter: retry}
+		Message: c.words(body.Error.Code, said, body.Error.Limit), RetryAfter: retry, Limit: body.Error.Limit, InFlight: body.Error.InFlight}
 }
 
 func errorJSON(he hostError, inStream bool) []byte {
 	e := map[string]any{"message": he.Message, "type": he.Type, "code": he.Code}
+	if he.Code == "concurrency_limited" && he.Limit > 0 {
+		e["limit"], e["in_flight"] = he.Limit, he.InFlight
+	}
 	if inStream && he.RetryAfter > 0 {
 		e["retry_after"] = he.RetryAfter
 	}
