@@ -88,6 +88,18 @@ const chunk = (delta: Record<string, string>) =>
   `data: ${JSON.stringify({ object: 'chat.completion.chunk', choices: [{ delta }] })}\n\n`;
 
 describe('streamChat', () => {
+  it('reads reasoning-named deltas', async () => {
+    const body = stream([chunk({ reasoning: 'Thinking' }), chunk({ content: 'Answer' }), 'data: [DONE]\n\n']);
+    const events = await collect(chatEvents(transportOf(new Response(body)), 'k', { model: 'm', messages: [] }));
+    expect(events).toEqual([{ kind: 'reasoning', text: 'Thinking' }, { kind: 'content', text: 'Answer' }, { kind: 'done' }]);
+  });
+
+  it('prefers reasoning_content when both names exist, including an empty value', async () => {
+    const body = stream([chunk({ reasoning_content: 'Preferred', reasoning: 'Ignored' }), chunk({ reasoning_content: '', reasoning: 'Also ignored' }), 'data: [DONE]\n\n']);
+    const events = await collect(chatEvents(transportOf(new Response(body)), 'k', { model: 'm', messages: [] }));
+    expect(events).toEqual([{ kind: 'reasoning', text: 'Preferred' }, { kind: 'done' }]);
+  });
+
   it('reports reasoning, then content, then usage, in arrival order', async () => {
     const body = stream([
       chunk({ reasoning_content: 'hmm' }),

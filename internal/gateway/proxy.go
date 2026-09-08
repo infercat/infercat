@@ -541,8 +541,9 @@ type sseChunk struct {
 	Usage   *usageT `json:"usage"`
 	Choices []struct {
 		Delta struct {
-			Content          string `json:"content"`
-			ReasoningContent string `json:"reasoning_content"`
+			Content          string  `json:"content"`
+			ReasoningContent *string `json:"reasoning_content"`
+			Reasoning        string  `json:"reasoning"`
 		} `json:"delta"`
 	} `json:"choices"`
 }
@@ -588,7 +589,11 @@ func (q *request) pipeStream(body io.Reader) *gwError {
 						q.applyUsage(ch.Usage)
 					}
 					for _, choice := range ch.Choices {
-						if choice.Delta.Content != "" || choice.Delta.ReasoningContent != "" {
+						reasoning := choice.Delta.Reasoning
+						if choice.Delta.ReasoningContent != nil {
+							reasoning = *choice.Delta.ReasoningContent
+						}
+						if choice.Delta.Content != "" || reasoning != "" {
 							chunks++
 							if q.g.cfg.LogPrompts {
 								completion.WriteString(choice.Delta.Content)

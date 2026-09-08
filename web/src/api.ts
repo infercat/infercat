@@ -384,7 +384,8 @@ async function* rawChatEvents(
         return;
       }
       const delta = chunk.choices?.[0]?.delta;
-      if (delta?.reasoning_content) yield { kind: 'reasoning', text: delta.reasoning_content };
+      const reasoning = delta?.reasoning_content ?? delta?.reasoning;
+      if (reasoning) yield { kind: 'reasoning', text: reasoning };
       if (delta?.content) yield { kind: 'content', text: delta.content };
       // "length" is the engine saying it ran out of allowance, not that it had finished. A reply
       // that ends there is complete as a transfer and unfinished as an answer (014 promise 14).
@@ -431,7 +432,7 @@ export function isAbort(err: unknown): boolean {
 }
 
 interface ChatChunk {
-  choices?: { delta?: { content?: string; reasoning_content?: string }; finish_reason?: string | null }[];
+  choices?: { delta?: { content?: string; reasoning_content?: string; reasoning?: string }; finish_reason?: string | null }[];
   usage?: { prompt_tokens?: number; completion_tokens?: number };
   error?: { message?: string; code?: string; type?: string; retry_after?: number; limit?: number; in_flight?: number };
 }

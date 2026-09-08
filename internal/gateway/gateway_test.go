@@ -791,6 +791,31 @@ func TestIncludeUsageInjectionKeepsOtherOptions(t *testing.T) {
 	}
 }
 
+func TestReasoningAliasesCountWithoutRewriting(t *testing.T) {
+	h := newHarness(t, Config{}, nil)
+	h.up.set("sse",
+		`{"choices":[{"delta":{"reasoning":"new name"}}]}`,
+		`{"choices":[{"delta":{"reasoning_content":"preferred","reasoning":"ignored"}}]}`,
+		`{"choices":[{"delta":{"reasoning_content":"","reasoning":"ignored too"}}]}`,
+		`{"choices":[{"delta":{"content":"answer"}}]}`,
+	)
+	res, err := h.streamReq(context.Background(), chatBody("m1", 1, `"stream":true`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := io.ReadAll(res.Body)
+	res.Body.Close()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(got) != h.up.written() {
+		t.Fatal("the side-channel rewrote stream bytes")
+	}
+	if ev := h.rec.last(t); ev.CompletionTokens != 3 {
+		t.Fatalf("estimated %d tokens, want 3: %+v", ev.CompletionTokens, ev)
+	}
+}
+
 func TestReasoningContentPassthroughByteForByte(t *testing.T) {
 	h := newHarness(t, Config{}, nil)
 	events := []string{
