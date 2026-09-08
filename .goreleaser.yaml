@@ -96,19 +96,7 @@ brews:
     license: MIT
     homepage: https://infercat.ai
     description: "Share the model on your machine with friends: one binary, one invite code, a browser"
-<<<<<<< HEAD
-    # The binaries are not signed yet (docs/PRINCIPLES.md, Decisions kept): Homebrew quarantines what it
-    # downloads, and macOS refuses to run a quarantined unsigned binary. This is the hook goreleaser
-    # documents for exactly that case; delete it when 034 lands.
-    hooks:
-      post:
-        install: |
-          if OS.mac?
-            system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/{{ .Env.CLI_NAME }}"]
-          end
-=======
     install: |
       bin.install "{{ .Env.CLI_NAME }}"
     test: |
       system "#{bin}/{{ .Env.CLI_NAME }}", "version"
->>>>>>> 861afae (install: verify downloads and generate a cross-platform formula (044))

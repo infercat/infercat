@@ -5,13 +5,8 @@ launch decisions are closed (name, URL, public repo, history rewrite).
 
 ## Before the first release (once)
 
-<<<<<<< HEAD
-1. The rename to the final product name is done (2026-09-05); the name lives in one constant.
-2. Create the tap repository `infercat/homebrew-tap` (empty, public, with a `Casks/` directory) and a
-=======
 1. The rename to the final product name is done (2026-09-05); the name lives in one constant.
 2. Create the tap repository `infercat/homebrew-tap` (empty, public, with a `Formula/` directory) and a
->>>>>>> 861afae (install: verify downloads and generate a cross-platform formula (044))
    fine-grained PAT with **contents: write** on it; store it as the repository secret
    `HOMEBREW_TAP_GITHUB_TOKEN`.
 3. In `.goreleaser.yaml`, flip `brews[].skip_upload` from `true` to `"auto"` (uploads on
