@@ -39,7 +39,9 @@ You need an inference server running (llama.cpp, vLLM, Ollama or LM Studio; any 
 
 - `curl -fsSL https://infercat.ai/install.sh | sh` ([raw fallback](https://raw.githubusercontent.com/infercat/infercat/main/hack/install.sh)).
 - `brew install infercat/tap/infercat` (macOS and Linux).
-- [Releases](https://github.com/infercat/infercat/releases) for everything else.
+- [Releases](https://github.com/infercat/infercat/releases) for everything else; verify with `shasum -a 256 --ignore-missing -c infercat_<version>_checksums.txt`.
+
+If latest cannot be resolved (rate limit, no published release, or network), download the script and run `INFERCAT_VERSION=vX.Y.Z sh install.sh`.
 
 Then:
 
@@ -219,7 +221,7 @@ for e in c.chat.completions.create(model=c.models.list().data[0].id, messages=[{
 ## Building
 
 ```
-make check        # go vet + go test
+make check        # Go vet/tests + installer fixtures
 make build        # bin/infercat
 make wasm         # web/public/infercat.wasm (+ wasm_exec.js), needed by the web app
 make web          # web/dist (builds the wasm first)

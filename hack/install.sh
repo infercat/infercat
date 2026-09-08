@@ -1,15 +1,26 @@
 #!/bin/sh
 # Pin INFERCAT_VERSION=v0.1.0; INFERCAT_INSTALL_DIR overrides the destination.
 # Test hooks only: INFERCAT_OS / INFERCAT_ARCH override uname. INFERCAT_RELEASE_BASE replaces
-# https://github.com/infercat/infercat/releases and serves latest JSON at BASE/latest for local tests.
+# https://github.com/infercat/infercat/releases; BASE/latest serves fixture JSON. Loopback HTTP is test-only.
+# INFERCAT_SYSTEM_BIN overrides the /usr/local/bin probe for destination fixtures.
 set -eu
 
 fail() { printf 'infercat: %s\n' "$*" >&2; exit 1; }
 fetch() {
+    protocols='=https'
+    case "$1" in
+        https://*) ;;
+        http://127.0.0.1:*|http://localhost:*)
+            [ -n "${INFERCAT_RELEASE_BASE:-}" ] || fail 'downloads require HTTPS'
+            port=${1#http://}; port=${port#*:}; port=${port%%/*}
+            case "$port" in ''|*[!0-9]*) fail 'invalid loopback fixture URL' ;; esac
+            protocols='=http,https' ;;
+        *) fail 'downloads require HTTPS' ;;
+    esac
     if command -v curl >/dev/null 2>&1; then
-        curl -fsSL "$1" -o "$2"
+        curl -fsSL --proto "$protocols" --proto-redir '=https' --connect-timeout 15 --max-time 300 "$1" -o "$2"
     elif command -v wget >/dev/null 2>&1; then
-        wget -q -O "$2" "$1"
+        wget -q --https-only --timeout=15 --tries=3 -O "$2" "$1"
     else
         fail 'install curl or wget first'
     fi
@@ -37,8 +48,10 @@ main() {
     if [ -z "$tag" ]; then
         api=https://api.github.com/repos/infercat/infercat/releases/latest
         [ -z "${INFERCAT_RELEASE_BASE:-}" ] || api=$base/latest
-        fetch "$api" "$tmp/latest.json" || fail "cannot resolve latest release; see $releases"
+        resolve_error='cannot resolve latest release (rate limit, no published release, or network failure); set INFERCAT_VERSION=vX.Y.Z to pin a release'
+        fetch "$api" "$tmp/latest.json" || fail "$resolve_error"
         tag=$(sed -n 's/.*"tag_name":[[:space:]]*"\([^"]*\)".*/\1/p' "$tmp/latest.json" | head -n 1)
+        [ -n "$tag" ] || fail "$resolve_error"
     fi
     version=${tag#v}
     case "$version" in ''|*[!0-9A-Za-z.+-]*) fail "invalid release version; see $releases" ;; esac
@@ -62,14 +75,16 @@ main() {
     # Only the named binary is streamed out, after verification; archive paths never reach disk.
     tar -xzOf "$tmp/$archive" infercat > "$tmp/infercat" || fail 'invalid or truncated archive'
     [ -s "$tmp/infercat" ] || fail 'archive contains no binary'
+    system_bin=${INFERCAT_SYSTEM_BIN:-/usr/local/bin}
     if [ -n "${INFERCAT_INSTALL_DIR:-}" ]; then
         dest=$INFERCAT_INSTALL_DIR
-    elif [ -d /usr/local/bin ] && [ -w /usr/local/bin ]; then
-        dest=/usr/local/bin
+    elif [ -d "$system_bin" ] && [ -w "$system_bin" ]; then
+        dest=$system_bin
     else
         dest=${HOME:?HOME is not set}/.local/bin
     fi
     case "$dest" in /*) ;; *) dest=$(pwd)/$dest ;; esac
+    [ ! -L "$dest/infercat" ] || fail "refusing symlink $dest/infercat; use brew upgrade infercat for a Homebrew install, or choose INFERCAT_INSTALL_DIR"
     [ ! -d "$dest/infercat" ] || fail 'install target is a directory'
     mkdir -p "$dest"
     # Rename on the destination filesystem so failures cannot truncate an existing install.
@@ -78,8 +93,12 @@ main() {
     chmod 755 "$staged"
     mv -f "$staged" "$dest/infercat"
     staged=
-    case ":${PATH:-}:" in *:"$dest":*) ;; *) printf 'Add %s to your PATH.\n' "$dest" ;; esac
+    resolved=$(command -v infercat || :)
+    if [ "$resolved" != "$dest/infercat" ]; then
+        printf 'Installed %s; PATH resolves infercat to %s. Put %s first on PATH and refresh your shell command cache, or use the full path below.\n' "$dest/infercat" "${resolved:-<not found>}" "$dest"
+    fi
     "$dest/infercat" version
-    printf 'infercat serve\ninfercat keys add alice\n'
+    quoted=$(printf '%s' "$dest/infercat" | sed "s/'/'\\\\''/g")
+    printf "'%s' serve\n'%s' keys add alice\n" "$quoted" "$quoted"
 }
 main

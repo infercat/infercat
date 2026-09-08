@@ -9,7 +9,7 @@ Small fixes (a typo, a wrong sentence in `--help`, a broken link) can skip that.
 same checks CI runs:
 
 ```
-make check                                        # go vet + go test
+make check                                        # Go vet/tests + installer fixtures
 cd web && pnpm install --frozen-lockfile && pnpm typecheck && pnpm test && pnpm lint
 make notices-check                                # THIRD_PARTY_NOTICES.md is current
 make release-dry                                  # every artifact builds, nothing is published

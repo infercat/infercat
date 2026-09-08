@@ -10,36 +10,8 @@ cleanup() {
 }
 trap cleanup 0
 trap 'exit 1' 1 2 3 15
-python3 - "$test_root" <<'PY' &
-import functools, hashlib, http.server, io, json, pathlib, tarfile, sys
-root = pathlib.Path(sys.argv[1])
-web = root / 'web'
-for kind in ['good', 'bad-checksum', 'short-download', 'bad-archive', 'missing-checksum']:
-    folder = web / kind / 'download' / 'v0.1.0'
-    folder.mkdir(parents=True)
-    (web / kind / 'latest').write_text(json.dumps({'tag_name': 'v0.1.0'}))
-    checksums = []
-    for os, arch in [('linux', 'amd64'), ('darwin', 'arm64')]:
-        name = f'infercat_0.1.0_{os}_{arch}.tar.gz'
-        data = b'#!/bin/sh\n[ "$1" = version ] || exit 1\nprintf "infercat 0.1.0 fixture\\n"\n'
-        buf = io.BytesIO()
-        with tarfile.open(fileobj=buf, mode='w:gz') as tar:
-            info = tarfile.TarInfo('infercat'); info.size = len(data); info.mode = 0o755
-            tar.addfile(info, io.BytesIO(data))
-        archive = buf.getvalue()
-        digest = hashlib.sha256(archive).hexdigest()
-        if kind == 'bad-checksum': digest = '0' * 64
-        if kind in ('short-download', 'bad-archive'): archive = archive[:16]
-        if kind == 'bad-archive': digest = hashlib.sha256(archive).hexdigest()
-        (folder / name).write_bytes(archive)
-        if kind != 'missing-checksum': checksums.append(f'{digest}  {name}\n')
-    (folder / 'infercat_0.1.0_checksums.txt').write_text(''.join(checksums))
-class Handler(http.server.SimpleHTTPRequestHandler):
-    def log_message(self, *args): pass
-server = http.server.ThreadingHTTPServer(('127.0.0.1', 0), functools.partial(Handler, directory=str(web)))
-(root / 'port').write_text(str(server.server_port))
-server.serve_forever()
-PY
+go build -o "$test_root/fixture" "$(dirname "$installer")/install-fixture"
+"$test_root/fixture" "$test_root" &
 server_pid=$!
 attempt=0
 while [ ! -s "$test_root/port" ]; do
@@ -59,13 +31,16 @@ chmod +x "$test_root/tools/tar"
 real_tar=$(command -v tar)
 normal_path=$test_root/tools:$PATH
 passed=0
-fail() { printf 'FAIL: %s\n' "$*" >&2; cat "$case_dir/output" >&2; exit 1; }
+failed=0
+skipped=0
+fail() { failed=$((failed + 1)); printf 'FAIL: %s\n' "$*" >&2; cat "$case_dir/output" >&2; summary; exit 1; }
+summary() { printf 'install tests: %s passed / %s failed / %s skipped of %s total\n' "$passed" "$failed" "$skipped" "$((passed + failed + skipped))"; }
 pass() { passed=$((passed + 1)); printf 'PASS: %s\n' "$*"; }
 run() {
     case_dir=$test_root/$1
     mkdir -p "$case_dir/tmp" "$case_dir/bin"
-    if env PATH="$6" TMPDIR="$case_dir/tmp" INFERCAT_INSTALL_DIR="$case_dir/bin" \
-        INFERCAT_RELEASE_BASE="$base/$2" INFERCAT_OS="$3" INFERCAT_ARCH="$4" INFERCAT_VERSION="$5" \
+    if env PATH="$6" TMPDIR="$case_dir/tmp" HOME="$case_dir/home" INFERCAT_INSTALL_DIR="${install_override-$case_dir/bin}" INFERCAT_SYSTEM_BIN="${system_override-$case_dir/system}" \
+        INFERCAT_RELEASE_BASE="${base_override-$base/$2}" INFERCAT_OS="$3" INFERCAT_ARCH="$4" INFERCAT_VERSION="$5" \
         INSTALL_TEST_REAL_TAR="$real_tar" INSTALL_TEST_TAR_LOG="$case_dir/extracted" \
         /bin/sh "$installer" > "$case_dir/output" 2>&1; then status=0; else status=$?; fi
     [ -z "$(ls -A "$case_dir/tmp")" ] || fail 'installer left temporary files'
@@ -73,8 +48,8 @@ run() {
 run linux good linux x86_64 '' "$normal_path"
 [ "$status" -eq 0 ] && [ -x "$case_dir/bin/infercat" ] || fail 'linux install'
 grep -Fx 'infercat 0.1.0 fixture' "$case_dir/output" >/dev/null || fail 'version not printed'
-grep -F 'to your PATH.' "$case_dir/output" >/dev/null || fail 'PATH hint missing'
-grep -Fx 'infercat keys add alice' "$case_dir/output" >/dev/null || fail 'quickstart missing'
+grep -F 'first on PATH' "$case_dir/output" >/dev/null || fail 'PATH hint missing'
+grep -F "'$case_dir/bin/infercat' keys add alice" "$case_dir/output" >/dev/null || fail 'quickstart missing'
 pass 'linux/amd64 latest: installed, version and PATH/quickstart printed, temp cleaned'
 run darwin good darwin aarch64 v0.1.0 "$normal_path"
 [ "$status" -eq 0 ] && [ "$("$case_dir/bin/infercat" version)" = 'infercat 0.1.0 fixture' ] || fail 'darwin install'
@@ -117,6 +92,51 @@ if command -v wget >/dev/null 2>&1; then
     [ "$status" -eq 0 ] && [ -x "$case_dir/bin/infercat" ] || fail 'wget-only install'
     pass 'wget without curl: verified install and version output'
 else
+    skipped=$((skipped + 1))
     echo 'SKIP: wget-only (wget not installed)'
 fi
-printf 'install tests: %s passed / 0 failed\n' "$passed"
+# Default destination probes and PATH truth use an isolated test home/system prefix.
+install_override=
+system_override=$test_root/system-bin
+mkdir "$system_override"
+run default-system good linux amd64 '' "$normal_path"
+[ "$status" -eq 0 ] && [ -x "$system_override/infercat" ] || fail 'system destination'
+pass 'writable system destination, large single-line latest response'
+system_override=$test_root/absent-system
+run default-home good linux amd64 v0.1.0 "$normal_path"
+[ "$status" -eq 0 ] && [ -x "$case_dir/home/.local/bin/infercat" ] || fail 'home fallback'
+pass 'default home fallback created'
+unset install_override system_override
+mkdir -p "$test_root/shadow"
+printf '#!/bin/sh\nprintf "old version\\n"\n' > "$test_root/shadow/infercat"
+chmod +x "$test_root/shadow/infercat"
+run shadow good linux amd64 v0.1.0 "$test_root/shadow:$normal_path"
+[ "$status" -eq 0 ] || fail 'shadow install'
+grep -F "Installed $case_dir/bin/infercat; PATH resolves infercat to $test_root/shadow/infercat" "$case_dir/output" >/dev/null || fail 'PATH shadow not named'
+[ "$(tail -2 "$case_dir/output" | head -1 | sed 's/ serve$/ version/' | /bin/sh)" = 'infercat 0.1.0 fixture' ] || fail 'quickstart selected the wrong binary'
+pass 'PATH shadow names both paths and full-path quickstart'
+mkdir -p "$test_root/symlink/bin"
+ln -s "$test_root/shadow/infercat" "$test_root/symlink/bin/infercat"
+run symlink good linux amd64 v0.1.0 "$normal_path"
+[ "$status" -ne 0 ] && [ -L "$case_dir/bin/infercat" ] || fail 'symlink replaced'
+grep -F 'brew upgrade' "$case_dir/output" >/dev/null || fail 'brew advice missing'
+[ "$("$test_root/shadow/infercat")" = 'old version' ] || fail 'symlink target changed'
+pass 'symlink install refused with brew upgrade advice'
+run "quote'path" good linux amd64 v0.1.0 "$normal_path"
+[ "$status" -eq 0 ] || fail 'quoted path install'
+[ "$(tail -2 "$case_dir/output" | head -1 | sed 's/ serve$/ version/' | /bin/sh)" = 'infercat 0.1.0 fixture' ] || fail 'quoted quickstart'
+pass 'quickstart shell-quotes destination'
+run resolve absent linux amd64 '' "$normal_path"
+[ "$status" -ne 0 ] || fail 'missing latest accepted'
+grep -F 'rate limit, no published release, or network failure' "$case_dir/output" >/dev/null || fail 'resolve reasons missing'
+grep -F 'INFERCAT_VERSION=vX.Y.Z' "$case_dir/output" >/dev/null || fail 'pin advice missing'
+pass 'resolve failure names causes and pin escape hatch'
+
+base_override=http://example.invalid/releases
+run insecure good linux amd64 v0.1.0 "$normal_path"
+[ "$status" -ne 0 ] || fail 'insecure release URL accepted'
+grep -F 'downloads require HTTPS' "$case_dir/output" >/dev/null || fail 'HTTPS refusal missing'
+pass 'non-loopback HTTP refused before download'
+unset base_override
+
+summary

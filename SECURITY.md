@@ -24,7 +24,7 @@ The host binary and the web app, and specifically the four things the product pr
    through the gateway's limits is a vulnerability.
 
 Also in scope: the invite format and its parsing, the gateway's authentication, the wasm bridge in
-the browser, and the release artifacts (checksums, notices, the Homebrew formula).
+the browser, the install script, and the release artifacts (checksums, notices, the Homebrew formula).
 
 ## What is not
 

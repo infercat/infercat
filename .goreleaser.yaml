@@ -93,6 +93,7 @@ brews:
     commit_author:
       name: goreleaser
       email: noreply@2185lab.com
+    license: MIT
     homepage: https://infercat.ai
     description: "Share the model on your machine with friends: one binary, one invite code, a browser"
 <<<<<<< HEAD

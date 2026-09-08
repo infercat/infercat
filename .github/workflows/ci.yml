@@ -60,6 +60,7 @@ jobs:
 
       - uses: goreleaser/goreleaser-action@v6
         with:
+          version: v2.18.0
           install-only: true
 
       - name: Release dry run (every artifact, nothing published)
