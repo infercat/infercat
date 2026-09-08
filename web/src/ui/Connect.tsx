@@ -2,14 +2,10 @@
 // field, one button, and progress that says what is actually happening. It owns no connection
 // state of its own — it dispatches into the session machine (src/session.ts) and renders it.
 //
-// Two readers arrive at this URL and the screen is one page for both (039). A friend with a code
-// wants the field and nothing else; a stranger from the launch post wants to know what this is and
-// how to run their own, and a card alone on an empty page is a locked door with no sign. So from
-// 900 px up the same card sits inside a page — a header of two links, the product's statement in
-// the left column, a footer — and below it the page chrome is gone and the card is the screen, as
-// it always was. One DOM, one media query: `Page` renders the frame, and every card state is passed
-// through it as children. The left column not moving when the card changes is the stylesheet's half
-// of that — the statement is centred on its own box, not on the pair (styles.css, `.statement`).
+// The hero serves the friend with a code; the sections below serve the reader meeting the product.
+// Above 900 px the statement and card share the header's grid. On phones the card carries the
+// fold and language links. Page keeps that composition across connection states; its footer and
+// landing sections remain available at every width, without owning any connection behaviour.
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { describeError, getMe, hostName, logsPrompts, type FriendlyError, type Me } from '../api';
 import { decodeInvite, inviteFromHash, InviteError, inviteHint, maskInvite } from '../invite';
@@ -29,6 +25,8 @@ import {
 import { claimTunnelIdentity, openTransport, type Transport } from '../transport';
 import { clipboardReader } from './clipboard';
 import { composing } from './composing';
+import { Landing } from './landing/Landing';
+import { Copy, FoldStrip, LanguageLinks, LanguageProvider, useLanguage } from './landing/Language';
 
 declare const __DEFAULT_DIRECT_URL__: string;
 
@@ -80,7 +78,12 @@ interface Disclosure {
   accept: () => void;
 }
 
-export default function Connect({ state, dispatch }: Props) {
+export default function Connect(props: Props) {
+  return <LanguageProvider><ConnectBody {...props} /></LanguageProvider>;
+}
+
+function ConnectBody({ state, dispatch }: Props) {
+  const { t } = useLanguage();
   const params = new URLSearchParams(typeof location === 'undefined' ? '' : location.search);
   const dev = import.meta.env.DEV;
   const [remembered, setRemembered] = useState(() => load<string>(KEYS.invite, ''));
@@ -375,8 +378,7 @@ export default function Connect({ state, dispatch }: Props) {
         // The one line the statement column already carries: on the page the reader meets it once,
         // on the left, and the card gets on with the task (039).
         <p className="pitch card-only">
-          Chat with a friend’s GPU. They send you one code; you paste it here. No account, no
-          install, nothing to set up.
+          <Copy name="h_pitch" />
         </p>
       )}
 
@@ -387,7 +389,7 @@ export default function Connect({ state, dispatch }: Props) {
 
       {known && !showCode ? (
         <div className="field">
-          <span className="field-label">Invite code</span>
+          <span className="field-label"><Copy name="f_label" /></span>
           <div className="masked">
             <code>{maskInvite(text)}</code>
             <button className="ghost tiny" onClick={() => setShowCode(true)}>
@@ -402,7 +404,7 @@ export default function Connect({ state, dispatch }: Props) {
               Paste". `htmlFor` associates the two without nesting one control in the other. */}
           <div className="field tight">
             <label className="field-label" htmlFor={fieldId}>
-              Invite code
+              <Copy name="f_label" />
             </label>
             {/* The frame is the positioning context: Paste sits inside it, top-right, on the
                 field's own text grid, and the textarea reserves that corner so a long code can
@@ -432,7 +434,7 @@ export default function Connect({ state, dispatch }: Props) {
               {/* Absent, not disabled, where the browser will not hand over the clipboard. */}
               {clipboard && (
                 <button type="button" className="paste" onClick={() => void pasteCode()}>
-                  Paste
+                  <Copy name="f_paste" />
                 </button>
               )}
             </div>
@@ -450,7 +452,7 @@ export default function Connect({ state, dispatch }: Props) {
           onClick={() => void connect()}
           disabled={text.trim() === '' || malformed || needsNewCode}
         >
-          {returning ? 'Reconnect' : 'Connect'}
+          {returning ? 'Reconnect' : <Copy name="f_connect" />}
         </button>
         {/* While a failure is showing, the same action lives inside it, next to the reason. */}
         {remembered !== '' && !failure && (
@@ -493,13 +495,7 @@ export default function Connect({ state, dispatch }: Props) {
 
       {/* The one line that answers "I don't have a code" — the stranger's question, in the place
           they reach it: after the action that is no use to them yet (039 comfort 4). */}
-      <p className="quiet">
-        No code? Ask a friend who runs {PRODUCT_NAME}, or{' '}
-        <span className="nb">
-          <a href={HOST_URL}>host your own</a>{' '}
-          <span aria-hidden="true">→</span>
-        </span>
-      </p>
+      <p className="quiet" data-copy="f_quiet" dangerouslySetInnerHTML={{ __html: t.f_quiet.replaceAll('href="#"', `href="${HOST_URL}"`) }} />
 
       <CardFoot who={who} />
 
@@ -514,30 +510,26 @@ export default function Connect({ state, dispatch }: Props) {
 }
 
 /**
- * The frame every card state renders inside. Above 900 px it is the page — a header of exactly two
- * links, the statement on the left, the card on the right, a footer under both; below, it collapses
- * to the card alone and the chrome is not rendered at all (CSS, one media query). The card's
- * content is the only stateful part, which is what keeps the left column still while the card goes
- * from empty to connecting to revoked (039 promise 3).
- *
- * `promise` is the one line of the statement that is not a constant: on a host that logs prompts
- * the sentence in this column is false, and 007 promise 12 says the disclosure *replaces* it rather
- * than sitting next to it. The caller passes the corrected sentence; nothing else about the column
- * changes.
+ * Each connection state shares the hero and the site below it. On phones the card carries the
+ * fold/language links; the page footer owns version and attribution at every width.
+ * A logging host's explicit disclosure replaces the hero's default privacy promise.
  */
-function Page({ children, promise = privacyLine('', false) }: { children: ReactNode; promise?: string }) {
+function Page({ children, promise }: { children: ReactNode; promise?: string }) {
+  const { lang } = useLanguage();
   return (
-    <div className="page">
+    <div className={`page landing-page ${lang}`} lang={lang === 'zh' ? 'zh-Hans' : 'en'}>
+    <div className="landing-hero">
       <header className="page-head page-only">
         <div className="page-head-in">
           <span className="page-brand">
             <Mark size={24} />
             <span className="wordmark">{PRODUCT_NAME}</span>
           </span>
-          {/* Two, and never a third: the header is chrome, not a site map (BELIEFS: few concepts). */}
+          {/* Two destinations plus the page's language choice. */}
           <nav className="page-nav">
-            <a href={HOST_URL}>Host your own</a>
-            <a href={SOURCE_URL}>Source</a>
+            <a href={HOST_URL}><Copy name="nav_host" /></a>
+            <a href={SOURCE_URL}><Copy name="nav_src" /></a>
+            <LanguageLinks />
           </nav>
         </div>
       </header>
@@ -548,13 +540,13 @@ function Page({ children, promise = privacyLine('', false) }: { children: ReactN
               from the launch post came for. Same composition as the social card. */}
           <section className="statement page-only">
             <Mark size={48} />
-            <h1 className="display">Chat with a friend’s GPU.</h1>
+            <h1 className="display"><Copy name="h_display" /></h1>
             <p className="lead">
-              They send you one code; you paste it here. No account, no install, nothing to set up.
+              <Copy name="h_lead" />
             </p>
-            <p className="promise">{promise}</p>
+            <p className="promise">{promise ?? <Copy name="h_promise" />}</p>
             <hr className="rule2" />
-            <p className="facts">Self-hosted · end-to-end encrypted · MIT</p>
+            <p className="facts"><Copy name="h_facts" /></p>
           </section>
 
           <div className="connect">
@@ -563,12 +555,16 @@ function Page({ children, promise = privacyLine('', false) }: { children: ReactN
         </div>
       </main>
 
-      <footer className="page-foot page-only">
+      <FoldStrip />
+    </div>
+      <Landing />
+      <footer className="page-foot landing-footer">
         <div className="page-foot-in">
           <div className="foot-line">
-            Version {VERSION} · MIT · <a href={SOURCE_URL}>Source on GitHub</a> ·{' '}
-            <About tail=" · Made by 2185 Lab" />
+            <Copy name="version" /> {VERSION} · MIT · <a href={SOURCE_URL}><Copy name="source" /></a> ·{' '}
+            <About tail={<><span> · </span><Copy name="made" /></>} />
           </div>
+          <LanguageLinks />
         </div>
       </footer>
     </div>
@@ -596,19 +592,15 @@ function CardHead() {
   );
 }
 
-/**
- * The card's foot: the privacy promise and the small print. Both are the page's job above 900 px —
- * the statement carries the promise and the footer carries the small print — so below it the card
- * carries them itself and above it they are not rendered twice.
- */
+/** The phone card carries the privacy line and the fold; the page footer owns the small print. */
 function CardFoot({ who }: { who: string }) {
   return (
     <>
-      <p className="privacy card-only">{privacyLine(who, false)}</p>
+      <p className="privacy card-only">{who ? privacyLine(who, false) : <Copy name="h_promise" />}</p>
       <div className="about card-only">
-        {/* A build number and a licence are machine-issued, so they are set in mono (038 Type). */}
+        {/* On phones the fold links live in the card; the build and attribution are in the footer. */}
         <div className="build">
-          Version {VERSION} · MIT · <a href={SOURCE_URL}>Source on GitHub</a> · <About />
+          <a href="#p-s1"><Copy name="h_down" /></a><LanguageLinks />
         </div>
       </div>
     </>
@@ -626,19 +618,18 @@ function CardFoot({ who }: { who: string }) {
  * beside About. The sibling combinator opens it from the same `[open]`, and `aria-controls` keeps
  * the pair one control and its content for anyone not reading it by eye.
  */
-function About({ tail = '' }: { tail?: string }) {
+function About({ tail = '' }: { tail?: ReactNode }) {
   const body = `${useId()}about`;
   return (
     <>
       <details className="about-disc">
-        <summary aria-controls={body}>About</summary>
+        <summary aria-controls={body}><Copy name="about" /></summary>
       </details>
       {/* Whatever the line still has to say goes through here, so the sentence stays its last
           element and opens under the whole line rather than in the middle of it. */}
       {tail}
       <p className="about-body" id={body}>
-        Built on tailcat, Tailscale’s open-source library. {PRODUCT_NAME} is not affiliated with or
-        endorsed by Tailscale Inc.
+        <Copy name="ft_about" />
       </p>
     </>
   );
@@ -650,14 +641,15 @@ function About({ tail = '' }: { tail?: string }) {
  * Connect itself runs (039 comfort 3, concept budget 0).
  */
 function Hint({ text }: { text: string }) {
+  const { t } = useLanguage();
   const { state, host } = inviteHint(text);
-  if (state === 'empty') return <p className="code-hint">Paste the code your friend sent you.</p>;
+  if (state === 'empty') return <p className="code-hint"><Copy name="f_hint_empty" /></p>;
   if (state === 'invalid') {
     return <p className="code-hint bad">That doesn’t look like an {PRODUCT_NAME} invite yet.</p>;
   }
   return (
     <p className="code-hint">
-      <span className="ck">✓</span> Reads as an invite · host <span className="host">{host}</span>
+      <span dangerouslySetInnerHTML={{ __html: t.f_hint.replace(/<span class="host">.*?<\/span>/, '') }} /><span className="host">{host}</span>
     </p>
   );
 }

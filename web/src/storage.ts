@@ -76,6 +76,7 @@ export const DEFAULT_SETTINGS: Settings = { model: null, systemPrompt: '', tempe
 
 export const KEYS = {
   invite: 'bn.invite',
+  language: 'bn.language',
   privateKey: 'bn.privateKey',
   /** What the connect screen can say about the last host before it has reconnected to it. */
   lastHost: 'bn.lastHost',

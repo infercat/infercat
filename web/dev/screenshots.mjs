@@ -11,6 +11,7 @@ import { mkdirSync, readdirSync, statSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
+import { landingEvidence } from '../src/ui/landing/verify.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const web = join(here, '..');
@@ -151,6 +152,8 @@ async function main() {
   await waitFor(BASE, 'vite dev server');
 
   const browser = await chromium.launch();
+  await landingEvidence(browser, BASE, shots);
+  if (process.argv.includes('--landing-only')) { await browser.close(); stopAll(); return; }
 
   // --- desktop, light ---
   const desktop = await browser.newContext({ viewport: { width: 1280, height: 860 }, colorScheme: 'light' });

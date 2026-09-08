@@ -7,3 +7,8 @@ pages_build_output_dir = "../../web/deploy"
 [[analytics_engine_datasets]]
 binding = "LOADS"
 dataset = "infercat_loads"
+
+# PM creates the namespace and replaces this placeholder at landing, before deployment.
+[[kv_namespaces]]
+binding = "SIGNUPS"
+id = "00000000000000000000000000000000"

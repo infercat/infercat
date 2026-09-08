@@ -19,6 +19,7 @@ import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
+import { landingEvidence } from '../src/ui/landing/verify.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const web = join(here, '..');
@@ -313,15 +314,15 @@ async function connectScreen(browser) {
     await contrast(page, name);
     const order = await tabOrder(page, name, 6);
     // The field is the first thing past the chrome. Below 900 px there is no chrome and Tab lands
-    // on it outright; above, the page carries a header of exactly two links (039), and those two —
-    // and only those two — may come first. A friend with a code never tabs through a site map.
-    const HEADER = ['link[Host your own]', 'link[Source]', 'a[Host your own]', 'a[Source]'];
+    // on it outright; above, the page carries two destination links (039) and the language pair (043); only that chrome
+    // may come first. A friend with a code never tabs through a site map.
+    const HEADER = ['link[Host your own]', 'link[Source]', 'a[Host your own]', 'a[Source]', 'a[EN]', 'a[中文]'];
     const chrome = order.findIndex((d) => !HEADER.includes(d));
     const first = order[chrome === -1 ? 0 : chrome];
     if (!first?.startsWith('textarea[Invite code]')) {
       problems.push(`${name}: Tab reaches ${first ?? 'nothing'} before the invite field (order: ${order.join(' → ')})`);
     }
-    if (chrome > 2) problems.push(`${name}: ${chrome} controls in the header, and the frozen design has two`);
+    if (chrome > 4) problems.push(`${name}: ${chrome} controls in the header, and the design has two destinations and two language links`);
     // The shot below is what a reader meets, so it must not carry the checker's own cursor: with
     // more than six controls on the page Tab now stops on one of them and leaves a focus ring
     // there, where it used to run off the end of the document and leave none.
@@ -465,7 +466,10 @@ async function main() {
   try {
     await waitFor(`${APP}/`);
     console.log(`launch-check on ${APP}`);
-    if (!demoDir) await connectScreen(browser);
+    if (!demoDir) {
+      await connectScreen(browser);
+      await landingEvidence(browser, APP, shots, async (page, label) => { await contrast(page, label); await names(page, label); });
+    }
     if (INVITE) await chat(browser);
     else say('no INVITE: the chat was not exercised (set INVITE=ic1.… APP=… against a running host)');
   } finally {

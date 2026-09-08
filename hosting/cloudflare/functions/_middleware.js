@@ -2,11 +2,12 @@
 // recorded at the edge and then the asset is served as usual. Nothing runs in the friend's browser
 // for this, no cookie is set, no third party is contacted, and the invite in the URL fragment never
 // reaches a server because browsers do not send fragments. _routes.json limits this function to the
-// two paths it counts; every other asset is served statically without invoking it.
+// two counted paths and the signup endpoint; every other asset is served statically.
 export async function onRequest({ request, env, next }) {
   const response = await next();
   try {
     const url = new URL(request.url);
+    if (url.pathname !== '/' && url.pathname !== '/infercat.wasm.gz') return response;
     const kind = url.pathname === '/infercat.wasm.gz' ? 'load' : 'view';
     const cf = request.cf || {};
     const ua = request.headers.get('user-agent') || '';
