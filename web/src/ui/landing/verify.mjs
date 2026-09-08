@@ -43,7 +43,8 @@ async function checkCopy(page, lang, assert) {
 
 export async function landingEvidence(browser, base, shots, inspect = async () => {}) {
   let checked = 0;
-  for (const width of [1280, 1024, 390]) for (const scheme of ['light', 'dark']) for (const lang of ['en', 'zh']) {
+  const scheme = 'light';
+  for (const width of [1280, 1024, 390]) for (const lang of ['en', 'zh']) {
     const label = `043-${width}-${scheme}-${lang}`;
     const context = await browser.newContext({ viewport: { width, height: 900 }, colorScheme: scheme, locale: lang === 'zh' ? 'zh-CN' : 'en-US' });
     const page = await context.newPage();
@@ -52,6 +53,15 @@ export async function landingEvidence(browser, base, shots, inspect = async () =
     page.on('request', (r) => { if (new URL(r.url()).origin !== new URL(base).origin) foreign.push(r.url()); });
     await page.goto(base);
     await page.locator('.landing').waitFor();
+    // A dark OS must not select the dormant theme, including native controls and light-dark().
+    await page.emulateMedia({ colorScheme: 'dark' });
+    const palette = await page.evaluate(() => ({
+      scheme: window.getComputedStyle(document.documentElement).colorScheme,
+      paper: window.getComputedStyle(document.body).backgroundColor,
+      selected: document.documentElement.hasAttribute('data-theme'),
+    }));
+    if (palette.scheme !== 'light' || palette.paper !== 'rgb(255, 255, 255)' || palette.selected) throw new Error(`${label}: OS selected a dark page: ${JSON.stringify(palette)}`);
+    await page.emulateMedia({ colorScheme: 'light' });
     await page.evaluate(() => document.fonts.ready);
     const assert = (ok, message) => { if (!ok) throw new Error(`${label}: ${message}`); };
     assert(await page.locator('.landing').evaluate((e, lang) => e.classList.contains(lang), lang), 'navigator language not selected');
