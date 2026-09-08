@@ -735,6 +735,7 @@ input[type='range']::-moz-range-thumb {
 /* ---- sections: the hero's grid, a step down in scale ---- */
 .landing > .s, .landing-fold, .landing-footer { position:relative; border-top:0; }
 .landing > .s::before, .landing-fold::before, .landing-footer::before { content:""; position:absolute; top:0; left:max(var(--gut),calc((100% - 1280px)/2 + var(--gut))); right:max(var(--gut),calc((100% - 1280px)/2 + var(--gut))); height:1px; background:var(--rule); }
+.landing-footer::before { left:0; right:0; }
 .landing .s-in{ padding:112px var(--gut) 120px; max-width:1280px; margin-inline:auto; }
 .landing .s-grid{ display:grid; grid-template-columns:var(--stw) minmax(0,1fr); gap:0 var(--gap); align-items:start; }
 .landing .eyebrow{ font-family:var(--mono); font-size:10.5px; font-weight:500; letter-spacing:.14em; text-transform:uppercase; color:var(--muted); margin:0 0 16px; display:flex; align-items:center; gap:12px; flex-wrap:wrap; }

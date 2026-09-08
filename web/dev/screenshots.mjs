@@ -164,6 +164,48 @@ async function chineseChat(browser) {
   }
 }
 
+// 057: full-width chrome frames unchanged inset content rules.
+async function frameRuleEvidence(browser) {
+  for (const width of [1280, 1024, 390]) for (const lang of ['en', 'zh']) {
+    const ctx = await browser.newContext({ viewport: { width, height: 900 }, colorScheme: 'light' });
+    const page = await ctx.newPage(); watch(page, `057-${width}-${lang}`);
+    await page.addInitScript((value) => window.localStorage.setItem('bn.language', JSON.stringify(value)), lang);
+    await page.goto(BASE); await page.locator('.landing').waitFor(); await settled(page);
+    const measure = () => page.locator('.page-head-in, .page-cols, .connect-card, .landing-fold, .landing > .s, .landing-footer').evaluateAll((els) => els.map((e) => e.getBoundingClientRect().toJSON()));
+    const current = await measure();
+    const oldRule = await page.addStyleTag({ content: '.landing-footer::before { left:max(var(--gut),calc((100% - 1280px)/2 + var(--gut))); right:max(var(--gut),calc((100% - 1280px)/2 + var(--gut))); }' });
+    const before = await measure(); await oldRule.evaluate((e) => e.remove());
+    if (JSON.stringify(current) !== JSON.stringify(before)) throw new Error(`057-${width}-${lang}: content moved`);
+    await page.evaluate(() => {
+      const style = (e, pseudo) => window.getComputedStyle(e, pseudo);
+      const head = document.querySelector('.page-head'), foot = document.querySelector('.landing-footer');
+      const ink = style(document.documentElement).getPropertyValue('--rule').trim();
+      const f = style(foot, '::before');
+      if (f.left !== '0px' || f.right !== '0px' || f.height !== '1px') throw new Error('footer is not full width / 1px');
+      const h = style(head);
+      if (h.display !== 'none' && (head.getBoundingClientRect().width !== window.innerWidth || h.borderBottomWidth !== '1px' || h.borderBottomColor !== f.backgroundColor)) throw new Error('header/footer frame mismatch');
+      if (!ink) throw new Error('missing ink token');
+      const gutter = window.innerWidth < 900 ? 20 : window.innerWidth <= 1100 ? 32 : 40;
+      const rules = [...document.querySelectorAll('.landing-fold, .landing > .s')];
+      if (rules.length !== 6) throw new Error('missing content rule');
+      for (const e of rules) {
+        if (style(e).display === 'none') continue; // The fold strip is hidden on phones.
+        const r = style(e, '::before');
+        if (parseFloat(r.left) !== gutter || parseFloat(r.right) !== gutter || r.height !== '1px' || r.backgroundColor !== f.backgroundColor) throw new Error('content rule changed');
+      }
+    });
+    if (width !== 1024) {
+      await write(page, `057-${width}-${lang}-top`);
+      await page.evaluate(() => window.scrollTo(0, document.documentElement.scrollHeight));
+      await write(page, `057-${width}-${lang}-bottom`);
+    }
+    console.log(`057-${width}-${lang}: frame full width; content rules inset; layout unchanged`);
+    await ctx.close();
+  }
+  if (problems.length) throw new Error(problems.join('\n'));
+  console.log('057 frame rules: 6 passed / 0 failed / 0 skipped');
+}
+
 async function main() {
   mkdirSync(shots, { recursive: true });
   for (const file of ['demo.mp4', 'demo.zh.mp4', 'demo-poster.png', 'demo-poster.zh.png']) {
@@ -187,6 +229,7 @@ async function main() {
     if (problems.length) throw new Error(problems.join('\n'));
     console.log('047 Chinese chat: 2 passed / 0 failed / 0 skipped'); return;
   }
+  await frameRuleEvidence(browser);
   await landingEvidence(browser, BASE, shots);
   if (process.argv.includes('--landing-only')) { await browser.close(); stopAll(); return; }
 

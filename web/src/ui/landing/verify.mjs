@@ -130,7 +130,8 @@ export async function landingEvidence(browser, base, shots, inspect = async () =
       for (const el of document.querySelectorAll('.landing > .s, .landing-fold, .landing-footer')) {
         if (!el.getClientRects().length) continue;
         const line = window.getComputedStyle(el, '::before');
-        if (parseFloat(line.left) !== gut || parseFloat(line.right) !== gut || line.height !== '1px' || line.backgroundColor !== 'rgb(10, 10, 10)') failures.push('inset ink rule');
+        const inset = el.classList.contains('landing-footer') ? 0 : gut;
+        if (parseFloat(line.left) !== inset || parseFloat(line.right) !== inset || line.height !== '1px' || line.backgroundColor !== 'rgb(10, 10, 10)') failures.push('ink rule inset');
       }
       for (const part of document.querySelectorAll('.anat .seg')) if (window.getComputedStyle(part, '::before').content !== 'none') failures.push('section rule leaked into invite');
       const demo = document.querySelector('.landing-demo'), box = demo.getBoundingClientRect();
