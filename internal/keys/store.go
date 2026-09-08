@@ -41,7 +41,7 @@ type stamp struct {
 // Reads are hot: the file is re-stat'ed at most once per second and re-read when the stamp
 // changes, so `keys add` in one process is visible to a running gateway in another without a
 // restart. Writes are atomic (temp file + rename) and the file is kept at mode 0600 because it
-// holds the hash of every friend's secret (pm/BELIEFS.md Protection 2).
+// holds the hash of every friend's secret (docs/PRINCIPLES.md, Protection 2).
 type FileStore struct {
 	path string
 

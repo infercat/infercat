@@ -1,6 +1,6 @@
 export GOTOOLCHAIN := auto
 
-# The binary name and the version live in one constant, internal/product/product.go (pm/BELIEFS.md),
+# The binary name and the version live in one constant, internal/product/product.go (docs/PRINCIPLES.md),
 # so the release reads them out of the source rather than repeating them — the same trick
 # web/vite.config.ts already uses to pull the product name out of web/src/product.ts.
 export CLI_NAME := $(shell sed -n 's/^[[:space:]]*CLIName[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' internal/product/product.go)

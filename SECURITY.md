@@ -11,7 +11,7 @@ not to be.
 ## What is in scope
 
 The host binary and the web app, and specifically the four things the product promises to protect
-(`pm/BELIEFS.md`, Protections):
+(`docs/PRINCIPLES.md`, Protections):
 
 1. **The host machine.** The tunnel exposes exactly one thing: the gateway. A way to reach anything
    else on the host — another port, a file, the admin socket — through an invite is a vulnerability.

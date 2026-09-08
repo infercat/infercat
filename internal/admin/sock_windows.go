@@ -16,7 +16,7 @@ import (
 // Windows has no usable unix-socket file permissions, so the admin API falls back to a loopback
 // listener on an ephemeral port. The port goes in admin.port and a 32-byte random bearer token in
 // admin.token, both 0600; without the token the endpoint answers 401. Loopback only, never the
-// tunnel (pm/BELIEFS.md Protection 1).
+// tunnel (docs/PRINCIPLES.md, Protection 1).
 func listen(dataDir string) (net.Listener, string, func(), error) {
 	if err := os.MkdirAll(dataDir, 0o700); err != nil {
 		return nil, "", nil, err

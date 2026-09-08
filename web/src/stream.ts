@@ -1,6 +1,6 @@
 // The message lifecycle: one pure reducer from the stream events in api.ts to what the bubble
 // says. The rule it exists to enforce is that a reply is finished only when the host says it is —
-// running out of tokens is not an ending, and must never render as one (pm/BELIEFS.md, "Surfaces
+// running out of tokens is not an ending, and must never render as one (docs/PRINCIPLES.md, "Surfaces
 // tell the truth").
 import type { ChatMessage, ChatRequest, StreamEvent } from './api';
 import { isAnswer, type Message, type MessageStatus, type Settings, type Thinking, type Timing } from './storage';

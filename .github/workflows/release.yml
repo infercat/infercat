@@ -1,6 +1,6 @@
 # The release: on a version tag, goreleaser builds every artifact and publishes a GitHub Release
 # with the archives, the checksums file and the Homebrew formula (docs/RELEASE.md is the runbook).
-# Until the founder tags (pm/LAUNCH.md F4), this workflow is only ever run by hand as a snapshot:
+# Until the first tag, this workflow is only ever run by hand as a snapshot:
 # `workflow_dispatch` builds the same artifacts with --snapshot --skip=publish and uploads them as a
 # workflow artifact, so the release path is exercised without releasing anything.
 name: Release
@@ -59,7 +59,7 @@ jobs:
       - name: Release (tag — publishes the GitHub Release)
         if: startsWith(github.ref, 'refs/tags/v')
         # Through make, never bare: the Makefile reads CLI_NAME and PRODUCT_VERSION out of
-        # internal/product/product.go (pm/BELIEFS.md: the name lives in one constant).
+        # internal/product/product.go (docs/PRINCIPLES.md: the name lives in one constant).
         run: make release-publish
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

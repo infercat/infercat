@@ -35,7 +35,7 @@ The first release: what the demo proved, made into something a stranger can inst
 - The macOS binaries are not signed or notarized yet: the first run needs a right-click → Open, or
   `xattr -d com.apple.quarantine` (README, "macOS says it cannot verify the developer").
 - One host, one engine. No model download, no multi-host routing, no accounts, no marketplace — by
-  design (pm/BELIEFS.md, non-goals).
+  design (docs/PRINCIPLES.md, non-goals).
 - The public relay in the default map is rate-limited and revocable; a self-hosted relay is the
   supported setting for anything beyond a demo.
 - `--log-prompts` is per-run and disclosed to friends in the app; there is no per-key logging.

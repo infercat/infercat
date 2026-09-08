@@ -15,7 +15,7 @@ const configName = "config.json"
 // config is written at mode 0600 because --upstream-key may be a real API key.
 //
 // Two `serve` flags are deliberately NOT persisted: --log-prompts, because a host who debugs
-// once must not keep logging their friends' conversations forever (pm/BELIEFS.md Protection 3),
+// once must not keep logging their friends' conversations forever (docs/PRINCIPLES.md, Protection 3),
 // and --ephemeral, because it changes the host address and is a per-run mode, not a setting.
 // Keys a newer build no longer knows (queue_timeout, request_timeout, max_body, retired by ticket
 // 010) are ignored on load and dropped on the next save.

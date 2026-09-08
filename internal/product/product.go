@@ -2,7 +2,7 @@
 package product
 
 const (
-	Name    = "Infercat" // founder decision 2026-09-05 (pm/BELIEFS.md, docs/NAME.md)
+	Name    = "Infercat" // founder decision 2026-09-05 (docs/PRINCIPLES.md)
 	CLIName = "infercat"
 	// InvitePrefix is the invite format version tag (docs/ARCHITECTURE.md).
 	InvitePrefix = "ic1"
@@ -15,7 +15,7 @@ const (
 // The build stamp. A release overwrites these at link time (.goreleaser.yaml passes
 // -X github.com/infercat/infercat/internal/product.Version=<tag> and friends); a plain
 // `go build` keeps the defaults, which is how a developer build says it is one. Version is
-// also the single place the Makefile and the web bundle read the version from (pm/BELIEFS.md:
+// also the single place the Makefile and the web bundle read the version from (docs/PRINCIPLES.md:
 // the product name lives in one constant), so keep the literal on one line.
 var (
 	Version = "0.0.1-dev"

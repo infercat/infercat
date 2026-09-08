@@ -1,6 +1,6 @@
 // Package admin is the host's own read-only window on a running daemon: a tiny HTTP server on a
 // unix socket in the data dir (a loopback port on Windows), and the client the `status`
-// subcommand uses. It is never exposed through the tunnel (pm/BELIEFS.md Protection 1).
+// subcommand uses. It is never exposed through the tunnel (docs/PRINCIPLES.md, Protection 1).
 package admin
 
 import (

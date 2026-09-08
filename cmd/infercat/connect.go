@@ -600,7 +600,7 @@ func (c *connector) path(ctx context.Context) (tunnel.Path, error) {
 	return s.Path(pctx)
 }
 
-// describe is the path line: the truth about the path, never a green dot (pm/BELIEFS.md).
+// describe is the path line: the truth about the path, never a green dot (docs/PRINCIPLES.md).
 func (c *connector) describe(p tunnel.Path) string {
 	if p == (tunnel.Path{}) {
 		return "unknown — the host did not answer a ping"

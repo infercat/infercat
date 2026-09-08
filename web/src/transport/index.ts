@@ -183,7 +183,7 @@ export function cityFor(region: string): string {
   return CITIES[key] ?? region.trim();
 }
 
-/** "relayed via New York · 84 ms" — the truth about the path, never a green dot (pm/BELIEFS.md). */
+/** "relayed via New York · 84 ms" — the truth about the path, never a green dot (docs/PRINCIPLES.md). */
 export function describePath(path: PingResult | null, fallbackRegion?: string): string {
   if (!path) return fallbackRegion ? `relayed via ${cityFor(fallbackRegion)}` : 'path unknown';
   const rtt = `${Math.round(path.rttMs)} ms`;

@@ -321,7 +321,7 @@ export function handshakeFailure(log: string[], host: string): FriendlyError {
 // ---- what the surfaces say -------------------------------------------------------------------
 
 /**
- * The path, as text, never a dot (pm/BELIEFS.md). When the last measurement failed the line names
+ * The path, as text, never a dot (docs/PRINCIPLES.md). When the last measurement failed the line names
  * the host that stopped answering and dates the last good number, so nothing on screen is a live
  * latency that is not live (014 promise 3).
  */

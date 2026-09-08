@@ -3,7 +3,7 @@ import type { Plugin } from 'vite';
 import { defineConfig } from 'vitest/config';
 import react from '@vitejs/plugin-react';
 
-// The product name lives in src/product.ts and nowhere else (pm/BELIEFS.md). This plugin reads it
+// The product name lives in src/product.ts and nowhere else (docs/PRINCIPLES.md). This plugin reads it
 // (and the one-line description) out of that file and fills the <title>, the description and
 // social-card metas in index.html, and the web app manifest, which it emits at build time and serves
 // in dev — so a rename touches product.ts and the rendered pages follow. %WEB_URL% is the app's

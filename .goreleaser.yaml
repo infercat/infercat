@@ -8,7 +8,7 @@
 #
 # Run it through the Makefile, never bare: the Makefile is what reads CLI_NAME and PRODUCT_VERSION
 # out of internal/product/product.go, because the product name and version live in one constant
-# (pm/BELIEFS.md) and this file must not become a second copy of them.
+# (docs/PRINCIPLES.md) and this file must not become a second copy of them.
 version: 2
 
 snapshot:
@@ -100,7 +100,7 @@ homebrew_casks:
       email: noreply@2185lab.com
     homepage: https://infercat.ai
     description: "Share the model on your machine with friends: one binary, one invite code, a browser"
-    # The binaries are not signed yet (pm/tickets/034-notarization.md): Homebrew quarantines what it
+    # The binaries are not signed yet (docs/PRINCIPLES.md, Decisions kept): Homebrew quarantines what it
     # downloads, and macOS refuses to run a quarantined unsigned binary. This is the hook goreleaser
     # documents for exactly that case; delete it when 034 lands.
     hooks:

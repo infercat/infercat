@@ -1,6 +1,6 @@
 // Package tunnel wraps a tailcat.Server as a net.Listener for exactly one tunnel port.
 //
-// Protection 1 (pm/BELIEFS.md): OnTCP returns nil for every port but Port, ServedTCPPorts narrows
+// Protection 1 (docs/PRINCIPLES.md): OnTCP returns nil for every port but Port, ServedTCPPorts narrows
 // the packet filter to Port so other SYNs are dropped before netstack, and OnTCPForward,
 // AllowProxy, SSH, and file services are never set.
 //

@@ -1,11 +1,11 @@
 # Releasing
 
 A release is a tag. Everything else is a workflow reading the tag. Nothing here is run before the
-founder's decisions in `pm/LAUNCH.md` are closed (name, URL, public repo, history rewrite).
+launch decisions are closed (name, URL, public repo, history rewrite).
 
 ## Before the first release (once)
 
-1. `docs/RENAME.md` — the rename, top to bottom, on a branch; `make brand`; `make launch-check`.
+1. The rename to the final product name is done (2026-09-05); the name lives in one constant.
 2. Create the tap repository `infercat/homebrew-tap` (empty, public, with a `Casks/` directory) and a
    fine-grained PAT with **contents: write** on it; store it as the repository secret
    `HOMEBREW_TAP_GITHUB_TOKEN`.

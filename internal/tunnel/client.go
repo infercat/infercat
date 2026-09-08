@@ -1,7 +1,7 @@
 package tunnel
 
 // The client side (ticket 026): one Session per host, one relay handshake, many dials — the shape
-// the wasm bridge has, and the opposite of tailcat's stock per-dial client (pm/DECLINED.md). The
+// the wasm bridge has, and the opposite of tailcat's stock per-dial client (docs/PRINCIPLES.md, Decisions kept). The
 // secret never comes here: the tunnel carries bytes, the gateway checks keys (Protection 2).
 
 import (

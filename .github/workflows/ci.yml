@@ -1,5 +1,5 @@
 # Every push and PR: the Go checks, the web checks, the notices gate, and a full release dry run —
-# all from this fresh checkout, which is the "green from nothing" law (pm/BELIEFS.md). Nothing here
+# all from this fresh checkout, which is the "green from nothing" law (docs/PRINCIPLES.md). Nothing here
 # publishes; release.yml is the only workflow that can, and only on a tag.
 name: CI
 

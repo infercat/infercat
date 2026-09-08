@@ -8,7 +8,7 @@ import (
 )
 
 // Event is one request. No prompt or completion content lives here unless the host opted in,
-// in which case Prompt/Completion are set (Protection 3 in pm/BELIEFS.md).
+// in which case Prompt/Completion are set (Protection 3 in docs/PRINCIPLES.md).
 type Event struct {
 	TS               time.Time `json:"ts"`
 	KeyID            string    `json:"key_id"`

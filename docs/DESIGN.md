@@ -47,7 +47,7 @@ wow"):
 **Change after launch** (debt that costs nothing while it waits): the CLI parser and platform seam
 (§4 items 1, 9–11), the store throttle (§4 item 4), the daily-counter seed (§4 item 5), the flag and
 config-key trims (§5), events for GET routes (§4 item 14), `/v1/models` folded into the stage table
-(§1.3 item 5). Before any public mirror of the repo: the 28 MB binary in history (`pm/HANDOFF.md`)
+(§1.3 item 5). Before any public mirror of the repo: the 28 MB binary in history (rewritten out on 2026-09-06)
 needs a rewrite — a repo action, not a design.
 
 ### 0.3 Verdict on the ticket's working opinion
@@ -648,7 +648,7 @@ code embodies these, and the following. Each row argues for existence or removal
 | `serve`, `keys add/list/pause/resume/revoke/rotate/limits`, `status`, `usage`, `version` | keep |
 | `--data-dir` (global) | keep |
 | `serve --upstream`, `--upstream-key`, `--slots`, `--name`, `--dev-listen` | keep |
-| `serve --derpmap-url`, `--region` | keep (self-hosted relay before publicity, `pm/HANDOFF.md`) |
+| `serve --derpmap-url`, `--region` | keep (self-hosted relay before publicity) |
 | `serve --log-prompts`, `--verbose` | keep (per-run, never persisted) |
 | **`serve --queue-timeout`, `--request-timeout`, `--max-body`** | **delete** (3 flags + 3 config keys): nobody sets them, they were contract defaults; `--request-timeout` is deleted by §1.6 anyway; 30 s / 4 MiB become constants |
 | **`serve --ephemeral`** | **cut candidate**: a per-run mode that changes the address so every invite breaks; nothing in the product path needs it (tests use `tunnel.Options.Ephemeral`, which stays). PM rules |
@@ -806,7 +806,7 @@ and risks a promise that is currently kept.
   DERP map (001 ruling).
 - **HTTP/1.1 over a `Conn`.** One connection per request, `Connection: close`, no `closeWrite`
   after the request (documented reason, `http1.ts:62-64`), a real `ReadableStream` body
-  (`http1.ts`); `pm/DECLINED.md` on pooling.
+  (`http1.ts`); `docs/PRINCIPLES.md`, Decisions kept.
 - **Admin over a unix socket, read-only, 0600**; the Windows loopback + token fallback.
 - **`--log-prompts` and `--ephemeral` never persisted; `--upstream-key` persisted at 0600** (003
   ruling).
@@ -819,7 +819,7 @@ and risks a promise that is currently kept.
 
 ## 8. Visual system
 
-The app is drawn in **Swiss ink**, the brand direction the founder picked on 2026-09-06 (pm/LAUNCH.md
+The app is drawn in **Swiss ink**, the brand direction picked on 2026-09-06 (docs/brand/swiss-ink.md
 F8; the specification and the rendered mock are `docs/brand/swiss-ink.md` and `.html`): black ink on
 white paper, a strict grid, hairline rules for separators and ink rules for frames, zero border
 radius anywhere, and exactly one accent — a printer's cobalt `#1F3BFF` — reserved for the thing the

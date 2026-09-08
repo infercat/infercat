@@ -1,4 +1,4 @@
-// HTTP/1.1 over a tunnel Conn. One connection per request (pm/DECLINED.md: no keep-alive pooling),
+// HTTP/1.1 over a tunnel Conn. One connection per request (docs/PRINCIPLES.md: no keep-alive pooling),
 // `Connection: close`, and a response body that is a real ReadableStream so SSE tokens reach the UI
 // as they arrive rather than after the response completes.
 import type { Conn } from './types';
