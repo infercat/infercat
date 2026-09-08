@@ -11,4 +11,4 @@ dataset = "infercat_loads"
 # PM creates the namespace and replaces this placeholder at landing, before deployment.
 [[kv_namespaces]]
 binding = "SIGNUPS"
-id = "00000000000000000000000000000000"
+id = "0ec8d22651a147cca7525ffd93ea5707"
