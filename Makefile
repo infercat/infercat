@@ -23,6 +23,8 @@ vet:
 	go vet ./...
 
 check: vet test
+	sh hack/install_test.sh
+	@if command -v shellcheck >/dev/null 2>&1; then shellcheck -s sh hack/install.sh; else echo "shellcheck: skipped (not installed)"; fi
 	@echo "CHECK OK"
 
 # wasm bridge (ticket 001 owns web/wasm/build.sh)
@@ -74,6 +76,7 @@ clean:
 # plus the headers, routes and the first-party counter. Needs `wrangler login` (OAuth).
 deploy-web: web
 	rm -rf web/deploy && mkdir -p web/deploy && cp -R web/dist/. web/deploy/ && rm -f web/deploy/infercat.wasm
+	cp hack/install.sh web/deploy/install.sh
 	cp hosting/cloudflare/_headers hosting/cloudflare/_routes.json hosting/cloudflare/404.html web/deploy/ && cp -R hosting/cloudflare/functions web/deploy/
 	cd hosting/cloudflare && env -u CLOUDFLARE_API_TOKEN wrangler pages deploy --project-name infercat --branch main --commit-dirty=true
 

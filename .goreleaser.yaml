@@ -79,27 +79,23 @@ release:
   prerelease: auto
   name_template: "{{ .Env.CLI_NAME }} {{ .Version }}"
 
-homebrew_casks:
-  # The Homebrew cask (goreleaser 2.18 deprecates `brews` for pre-built binaries in favour of casks):
-  # `brew install infercat/tap/<CLI_NAME>`. Written to dist/homebrew/ on every run so it can be read
-  # and installed locally (docs/RELEASE.md); committed to the tap repository only when skip_upload is
-  # flipped to "auto" on the day the tap exists, with a PAT in HOMEBREW_TAP_GITHUB_TOKEN.
-  # "auto" then still skips prereleases and snapshots.
+brews:
+  # Binary formula for macOS and Linux; uploads stay disabled until the tap exists.
   - name: "{{ .Env.CLI_NAME }}"
     ids: [cli]
-    binaries: ["{{ .Env.CLI_NAME }}"]
     repository:
       owner: infercat
       name: homebrew-tap
       branch: main
       token: "{{ .Env.HOMEBREW_TAP_GITHUB_TOKEN }}"
-    directory: Casks
+    directory: Formula
     skip_upload: true
     commit_author:
       name: goreleaser
       email: noreply@2185lab.com
     homepage: https://infercat.ai
     description: "Share the model on your machine with friends: one binary, one invite code, a browser"
+<<<<<<< HEAD
     # The binaries are not signed yet (docs/PRINCIPLES.md, Decisions kept): Homebrew quarantines what it
     # downloads, and macOS refuses to run a quarantined unsigned binary. This is the hook goreleaser
     # documents for exactly that case; delete it when 034 lands.
@@ -109,3 +105,9 @@ homebrew_casks:
           if OS.mac?
             system_command "/usr/bin/xattr", args: ["-dr", "com.apple.quarantine", "#{staged_path}/{{ .Env.CLI_NAME }}"]
           end
+=======
+    install: |
+      bin.install "{{ .Env.CLI_NAME }}"
+    test: |
+      system "#{bin}/{{ .Env.CLI_NAME }}", "version"
+>>>>>>> 861afae (install: verify downloads and generate a cross-platform formula (044))

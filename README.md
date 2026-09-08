@@ -37,21 +37,9 @@ and see counts, never their conversations.
 You need an inference server running (llama.cpp, vLLM, Ollama or LM Studio; any OpenAI-compatible
 `/v1/chat/completions` works). Your friends need a browser.
 
-**Homebrew (macOS)** <!-- TODO(tap): infercat/homebrew-tap does not exist yet; docs/RELEASE.md creates it -->
-
-```
-brew install infercat/tap/infercat
-```
-
-**Download** — from [Releases](https://github.com/infercat/infercat/releases): pick your platform,
-unpack, put `infercat` on your `PATH`. Verify the download against the checksums file that
-ships next to it:
-
-```
-shasum -a 256 --ignore-missing -c infercat_<version>_checksums.txt
-```
-
-**From source** — Go 1.22+ (the right toolchain downloads itself): `make build` → `bin/infercat`.
+- `curl -fsSL https://infercat.ai/install.sh | sh` ([raw fallback](https://raw.githubusercontent.com/infercat/infercat/main/hack/install.sh)).
+- `brew install infercat/tap/infercat` (macOS and Linux).
+- [Releases](https://github.com/infercat/infercat/releases) for everything else.
 
 Then:
 

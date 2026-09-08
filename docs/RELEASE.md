@@ -5,11 +5,16 @@ launch decisions are closed (name, URL, public repo, history rewrite).
 
 ## Before the first release (once)
 
+<<<<<<< HEAD
 1. The rename to the final product name is done (2026-09-05); the name lives in one constant.
 2. Create the tap repository `infercat/homebrew-tap` (empty, public, with a `Casks/` directory) and a
+=======
+1. The rename to the final product name is done (2026-09-05); the name lives in one constant.
+2. Create the tap repository `infercat/homebrew-tap` (empty, public, with a `Formula/` directory) and a
+>>>>>>> 861afae (install: verify downloads and generate a cross-platform formula (044))
    fine-grained PAT with **contents: write** on it; store it as the repository secret
    `HOMEBREW_TAP_GITHUB_TOKEN`.
-3. In `.goreleaser.yaml`, flip `homebrew_casks[].skip_upload` from `true` to `"auto"` (uploads on
+3. In `.goreleaser.yaml`, flip `brews[].skip_upload` from `true` to `"auto"` (uploads on
    a real tag, skips prereleases and snapshots).
 4. Set `homepage` there and `product.WebURL` in Go to the web app's URL (F3).
 5. Run the release workflow by hand once (`gh workflow run release.yml`): it builds the snapshot
@@ -29,7 +34,7 @@ git push origin v0.1.0
 
 The tag runs `.github/workflows/release.yml`: `make release-publish` → goreleaser builds the five
 binaries, the six archives, the checksums file, and a **draft** GitHub Release named
-`infercat 0.1.0`; the cask is committed to the tap. Then:
+`infercat 0.1.0`; the formula is committed to the tap. Then:
 
 1. Open the draft. Paste the `CHANGELOG.md` entry above the generated notes. Publish.
 2. `brew install infercat/tap/infercat` on a machine that has never had it; `infercat
