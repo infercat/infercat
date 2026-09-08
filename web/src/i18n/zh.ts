@@ -104,7 +104,7 @@ export const zh = {
   path_label: '路径',
   roadmap_label: '任何客户端、还没做的公开网关、你的机器',
   terminal:
-    '$ infercat connect ic1.tco2Fw8yq3zn.rrMAuK…\nInfercat 0.0.1-dev\nhost    Max’s laptop · gemma-4-E2B-it-Q4_K_M.gguf\npath    relayed via New York City · 27 ms\nlocal   http://127.0.0.1:11435\n        base URL http://127.0.0.1:11435/v1, any API key\n\n$ export OPENAI_BASE_URL=http://127.0.0.1:11435/v1 OPENAI_API_KEY=x\n$ python3 chat.py',
+    '$ infercat connect ic1.tco2Fw8yq3zn.rrMAuK…\nInfercat 0.1.0\nhost    Max’s laptop · gemma-4-E2B-it-Q4_K_M.gguf\npath    relayed via New York City · 27 ms\nlocal   http://127.0.0.1:11435\n        base URL http://127.0.0.1:11435/v1, any API key\n\n$ export OPENAI_BASE_URL=http://127.0.0.1:11435/v1 OPENAI_API_KEY=x\n$ python3 chat.py',
   f_hint_empty: '粘贴朋友发你的邀请码。',
 
   app_another_tab_took_over_this_chat_what_is_above: '另一个标签页已接管此对话——上方仅为部分内容。',

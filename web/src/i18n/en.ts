@@ -111,7 +111,7 @@ export const en = {
   path_label: 'Path',
   roadmap_label: 'any client, a public gateway that is not built, your machine',
   terminal:
-    '$ infercat connect ic1.tco2Fw8yq3zn.rrMAuK…\nInfercat 0.0.1-dev\nhost    Max’s laptop · gemma-4-E2B-it-Q4_K_M.gguf\npath    relayed via New York City · 27 ms\nlocal   http://127.0.0.1:11435\n        base URL http://127.0.0.1:11435/v1, any API key\n\n$ export OPENAI_BASE_URL=http://127.0.0.1:11435/v1 OPENAI_API_KEY=x\n$ python3 chat.py',
+    '$ infercat connect ic1.tco2Fw8yq3zn.rrMAuK…\nInfercat 0.1.0\nhost    Max’s laptop · gemma-4-E2B-it-Q4_K_M.gguf\npath    relayed via New York City · 27 ms\nlocal   http://127.0.0.1:11435\n        base URL http://127.0.0.1:11435/v1, any API key\n\n$ export OPENAI_BASE_URL=http://127.0.0.1:11435/v1 OPENAI_API_KEY=x\n$ python3 chat.py',
   f_hint_empty: 'Paste the code your friend sent you.',
 
   // 047 app copy. Named placeholders are substituted as text, never HTML.

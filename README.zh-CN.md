@@ -144,7 +144,7 @@ infercat keys limits alice --rpm 60 --daily-tokens 1000000 --max-output-tokens 8
 bin/infercat connect ic1.tc….…          # paste the invite
 ```
 ```
-Infercat 0.0.1-dev
+Infercat 0.1.0
 host      Max's laptop  ·  gemma-4-E2B-it-Q4_K_M.gguf
 path      relayed via New York City · 27 ms       # re-checked every 30 s, printed when it changes
 local     http://127.0.0.1:11435
