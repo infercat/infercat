@@ -18,7 +18,7 @@ const (
 // also the single place the Makefile and the web bundle read the version from (docs/PRINCIPLES.md:
 // the product name lives in one constant), so keep the literal on one line.
 var (
-	Version = "0.0.1-dev"
+	Version = "0.1.0"
 	Commit  = "none"
 	Date    = "unknown"
 )

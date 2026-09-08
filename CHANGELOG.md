@@ -3,7 +3,7 @@
 Versions are tags (`v0.1.0`); the binary prints its own with `infercat version` and the web
 app shows the same one under Settings. Dates are the tag's.
 
-## v0.1.0 — unreleased
+## v0.1.0 — 2026-09-08
 
 The first release: what the demo proved, made into something a stranger can install.
 
