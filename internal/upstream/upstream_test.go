@@ -14,7 +14,7 @@ import (
 )
 
 // fakes of the four engines, shaped from what the real servers answered on 2026-09-02
-// (llama.cpp b9553 at 127.0.0.1:18080 and vLLM 0.25.0 at max-ws.lab:8010).
+// (llama.cpp b9553 at 127.0.0.1:18080 and vLLM 0.25.0 on a workstation, port 8010).
 
 func llamaCPP(t *testing.T) *httptest.Server {
 	mux := http.NewServeMux()

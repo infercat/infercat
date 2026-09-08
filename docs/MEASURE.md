@@ -58,7 +58,7 @@ render), still well under the "feels instant" bar. Connect (`InfercatTunnel.conn
 
 ### vLLM (ticket 005 promise 7), Direct mode over the read-only ssh forward
 
-`serve --upstream http://127.0.0.1:8010` (via `ssh -N -L 8010:127.0.0.1:8010 max@max-ws.lab`),
+`serve --upstream http://127.0.0.1:8010` (via `ssh -N -L 8010:127.0.0.1:8010 <user>@<workstation>`),
 `entropy-v2-gemma4-12b-w4a16-group128`, context 8192, slots 2. A streamed Direct-mode chat returned
 475 SSE data lines, usage `prompt_tokens:32 completion_tokens:472`. Exact `/tokenize` counting is
 used, not `ceil(chars/4)`: vLLM `/tokenize` with the chat template returns 32, matching the engine's
@@ -126,7 +126,7 @@ relay, same llama-server) stayed up throughout and was not touched.
 ```
 go build -o $T/bn028-bin/load ./hack/load
 $T/bn028-bin/load --host-dir $T/bn028-a-llama-ours --bin $T/bn028-bin/infercat --host-pid <pid> \
-  --engine http://127.0.0.1:18080 --engine-pid <pid> --relay-ssh root@206.189.207.168 \
+  --engine http://127.0.0.1:18080 --engine-pid <pid> --relay-ssh root@<relay-ip> \
   --relay-only --n 12 --minutes 3 --out $T/bn028-out --name R3-llama-ours-n12
 # sessions only:  --mode sessions --n 100 --settle 150s      spike: --mode sessions --n 30 --stagger 0
 # pathological:   --noread · --body-bytes 4300000 · --n 2 --sessions-per-friend 6 --max-concurrent 3

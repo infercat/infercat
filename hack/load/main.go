@@ -6,7 +6,7 @@
 // docs/MEASURE.md quotes.
 //
 //	go run ./hack/load --host-dir DIR --bin bin/infercat --host-pid PID \
-//	  --engine http://127.0.0.1:18080 --engine-pid PID --relay-ssh root@206.189.207.168 \
+//	  --engine http://127.0.0.1:18080 --engine-pid PID --relay-ssh root@<relay-ip> \
 //	  --n 12 --minutes 3 --relay-only --out /tmp/bn028-out --name llama-n12
 //
 // It sends requests only and never starts, stops or reconfigures the host, the engine or the
