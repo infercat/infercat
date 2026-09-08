@@ -114,6 +114,15 @@ func (e *env) cmdServe(ctx context.Context, pre string, args []string) error {
 	}
 	defer tun.Close()
 
+	// Subscribe before the gateway can serve a request, so the first request line is never lost
+	// to a printer goroutine that has not subscribed yet (CI caught this as a flaky test, 2026-09-09).
+	var requestLines <-chan usage.Event
+	if *logRequests {
+		ch, stop := events.Subscribe()
+		defer stop()
+		requestLines = ch
+	}
+
 	gw, err := e.plat.newGateway(gatewayOptions{
 		LogPrompts:  *logPrompts,
 		HostName:    hostName,
@@ -126,8 +135,8 @@ func (e *env) cmdServe(ctx context.Context, pre string, args []string) error {
 
 	tele := &telemetry{events: events, name: hostName}
 	go tele.sample(ctx, gw, tun)
-	if *logRequests {
-		go printRequests(ctx, events, e.out, keyNamer(ctx, store))
+	if requestLines != nil {
+		go printRequests(ctx, requestLines, e.out, keyNamer(ctx, store))
 	}
 	started := time.Now()
 	adm, err := admin.Serve(dataDir, func() admin.Status {
@@ -369,9 +378,7 @@ func (t *telemetry) sample(ctx context.Context, gw gatewayServer, tun tunnelServ
 
 // printRequests is `serve --log-requests`: the request line on the host's terminal, from the
 // same stream `status --watch` reads.
-func printRequests(ctx context.Context, events *admin.Events, w io.Writer, name func(string) string) {
-	ch, stop := events.Subscribe()
-	defer stop()
+func printRequests(ctx context.Context, ch <-chan usage.Event, w io.Writer, name func(string) string) {
 	for {
 		select {
 		case <-ctx.Done():
