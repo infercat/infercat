@@ -29,7 +29,11 @@ git push origin v0.1.0
 
 The tag runs `.github/workflows/release.yml`: `make release-publish` → goreleaser builds the five
 binaries, the six archives, the checksums file, and a **draft** GitHub Release named
-`infercat 0.1.0`; the formula is committed to the tap. Then:
+`infercat 0.1.0`. Until `HOMEBREW_TAP_GITHUB_TOKEN` exists (`brews[].skip_upload` is still `true`),
+the formula is written by hand from the published checksums in GoReleaser's own layout — the
+v0.1.0 formula is the template: download `infercat_<version>_checksums.txt` from the release,
+regenerate `Formula/infercat.rb` in `infercat/homebrew-tap` (the writer script lives in the private
+PM repo under `docs/release/`), commit, push. Then:
 
 1. Open the draft. Paste the `CHANGELOG.md` entry above the generated notes. Publish.
 2. `brew install infercat/tap/infercat` on a machine that has never had it; `infercat
