@@ -5,7 +5,7 @@
 
 # Infercat
 
-**给朋友一把钥匙，连上你电脑上的 AI。**
+**让朋友用你的 GPU 聊天。**
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-1F3BFF?style=flat-square)](LICENSE)
 [![CI](https://github.com/infercat/infercat/actions/workflows/ci.yml/badge.svg)](https://github.com/infercat/infercat/actions/workflows/ci.yml)

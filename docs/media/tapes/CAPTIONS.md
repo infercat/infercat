@@ -1,6 +1,6 @@
 # Infercat demo — caption system
 
-Spec for `docs/media/demo.mp4` (1280×800, 25 fps, 39.28 s, three scenes, no narration, no music). Companion sheet: `captions.html` (same directory; open at 1400 px; `?alone` exports the overlays). Brand: Swiss ink (`docs/brand/swiss-ink.md`); mark: `docs/brand/mark.svg`.
+Spec for `docs/media/demo.mp4` (1280×800, 25 fps, 33.52 s, three scenes, no narration, no music). Companion sheet: `captions.html` (same directory; open at 1400 px; `?alone` exports the overlays). Brand: Swiss ink (`docs/brand/swiss-ink.md`); mark: `docs/brand/mark.svg`.
 
 ## Point of view
 
@@ -59,7 +59,7 @@ No cobalt on this card.
 | ground | — | — | 1280×800 | `#FFFFFF` | — |
 | mark | — | inline SVG | 104×104 | `#0A0A0A` | 96, 216 |
 | URL | `infercat.ai` | Archivo 700, −0.045 em | 144 px | `#1F3BFF` | 88, 344 (x optical; the glyph edge lands on 96; baseline ≈ y 460) |
-| tagline (PM amendment 2026-09-08, founder: the last frame carries the logo and the slogan) | `Give friends a key to the AI on your machine.` | Archivo 400, −0.015 em | 40 px | `#0A0A0A` | 96, 496 |
+| tagline (PM amendment 2026-09-08, founder: the last frame carries the logo and the slogan) | `Let friends chat with your GPU.` | Archivo 400, −0.015 em | 40 px | `#0A0A0A` | 96, 496 |
 | licence line | `MIT · self-hosted · end-to-end encrypted` | IBM Plex Mono 500, no tracking | 28 px | `#0A0A0A` | 96, 566 |
 | rule + repo | `github.com/infercat/infercat` | 1 px rule; IBM Plex Mono 400 | 16 px | `#0A0A0A` / `#5C6068` | rule y 720; text x 24, vertically centred in the bar |
 
@@ -67,20 +67,19 @@ No right-hand footer on the end card — the URL is the card. The GIF loops from
 
 ## Timing
 
-Measured on this recording (`demo.mp4`, 39.28 s). Boundaries are the frame at which the footage changes state. Final time = recording time; the 1.60 s title is retired. Clip-local time is what `render.mjs` composites against (scene 2 starts at 11.88, scene 3 at 25.60).
+Measured from the retained 048 recording, with cuts only: browser answer complete at about 6.48 s clip-local, cut at 8.48; terminal answer at about 7.68, cut at 10.20. The raw clips are 12.32 / 13.88 / 13.72 s; the retained clips are 12.32 / 8.48 / 10.20 s. The six label boundaries follow this take; the Send mark at 4.464 s appears on the 4.48 s frame. Final duration is 33.52 s after 25 fps quantization of the 2.50 s end card.
 
 | overlay | scene / clip | clip-local s | recording s | final s | dur s | copy key | what the footage is doing |
 |---|---|---|---|---|---|---|---|
+| 01 | 1 · host.mp4 | 0.00 – 5.96 | 0.00 – 5.96 | 0.00 – 5.96 | 5.96 | `step-01` | serve output, then clear |
+| 02 | 1 · host.mp4 | 5.96 – 12.32 | 5.96 – 12.32 | 5.96 – 12.32 | 6.36 | `step-02` | keys add, full QR and link |
+| 03 | 2 · browser.webm | 0.00 – 4.48 | 12.32 – 16.80 | 12.32 – 16.80 | 4.48 | `step-03` | automatic connection, real relayed pill, question |
+| 04 | 2 · browser.webm | 4.48 – 8.48 | 16.80 – 20.80 | 16.80 – 20.80 | 4.00 | `step-04` | streamed answer and about 2 s reading hold |
+| 05 | 3 · friend.mp4 | 0.00 – 3.88 | 26.20 – 30.08 | 20.80 – 24.68 | 3.88 | `step-05` | connect and its real direct path |
+| 06 | 3 · friend.mp4 | 3.88 – 10.20 | 30.08 – 36.40 | 24.68 – 31.00 | 6.32 | `step-06` | curl, readable answer and about 2.5 s hold |
+| end | card | — | — | 31.00 – 33.52 | 2.52 | tagline / licence | host sentence and URL |
 
-| 01 | 1 · host.mp4 | 0.00 – 5.56 | 0.00 – 5.56 | 0.00 – 5.56 | 5.56 | `step-01` | `serve` typed 0–3.6; status block 3.6; Ctrl+L clear 5.56 |
-| 02 | 1 · host.mp4 | 5.56 – 11.88 | 5.56 – 11.88 | 5.56 – 11.88 | 6.32 | `step-02` | `keys add alice` typed 5.56–7.0; QR + link 7.02; hold |
-| 03 | 2 · browser.webm | 0.00 – 4.24 | 11.88 – 16.12 | 11.88 – 16.12 | 4.24 | `step-03` | connect card 12.0; Opening… 12.8; welcome 13.0; typing 14.6–16.1 |
-| 04 | 2 · browser.webm | 4.24 – 13.72 | 16.12 – 25.60 | 16.12 – 25.60 | 9.48 | `step-04` | Send 16.12; Thinking 16.3–17.8; answer streams 17.8–18.4; hold |
-| 05 | 3 · friend.mp4 | 0.00 – 3.96 | 25.60 – 29.56 | 25.60 – 29.56 | 3.96 | `step-05` | `connect` typed 25.6–27.5; path line 27.5; 2 s hold |
-| 06 | 3 · friend.mp4 | 3.96 – 13.68 | 29.56 – 39.28 | 29.56 – 39.28 | 9.72 | `step-06` | `curl \| jq` typed 29.56–33.3; sentence 33.5; 6 s hold |
-| end | card | — | — | 39.28 – 41.78 | 2.50 | `infercat.ai` / `MIT · self-hosted · end-to-end encrypted` / `github.com/infercat/infercat` | appended after scene 3; total 41.78 s |
-
-Reading time: the shortest hold (05, 3.96 s) carries seven words; 03 (4.24 s) carries eight. Both are inside the usual three-words-per-second caption pace.
+Future recordings keep these reading holds at the source: the browser's demo-only post-answer wait is 2 s; friend.tape waits 2.5 s after the answer. Inference time and therefore clip boundaries may vary; no absolute cutoff is imposed on a new answer.
 
 ## Motion
 
@@ -93,12 +92,12 @@ Everything is a cut: every label change, scene 3 → end card. No fades, no slid
    ```
    ffmpeg -y -i host.mp4 -i step-01.png -i step-02.png -filter_complex "\
    [0:v]pad=1280:800:(ow-iw)/2:0:white,setsar=1[s];\
-   [s][1:v]overlay=0:0:enable='lt(t,5.56)'[a];\
-   [a][2:v]overlay=0:0:enable='gte(t,5.56)',fps=25,format=yuv420p[out]" \
+   [s][1:v]overlay=0:0:enable='lt(t,5.96)'[a];\
+   [a][2:v]overlay=0:0:enable='gte(t,5.96)',fps=25,format=yuv420p[out]" \
    -map [out] -an -c:v libx264 -crf 24 -preset slow -color_range tv -colorspace bt470bg scene-0.mp4
    ```
-   Scene 2 uses step-03/04 with the boundary at 4.24 (clip-local); scene 3 uses step-05/06 at 3.96.
-3. **The end card is a looped still.** Encode `end.png` for 2.50 s with the scene encoder flags. Concat scene-0, scene-1, scene-2, end (41.78 s on this baseline). Record once; composite both languages from those same clips and boundaries. Duration and byte gates run on both variants.
+   Scene 2 uses step-03/04 with the boundary at 4.48 (clip-local); scene 3 uses step-05/06 at 3.88.
+3. **The end card is a looped still.** Encode `end.png` for 2.50 s with the scene encoder flags. Concat scene-0, scene-1, scene-2, end (33.52 s on this retained take). Record once; composite both languages from those same clips and boundaries. Duration and byte gates run on both variants.
 4. **Derive the three in-clip boundaries per recording; do not hard-code them.** Real inference moves them run to run. Two of them sit at the end of a tape's only `Sleep 2s`: the first run of ≥ 1.9 s of unchanged frames after output begins is the clear (host) and the curl keystroke (friend) — read it from `ffmpeg -vf "select='gt(scene,0.0005)',showinfo"` timestamps, or compare consecutive frames. The third is the moment `launch-check.mjs` presses Send: have it write the elapsed recording time to `browser.marks.json`. Zero-detection alternative for the host: split `host.tape` at the Ctrl+L into two tapes — the clear becomes a cut to a fresh blank shell, visually identical — and 01/02 become per-clip static overlays exactly like today's captions. Do not split `friend.tape`: the answer must keep the path line above it.
 5. **Poster and GIF.** Poster = `browser-first-token.png` + `step-04.png` (was caption-1). The GIF command is unchanged; the end card holds 2.5 s and loops into step 01.
 6. **Nothing here needs more than this.** No animation, no fades, no text rendered by ffmpeg (no `drawtext`, no fonts on the render host beyond what vhs already needs), no per-frame compositing. Seven static PNGs per language, `overlay` with `enable`, `-loop 1` for the cards, concat.
@@ -121,5 +120,5 @@ Latin words use Archivo in Chinese overlays; Chinese glyphs use Noto Sans SC. Nu
 | step-04 | `Max's laptop answers.` | `Max 的笔记本回答了。` |
 | step-05 | `The same key works from a terminal.` | `同一串邀请码，在终端里也能用。` |
 | step-06 | `Any OpenAI-compatible app can talk to Max's laptop.` | `任何兼容 OpenAI 的应用都能连上 Max 的笔记本。` |
-| tagline | `Give friends a key to the AI on your machine.` | `给朋友一把钥匙，连上你电脑上的 AI。` |
+| tagline | `Let friends chat with your GPU.` | `让朋友用你的 GPU 聊天。` |
 | licence | `MIT · self-hosted · end-to-end encrypted` | `MIT · 自托管 · 端到端加密` |

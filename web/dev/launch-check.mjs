@@ -417,7 +417,7 @@ async function chat(browser) {
     await page.screenshot({ path: join(media, 'browser-first-token.png') });
   }
   await stop.waitFor({ state: 'detached', timeout: 180_000 });
-  await page.waitForTimeout(demoDir ? 6000 : 1800);
+  await page.waitForTimeout(demoDir ? 2000 : 1800);
   if (demoDir) {
     const answer = await page.locator('.row.assistant > .md').innerText();
     if (!answer.trim()) throw new Error('demo: model produced no answer');
