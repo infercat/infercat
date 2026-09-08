@@ -254,19 +254,8 @@ async function main() {
   await direct.waitForSelector('.meta-text:has-text("out")', { timeout: 60_000 });
   await shot(direct, 'direct-mode');
 
-  // --- dark ---
-  const dark = await browser.newContext({ viewport: { width: 1280, height: 860 }, colorScheme: 'dark' });
-  const darkPage = await dark.newPage();
-  watch(darkPage, 'dark');
-  await darkPage.goto(BASE);
-  await darkPage.waitForSelector('.connect-card');
-  await shot(darkPage, 'connect-dark');
-  await connectViaTunnel(darkPage);
-  await darkPage.waitForSelector('.empty', { timeout: 20_000 });
-  await darkPage.locator('.composer textarea').fill('Show me a table and a code block.');
-  await darkPage.getByRole('button', { name: 'Send' }).click();
-  await darkPage.waitForSelector('.meta-text:has-text("out")', { timeout: 60_000 });
-  await shot(darkPage, 'chat-dark');
+  // Keep the existing numbered evidence names; the removed dark shots occupied slots 12–13.
+  n += 2;
 
   // --- mobile, 360 px ---
   const mobile = await browser.newContext({
@@ -325,7 +314,6 @@ async function main() {
   // would connect by itself (020 promise 8), and the state being drawn here is the card before that.
   for (const [name, viewport, scheme] of [
     ['page-1280-light', { width: 1280, height: 800 }, 'light'],
-    ['page-1280-dark', { width: 1280, height: 800 }, 'dark'],
     ['page-1024', { width: 1024, height: 768 }, 'light'],
     ['collapse-899', { width: 899, height: 760 }, 'light'],
     ['phone-390', { width: 390, height: 844 }, 'light'],

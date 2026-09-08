@@ -58,29 +58,28 @@
   --syn-name: var(--text);
   --font: 'Archivo', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   --mono: 'IBM Plex Mono', ui-monospace, SFMono-Regular, 'SF Mono', Menlo, Consolas, monospace;
-  color-scheme: light dark;
+  color-scheme: light;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --paper: #000000; /* true black, not slate */
-    --surface: #101114;
-    --surface-2: #1a1c21;
-    --text: #ffffff;
-    --muted: #9aa0aa;
-    --border: #2a2d33;
-    --rule: #ffffff;
-    --accent: #1f3bff;
-    --accent-ink: #ffffff;
-    /* Flat cobalt is 3.1:1 on black and must never carry text; this tint is 7.5:1. */
-    --accent-text: #7e93ff;
-    --focus: #7e93ff;
-    --success: #35d48d;
-    --warning: #f2f52e; /* fill only, as in light */
-    --danger: #ff5266;
-    --code: #16181d;
-    --scrim: rgba(0, 0, 0, 0.72);
-  }
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --paper: #000000; /* true black, not slate */
+  --surface: #101114;
+  --surface-2: #1a1c21;
+  --text: #ffffff;
+  --muted: #9aa0aa;
+  --border: #2a2d33;
+  --rule: #ffffff;
+  --accent: #1f3bff;
+  --accent-ink: #ffffff;
+  /* Flat cobalt is 3.1:1 on black and must never carry text; this tint is 7.5:1. */
+  --accent-text: #7e93ff;
+  --focus: #7e93ff;
+  --success: #35d48d;
+  --warning: #f2f52e; /* fill only, as in light */
+  --danger: #ff5266;
+  --code: #16181d;
+  --scrim: rgba(0, 0, 0, 0.72);
 }
 
 * { box-sizing: border-box; }

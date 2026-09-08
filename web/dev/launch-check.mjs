@@ -9,7 +9,7 @@
 // manifest parses and carries the product name; every icon and og.png is served; the connect screen
 // asks no third party for anything, fonts included (038 promise 3, Protection 3); every control in
 // the accessibility tree has a name; text contrast is 4.5:1 or better (3:1 for large text) in light
-// and dark; Tab lands on the invite field first; no horizontal overflow at 390 px. Screenshots go to
+// scheme; Tab lands on the invite field first; no horizontal overflow at 390 px. Screenshots go to
 // dev/screenshots/30-*.png; with INVITE, the recording goes to ../docs/media/friend-chat.gif (+ .png)
 // and must stay under 2 MB. The GIF needs a full ffmpeg (`brew install ffmpeg`, or FFMPEG=path to
 // one — Playwright's own ffmpeg records WebM and cannot write GIF).
@@ -116,6 +116,9 @@ async function metas(label) {
   ]) {
     if (!html.includes(needle)) problems.push(`${label}: index.html lacks ${what}`);
   }
+  if (!/<meta name="color-scheme" content="light"\s*\/>/.test(html)) problems.push(`${label}: color-scheme must be light`);
+  const themes = html.match(/<meta name="theme-color"[^>]*>/g) ?? [];
+  if (themes.length !== 1 || !themes[0].includes('content="#ffffff"') || themes[0].includes('media=')) problems.push(`${label}: expected one unconditional white theme-color`);
   if (html.includes('%PRODUCT') || html.includes('%WEB_URL%')) problems.push(`${label}: an unfilled placeholder is in index.html`);
   const res = await fetch(`${APP}/manifest.webmanifest`);
   if (!res.ok) {
@@ -294,7 +297,6 @@ async function connectScreen(browser) {
   await metas('connect');
   for (const [name, viewport, scheme] of [
     ['30-connect-desktop', { width: 1280, height: 800 }, 'light'],
-    ['30-connect-dark', { width: 1280, height: 800 }, 'dark'],
     ['30-connect-phone', { width: 390, height: 844 }, 'light'],
   ]) {
     const ctx = await browser.newContext({ viewport, colorScheme: scheme, deviceScaleFactor: viewport.width < 500 ? 2 : 1 });
@@ -345,7 +347,7 @@ function ffmpeg() {
   return bin;
 }
 
-/** A friend's first chat, against a real host, recorded. Then the same on a phone and in the dark. */
+/** A friend's first chat, against a real host, recorded. Then the same on a phone. */
 async function chat(browser) {
   mkdirSync(media, { recursive: true });
   const tmp = mkdtempSync(join(tmpdir(), 'bn-launch-'));
@@ -438,18 +440,7 @@ async function chat(browser) {
   shot(pf);
   await phone.close();
 
-  // Dark, desktop, the empty chat: the other palette's contrast.
-  const dark = await browser.newContext({ viewport: { width: 1280, height: 800 }, colorScheme: 'dark' });
-  const dp = await dark.newPage();
-  watch(dp, 'chat-dark');
-  await dp.goto(`${APP}/#${INVITE}`);
-  await dp.waitForSelector('.composer textarea', { timeout: 90_000 });
-  await dp.waitForTimeout(900);
-  await contrast(dp, 'chat-dark');
-  const df = join(shots, '30-chat-dark.png');
-  await dp.screenshot({ path: df });
-  shot(df);
-  await dark.close();
+
 }
 
 async function main() {
