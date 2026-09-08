@@ -16,3 +16,6 @@ web/public/wasm_exec.js
 web/dev/evidence/
 web/deploy
 .wrangler/
+
+# Full pinned font used only to render demo overlays.
+/.cache/demo-font/
