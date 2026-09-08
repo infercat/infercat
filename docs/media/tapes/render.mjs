@@ -69,7 +69,7 @@ try {
     const r = spawnSync('which', [cmd], { env, stdio: 'ignore' });
     if (r.status !== 0) throw new Error(`missing ${cmd}; install the recording prerequisites`);
   }
-  await renderOverlays(dir);
+  for (const lang of ['en', 'zh']) await renderOverlays(join(dir, lang), lang);
   await run('go', ['build', '-o', join(dir, 'infercat'), './cmd/infercat'], { cwd: root });
   for (const file of ['style.tape', 'host.tape']) copyFileSync(join(tapes, file), join(dir, file));
   // A request file keeps the terminal's curl command legible; it contains only the real API body.
@@ -93,40 +93,44 @@ try {
 
   const inputs = ['host.mp4', 'browser.webm', 'friend.mp4'];
   const durations = inputs.map((file) => probe(join(dir, file)));
-  const total = durations.reduce((a, b) => a + b, 0) + 1.6 + 2.5;
+  const total = durations.reduce((a, b) => a + b, 0) + 2.5;
   const boundaries = [terminalBoundary(join(dir, inputs[0])), JSON.parse(readFileSync(join(dir, 'browser.marks.json'), 'utf8')).sendSeconds, terminalBoundary(join(dir, inputs[2]))];
   if (boundaries.some((t, i) => !Number.isFinite(t) || t <= 0 || t >= durations[i])) throw new Error('caption boundary outside its clip');
   console.log(`demo: measured label boundaries ${boundaries.map((t) => t.toFixed(3)).join(' / ')} s (clip-local)`);
   console.log(`demo: scenes ${durations.map((n) => n.toFixed(2)).join(' / ')} s; total ${total.toFixed(2)} s`);
   if (!Number.isFinite(total) || total > 60) throw new Error('demo exceeds 60 s; shorten the tapes, never accelerate real inference');
-  for (const [i, input] of inputs.entries()) {
-    await run('ffmpeg', ['-y', '-loglevel', 'error', '-i', input, '-i', `step-0${i * 2 + 1}.png`, '-i', `step-0${i * 2 + 2}.png`, '-filter_complex',
-      `[0:v]pad=1280:800:(ow-iw)/2:0:white,setsar=1[scene];[scene][1:v]overlay=0:0:enable='lt(t,${boundaries[i]})'[a];[a][2:v]overlay=0:0:enable='gte(t,${boundaries[i]})',fps=25,format=yuv420p[out]`,
-      '-map', '[out]', '-an', '-c:v', 'libx264', '-crf', '24', '-preset', 'slow',
-      // Uniform metadata prevents GIF palette buffering from resetting at a scene boundary.
-      '-color_range', 'tv', '-colorspace', 'bt470bg', `scene-${i}.mp4`]);
-  }
-  for (const [name, seconds] of [['title', 1.6], ['end', 2.5]]) {
-    await run('ffmpeg', ['-y', '-loglevel', 'error', '-loop', '1', '-framerate', '25', '-i', `${name}.png`, '-t', String(seconds), '-vf', 'format=yuv420p,setsar=1', '-an', '-c:v', 'libx264', '-crf', '24', '-preset', 'slow', '-color_range', 'tv', '-colorspace', 'bt470bg', `${name}.mp4`]);
-  }
-  writeFileSync(join(dir, 'scenes.txt'), ['title', 'scene-0', 'scene-1', 'scene-2', 'end'].map((name) => `file '${name}.mp4'`).join('\n') + '\n');
-  await run('ffmpeg', ['-y', '-loglevel', 'error', '-f', 'concat', '-safe', '0', '-i', 'scenes.txt', '-c', 'copy', '-movflags', '+faststart', 'demo.mp4']);
-  await run('ffmpeg', ['-y', '-loglevel', 'error', '-i', 'demo.mp4', '-vf',
-    'fps=10,scale=960:-1:flags=lanczos,split[a][b];[a]palettegen=max_colors=128:stats_mode=diff[p];[b][p]paletteuse=dither=bayer:bayer_scale=4:diff_mode=rectangle', '-loop', '0', 'demo.gif']);
-  await run('ffmpeg', ['-y', '-loglevel', 'error', '-i', 'browser-first-token.png', '-i', 'step-04.png', '-filter_complex',
-    '[0:v]pad=1280:800:(ow-iw)/2:0:white[scene];[scene][1:v]overlay=0:0', '-frames:v', '1', 'demo-poster.png']);
-  for (const [file, limit] of [['demo.mp4', 8_000_000], ['demo.gif', 4_000_000], ['demo-poster.png', Infinity]]) {
-    const bytes = statSync(join(dir, file)).size;
-    console.log(`demo: ${file} ${bytes} bytes`);
-    if (bytes > limit) throw new Error(`${file} exceeds its ticket budget`);
-    if (file !== 'demo-poster.png') {
-      const duration = probe(join(dir, file));
-      if (Math.abs(duration - total) > 0.2) throw new Error(`${file} lost scene time: ${duration} vs ${total}`);
-      console.log(`demo: ${file} ${duration.toFixed(2)} s, all three scenes retained`);
+  for (const lang of ['en', 'zh']) {
+    const output = join(dir, lang);
+    const encode = (args) => run('ffmpeg', args, { cwd: output });
+    for (const [i, input] of inputs.entries()) {
+      await encode(['-y', '-loglevel', 'error', '-i', join(dir, input), '-i', `step-0${i * 2 + 1}.png`, '-i', `step-0${i * 2 + 2}.png`, '-filter_complex',
+        `[0:v]pad=1280:800:(ow-iw)/2:0:white,setsar=1[scene];[scene][1:v]overlay=0:0:enable='lt(t,${boundaries[i]})'[a];[a][2:v]overlay=0:0:enable='gte(t,${boundaries[i]})',fps=25,format=yuv420p[out]`,
+        '-map', '[out]', '-an', '-c:v', 'libx264', '-crf', '24', '-preset', 'slow',
+        // Uniform metadata prevents GIF palette buffering from resetting at a scene boundary.
+        '-color_range', 'tv', '-colorspace', 'bt470bg', `scene-${i}.mp4`]);
     }
+    for (const [name, seconds] of [['end', 2.5]]) {
+      await encode(['-y', '-loglevel', 'error', '-loop', '1', '-framerate', '25', '-i', `${name}.png`, '-t', String(seconds), '-vf', 'format=yuv420p,setsar=1', '-an', '-c:v', 'libx264', '-crf', '24', '-preset', 'slow', '-color_range', 'tv', '-colorspace', 'bt470bg', `${name}.mp4`]);
+    }
+    writeFileSync(join(output, 'scenes.txt'), ['scene-0', 'scene-1', 'scene-2', 'end'].map((name) => `file '${name}.mp4'`).join('\n') + '\n');
+    await encode(['-y', '-loglevel', 'error', '-f', 'concat', '-safe', '0', '-i', 'scenes.txt', '-c', 'copy', '-movflags', '+faststart', 'demo.mp4']);
+    await encode(['-y', '-loglevel', 'error', '-i', 'demo.mp4', '-vf',
+      'fps=10,scale=960:-1:flags=lanczos,split[a][b];[a]palettegen=max_colors=128:stats_mode=diff[p];[b][p]paletteuse=dither=bayer:bayer_scale=4:diff_mode=rectangle', '-loop', '0', 'demo.gif']);
+    await encode(['-y', '-loglevel', 'error', '-i', join(dir, 'browser-first-token.png'), '-i', 'step-04.png', '-filter_complex',
+      '[0:v]pad=1280:800:(ow-iw)/2:0:white[scene];[scene][1:v]overlay=0:0', '-frames:v', '1', 'demo-poster.png']);
+    for (const [file, limit] of [['demo.mp4', 8_000_000], ['demo.gif', 4_000_000], ['demo-poster.png', Infinity]]) {
+      const bytes = statSync(join(output, file)).size;
+      console.log(`demo: ${lang}/${file} ${bytes} bytes`);
+      if (bytes > limit) throw new Error(`${file} exceeds its ticket budget`);
+      if (file !== 'demo-poster.png') {
+        const duration = probe(join(output, file));
+        if (Math.abs(duration - total) > 0.2) throw new Error(`${file} lost scene time: ${duration} vs ${total}`);
+        console.log(`demo: ${lang}/${file} ${duration.toFixed(2)} s, all three scenes retained`);
+      }
+    }
+    mkdirSync(media, { recursive: true });
+    for (const file of ['demo.mp4', 'demo.gif', 'demo-poster.png']) copyFileSync(join(output, file), join(media, lang === 'en' ? file : file.replace(/\.(mp4|gif|png)$/, '.zh.$1')));
   }
-  mkdirSync(media, { recursive: true });
-  for (const file of ['demo.mp4', 'demo.gif', 'demo-poster.png']) copyFileSync(join(dir, file), join(media, file));
   console.log(`demo: OK; recording keys revoked; raw evidence retained at ${dir}`);
 } finally {
   if (!cleaned) cleanup();
