@@ -1,5 +1,6 @@
 // Approved landing spec, with PM copy rulings. HTML is authored here, never user input.
 export const zh = {
+  s0_eye: '00 · 看它运行',
   demo_caption: '看演示',
   demo_label: '播放演示',
   nav_host: '自建主机',
@@ -17,7 +18,7 @@ export const zh = {
   f_quiet:
     '没有邀请码？找个在跑 Infercat 的朋友要一串，或者 <span class="nb"><a href="#">自建主机</a> <span aria-hidden="true">→</span></span>',
   h_down: '工作原理 ↓',
-  idx: '01 工作原理 · 02 邀请码 · 03 给开发者 · 04 路线图',
+  idx: '00 看它运行 · 01 工作原理 · 02 邀请码 · 03 给开发者 · 04 路线图',
   s1_eye: '01 · 工作原理',
   s1_h: '模型跑在你的机器上，朋友各拿一把钥匙。',
   s1_lead: '一个程序，架在你现有的推理引擎前面。每个朋友一串邀请码。你们之间的一切都端到端加密。',

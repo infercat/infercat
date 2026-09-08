@@ -67,7 +67,7 @@ export async function landingEvidence(browser, base, shots, inspect = async () =
     await page.evaluate(() => document.fonts.ready);
     const assert = (ok, message) => { if (!ok) throw new Error(`${label}: ${message}`); };
     assert(await page.locator('.landing').evaluate((e, lang) => e.classList.contains(lang), lang), 'navigator language not selected');
-    assert(await page.locator('.landing > section').count() === 4, 'four sections');
+    assert(await page.locator('.landing > section').count() === 5, 'five sections');
     await page.locator('.landing details').evaluateAll((els) => els.forEach((e) => { e.open = true; }));
     await inspect(page, label);
     const overflow = await page.evaluate(() => document.documentElement.scrollWidth > window.innerWidth);
@@ -120,15 +120,28 @@ export async function landingEvidence(browser, base, shots, inspect = async () =
     assert(media.poster === new URL(`/demo-poster${suffix}.png`, base).href, 'language poster');
     assert(media.controls && media.inline, 'native inline controls');
     assert(await page.locator('.demo-play').getAttribute('aria-label') === tables[lang].demo_label, 'play accessible name');
-    const placement = await page.locator('#p-s1 .s-grid').evaluate((grid) => {
-      const text = grid.querySelector('.st').getBoundingClientRect();
-      const art = grid.querySelector('.art').getBoundingClientRect();
-      const demo = grid.querySelector('.landing-demo').getBoundingClientRect();
-      return window.innerWidth < 900 ? demo.top >= art.bottom : demo.top >= text.bottom && Math.abs(demo.left - text.left) < 1;
+    const layout = await page.evaluate(() => {
+      const failures = [], width = window.innerWidth, gut = width < 900 ? 20 : width <= 1100 ? 32 : 40;
+      const top = width < 900 ? 64 : width <= 1100 ? 88 : 112, bottom = top + 8;
+      for (const section of document.querySelectorAll('.landing > .s')) {
+        const inner = window.getComputedStyle(section.querySelector('.s-in'));
+        if (parseFloat(inner.paddingTop) !== top || parseFloat(inner.paddingBottom) !== bottom) failures.push('section padding');
+      }
+      for (const el of document.querySelectorAll('.landing > .s, .landing-fold, .landing-footer')) {
+        if (!el.getClientRects().length) continue;
+        const line = window.getComputedStyle(el, '::before');
+        if (parseFloat(line.left) !== gut || parseFloat(line.right) !== gut || line.height !== '1px' || line.backgroundColor !== 'rgb(10, 10, 10)') failures.push('inset ink rule');
+      }
+      for (const part of document.querySelectorAll('.anat .seg')) if (window.getComputedStyle(part, '::before').content !== 'none') failures.push('section rule leaked into invite');
+      const demo = document.querySelector('.landing-demo'), box = demo.getBoundingClientRect();
+      if (Math.abs(box.width - Math.min(880, width - gut * 2)) > 1 || Math.abs(box.left + box.width / 2 - width / 2) > 1) failures.push('demo measure/centre');
+      if (!demo.closest('#p-s0') || document.querySelector('.landing').firstElementChild.id !== 'p-s0' || document.querySelector('#p-s1 .landing-demo')) failures.push('demo row order');
+      if (document.querySelector('.demo-play').getBoundingClientRect().width !== (width < 900 ? 52 : 64)) failures.push('play control size');
+      return failures;
     });
-    assert(placement, 'demo follows the prose on desktop and figure on phone');
+    assert(!layout.length, `053 layout: ${layout.join(', ')}`);
     await page.waitForFunction(() => document.querySelector('.demo-still')?.naturalWidth > 0);
-    if (width !== 1024) await page.locator('#p-s1').screenshot({ path: join(shots, `049-${width}-${lang}.png`) });
+    if (width !== 1024) await page.screenshot({ path: join(shots, `053-${width}-${lang}.png`), fullPage: true });
     await page.locator('.demo-play').click();
     await page.waitForFunction(() => { const v = document.querySelector('.landing-demo video'); return !v.paused && v.currentTime > 0; });
     assert(await page.locator('.demo-play').count() === 0, 'play control yields to native controls');
@@ -207,5 +220,6 @@ export async function landingEvidence(browser, base, shots, inspect = async () =
   }
   console.log(`049 video: ${checked} passed / 0 failed / 0 skipped of ${checked}`);
   console.log(`052 anatomy: ${checked} passed / 0 failed / 0 skipped of ${checked}`);
+  console.log(`053 layout: ${checked} passed / 0 failed / 0 skipped of ${checked}`);
   console.log(`043 landing: ${checked} passed / 0 failed / 0 skipped of ${checked}`);
 }

@@ -1,5 +1,6 @@
 // Approved landing spec, with PM copy rulings. HTML is authored here, never user input.
 export const en = {
+  s0_eye: '00 · See it work',
   demo_caption: 'Watch the demo',
   demo_label: 'Play the demo',
   nav_host: 'Host your own',
@@ -18,7 +19,7 @@ export const en = {
   f_quiet:
     'No code? Ask a friend who runs Infercat, or <span class="nb"><a href="#">host your own</a> <span aria-hidden="true">→</span></span>',
   h_down: 'How it works ↓',
-  idx: '01 How it works · 02 The invite · 03 For developers · 04 Roadmap',
+  idx: '00 See it work · 01 How it works · 02 The invite · 03 For developers · 04 Roadmap',
   s1_eye: '01 · How it works',
   s1_h: 'Your machine runs the model. Your friends get a key.',
   s1_lead:

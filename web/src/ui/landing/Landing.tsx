@@ -79,6 +79,12 @@ export function Landing() {
         }
       }}
     >
+      <section className="s s-demo" id="p-s0">
+        <div className="s-in">
+          <p className="eyebrow demo-eye" data-copy="s0_eye">{t.s0_eye}</p>
+          <Demo key={lang} />
+        </div>
+      </section>
       <section className="s" id="p-s1">
         <div className="s-in">
           <div className="s-grid">
@@ -269,7 +275,6 @@ export function Landing() {
                 </div>
               </div>
             </div>
-            <Demo key={lang} />
           </div>
         </div>
       </section>
