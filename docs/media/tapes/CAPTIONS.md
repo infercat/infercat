@@ -28,15 +28,17 @@ The footage is already Swiss ink — black type on white paper, a hairline, one 
 
 ## Elements
 
+> **PM amendment 2026-09-08 (founder): all overlay text about 30% larger — "we can't expect people to watch the video at full screen."** Bar: number and label 39 px (the 80 px bar holds a 39 px line with ~20 px above and below; if a label no longer fits on one line at 39 px, shorten the label, never wrap), footer 20 px; title tagline 50 px; end-card tagline 40 px, licence 28 px, repo 20 px. Positions adjusted to keep the same margins.
+
 ### Bar (every step overlay; 1280×80 at y 720)
 
 | element | copy | type | size | colour | position |
 |---|---|---|---|---|---|
 | rule | — | 1 px line | full width | `#0A0A0A` | y 720 |
 | bar fill | — | opaque | 1280×79 | `#FFFFFF` | y 721–800 |
-| step number | `01` … `06` | IBM Plex Mono 500, no tracking | 30 px | `#1F3BFF` | x 24, vertically centred in the bar (baseline ≈ y 771) |
-| label | see table below | Archivo 500, −0.02 em | 30 px | `#0A0A0A` | x 80 (number width 36 + 20 gap), same baseline, one line, ≤ 52 characters |
-| footer | `infercat.ai` | IBM Plex Mono 400 | 16 px | `#5C6068` | right edge x 1256, vertically centred; on every frame except the end card |
+| step number | `01` … `06` | IBM Plex Mono 500, no tracking | 39 px | `#1F3BFF` | x 24, vertically centred in the bar (baseline ≈ y 771) |
+| label | see table below | Archivo 500, −0.02 em | 39 px | `#0A0A0A` | x 80 (number width 36 + 20 gap), same baseline, one line, ≤ 52 characters |
+| footer | `infercat.ai` | IBM Plex Mono 400 | 20 px | `#5C6068` | right edge x 1256, vertically centred; on every frame except the end card |
 
 ### Title card (opaque, 1280×800, ≤ 2 s → 1.60 s)
 
@@ -45,7 +47,7 @@ The footage is already Swiss ink — black type on white paper, a hairline, one 
 | ground | — | — | 1280×800 | `#FFFFFF` | — |
 | mark | — | inline SVG `mark.svg`, `currentColor` | 112×112 | `#0A0A0A` | 96, 300 |
 | wordmark | `Infercat` | Archivo 700, −0.04 em | 112 px | `#0A0A0A` | x 230, vertically centred on the mark (caps y ≈ 315–392) |
-| tagline | `Give friends a key to the AI on your machine.` | Archivo 400, −0.015 em, lh 1.2 | 38 px | `#0A0A0A` | 96, 452 |
+| tagline | `Give friends a key to the AI on your machine.` | Archivo 400, −0.015 em, lh 1.2 | 50 px | `#0A0A0A` | 96, 452 |
 | rule + footer | `infercat.ai` | as bar | 16 px | `#0A0A0A` / `#5C6068` | rule y 720; footer right edge 1256 |
 
 No cobalt on this card.
@@ -57,8 +59,8 @@ No cobalt on this card.
 | ground | — | — | 1280×800 | `#FFFFFF` | — |
 | mark | — | inline SVG | 104×104 | `#0A0A0A` | 96, 216 |
 | URL | `infercat.ai` | Archivo 700, −0.045 em | 144 px | `#1F3BFF` | 88, 344 (x optical; the glyph edge lands on 96; baseline ≈ y 460) |
-| tagline (PM amendment 2026-09-08, founder: the last frame carries the logo and the slogan) | `Give friends a key to the AI on your machine.` | Archivo 400, −0.015 em | 30 px | `#0A0A0A` | 96, 500 |
-| licence line | `MIT · self-hosted · end-to-end encrypted` | IBM Plex Mono 500, no tracking | 22 px | `#0A0A0A` | 96, 560 |
+| tagline (PM amendment 2026-09-08, founder: the last frame carries the logo and the slogan) | `Give friends a key to the AI on your machine.` | Archivo 400, −0.015 em | 40 px | `#0A0A0A` | 96, 496 |
+| licence line | `MIT · self-hosted · end-to-end encrypted` | IBM Plex Mono 500, no tracking | 28 px | `#0A0A0A` | 96, 566 |
 | rule + repo | `github.com/infercat/infercat` | 1 px rule; IBM Plex Mono 400 | 16 px | `#0A0A0A` / `#5C6068` | rule y 720; text x 24, vertically centred in the bar |
 
 No right-hand footer on the end card — the URL is the card. The GIF loops from here back to the title.
