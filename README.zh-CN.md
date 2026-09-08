@@ -1,3 +1,5 @@
+[English](README.md) · 简体中文
+
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/media/mark-paper.svg">
   <img src="docs/media/mark-ink.svg" alt="" width="52" align="left">
@@ -9,8 +11,6 @@
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-1F3BFF?style=flat-square)](LICENSE)
 [![CI](https://github.com/infercat/infercat/actions/workflows/ci.yml/badge.svg)](https://github.com/infercat/infercat/actions/workflows/ci.yml)
-
-[English](README.md) · 简体中文
 
 ---
 
@@ -202,31 +202,11 @@ for e in c.chat.completions.create(model=c.models.list().data[0].id, messages=[{
 
 ## 数据目录
 
-`~/Library/Application Support/infercat`（macOS）、`~/.config/infercat`（Linux）、`%AppData%\infercat`（Windows），或用 `--data-dir` 指定：
-
-| 文件 | 说明 |
-|---|---|
-| `host.key.json` | 你的主机身份。请备份好；不要放进云同步目录；删掉它，你之前发出去的邀请码就全都失效了。 |
-| `keys.json` | 朋友密钥的哈希值（绝不保存明文密钥）、各自的状态和限额。 |
-| `usage.jsonl` | 每次请求记录一行：密钥、接口、状态、token 计数、耗时。除非运行 `serve --log-prompts`，否则不包含任何 prompt 内容。 |
-| `config.json` | 已保存的 `serve` 参数。 |
-| `tunnel.log` | 隧道引擎的运行日志（运行 `serve --verbose` 时会直接打印到终端）。 |
+详见[数据目录](docs/DATA-DIRECTORY.zh-CN.md)：存储路径、文件用途与备份说明。
 
 ## 编译构建
 
-```
-make check        # Go vet/tests + installer fixtures
-make build        # bin/infercat
-make wasm         # web/public/infercat.wasm (+ wasm_exec.js), needed by the web app
-make web          # web/dist (builds the wasm first)
-make notices      # regenerate THIRD_PARTY_NOTICES.md; make notices-check verifies it
-make release-dry  # goreleaser snapshot for darwin/linux/windows into dist/ (publishes nothing)
-make brand        # the icon set and the social-card images, from the SVG mark and the real app
-make launch-check # what a stranger's browser sees: metas, manifest, console, a11y, contrast, shots
-```
-
-前端检查：`cd web && pnpm install --frozen-lockfile && pnpm typecheck && pnpm test && pnpm lint`。
-每个二进制程序和归档包均附带 `LICENSE` 与 `THIRD_PARTY_NOTICES.md`；运行 `infercat version` 会打印编译注入的版本号、Git commit 和构建日期，网页版的“设置”中也会显示相同的版本号。发布流程详见 `docs/RELEASE.md`。原则与决策记录见 `docs/PRINCIPLES.md`；接缝契约见 `docs/ARCHITECTURE.md`。
+构建与发布检查见[贡献指南](CONTRIBUTING.md#building)，前端说明见 [web README](web/README.zh-CN.md)。
 
 ## 开源协议
 

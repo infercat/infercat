@@ -26,7 +26,28 @@ A few things this codebase holds to, so a review goes quickly:
 - **The product name lives in one constant** on each side (`internal/product/product.go`,
   `web/src/product.ts`). Do not spell it anywhere else.
 
-The `pm/` directory is the project's own planning record (tickets, rulings, the launch checklist).
-It is internal process, kept in the open; you do not need to read it to contribute.
+The project’s engineering rules and decisions are in [docs/PRINCIPLES.md](docs/PRINCIPLES.md).
 
 By contributing you agree that your contribution is licensed under the MIT License, like the rest.
+
+## Building
+
+Run these commands from the repository root:
+
+```
+make check        # Go vet/tests + installer fixtures
+make build        # bin/infercat
+make wasm         # web/public/infercat.wasm (+ wasm_exec.js), needed by the web app
+make web          # web/dist (builds the wasm first)
+make notices      # regenerate THIRD_PARTY_NOTICES.md; make notices-check verifies it
+make release-dry  # goreleaser snapshot for darwin/linux/windows into dist/ (publishes nothing)
+make brand        # the icon set and the social-card images, from the shared SVG mark and self-hosted fonts
+make launch-check # what a stranger's browser sees: metas, manifest, console, a11y, contrast, shots
+```
+
+Web checks: `cd web && pnpm install --frozen-lockfile && pnpm typecheck && pnpm test && pnpm lint`.
+Every binary and archive ships `LICENSE` and `THIRD_PARTY_NOTICES.md`; `infercat version`
+prints the stamped version, commit and date, and the web app shows the same version under Settings.
+Releases: [docs/RELEASE.md](docs/RELEASE.md). Principles and decisions: [docs/PRINCIPLES.md](docs/PRINCIPLES.md); the seam contract: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
+
+See [web/README.md](web/README.md) for the browser layout, development harness and language tables.

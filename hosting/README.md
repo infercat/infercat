@@ -1,3 +1,5 @@
+English · [简体中文](README.zh-CN.md)
+
 # Hosting the web app
 
 The web app is a static bundle (`web/dist` after `make web`, or `web-<version>.zip` from a release).
@@ -25,7 +27,7 @@ and publishes it with wrangler (OAuth login; run from a directory without a `.en
 fixed `landing-roadmap` source and server receipt time in `SIGNUPS`; duplicates keep their first
 record and succeed. It sends no email. The hashed-IP cooldown expires after 60 seconds; KV is
 eventually consistent, so this is a simple per-network brake, not an exact concurrent quota.
-The namespace id in `wrangler.toml` is a placeholder: the PM creates it and fills the id at landing.
+The deployed `SIGNUPS` namespace is bound in `hosting/cloudflare/wrangler.toml`. A separate deployment needs its own namespace and binding.
 
 Export the signup metadata (the `email:` prefix excludes cooldown records):
 
