@@ -5,18 +5,13 @@ import { copyFileSync, existsSync, mkdirSync, mkdtempSync, readFileSync, statSyn
 import { createServer } from 'node:net';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { chromium } from '../../../web/node_modules/playwright/index.mjs';
+import { renderOverlays } from './overlays.mjs';
 
 const tapes = dirname(fileURLToPath(import.meta.url));
 const root = resolve(tapes, '../../..');
 const media = join(root, 'docs/media');
 const dir = mkdtempSync('/tmp/icdemo-'); // Short enough for the Go host's Unix socket.
 const env = { ...process.env, PATH: `${dir}:${process.env.PATH}` };
-const captions = [
-  'One binary in front of the model you already run.',
-  'A friend opens the link. No account, no install.',
-  'Or any OpenAI-compatible client, over the same tunnel.',
-];
 console.log(`demo: working directory ${dir}`);
 
 async function run(cmd, args, options = {}) {
@@ -38,19 +33,16 @@ async function freePort() {
   await new Promise((resolve) => s.close(resolve));
   return port;
 }
-async function captionFrames() {
-  const browser = await chromium.launch();
-  try {
-    const page = await browser.newPage({ viewport: { width: 1280, height: 80 } });
-    // VHS resolves its font through the same system font collection; fail instead of substituting.
-    await page.evaluate(() => new FontFace('demo-mono', 'local("IBM Plex Mono")').load());
-    const font = readFileSync(join(root, 'web/public/fonts/archivo-latin-var.woff2')).toString('base64');
-    for (const [i, caption] of captions.entries()) {
-      await page.setContent(`<style>@font-face{font-family:Archivo;src:url(data:font/woff2;base64,${font})}*{box-sizing:border-box}body{margin:0;background:#fff;color:#0a0a0a;border-top:1px solid #0a0a0a;height:80px;display:flex;align-items:center;padding:0 32px;font:500 30px Archivo}</style><body>${caption}</body>`);
-      await page.evaluate(() => document.fonts.ready);
-      await page.screenshot({ path: join(dir, `caption-${i}.png`) });
-    }
-  } finally { await browser.close(); }
+// The tape's two-second hold ends at the next changed frame. Derive it from this take.
+function terminalBoundary(file) {
+  const r = spawnSync('ffmpeg', ['-hide_banner', '-i', file, '-vf', "select='gt(scene,0.00005)',showinfo", '-an', '-f', 'null', '-'], { encoding: 'utf8', maxBuffer: 8 * 1024 * 1024 });
+  if (r.status !== 0) throw new Error(`cannot measure ${file}: ${r.stderr}`);
+  const times = [...r.stderr.matchAll(/pts_time:([\d.]+)/g)].map((m) => Number(m[1]));
+  for (let i = 1; i < times.length; i++) {
+    const gap = times[i] - times[i - 1];
+    if (gap >= 1.9 && gap <= 2.15) return times[i];
+  }
+  throw new Error(`${file}: no two-second output hold found; inspect this take`);
 }
 function cleanup() {
   // Revoke even when recording or encoding fails. Never leave a usable key in a failed capture.
@@ -77,7 +69,7 @@ try {
     const r = spawnSync('which', [cmd], { env, stdio: 'ignore' });
     if (r.status !== 0) throw new Error(`missing ${cmd}; install the recording prerequisites`);
   }
-  await captionFrames();
+  await renderOverlays(dir);
   await run('go', ['build', '-o', join(dir, 'infercat'), './cmd/infercat'], { cwd: root });
   for (const file of ['style.tape', 'host.tape']) copyFileSync(join(tapes, file), join(dir, file));
   // A request file keeps the terminal's curl command legible; it contains only the real API body.
@@ -101,22 +93,28 @@ try {
 
   const inputs = ['host.mp4', 'browser.webm', 'friend.mp4'];
   const durations = inputs.map((file) => probe(join(dir, file)));
-  const total = durations.reduce((a, b) => a + b, 0);
+  const total = durations.reduce((a, b) => a + b, 0) + 1.6 + 2.5;
+  const boundaries = [terminalBoundary(join(dir, inputs[0])), JSON.parse(readFileSync(join(dir, 'browser.marks.json'), 'utf8')).sendSeconds, terminalBoundary(join(dir, inputs[2]))];
+  if (boundaries.some((t, i) => !Number.isFinite(t) || t <= 0 || t >= durations[i])) throw new Error('caption boundary outside its clip');
+  console.log(`demo: measured label boundaries ${boundaries.map((t) => t.toFixed(3)).join(' / ')} s (clip-local)`);
   console.log(`demo: scenes ${durations.map((n) => n.toFixed(2)).join(' / ')} s; total ${total.toFixed(2)} s`);
   if (!Number.isFinite(total) || total > 60) throw new Error('demo exceeds 60 s; shorten the tapes, never accelerate real inference');
   for (const [i, input] of inputs.entries()) {
-    await run('ffmpeg', ['-y', '-loglevel', 'error', '-i', input, '-i', `caption-${i}.png`, '-filter_complex',
-      '[0:v]pad=1280:800:(ow-iw)/2:0:white,setsar=1[scene];[scene][1:v]overlay=0:720:shortest=0,fps=25,format=yuv420p[out]',
+    await run('ffmpeg', ['-y', '-loglevel', 'error', '-i', input, '-i', `step-0${i * 2 + 1}.png`, '-i', `step-0${i * 2 + 2}.png`, '-filter_complex',
+      `[0:v]pad=1280:800:(ow-iw)/2:0:white,setsar=1[scene];[scene][1:v]overlay=0:0:enable='lt(t,${boundaries[i]})'[a];[a][2:v]overlay=0:0:enable='gte(t,${boundaries[i]})',fps=25,format=yuv420p[out]`,
       '-map', '[out]', '-an', '-c:v', 'libx264', '-crf', '24', '-preset', 'slow',
       // Uniform metadata prevents GIF palette buffering from resetting at a scene boundary.
       '-color_range', 'tv', '-colorspace', 'bt470bg', `scene-${i}.mp4`]);
   }
-  writeFileSync(join(dir, 'scenes.txt'), inputs.map((_, i) => `file 'scene-${i}.mp4'`).join('\n') + '\n');
+  for (const [name, seconds] of [['title', 1.6], ['end', 2.5]]) {
+    await run('ffmpeg', ['-y', '-loglevel', 'error', '-loop', '1', '-framerate', '25', '-i', `${name}.png`, '-t', String(seconds), '-vf', 'format=yuv420p,setsar=1', '-an', '-c:v', 'libx264', '-crf', '24', '-preset', 'slow', '-color_range', 'tv', '-colorspace', 'bt470bg', `${name}.mp4`]);
+  }
+  writeFileSync(join(dir, 'scenes.txt'), ['title', 'scene-0', 'scene-1', 'scene-2', 'end'].map((name) => `file '${name}.mp4'`).join('\n') + '\n');
   await run('ffmpeg', ['-y', '-loglevel', 'error', '-f', 'concat', '-safe', '0', '-i', 'scenes.txt', '-c', 'copy', '-movflags', '+faststart', 'demo.mp4']);
   await run('ffmpeg', ['-y', '-loglevel', 'error', '-i', 'demo.mp4', '-vf',
     'fps=10,scale=960:-1:flags=lanczos,split[a][b];[a]palettegen=max_colors=128:stats_mode=diff[p];[b][p]paletteuse=dither=bayer:bayer_scale=4:diff_mode=rectangle', '-loop', '0', 'demo.gif']);
-  await run('ffmpeg', ['-y', '-loglevel', 'error', '-i', 'browser-first-token.png', '-i', 'caption-1.png', '-filter_complex',
-    '[0:v]pad=1280:800:(ow-iw)/2:0:white[scene];[scene][1:v]overlay=0:720', '-frames:v', '1', 'demo-poster.png']);
+  await run('ffmpeg', ['-y', '-loglevel', 'error', '-i', 'browser-first-token.png', '-i', 'step-04.png', '-filter_complex',
+    '[0:v]pad=1280:800:(ow-iw)/2:0:white[scene];[scene][1:v]overlay=0:0', '-frames:v', '1', 'demo-poster.png']);
   for (const [file, limit] of [['demo.mp4', 8_000_000], ['demo.gif', 4_000_000], ['demo-poster.png', Infinity]]) {
     const bytes = statSync(join(dir, file)).size;
     console.log(`demo: ${file} ${bytes} bytes`);

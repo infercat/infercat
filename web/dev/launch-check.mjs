@@ -14,7 +14,7 @@
 // and must stay under 2 MB. The GIF needs a full ffmpeg (`brew install ffmpeg`, or FFMPEG=path to
 // one — Playwright's own ffmpeg records WebM and cannot write GIF).
 import { spawn, spawnSync } from 'node:child_process';
-import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync } from 'node:fs';
+import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -351,6 +351,7 @@ async function chat(browser) {
   const size = demoDir ? { width: 390, height: 720 } : { width: 880, height: 640 };
   const ctx = await browser.newContext({ viewport: size, isMobile: Boolean(demoDir), hasTouch: Boolean(demoDir), colorScheme: 'light', recordVideo: { dir: tmp, size } });
   const page = await ctx.newPage();
+  const recordingStarted = demoDir ? Date.now() : 0;
   watch(page, 'chat');
   // Not an assertion: once connected the app is *meant* to reach the relay it was told about, which
   // Protection 3 allows by name. Printed so a reviewer can see exactly who that was.
@@ -364,7 +365,10 @@ async function chat(browser) {
   await box.click();
   await box.pressSequentially(QUESTION, { delay: 30 });
   await page.waitForTimeout(400);
-  if (demoDir) await page.getByRole('button', { name: 'Send' }).click();
+  if (demoDir) {
+    await page.getByRole('button', { name: 'Send' }).click();
+    writeFileSync(join(media, 'browser.marks.json'), JSON.stringify({ sendSeconds: (Date.now() - recordingStarted) / 1000 }));
+  }
   else await page.keyboard.press('Enter');
   const stop = page.getByRole('button', { name: 'Stop' });
   await stop.waitFor({ timeout: 30_000 });

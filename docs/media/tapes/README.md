@@ -15,11 +15,16 @@ in one sentence." The answer stays on screen for six seconds with the connection
 path above it. The renderer checks that the curl/jq pipeline succeeded. The browser and native path labels are whatever each actually
 observes. No transport, response or screen text is substituted.
 
-`render.mjs` assembles the three captures with the three frozen Archivo captions.
+`render.mjs` assembles the three captures between title/end cards with six step labels.
+`overlays.mjs` reads all displayed copy from CAPTIONS.md, uses the bundled fonts, and
+renders eight static PNGs; each step PNG is checked for zero alpha above y=720.
+The enlarged labels all fit unchanged at 39 px. Terminal label cuts come from each
+take’s two-second still interval; the browser records its actual Send time.
 Terminal frames use IBM Plex Mono and the ink/paper palette in `style.tape`; the host
 uses smaller type so the real QR fits. The MP4 is H.264, 1280×800, 25 fps; the GIF is
 960×600, 10 fps. The poster is the first observed rendered streamed token (reasoning
-included), with scene 2's caption. Gates refuse a total over 60 seconds, MP4 over
+included), with step 04. The title holds 1.60 s and the end card 2.50 s (rounded to
+2.52 s at 25 fps); captions and cards change by cuts only. Gates refuse a total over 60 seconds, MP4 over
 8,000,000 bytes or GIF over 4,000,000 bytes before replacing the committed outputs.
 
 Every run uses a new temporary data directory and a new invite, revokes the key on
