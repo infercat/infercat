@@ -20,7 +20,7 @@ Sleep 2s
 Type `curl -fsS 127.0.0.1:@LISTEN@/v1/chat/completions --json @question.json | jq -er '.choices[0].message.content'`
 Enter
 Wait+Line@60s /^\$\s*$/
-Sleep 6s
+Sleep 2.5s
 Hide
 Type@1ms `echo $? > response.status`
 Enter

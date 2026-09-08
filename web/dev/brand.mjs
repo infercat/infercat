@@ -1,20 +1,5 @@
-// Renders every raster the product ships from two sources of truth — the SVG mark in
-// public/favicon.svg and the real connect screen served from web/dist — so a rename or a new mark
-// is one re-run, not a hunt through image files:
-//
-//   make brand                      # = make web && cd web && node dev/brand.mjs
-//   BRAND_PORT=6832 pnpm brand      # port for the vite preview it starts
-//
-// Writes, in public/: favicon.png (96), apple-touch-icon.png (180), icon-192.png, icon-512.png and
-// icon-maskable-512.png (mark inside the safe zone) — all five on the paper ground, because the
-// mark is one colour of ink and a transparent PNG of it vanishes on dark chrome — and og.png
-// (1200×630: the name, the one sentence, and the connect card as it renders); ../docs/media/
-// mark-ink.svg and mark-paper.svg (the README's two flat marks, for <picture>); and
-// ../.github/social-preview.png (1280×640, the same design at GitHub's size). Both cards are in
-// the Swiss ink idiom (docs/brand/swiss-ink.md, ticket 038) and carry the two self-hosted faces
-// inlined. The name and the sentence come from src/product.ts; the card is a screenshot, never a
-// replica. No network.
-import { spawn } from 'node:child_process';
+// Rebuild the icons, flat README marks, and two social cards from the shared SVG/fonts.
+// make brand; the site speaks to friends, the GitHub card to hosts (ticket 050).
 import { readFileSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -23,19 +8,9 @@ import { chromium } from 'playwright';
 const here = dirname(fileURLToPath(import.meta.url));
 const web = join(here, '..');
 const pub = join(web, 'public');
-const PORT = Number(process.env.BRAND_PORT ?? 6832);
-const BASE = `http://127.0.0.1:${PORT}`;
-
 const product = readFileSync(join(web, 'src/product.ts'), 'utf8');
 const NAME = /PRODUCT_NAME = '([^']+)'/.exec(product)?.[1] ?? 'app';
-const DESCRIPTION = /DESCRIPTION =\s*'([^']+)'/.exec(product)?.[1] ?? '';
 const mark = readFileSync(join(pub, 'favicon.svg'), 'utf8');
-// A well-formed invite for the card's field: the real shape (prefix, a 32-char tailcat address, a
-// 43-char secret), so the card shows the screen a friend actually sees. Both halves are invented —
-// no such host exists, the card is a screenshot, and nothing is ever sent.
-const PREFIX = /INVITE_PREFIX = '([^']+)'/.exec(product)?.[1] ?? 'ic1';
-const DEMO_INVITE = `${PREFIX}.tco2FwWCAw8jPY9xK4mR7bQvUz3Ld1Hn.T8kQz2mXvA5rNpJ7wEyLd3sHfBc9UgKi0oRtZ6xVn4M`;
-
 // Mirror of the light :root tokens in src/styles.css (Swiss ink, 038). The cards are always the
 // light half: a social card is shown on the reader's timeline, not in their colour scheme.
 const P = { paper: '#ffffff', text: '#0a0a0a', muted: '#5c6068', border: '#d8dbe0', rule: '#0a0a0a' };
@@ -98,52 +73,24 @@ function iconPage(edge, ground, pad) {
   </style>${mark}`;
 }
 
-/**
- * The card, in the Swiss ink idiom (038): ink on paper, no radius, no shadow, a 2 px ink rule over
- * the facts line, and the facts themselves in mono because they are claims about a machine. The
- * mark, the name and the sentence on the left; the connect screen — a screenshot, never a replica,
- * so the cobalt Connect on it is the app's own — framed in a hairline on the right.
- */
-function cardPage(w, h, cardPng) {
+// The measured bottom-row axis and x-height centres match the approved 050 sheet.
+function cardPage(w, h, lines, heroTop) {
+  const axis = h - 80, markLeft = 80 - 0.169 * 88;
+  const hero = `${lines[0]}<br>${lines[1]}<span class="cobalt">.</span>`;
   return `<!doctype html><meta charset="utf-8"><style>
     ${FACE_CSS}
-    html, body { margin: 0; width: ${w}px; height: ${h}px; overflow: hidden; background: ${P.paper}; font-family: ${FONT}; }
-    .left { position: absolute; left: 6%; top: 10.5%; width: 45%; }
-    .mark { width: 54px; height: 54px; color: ${P.text}; }
-    h1 { font-size: 92px; letter-spacing: -0.045em; line-height: 0.94; margin: 30px 0 22px; font-weight: 700; color: ${P.text}; }
-    p { font-size: 26px; line-height: 1.34; color: ${P.muted}; margin: 0; max-width: 22ch; font-weight: 400; }
-    .facts {
-      position: absolute; left: 6%; bottom: 8.5%; width: 45%;
-      border-top: 2px solid ${P.rule}; padding-top: 22px;
-      font-family: ${MONO}; font-size: 19px; letter-spacing: 0.02em; color: ${P.text};
-    }
-    /* No frame of its own: the connect card carries the ink rectangle now, and two would be two. */
-    .shot {
-      position: absolute; left: 55%; top: 10.5%; bottom: 8.5%; width: 41%;
-      overflow: hidden;
-    }
-    .shot img { width: 100%; height: 100%; object-fit: cover; object-position: top left; display: block; }
-  </style>
-  <div class="left">
-    <div class="mark">${mark}</div>
-    <h1>${NAME}</h1>
-    <p>${DESCRIPTION}</p>
-  </div>
-  <div class="facts">Self-hosted · end-to-end encrypted · MIT</div>
-  <div class="shot"><img src="data:image/png;base64,${cardPng.toString('base64')}" alt=""></div>`;
-}
-
-const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
-async function waitFor(url) {
-  for (let i = 0; i < 100; i++) {
-    try {
-      if ((await fetch(url)).ok) return;
-    } catch {
-      /* not up yet */
-    }
-    await sleep(200);
-  }
-  throw new Error(`nothing answered at ${url} — run \`make web\` first`);
+    html,body{margin:0;width:${w}px;height:${h}px;overflow:hidden;background:${P.paper};color:${P.text};font-family:${FONT};-webkit-font-smoothing:antialiased}
+    *{box-sizing:border-box}
+    .hero{position:absolute;left:74px;top:${heroTop}px;margin:0;font-size:160px;font-weight:700;letter-spacing:-.04em;line-height:.95;white-space:nowrap}
+    .cobalt{color:#1f3bff}
+    .rule{position:absolute;left:80px;right:80px;top:${h - 156}px;height:1px;background:${P.rule}}
+    .mark{position:absolute;left:${markLeft.toFixed(1)}px;top:${(axis - .532 * 88).toFixed(1)}px;width:88px;height:88px}
+    .mark svg{display:block;width:100%;height:100%}
+    .sig{position:absolute;left:${(markLeft + .956 * 88 + 28).toFixed(1)}px;top:${(axis + .526 * 66 / 2 - .834 * 66).toFixed(1)}px;font-size:66px;font-weight:700;letter-spacing:-.035em;line-height:1;white-space:nowrap}
+    .facts{position:absolute;right:80px;top:${(axis + .516 * 27 / 2 - .825 * 27).toFixed(1)}px;font-family:${MONO};font-weight:400;font-size:27px;line-height:1;white-space:nowrap}
+  </style><h1 class="hero">${hero}</h1><div class="rule"></div>
+  <div class="mark">${mark}</div><div class="sig">${NAME}</div>
+  <div class="facts">Self-hosted · end-to-end encrypted · MIT</div>`;
 }
 
 const root = join(web, '..');
@@ -172,42 +119,18 @@ async function main() {
     report(file);
   }
 
-  // 2. The connect card, as the app renders it (light, 2× for crispness).
-  const preview = spawn(process.execPath, ['node_modules/vite/bin/vite.js', 'preview', '--port', String(PORT), '--strictPort'], {
-    cwd: web,
-    stdio: ['ignore', 'ignore', 'inherit'],
-  });
-  try {
-    await waitFor(`${BASE}/`);
-    const ctx = await browser.newContext({ viewport: { width: 560, height: 900 }, deviceScaleFactor: 2, colorScheme: 'light' });
+  // One composition, the approved sentence and hard breaks for each audience.
+  for (const [file, w, h, lines, top] of [
+    [join(pub, 'og.png'), 1200, 630, ['Chat with a', 'friend’s GPU'], 126],
+    [join(web, '..', '.github', 'social-preview.png'), 1280, 640, ['Let friends chat', 'with your GPU'], 120],
+  ]) {
+    const ctx = await browser.newContext({ viewport: { width: w, height: h }, deviceScaleFactor: 1, colorScheme: 'light' });
     const page = await ctx.newPage();
-    await page.goto(`${BASE}/`);
-    await page.waitForSelector('.connect-card');
-    // The card is shown in the state the reader arrives at with a code in hand: the field carries a
-    // well-formed invite (this address does not exist), so Connect is the enabled cobalt button the
-    // brand calls for rather than a disabled one, and the focus ring is not mistaken for a border.
-    await page.fill('.connect textarea', DEMO_INVITE);
-    await page.evaluate(() => document.activeElement?.blur());
+    await page.setContent(cardPage(w, h, lines, top));
     await page.evaluate(() => document.fonts.ready);
-    await page.waitForTimeout(200);
-    const cardPng = await page.locator('.connect-card').screenshot();
+    await page.screenshot({ path: file });
+    report(file);
     await ctx.close();
-
-    // 3. The two cards, composed from the pieces above.
-    for (const [file, w, h] of [
-      [join(pub, 'og.png'), 1200, 630],
-      [join(web, '..', '.github', 'social-preview.png'), 1280, 640],
-    ]) {
-      const c = await browser.newContext({ viewport: { width: w, height: h }, deviceScaleFactor: 1, colorScheme: 'light' });
-      const p = await c.newPage();
-      await p.setContent(cardPage(w, h, cardPng));
-      await p.evaluate(() => document.fonts.ready);
-      await p.screenshot({ path: file });
-      report(file);
-      await c.close();
-    }
-  } finally {
-    preview.kill('SIGTERM');
   }
   await browser.close();
 }
