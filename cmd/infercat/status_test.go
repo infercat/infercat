@@ -5,6 +5,7 @@ import (
 	"context"
 	"os"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -216,7 +217,7 @@ func TestServeLogRequestsPrintsTheLine(t *testing.T) {
 			args = append(args, "--log-requests")
 		}
 		ctx, cancel := context.WithCancel(context.Background())
-		var out, errw bytes.Buffer
+		var out, errw lockedBuffer
 		code := make(chan int, 1)
 		go func() { code <- run(ctx, args, &out, &errw, nil, false, plat) }()
 		select {
@@ -226,7 +227,15 @@ func TestServeLogRequestsPrintsTheLine(t *testing.T) {
 		}
 		r := <-rec
 		r.Record(ctx, usage.Event{TS: time.Now(), KeyID: k.ID, Endpoint: "/v1/chat/completions", Model: "m", Status: 200, PromptTokens: 3, CompletionTokens: 4, TotalMS: 500, Prompt: "hidden"})
-		time.Sleep(200 * time.Millisecond)
+		// The line is printed by the recorder's own goroutine; wait for it with a deadline instead of a
+		// fixed sleep, which a loaded CI runner turned into a flake (2026-09-09).
+		deadline := time.Now().Add(5 * time.Second)
+		for on && !strings.Contains(out.String(), "alice  chat  m  3→4 tok  500ms  ok") && time.Now().Before(deadline) {
+			time.Sleep(20 * time.Millisecond)
+		}
+		if !on {
+			time.Sleep(200 * time.Millisecond)
+		}
 		cancel()
 		select {
 		case <-code:
@@ -241,3 +250,16 @@ func TestServeLogRequestsPrintsTheLine(t *testing.T) {
 		}
 	}
 }
+
+// lockedBuffer is a bytes.Buffer safe to read while the command goroutine writes it.
+type lockedBuffer struct {
+	mu sync.Mutex
+	b  bytes.Buffer
+}
+
+func (l *lockedBuffer) Write(p []byte) (int, error) {
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.b.Write(p)
+}
+func (l *lockedBuffer) String() string { l.mu.Lock(); defer l.mu.Unlock(); return l.b.String() }
