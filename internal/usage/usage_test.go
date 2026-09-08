@@ -64,19 +64,16 @@ func TestRecorderReopensAndAppends(t *testing.T) {
 }
 
 // Record must never block the request path: past the buffer it drops, counts, and warns.
+// The recorder is built without its writer loop, so the full buffer cannot drain behind the
+// test's back — on a fast CI runner the loop used to empty it and nothing was ever dropped.
 func TestRecorderDropsRatherThanBlocks(t *testing.T) {
-	dir := t.TempDir()
-	r, err := NewFileRecorder(dir, nil)
-	if err != nil {
-		t.Fatal(err)
+	r := &FileRecorder{
+		ch:   make(chan Event, bufferedEvents),
+		done: make(chan struct{}),
+		logf: func(string, ...any) {},
 	}
-	defer r.Close()
-	// Fill the channel behind the writer's back so the buffer is provably full.
 	for i := 0; i < bufferedEvents; i++ {
-		select {
-		case r.ch <- Event{KeyID: "k_1"}:
-		default:
-		}
+		r.ch <- Event{KeyID: "k_1"} // blocking sends: the buffer is provably full afterwards
 	}
 	done := make(chan struct{})
 	go func() {
@@ -90,8 +87,8 @@ func TestRecorderDropsRatherThanBlocks(t *testing.T) {
 	case <-time.After(5 * time.Second):
 		t.Fatal("Record blocked when the buffer was full")
 	}
-	if r.Dropped() == 0 {
-		t.Error("nothing was counted as dropped")
+	if got := r.Dropped(); got != 50 {
+		t.Errorf("dropped = %d, want 50", got)
 	}
 }
 
