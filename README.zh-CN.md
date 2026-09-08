@@ -81,8 +81,12 @@ vllm serve google/gemma-4-E2B-it-qat-w4a16-ct --host 127.0.0.1 --max-model-len 3
 
 </details>
 
-- `curl -fsSL https://infercat.ai/install.sh | sh`（[备用链接](https://raw.githubusercontent.com/infercat/infercat/main/hack/install.sh)）。
-- `brew install infercat/tap/infercat`（macOS 与 Linux）。
+```sh
+curl -fsSL https://infercat.ai/install.sh | sh    # macOS 或 Linux
+brew install infercat/tap/infercat                # 或用 Homebrew
+```
+
+- [安装脚本备用链接](https://raw.githubusercontent.com/infercat/infercat/main/hack/install.sh)。
 - 其他平台请前往 [Releases](https://github.com/infercat/infercat/releases)；使用 `shasum -a 256 --ignore-missing -c infercat_<version>_checksums.txt` 校验。
 
 如果解析不到最新版本（触发限流、暂无正式发布或网络问题），可以下载安装脚本后运行 `INFERCAT_VERSION=vX.Y.Z sh install.sh`。

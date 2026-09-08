@@ -81,8 +81,12 @@ vllm serve google/gemma-4-E2B-it-qat-w4a16-ct --host 127.0.0.1 --max-model-len 3
 
 </details>
 
-- `curl -fsSL https://infercat.ai/install.sh | sh` ([raw fallback](https://raw.githubusercontent.com/infercat/infercat/main/hack/install.sh)).
-- `brew install infercat/tap/infercat` (macOS and Linux).
+```sh
+curl -fsSL https://infercat.ai/install.sh | sh    # macOS or Linux
+brew install infercat/tap/infercat                # or with Homebrew
+```
+
+- [Raw-script fallback](https://raw.githubusercontent.com/infercat/infercat/main/hack/install.sh).
 - [Releases](https://github.com/infercat/infercat/releases) for everything else; verify with `shasum -a 256 --ignore-missing -c infercat_<version>_checksums.txt`.
 
 If latest cannot be resolved (rate limit, no published release, or network), download the script and run `INFERCAT_VERSION=vX.Y.Z sh install.sh`.
