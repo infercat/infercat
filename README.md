@@ -154,9 +154,9 @@ packets between the friend's browser and your host. By default that is a public 
 tunnel library's map; `--derpmap-url` points at your own.
 
 **Can I use a different client than the web app?** The gateway is OpenAI-compatible, so anything that
-speaks `/v1/chat/completions` with a bearer token works from inside the tunnel. A native client that
-turns an invite into a local `http://127.0.0.1:11435/v1` for any app is in progress
-(see `docs/MEASURE.md`).
+speaks `/v1/chat/completions` with a bearer token works from inside the tunnel. Or skip the browser:
+`infercat connect` turns an invite into a local `http://127.0.0.1:11435/v1` for any app (see the
+quickstart below).
 
 **Two friends, one invite?** It works, bounded by that key's limits and visible in `usage`. Mint one
 key per person; it costs nothing.
@@ -234,7 +234,7 @@ make launch-check # what a stranger's browser sees: metas, manifest, console, a1
 Web checks: `cd web && pnpm install --frozen-lockfile && pnpm typecheck && pnpm test && pnpm lint`.
 Every binary and archive ships `LICENSE` and `THIRD_PARTY_NOTICES.md`; `infercat version`
 prints the stamped version, commit and date, and the web app shows the same version under Settings.
-Releases: `docs/RELEASE.md`. Design records: `pm/`; the seam contract: `docs/ARCHITECTURE.md`.
+Releases: `docs/RELEASE.md`. Principles and decisions: `docs/PRINCIPLES.md`; the seam contract: `docs/ARCHITECTURE.md`.
 
 ## License
 
