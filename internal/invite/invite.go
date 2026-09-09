@@ -1,6 +1,6 @@
 // Package invite encodes and decodes the one string a friend pastes:
 //
-//	ic1.<tailcat ConnBlob>.<secret>
+//	ic1.<tailcat address>.<secret>
 //
 // Ticket 004 mirrors this in TypeScript; the two MUST agree (docs/ARCHITECTURE.md §Invite format).
 package invite
@@ -14,7 +14,7 @@ import (
 	"github.com/infercat/infercat/internal/product"
 )
 
-// Invite is the decoded form. Addr is the tailcat ConnBlob ("tc…"); Secret is the friend's key.
+// Invite is the decoded form. Addr is the tailcat address ("tc…"); Secret is the friend's key.
 type Invite struct {
 	Addr   string
 	Secret string

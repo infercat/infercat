@@ -22,6 +22,13 @@ friend's browser                                     host machine
 
 Browser traffic is relay-only until tailcat ships WebRTC (issue #4). Native clients get direct paths.
 
+Tailcat 0.6.0 clients accept both old addresses and addresses carrying a WireGuard pre-shared
+key (PSK). Hosts keep `DisablePresharedKey: true` and omit the PSK from every minted address
+so existing invites stay byte-identical. Old identity files remain untouched; new files store
+a PSK at rest but do not use it yet. A later migration must use an `ic2` invite prefix: old
+clients otherwise ignore the extra address field and stall at the handshake, rather than
+showing the existing newer-app message. This release does not enable PSKs on hosts.
+
 ## Go layout and ownership (scope contracts)
 
 | Path | Owner ticket | Purpose |
@@ -39,7 +46,7 @@ Browser traffic is relay-only until tailcat ships WebRTC (issue #4). Native clie
 | `web/` (except `web/wasm/`) | 004 | the web client |
 | `docs/`, `pm/` | PM | contract, measurement, PM records |
 
-Module: `github.com/infercat/infercat`, Go 1.27 (auto toolchain), tailcat pinned `v0.4.0`.
+Module: `github.com/infercat/infercat`, Go 1.27.1 (auto toolchain), tailcat pinned `v0.6.0`.
 
 ## Data directory
 
@@ -57,10 +64,10 @@ Module: `github.com/infercat/infercat`, Go 1.27 (auto toolchain), tailcat pinned
 ## Invite format (001 defines in Go, 004 mirrors in TS; MUST match)
 
 ```
-ic1.<tailcat ConnBlob>.<secret>
+ic1.<tailcat address>.<secret>
 ```
 - `ic1` = format version. Unknown prefix → "this invite needs a newer app".
-- `<tailcat ConnBlob>` = the `tc…` string exactly as `Server.ConnBlob()` returns it (base64url, no dots).
+- `<tailcat address>` = the `tc…` string exactly as `tunnel.Server.Addr()` returns it (base64url, no dots).
 - `<secret>` = 32 random bytes, base64url unpadded (43 chars). Never contains `.`.
 - Whitespace trimmed; the whole string is case-sensitive.
 - Decode returns `{Addr string, Secret string}`; encode is the inverse. Round-trip test required.
@@ -73,7 +80,7 @@ type Options struct { DataDir string; Ephemeral bool; DERPMapURL string; Region 
 type Server struct { /* … */ }
 func Start(ctx context.Context, o Options) (*Server, error)   // loads/creates host key, starts tailcat.Server with ServedTCPPorts = {80}
 func (s *Server) Listener() net.Listener                     // conns arriving on tunnel port 80; Accept blocks; Close stops accepting
-func (s *Server) Addr() string                               // the tc… ConnBlob (short form; full form when DERPMapURL/Region set)
+func (s *Server) Addr() string                               // the tc… address (short form; full form when DERPMapURL/Region set)
 func (s *Server) Status() Status                             // {Addr, RegionName, Started time.Time, Clients int}
 func (s *Server) Close() error
 const Port = 80
@@ -90,7 +97,7 @@ produces for v0.4.0, pinned in `web/wasm/build-tags.txt` with a test that the fi
 declare global { interface Window { InfercatTunnel: InfercatTunnel } }
 interface InfercatTunnel {
   connect(opts: {
-    addr: string;            // tc… ConnBlob (from the invite)
+    addr: string;            // tc… address (from the invite)
     derpMapURL?: string;     // default https://tailcat.dev/derpmap.json
     privateKey?: string;     // tailcat PrivateKey JSON to reuse identity; ephemeral if absent
     verbose?: boolean;

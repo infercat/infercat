@@ -58,7 +58,7 @@ type Status struct {
 }
 
 // Peer is one client this server has met (ticket 029), as far as a host can see it: tailcat
-// 0.4.0 keeps WireGuard peer state — the path, the handshake — on the client side, so what the
+// keeps WireGuard peer state — the path, the handshake — on the client side, so what the
 // host meters is the TCP payload on Port per client tunnel address (which tailcat derives from
 // the client's node key: it is the client's identity), its open connections, and its activity.
 type Peer struct {
@@ -167,12 +167,14 @@ func quiet(logf logger.Logf) logger.Logf {
 
 // newTailcatServer is the whole tailcat configuration; a test pins what it must never set.
 func newTailcatServer(pk *tailcat.PrivateKey, reg *tailcfg.DERPRegion, logf logger.Logf, onTCP func(uint16) func(net.Conn)) *tailcat.Server {
+	// Existing invites must keep working; PSK addresses are a later, explicit migration.
 	return &tailcat.Server{
-		Key:            pk.Private,
-		Logf:           logf,
-		Region:         reg,
-		ServedTCPPorts: []filter.PortRange{{First: Port, Last: Port}},
-		OnTCP:          onTCP,
+		DisablePresharedKey: true,
+		Key:                 pk.Private,
+		Logf:                logf,
+		Region:              reg,
+		ServedTCPPorts:      []filter.PortRange{{First: Port, Last: Port}},
+		OnTCP:               onTCP,
 	}
 }
 
@@ -192,7 +194,7 @@ func SavedAddr(dataDir string) (string, error) {
 // Listener yields the connections addressed to Port. Accept blocks; Close stops accepting.
 func (s *Server) Listener() net.Listener { return s.ln }
 
-// Addr is the tc… ConnBlob clients connect to: short form (a DERP map region reference) by
+// Addr is the tc… address clients connect to: short form (a DERP map region reference) by
 // default, full form (relay embedded) when the key was created with a DERPMapURL or Region.
 func (s *Server) Addr() string { return s.addr }
 
@@ -289,7 +291,7 @@ func saveKey(path string, pk *tailcat.PrivateKey) (*tailcat.PrivateKey, error) {
 	}
 }
 
-// addrFor builds the ConnBlob from the private key and the pinned region. The public keys are
+// addrFor builds the address from the private key and the pinned region. The public keys are
 // derived from the private key, not read from the file, so the address always matches the server.
 func addrFor(pk *tailcat.PrivateKey) string {
 	ci := tailcat.ConnInfo{
@@ -298,11 +300,11 @@ func addrFor(pk *tailcat.PrivateKey) string {
 		Region:            pk.Public.Region,
 		RegionID:          pk.Public.RegionID,
 	}
-	return string(ci.ConnBlob())
+	return string(ci.Addr())
 }
 
 // pinRegion records the relay in the key: embedded (full form; two relay nodes suffice, as in
-// tailcat's ConnBlob.Resolve) or as a DERP map region ID (short form).
+// tailcat's Addr.Resolve) or as a DERP map region ID (short form).
 func pinRegion(pk *tailcat.PrivateKey, reg *tailcfg.DERPRegion, full bool) {
 	pk.Public.Region, pk.Public.RegionID = nil, 0
 	if !full {

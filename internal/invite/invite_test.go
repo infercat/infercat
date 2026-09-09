@@ -12,7 +12,7 @@ import (
 	"tailscale.com/types/key"
 )
 
-// realAddr is a tailcat ConnBlob exactly as Server.ConnBlob would produce for a fresh key.
+// realAddr is an old-form tailcat address generated from a fresh node key.
 func realAddr(t *testing.T) string {
 	t.Helper()
 	priv := key.NewNode()
@@ -21,7 +21,7 @@ func realAddr(t *testing.T) string {
 		ServerDiscoPublic: tailcat.DiscoPublicForNode(priv),
 		RegionID:          302,
 	}
-	return string(ci.ConnBlob())
+	return string(ci.Addr())
 }
 
 func TestRoundTripRealShape(t *testing.T) {
@@ -38,8 +38,8 @@ func TestRoundTripRealShape(t *testing.T) {
 	if got.Addr != addr || got.Secret != secret {
 		t.Fatalf("round trip = %+v; want addr %q secret %q", got, addr, secret)
 	}
-	if _, err := tailcat.ParseConnBlob(tailcat.ConnBlob(got.Addr)); err != nil {
-		t.Fatalf("decoded addr is not a parseable ConnBlob: %v", err)
+	if _, err := tailcat.ParseAddr(tailcat.Addr(got.Addr)); err != nil {
+		t.Fatalf("decoded addr is not a parseable address: %v", err)
 	}
 	// Whitespace is trimmed, nothing else.
 	if got2, err := Decode("  \n" + s + "\t\r\n"); err != nil || got2 != got {

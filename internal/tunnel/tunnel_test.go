@@ -134,7 +134,7 @@ func TestListenerServesPort80Only(t *testing.T) {
 	})
 	go http.Serve(s.Listener(), mux)
 
-	cl := &tailcat.Client{Server: tailcat.ConnBlob(s.Addr()), Logf: mkLogf(t, "client")}
+	cl := &tailcat.Client{Server: tailcat.Addr(s.Addr()), Logf: mkLogf(t, "client")}
 	t.Cleanup(func() { cl.Close() })
 	res := pingUntil(t, cl)
 	t.Logf("meow handshake rtt via local DERP: %v", res.Latency)
@@ -228,7 +228,7 @@ func TestHostKeyPersistsAddr(t *testing.T) {
 	if saved, err := SavedAddr(dir); err != nil || saved != addr {
 		t.Fatalf("SavedAddr = %q, %v; want the started address %q", saved, err, addr)
 	}
-	ci, err := tailcat.ParseConnBlob(tailcat.ConnBlob(addr))
+	ci, err := tailcat.ParseAddr(tailcat.Addr(addr))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -273,11 +273,11 @@ func TestAddrShortForm(t *testing.T) {
 	pk := tailcat.NewPrivateKey()
 	pk.Public.RegionID = 302
 	addr := addrFor(pk)
-	want := (&tailcat.ConnInfo{ServerPublic: pk.Public.ServerPublic, ServerDiscoPublic: pk.Public.ServerDiscoPublic, RegionID: 302}).ConnBlob()
+	want := (&tailcat.ConnInfo{ServerPublic: pk.Public.ServerPublic, ServerDiscoPublic: pk.Public.ServerDiscoPublic, RegionID: 302}).Addr()
 	if addr != string(want) {
 		t.Fatalf("addrFor = %s; want %s", addr, want)
 	}
-	ci, err := tailcat.ParseConnBlob(tailcat.ConnBlob(addr))
+	ci, err := tailcat.ParseAddr(tailcat.Addr(addr))
 	if err != nil {
 		t.Fatal(err)
 	}

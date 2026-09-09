@@ -1,11 +1,11 @@
 module github.com/infercat/infercat
 
-go 1.27.0
+go 1.27.1
 
 require (
 	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e
-	github.com/tailscale/tailcat v0.4.0
-	tailscale.com v1.103.0-pre.0.20260830144538-72780705eda8
+	github.com/tailscale/tailcat v0.6.0
+	tailscale.com v1.103.0-pre.0.20260904030409-31d8badb3bfb
 )
 
 require (
@@ -42,7 +42,7 @@ require (
 	github.com/tailscale/hujson v0.0.0-20260302212456-ecc657c15afd // indirect
 	github.com/tailscale/peercred v0.0.0-20250107143737-35a0c7bd7edc // indirect
 	github.com/tailscale/web-client-prebuilt v0.0.0-20250124233751-d4cd19a26976 // indirect
-	github.com/tailscale/wireguard-go v0.0.0-20260821191448-23d18d66172c // indirect
+	github.com/tailscale/wireguard-go v0.0.0-20260904023712-e855235c55a2 // indirect
 	github.com/u-root/u-root v0.14.0 // indirect
 	github.com/x448/float16 v0.8.4 // indirect
 	go4.org/mem v0.0.0-20240501181205-ae6ca9944745 // indirect

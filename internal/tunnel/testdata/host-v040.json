@@ -1,0 +1,8 @@
+{
+  "Private": "privkey:0101010101010101010101010101010101010101010101010101010101010101",
+  "Public": {
+    "ServerPublic": "nodekey:a4e09292b651c278b9772c569f5fa9bb13d906b46ab68c9df9dc2b4409f8a209",
+    "ServerDiscoPublic": "discokey:a4c3cc161ee74a30e7bdc7fb9c7bdec8193100f24389f8b26e9af387da481c32",
+    "RegionID": 302
+  }
+}

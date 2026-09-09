@@ -93,7 +93,7 @@ func connect(this js.Value, args []js.Value) any {
 		if addr == "" {
 			return nil, errors.New("addr is required")
 		}
-		ci, err := tailcat.ParseConnBlob(tailcat.ConnBlob(addr))
+		ci, err := tailcat.ParseAddr(tailcat.Addr(addr))
 		if err != nil {
 			return nil, fmt.Errorf("invalid address: %w", err)
 		}
@@ -123,7 +123,7 @@ func connect(this js.Value, args []js.Value) any {
 		if verbose {
 			logf = log.Printf
 		}
-		cl := &tailcat.Client{Server: tailcat.ConnBlob(addr), Key: pk.Private, Logf: logf, DERPMapURL: derpMapURL}
+		cl := &tailcat.Client{Server: tailcat.Addr(addr), Key: pk.Private, Logf: logf, DERPMapURL: derpMapURL}
 		ctx, cancel := context.WithTimeout(context.Background(), connectTimeout)
 		defer cancel()
 		t0 := time.Now()
@@ -222,7 +222,7 @@ func ping(cl *tailcat.Client, relay string) (any, error) {
 
 // relayName is the relay's region code from the DERP map (already fetched and cached in-process
 // by the client's own startup), or the relay's hostname for an address that embeds its relay
-// (ConnBlob strips the code), or the bare region ID.
+// (the address encoding strips the code), or the bare region ID.
 func relayName(ctx context.Context, ci tailcat.ConnInfo, derpMapURL string) string {
 	for _, r := range ci.Region {
 		if len(r.Nodes) > 0 && r.Nodes[0].HostName != "" {

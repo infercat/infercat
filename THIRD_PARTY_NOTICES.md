@@ -44,9 +44,9 @@ License of each typeface are reproduced verbatim at the end of this file.
 | github.com/tailscale/go-winio | v0.0.0-20231025203758-c4f33415bf55 | MIT | https://github.com/tailscale/go-winio/blob/c4f33415bf55/LICENSE |
 | github.com/tailscale/hujson | v0.0.0-20260302212456-ecc657c15afd | BSD-3-Clause | https://github.com/tailscale/hujson/blob/ecc657c15afd/LICENSE |
 | github.com/tailscale/peercred | v0.0.0-20250107143737-35a0c7bd7edc | BSD-3-Clause | https://github.com/tailscale/peercred/blob/35a0c7bd7edc/LICENSE |
-| github.com/tailscale/tailcat | v0.4.0 | BSD-3-Clause | https://github.com/tailscale/tailcat/blob/v0.4.0/LICENSE |
+| github.com/tailscale/tailcat | v0.6.0 | BSD-3-Clause | https://github.com/tailscale/tailcat/blob/v0.6.0/LICENSE |
 | github.com/tailscale/web-client-prebuilt | v0.0.0-20250124233751-d4cd19a26976 | BSD-3-Clause | https://github.com/tailscale/web-client-prebuilt/blob/d4cd19a26976/LICENSE |
-| github.com/tailscale/wireguard-go | v0.0.0-20260821191448-23d18d66172c | MIT | https://github.com/tailscale/wireguard-go/blob/23d18d66172c/LICENSE |
+| github.com/tailscale/wireguard-go | v0.0.0-20260904023712-e855235c55a2 | MIT | https://github.com/tailscale/wireguard-go/blob/e855235c55a2/LICENSE |
 | github.com/u-root/u-root/pkg/termios | v0.14.0 | BSD-3-Clause | https://github.com/u-root/u-root/blob/v0.14.0/LICENSE |
 | github.com/x448/float16 | v0.8.4 | MIT | https://github.com/x448/float16/blob/v0.8.4/LICENSE |
 | go4.org/mem | v0.0.0-20240501181205-ae6ca9944745 | Apache-2.0 | https://github.com/go4org/mem/blob/ae6ca9944745/LICENSE |
@@ -62,7 +62,7 @@ License of each typeface are reproduced verbatim at the end of this file.
 | golang.zx2c4.com/wintun | v0.0.0-20230126152724-0fa3db229ce2 | MIT | https://git.zx2c4.com/wintun-go/tree/LICENSE?id=0fa3db229ce2 |
 | golang.zx2c4.com/wireguard/windows/tunnel/winipcfg | v0.5.3 | MIT | https://git.zx2c4.com/wireguard-windows/tree/COPYING?h=v0.5.3 |
 | gvisor.dev/gvisor/pkg | v0.0.0-20260224225140-573d5e7127a8 | Apache-2.0 | https://github.com/google/gvisor/blob/573d5e7127a8/LICENSE |
-| tailscale.com | v1.103.0-pre.0.20260830144538-72780705eda8 | BSD-3-Clause | https://github.com/tailscale/tailscale/blob/72780705eda8/LICENSE |
+| tailscale.com | v1.103.0-pre.0.20260904030409-31d8badb3bfb | BSD-3-Clause | https://github.com/tailscale/tailscale/blob/31d8badb3bfb/LICENSE |
 
 ## Web and console bundles (npm, production dependencies)
 

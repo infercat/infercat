@@ -3,6 +3,11 @@
 Versions are tags (`v0.1.0`); the binary prints its own with `infercat version` and the web
 app shows the same one under Settings. Dates are the tag's.
 
+## Unreleased
+
+- Upgrade Tailcat to 0.6.0: clients accept both address forms while hosts preserve every
+  existing invite and keep new addresses on the old form.
+
 ## v0.1.1 — 2026-09-08
 
 A small release the same day, for shared invites and the first-run path.

@@ -73,14 +73,14 @@ func Dial(ctx context.Context, addr string, o ClientOptions) (*Session, error) {
 }
 
 func dial(ctx context.Context, addr string, k key.NodePrivate, o ClientOptions) (*Session, error) {
-	if _, err := tailcat.ParseConnBlob(tailcat.ConnBlob(addr)); err != nil {
+	if _, err := tailcat.ParseAddr(tailcat.Addr(addr)); err != nil {
 		return nil, fmt.Errorf("tunnel: %w", err)
 	}
 	logf := logger.Discard
 	if o.Logf != nil {
 		logf = quiet(o.Logf)
 	}
-	s := &Session{cl: &tailcat.Client{Server: tailcat.ConnBlob(addr), Key: k, Logf: logf}, addr: addr, key: k, o: o}
+	s := &Session{cl: &tailcat.Client{Server: tailcat.Addr(addr), Key: k, Logf: logf}, addr: addr, key: k, o: o}
 	s.closeFn = s.cl.Close
 	// The first meows can be lost while either side's relay connection is still coming up
 	// (tunnel_test.go pingUntil, the wasm bridge): retry until ctx says stop.

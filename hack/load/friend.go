@@ -64,7 +64,7 @@ type reqRecord struct {
 }
 
 func newSession(friend, idx int, keyID, secret, addr string, logf logger.Logf, keepalive bool) *session {
-	cl := &tailcat.Client{Server: tailcat.ConnBlob(addr), Logf: logf}
+	cl := &tailcat.Client{Server: tailcat.Addr(addr), Logf: logf}
 	tr := &http.Transport{
 		DialContext:       func(ctx context.Context, _, _ string) (net.Conn, error) { return cl.DialTCPPort(ctx, 80) },
 		DisableKeepAlives: !keepalive, // the browser dials per request; so does this by default
