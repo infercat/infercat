@@ -141,7 +141,7 @@ export default function Chat({ state, live, dispatch, onRedial, reconnecting = f
   const conv = convs.find((c) => c.id === currentId) ?? (convs[0] as Conversation);
   const models = me.host.models.length > 0 ? me.host.models : listed;
   const model = modelFor(settings.model, models) ?? models[0] ?? '';
-  const vision = live.meOk && me.host.vision[model] === true;
+  const vision = live.meOk && me.host.vision?.[model] === true;
   const imageRefs = JSON.stringify(conv.messages.filter((m) => m.images?.length).map(({ id, images }) => ({ id, images })));
   useEffect(() => {
     let active = true;
@@ -1060,7 +1060,7 @@ function SettingsSheet({
           {tr('app_settings_limits', { rpm: me.limits.rpm, daily: compact(me.limits.daily_tokens), concurrent: me.limits.max_concurrent, output: compact(me.limits.max_output_tokens) })}{' '}
           {tr('app_settings_engine', { engine: me.host.upstream.kind })}
           {me.host.upstream.model_context > 0 ? tr('app_settings_context', { context: compact(me.host.upstream.model_context) }) : ''}
-          {live.meOk && me.host.vision[chosen] === true ? tr('app_settings_vision') : ''}
+          {live.meOk && me.host.vision?.[chosen] === true ? tr('app_settings_vision') : ''}
           {live.meOk && !me.host.upstream.healthy ? tr('app_not_answering_right_now') : ''}.{' '}
           <Text name="app_settings_model_id" values={{ model: <code>{chosen || tr('app_none')}</code> }} />
           {live.ephemeral
