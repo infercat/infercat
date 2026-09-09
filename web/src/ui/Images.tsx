@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { FileChip, FileSheet } from './FileStub';
+import { FileChip, FileSheet } from './FileChip';
 import { attachedLine, type DisplayAttachment } from '../attachments';
 import { bytesLabel, type ImageData } from '../images';
 import { tr } from '../i18n/text';

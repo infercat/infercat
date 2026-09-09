@@ -1028,3 +1028,46 @@ input[type='range']::-moz-range-thumb {
 
 .attachment-reading { display: flex; flex-direction: column; justify-content: center; padding: 3px; font: 9px var(--mono); color: var(--muted); }
 .attachment-reading > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+/* ================= NEW: file attach (design record docs/brand/chat-files/design.md) ================= */
+
+/* A file in the composer is the thumbnail's frame with words in it instead of a picture: the same
+   64 px ink-ruled box, the same paper × on the corner, so images and files make one ruled band.
+   Line one is the name (Archivo, middle-truncated by the app so the extension survives); line two is
+   mono, because it is a measurement: kind · pages or lines · the tokens the meter will count. */
+.chip {
+  position: relative; display: grid; align-content: center; gap: 3px; flex: none;
+  min-height: 64px; min-width: 9rem; max-width: 15rem;
+  border: 1px solid var(--rule); background: var(--paper); padding: 6px 34px 6px 10px; text-align: left;
+}
+.chip-name { font-size: 12.5px; font-weight: 500; line-height: 1.3; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.chip-line { font-family: var(--mono); font-size: 10.5px; color: var(--muted); font-variant-numeric: tabular-nums; white-space: nowrap; }
+/* Held in the composer, the chip is not a button; the × on it is. */
+.attached .chip:hover { background: var(--paper); }
+/* On the phone a chip takes the row: a list, not a shelf. Beside a thumbnail it fills what is left. */
+@media (max-width: 760px) {
+  .attached .chip { flex: 1 1 12rem; max-width: none; }
+  /* …and the measurement line goes under the row; with images alone the frozen layout is untouched. */
+  .attached:has(.chip) .attached-line { flex: 1 1 100%; margin-left: 0; }
+}
+
+/* In the sent turn the chip sits in the same row as the images, at its natural height, aligned to
+   the top of the row. It is a button: pressing it opens the sheet with the text that was sent. */
+.bubble .shots { align-items: flex-start; }
+.bubble .shots .chip { min-height: 0; padding: 7px 10px; font: inherit; }
+.bubble .shots .chip:hover { background: var(--surface); }
+.bubble .shots .chip .chip-name { font-size: 12.5px; }
+
+/* The extracted text on the existing sheet: name and measure on a hairline header, then the text in
+   mono exactly as it went into the request, framing lines included. Scrolls inside; the sheet keeps
+   its width and its ink rule; anywhere outside closes it. */
+.sheet.file { width: min(46rem, 100%); max-height: 86dvh; padding: 0; display: grid; grid-template-rows: auto minmax(0, 1fr); overflow: hidden; }
+.sheet.file header { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: baseline; gap: 3px 12px; padding: 10px 14px 9px; border-bottom: 1px solid var(--border); }
+.sheet.file header strong { font-size: 14px; font-weight: 600; letter-spacing: -0.01em; overflow-wrap: anywhere; }
+.sheet.file header .actions { grid-column: 2; grid-row: 1; justify-self: end; }
+.sheet.file header .caption { grid-column: 1 / -1; font-family: var(--mono); font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.sheet.file pre {
+  margin: 0; padding: 12px 14px; font-family: var(--mono); font-size: 12px; line-height: 1.55; color: var(--text);
+  white-space: pre-wrap; overflow-wrap: anywhere; overflow-y: auto; min-height: 0;
+}
+.app.zh :is(.chip-line, .sheet.file .caption) { font-family: var(--mono-cjk); }

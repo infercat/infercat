@@ -66,29 +66,40 @@ License of each typeface are reproduced verbatim at the end of this file.
 
 ## Web app bundle (npm, production dependencies)
 
-**BSD-3-Clause** (1 package):
+**Apache-2.0** (1 package):
 
-highlight.js@11.11.2
+pdfjs-dist@6.3.289
 
-**ISC** (1 package):
+**BSD-2-Clause** (5 packages):
 
-@ungap/structured-clone@1.4.0
+dingbat-to-unicode@1.0.1, duck@0.1.12, lop@0.4.2, mammoth@1.12.2, option@0.2.4
 
-**MIT** (108 packages):
+**BSD-3-Clause** (2 packages):
 
-@types/debug@4.1.13, @types/estree@1.0.9, @types/estree-jsx@1.0.5, @types/hast@3.0.5,
-@types/mdast@4.0.4, @types/ms@2.1.0, @types/react@19.2.18, @types/unist@2.0.11/3.0.3,
-bail@2.0.2, ccount@2.0.1, character-entities@2.0.2, character-entities-html4@2.1.0,
+highlight.js@11.11.2, sprintf-js@1.0.3
+
+**ISC** (2 packages):
+
+@ungap/structured-clone@1.4.0, inherits@2.0.4
+
+**MIT** (130 packages):
+
+@napi-rs/canvas@1.0.8, @napi-rs/canvas-darwin-arm64@1.0.8, @types/debug@4.1.13,
+@types/estree@1.0.9, @types/estree-jsx@1.0.5, @types/hast@3.0.5, @types/mdast@4.0.4,
+@types/ms@2.1.0, @types/react@19.2.18, @types/unist@2.0.11, @types/unist@3.0.3,
+@xmldom/xmldom@0.8.15, argparse@1.0.10, bail@2.0.2, base64-js@1.5.1, bluebird@3.4.7,
+ccount@2.0.1, character-entities@2.0.2, character-entities-html4@2.1.0,
 character-entities-legacy@3.0.0, character-reference-invalid@2.0.1,
-comma-separated-tokens@2.0.3, csstype@3.2.3, debug@4.4.3,
+comma-separated-tokens@2.0.3, core-util-is@1.0.3, csstype@3.2.3, debug@4.4.3,
 decode-named-character-reference@1.3.0, dequal@2.0.3, devlop@1.1.0, escape-string-regexp@5.0.0,
 estree-util-is-identifier-name@3.0.0, extend@3.0.2, hast-util-is-element@3.0.0,
 hast-util-to-jsx-runtime@2.3.6, hast-util-to-text@4.0.2, hast-util-whitespace@3.0.0,
-html-url-attributes@3.0.1, inline-style-parser@0.2.7, is-alphabetical@2.0.1,
+html-url-attributes@3.0.1, immediate@3.0.6, inline-style-parser@0.2.7, is-alphabetical@2.0.1,
 is-alphanumerical@2.0.1, is-decimal@2.0.1, is-hexadecimal@2.0.1, is-plain-obj@4.1.0,
-longest-streak@3.1.0, lowlight@3.3.0, markdown-table@3.0.4, mdast-util-find-and-replace@3.0.2,
-mdast-util-from-markdown@2.0.3, mdast-util-gfm@3.1.0, mdast-util-gfm-autolink-literal@2.0.1,
-mdast-util-gfm-footnote@2.1.0, mdast-util-gfm-strikethrough@2.0.0, mdast-util-gfm-table@2.0.0,
+isarray@1.0.0, jszip@3.10.1, lie@3.3.0, longest-streak@3.1.0, lowlight@3.3.0,
+markdown-table@3.0.4, mdast-util-find-and-replace@3.0.2, mdast-util-from-markdown@2.0.3,
+mdast-util-gfm@3.1.0, mdast-util-gfm-autolink-literal@2.0.1, mdast-util-gfm-footnote@2.1.0,
+mdast-util-gfm-strikethrough@2.0.0, mdast-util-gfm-table@2.0.0,
 mdast-util-gfm-task-list-item@2.0.0, mdast-util-mdx-expression@2.0.1, mdast-util-mdx-jsx@3.2.0,
 mdast-util-mdxjs-esm@2.0.1, mdast-util-phrasing@4.1.0, mdast-util-to-hast@13.2.1,
 mdast-util-to-markdown@2.1.2, mdast-util-to-string@4.0.0, micromark@4.0.2,
@@ -105,14 +116,113 @@ micromark-util-decode-numeric-character-reference@2.0.2, micromark-util-decode-s
 micromark-util-encode@2.0.1, micromark-util-html-tag-name@2.0.1,
 micromark-util-normalize-identifier@2.0.1, micromark-util-resolve-all@2.0.1,
 micromark-util-sanitize-uri@2.0.1, micromark-util-subtokenize@2.1.0,
-micromark-util-symbol@2.0.1, micromark-util-types@2.0.2, ms@2.1.3, parse-entities@4.0.2,
+micromark-util-symbol@2.0.1, micromark-util-types@2.0.2, ms@2.1.3, pako@1.0.11,
+parse-entities@4.0.2, path-is-absolute@1.0.1, process-nextick-args@2.0.1,
 property-information@7.2.0, react@19.2.8, react-dom@19.2.8, react-markdown@10.1.0,
-rehype-highlight@7.0.2, remark-gfm@4.0.1, remark-parse@11.0.0, remark-rehype@11.1.2,
-remark-stringify@11.0.0, scheduler@0.27.0, space-separated-tokens@2.0.2,
+readable-stream@2.3.8, rehype-highlight@7.0.2, remark-gfm@4.0.1, remark-parse@11.0.0,
+remark-rehype@11.1.2, remark-stringify@11.0.0, safe-buffer@5.1.2, scheduler@0.27.0,
+setimmediate@1.0.5, space-separated-tokens@2.0.2, string_decoder@1.1.1,
 stringify-entities@4.0.4, style-to-js@1.1.21, style-to-object@1.0.14, trim-lines@3.0.1,
-trough@2.2.0, unified@11.0.5, unist-util-find-after@5.0.0, unist-util-is@6.0.1,
-unist-util-position@5.0.0, unist-util-stringify-position@4.0.0, unist-util-visit@5.1.0,
-unist-util-visit-parents@6.0.2, vfile@6.0.3, vfile-message@4.0.3, zwitch@2.0.4
+trough@2.2.0, underscore@1.13.8, unified@11.0.5, unist-util-find-after@5.0.0,
+unist-util-is@6.0.1, unist-util-position@5.0.0, unist-util-stringify-position@4.0.0,
+unist-util-visit@5.1.0, unist-util-visit-parents@6.0.2, util-deprecate@1.0.2, vfile@6.0.3,
+vfile-message@4.0.3, xmlbuilder@10.1.1, zwitch@2.0.4
+
+**Zlib** (1 package):
+
+pako@1.0.11
+
+SPDX alternatives select the first permitted branch; AND obligations are listed under every required licence.
+
+## pako@1.0.11 — MIT text (LICENSE)
+
+```
+(The MIT License)
+
+Copyright (C) 2014-2017 by Vitaly Puzrin and Andrei Tuputcyn
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in
+all copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
+THE SOFTWARE.
+```
+
+## pako@1.0.11 — Zlib text (lib/zlib/README)
+
+```
+Content of this folder follows zlib C sources as close as possible.
+That's intended to simplify maintainability and guarantee equal API
+and result.
+
+Key differences:
+
+- Everything is in JavaScript.
+- No platform-dependent blocks.
+- Some things like crc32 rewritten to keep size small and make JIT
+  work better.
+- Some code is different due missed features in JS (macros, pointers,
+  structures, header files)
+- Specific API methods are not implemented (see notes in root readme)
+
+This port is based on zlib 1.2.8.
+
+This port is under zlib license (see below) with contribution and addition of javascript
+port under expat license (see LICENSE at root of project)
+
+Copyright:
+(C) 1995-2013 Jean-loup Gailly and Mark Adler
+(C) 2014-2017 Vitaly Puzrin and Andrey Tupitsin
+
+
+From zlib's README
+=============================================================================
+
+Acknowledgments:
+
+  The deflate format used by zlib was defined by Phil Katz.  The deflate and
+  zlib specifications were written by L.  Peter Deutsch.  Thanks to all the
+  people who reported problems and suggested various improvements in zlib; they
+  are too numerous to cite here.
+
+Copyright notice:
+
+ (C) 1995-2013 Jean-loup Gailly and Mark Adler
+
+Copyright (c) <''year''> <''copyright holders''>
+
+This software is provided 'as-is', without any express or implied
+warranty. In no event will the authors be held liable for any damages
+arising from the use of this software.
+
+Permission is granted to anyone to use this software for any purpose,
+including commercial applications, and to alter it and redistribute it
+freely, subject to the following restrictions:
+
+1. The origin of this software must not be misrepresented; you must not
+   claim that you wrote the original software. If you use this software
+   in a product, an acknowledgment in the product documentation would be
+   appreciated but is not required.
+2. Altered source versions must be plainly marked as such, and must not be
+   misrepresented as being the original software.
+3. This notice may not be removed or altered from any source distribution.
+
+
+  Jean-loup Gailly        Mark Adler
+  jloup@gzip.org          madler@alumni.caltech.edu
+```
 
 ## Bundled fonts (web app)
 

@@ -18,6 +18,8 @@
     "tunnel-check": "node dev/tunnel-check.mjs"
   },
   "dependencies": {
+    "mammoth": "1.12.2",
+    "pdfjs-dist": "6.3.289",
     "react": "^19.2.0",
     "react-dom": "^19.2.0",
     "react-markdown": "^10.1.0",

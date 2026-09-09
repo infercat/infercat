@@ -70,14 +70,7 @@ LC_ALL=C sort -u "$tmp/go.all" >"$tmp/go.tsv"
 [ -d web/node_modules ] || (cd web && pnpm install --frozen-lockfile >/dev/null 2>&1)
 (cd web && pnpm licenses list --json --prod 2>/dev/null) >"$tmp/web.json" ||
   { echo "notices: pnpm licenses list failed" >&2; exit 1; }
-node -e '
-  const j = JSON.parse(require("fs").readFileSync(process.argv[1], "utf8"));
-  const rows = [];
-  for (const [license, pkgs] of Object.entries(j))
-    for (const p of pkgs) rows.push([p.name, (p.versions || []).join("/"), license]);
-  rows.sort((a, b) => a[0].localeCompare(b[0], "en"));
-  process.stdout.write(rows.map((r) => r.join("\t")).join("\n") + "\n");
-' "$tmp/web.json" >"$tmp/web.tsv"
+node hack/notices-spdx.mjs "$tmp/web.json" "$ALLOWED" "$tmp/web-texts.md" >"$tmp/web.tsv"
 [ -s "$tmp/web.tsv" ] || { echo "notices: pnpm reported no packages" >&2; exit 1; }
 
 # --- the bundled fonts -------------------------------------------------------------------------
@@ -142,6 +135,10 @@ fi
       sed 's/, $//' | fold -s -w 96 | sed 's/[[:space:]]*$//'
     echo
   done <"$tmp/seen"
+  echo "SPDX alternatives select the first permitted branch; AND obligations are listed under every required licence."
+  echo
+  cat "$tmp/web-texts.md"
+  echo
   echo "## Bundled fonts (web app)"
   echo
   echo "| Typeface | Upstream | Version | Licence | Files |"
@@ -173,7 +170,7 @@ fi
 
 if [ "$mode" = write ]; then
   mv "$tmp/notices.md" "$out"
-  echo "notices: wrote $out ($(wc -l <"$out" | tr -d ' ') lines, $(wc -l <"$tmp/go.tsv" | tr -d ' ') Go, $(wc -l <"$tmp/web.tsv" | tr -d ' ') npm, $(wc -l <"$tmp/fonts.tsv" | tr -d ' ') fonts)"
+  echo "notices: wrote $out ($(wc -l <"$out" | tr -d ' ') lines, $(wc -l <"$tmp/go.tsv" | tr -d ' ') Go, $(cut -f1,2 "$tmp/web.tsv" | sort -u | wc -l | tr -d ' ') npm, $(wc -l <"$tmp/fonts.tsv" | tr -d ' ') fonts)"
   exit 0
 fi
 
@@ -182,4 +179,4 @@ if ! diff -u "$out" "$tmp/notices.md"; then
   echo "notices: $out is stale — run 'make notices'" >&2
   exit 1
 fi
-echo "notices: OK — $(wc -l <"$tmp/go.tsv" | tr -d ' ') Go + $(wc -l <"$tmp/web.tsv" | tr -d ' ') npm dependencies + $(wc -l <"$tmp/fonts.tsv" | tr -d ' ') bundled fonts, licences all in ALLOWED, verbatim texts present"
+echo "notices: OK — $(wc -l <"$tmp/go.tsv" | tr -d ' ') Go + $(cut -f1,2 "$tmp/web.tsv" | sort -u | wc -l | tr -d ' ') npm dependencies + $(wc -l <"$tmp/fonts.tsv" | tr -d ' ') bundled fonts, licences all in ALLOWED, verbatim texts present"
