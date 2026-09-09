@@ -90,6 +90,7 @@ brew install infercat/tap/infercat                # or with Homebrew
 
 - [Raw-script fallback](https://raw.githubusercontent.com/infercat/infercat/main/hack/install.sh).
 - Docker: [run a persistent container host](docs/DOCKER.md).
+- Linux packages: [install a .deb or .rpm and run the user service](docs/LINUX.md).
 - [Releases](https://github.com/infercat/infercat/releases) for everything else; verify with `shasum -a 256 --ignore-missing -c infercat_<version>_checksums.txt`.
 
 If latest cannot be resolved (rate limit, no published release, or network), download the script and run `INFERCAT_VERSION=vX.Y.Z sh install.sh`.
