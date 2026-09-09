@@ -1,0 +1,27 @@
+{
+  "xcode": "Xcode 26.6\nBuild version 17F113",
+  "runtime": "iOS 26.5 (23F77)",
+  "device": "iPhone 14, 390x844 @3x",
+  "automation": "WebDriverAgent 16.12.6 at 23b864e7cc2cd1e94bbbc83b3a32e501f1f2b484",
+  "site": "https://infercat.ai/",
+  "base": "9f4d2e1fa7cfd09bee5b3da334cf56afec6f7ac4",
+  "harness_sha256": "d437446c74c11840005ea4ab0a9ac5ebe6ee6da6d019dd03b9d717a5daa13d33",
+  "passed": [
+    "en: Copy invite equals the isolated host invite",
+    "en: native Add to Home Screen installed the masked icon",
+    "en: original launch-video frame 51 captures the native blank transition",
+    "en: native paste permission, exact invite, standalone chat and bottom safe area",
+    "en: native tinted Home Screen icon",
+    "zh: Copy invite equals the isolated host invite",
+    "zh: native Add to Home Screen installed the masked icon",
+    "zh: original launch-video frame 55 captures the native blank transition",
+    "zh: native paste permission, exact invite, standalone chat and bottom safe area",
+    "zh: native tinted Home Screen icon"
+  ],
+  "failed": [],
+  "skipped": [
+    "en: device network-off unsupported",
+    "zh: device network-off unsupported"
+  ],
+  "site_html_sha256": "1add93437cf61a24febe5bfd4c075be69d911a66b9299a6db9a1f37d5e35ea45"
+}
