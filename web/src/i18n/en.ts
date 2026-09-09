@@ -1,5 +1,12 @@
 // Approved landing spec, with PM copy rulings. HTML is authored here, never user input.
 export const en = {
+  app_attach: "Attach an image or a file",
+  app_attach_file: "Attach a file",
+  app_hint_enter_sends_attach: "Enter sends · Shift+Enter makes a new line · paste or drop an image or a file",
+  app_hint_enter_sends_files: "Enter sends · Shift+Enter makes a new line · paste or drop a file",
+  app_limits_files: "A file is sent as its text. The web app takes the words out on your device — a PDF’s text layer, a Word file’s paragraphs, code as it is — and they count like typed text, so the meter already includes them. Every file in this chat is sent again with each question.",
+
+  app_attachment_reading: 'reading…',
   app_image_limit: 'Up to 4 images per message.',
   app_attach_an_image: "Attach an image",
   app_remove_image: "Remove image",

@@ -47,8 +47,21 @@ try {
     const page = await connected(width, lang);
     const label = `${width}-${lang}`;
     check(await page.locator('.attach').count() === 1, 'true capability exposes attach');
+    await page.evaluate(() => {
+      window.__bitmap = window.createImageBitmap;
+      window.createImageBitmap = async (...args) => { const bitmap = await window.__bitmap(...args); await new Promise((resolve) => { window.__finishImage = resolve; }); return bitmap; };
+    });
+    await attach(page, 'picker', 1);
+    await page.waitForFunction(() => Boolean(window.__finishImage));
+    check(await page.locator('.attachment-reading').count() === 1, 'generic reading row appears');
+    check(await page.locator('.composer .primary').isDisabled(), 'Send waits for reading');
+    await shot(page, `reading-${label}`);
+    await page.locator('.attachment-reading .thumb-x').click();
+    await page.evaluate(() => { window.__finishImage(); window.createImageBitmap = window.__bitmap; });
+    await page.waitForFunction(() => document.querySelectorAll('.thumb').length === 0);
+    check(await page.locator('.thumb img').count() === 0, 'cancelled attachment never admitted');
     await attach(page, width === 390 ? 'picker' : 'paste');
-    await page.waitForFunction(() => document.querySelectorAll('.attached .thumb').length === 2);
+    await page.waitForFunction(() => document.querySelectorAll('.attached .thumb img').length === 2);
     check((await page.locator('.attached-line').innerText()).includes('1024'), 'measured downscale line');
     check(await page.locator('.composer .primary').isEnabled(), 'images alone enable Send');
     await shot(page, `compose-${label}`);
@@ -97,7 +110,7 @@ try {
     }
   }
   const p = await connected(1280, 'en');
-  await attach(p, 'drop', 5); await p.waitForFunction(() => document.querySelectorAll('.thumb').length === 4);
+  await attach(p, 'drop', 5); await p.waitForFunction(() => document.querySelectorAll('.thumb img').length === 4);
   check((await p.locator('.image-notice').innerText()).includes('4 images'), 'four-image cap');
   // Actual browser EXIF and IndexedDB transaction checks, using the same production functions.
   const actual = await p.evaluate(async () => {
@@ -109,7 +122,8 @@ try {
     const exif = new Uint8Array([255,225,0,34,69,120,105,102,0,0,73,73,42,0,8,0,0,0,1,0,18,1,3,0,1,0,0,0,6,0,0,0,0,0,0,0]);
     const rotated = await prepareImage(new window.Blob([bytes.slice(0,2), exif, bytes.slice(2)], { type: 'image/jpeg' }));
     const blob = new window.Blob([new Uint8Array(8 * 1024 * 1024)]);
-    for (const [scope, id] of [['cap','old'],['other','isolated'],['cap','middle'],['cap','new']]) await storeImages(scope, id, [{ id, w: 1, h: 1, bytes: blob.size, blob, data: '' }]);
+    const clock = Date.now; Date.now = () => 1000;
+    try { for (const [scope, id] of [['cap','old'],['other','isolated'],['cap','middle'],['cap','new']]) await storeImages(scope, id, [{ id, w: 1, h: 1, bytes: blob.size, blob, data: '' }]); } finally { Date.now = clock; }
     const cap = await readImages('cap', ['old','middle','new'].map((id) => ({ id, images: [{ id }] })));
     const other = await readImages('other', [{ id: 'isolated', images: [{ id: 'isolated' }] }]);
     return { orientation: [rotated.w, rotated.h], cap: Object.keys(cap).sort(), other: Object.keys(other) };

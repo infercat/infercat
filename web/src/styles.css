@@ -1025,3 +1025,6 @@ input[type='range']::-moz-range-thumb {
 .image-notice { max-width: 46rem; margin: 8px auto; padding: 0 12px; font-size: 11px; white-space: normal; }
 .missing-image { width: 120px; min-height: 80px; padding: 6px !important; display: flex !important; flex-direction: column; gap: 6px; font: 10px var(--mono); color: var(--muted); }
 .sheet.image { color: var(--text); text-align: left; }
+
+.attachment-reading { display: flex; flex-direction: column; justify-content: center; padding: 3px; font: 9px var(--mono); color: var(--muted); }
+.attachment-reading > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

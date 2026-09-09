@@ -1,3 +1,4 @@
+import { sentText, sentContent } from './attachments';
 import type { ImageData } from './images';
 import { tr } from './i18n/text';
 // The message lifecycle: one pure reducer from the stream events in api.ts to what the bubble
@@ -190,16 +191,13 @@ export function carried(
   if (system !== '') messages.push({ role: 'system', content: system });
   for (const m of history) {
     if (!isAnswer(m)) continue;
-    if (m.role === 'assistant' && m.content.trim() === '') continue;
-    if (m !== asking && modelContext > 0 && estimateTokens(m.content) + PER_MESSAGE >= modelContext) {
+    const text = sentText(m);
+    if (m.role === 'assistant' && text.trim() === '') continue;
+    if (m !== asking && modelContext > 0 && estimateTokens(text) + PER_MESSAGE >= modelContext) {
       leftOut.push(m);
       continue;
     }
-    const attached = m.role === 'user' ? (m.images ?? []).filter((i) => images[i.id]) : [];
-    messages.push({ role: m.role, content: attached.length ? [
-      ...attached.map((i) => ({ type: 'image_url' as const, image_url: { url: images[i.id]! } })),
-      { type: 'text', text: m.content },
-    ] : m.content });
+    messages.push({ role: m.role, content: m.role === 'user' ? sentContent(m, images, text) : text });
   }
   return { messages, leftOut };
 }

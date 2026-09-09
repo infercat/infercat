@@ -1,5 +1,6 @@
+import { turnAttachments, type DisplayAttachment } from '../attachments';
 import { AttachedImages, ImageShots } from './Images';
-import { imageCopy, type ImageData, type ImageMeta } from '../images';
+import { imageCopy, type ImageData } from '../images';
 import { tr } from '../i18n/text';
 import { useEffect, useRef, useState } from 'react';
 import { modelLabel } from '../api';
@@ -38,7 +39,7 @@ interface Props {
   onNewChat: () => void;
   imageData: ImageData;
   imagesLoaded: boolean;
-  onResend: (text: string, images: ImageMeta[]) => void;
+  onResend: (text: string, attachments: DisplayAttachment[]) => void;
 }
 
 export default function MessageView({
@@ -62,21 +63,21 @@ export default function MessageView({
 }: Props) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(m.content);
-  const [editImages, setEditImages] = useState(m.images ?? []);
+  const [editAttachments, setEditAttachments] = useState(() => turnAttachments(m));
 
   if (m.role === 'user') {
     if (editing) {
       return (
         <div className="row user">
           <div className="bubble editing">
-            <AttachedImages images={editImages} data={imageData} onRemove={(id) => setEditImages((v) => v.filter((i) => i.id !== id))} />
+            <AttachedImages attachments={editAttachments} data={imageData} onRemove={(id) => setEditAttachments((v) => v.filter((i) => i.id !== id))} />
             <textarea value={draft} rows={Math.min(10, draft.split('\n').length + 1)} autoFocus onChange={(e) => setDraft(e.target.value)} />
             <div className="edit-actions">
               <button className="ghost" onClick={() => { setEditing(false); setDraft(m.content); }}>
                 {tr('app_cancel')}
               </button>
               {/* It replaces the answer below it, so it says so before it is pressed (promise 16). */}
-              <button className="primary small" onClick={() => { setEditing(false); onResend(draft, editImages); }} disabled={draft.trim() === '' && !editImages.length}>
+              <button className="primary small" onClick={() => { setEditing(false); onResend(draft, editAttachments); }} disabled={draft.trim() === '' && !editAttachments.length}>
                 {tr('app_replace_answer')}
               </button>
             </div>
@@ -89,12 +90,12 @@ export default function MessageView({
     const pending = undelivered && !answering;
     return (
       <div className="row user">
-        <div className={`bubble ${pending ? 'pending' : ''}`}>{m.images?.length ? <ImageShots images={m.images} data={imageData} loaded={imagesLoaded} host={host} /> : null}{m.content}</div>
+        <div className={`bubble ${pending ? 'pending' : ''}`}>{(m.images?.length || m.files?.length) ? <ImageShots attachments={turnAttachments(m)} data={imageData} loaded={imagesLoaded} host={host} /> : null}{m.content}</div>
         <div className="actions">
           {/* The pending turn (014 promise 1): the reader's words are still here and still theirs. */}
           {pending && <span className="pending-mark">{tr('app_not_delivered')}</span>}
           {last && !busy && !readOnly && (
-            <button className="ghost tiny" onClick={() => { setDraft(m.content); setEditImages(m.images ?? []); setEditing(true); }}>
+            <button className="ghost tiny" onClick={() => { setDraft(m.content); setEditAttachments(turnAttachments(m)); setEditing(true); }}>
               {tr('app_edit')}
             </button>
           )}
