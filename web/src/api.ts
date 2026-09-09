@@ -23,11 +23,21 @@ export interface Me {
     upstream: { kind: string; healthy: boolean; model_context: number };
     models: string[];
     /** Per-model capability; null means the engine did not report it. */
-    vision: Record<string, boolean | null>;
+    vision?: Record<string, boolean | null>;
+    audio?: { transcriptions: boolean; speech: boolean };
     relay: { region: string };
     /** The host runs with --log-prompts. Absent on a gateway older than ticket 006: absent = false. */
     log_prompts?: boolean;
   };
+}
+
+/** Capabilities are additive: a host that predates a field makes no promise about it. */
+export function modelVision(me: Me, model: string): boolean | null {
+  return me.host.vision?.[model] ?? null;
+}
+
+export function hostAudio(me: Me, kind: 'transcriptions' | 'speech'): boolean {
+  return me.host.audio?.[kind] === true;
 }
 
 /** The host's name, trimmed. It can be empty, and "You’re on ." is not a sentence: callers check. */
