@@ -24,7 +24,7 @@ test:
 vet:
 	go vet ./...
 
-check: console-check vet test client-check web-lint
+check: console-check vet test client-check web-lint host-compat
 	sh hack/install_test.sh
 	@if command -v shellcheck >/dev/null 2>&1; then shellcheck -s sh hack/install.sh; else echo "shellcheck: skipped (not installed)"; fi
 	@echo "CHECK OK"
@@ -103,3 +103,10 @@ console-check:
 .PHONY: console-build
 console-build:
 	cd console && pnpm install --frozen-lockfile && pnpm build
+
+# Shipped /me shapes must render Connect → Chat; install the pinned browser on clean machines.
+.PHONY: host-compat
+host-compat: web-lint
+	cd web && pnpm typecheck && pnpm exec vitest run src/host-compat.test.ts
+	cd web && pnpm exec playwright install --with-deps chromium
+	cd web && pnpm exec node dev/host-compat.mjs

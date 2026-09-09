@@ -1,0 +1,39 @@
+{
+  "key": {
+    "id": "fixture-key",
+    "name": "compat-fixture",
+    "status": "active"
+  },
+  "limits": {
+    "rpm": 20,
+    "tpm": 20000,
+    "max_concurrent": 1,
+    "max_output_tokens": 4096,
+    "max_context": 0,
+    "daily_tokens": 200000
+  },
+  "usage": {
+    "rpm_used": 0,
+    "tpm_used": 0,
+    "today_tokens": 0,
+    "in_flight": 0
+  },
+  "host": {
+    "name": "Compatibility host",
+    "upstream": {
+      "kind": "llama.cpp",
+      "healthy": true,
+      "model_context": 8192
+    },
+    "models": [
+      "compat-model"
+    ],
+    "vision": {
+      "compat-model": true
+    },
+    "relay": {
+      "region": "New York City"
+    },
+    "log_prompts": false
+  }
+}
