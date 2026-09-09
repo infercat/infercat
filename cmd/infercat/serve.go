@@ -168,7 +168,8 @@ func (e *env) cmdServe(ctx context.Context, pre string, args []string) error {
 		return st
 	}, store.Reload, events, e.consoleAPI(store, tun.Addr(), up, consoleSettings{
 		Name: hostName, WebURL: webURL(config{WebURL: *webURLFlag}), Slots: *slots,
-		LogRequests: *logRequests, DataDir: dataDir,
+		LogRequests: *logRequests, DataDir: dataDir, LogPrompts: *logPrompts,
+		Upstream: *upURL, DERPMapURL: *derpMapURL, Region: *region, ConfiguredWebURL: *webURLFlag,
 	}))
 	if err != nil {
 		return fmt.Errorf("admin API: %w", err)
@@ -533,7 +534,7 @@ func buildStatus(ctx context.Context, started time.Time, tun tunnelServer, up up
 		c := counters[k.ID]
 		st.Keys = append(st.Keys, admin.Key{
 			ID: k.ID, Name: k.Name, Status: string(k.Status),
-			InFlight: c.InFlight, RPMUsed: c.RPMUsed, TodayTokens: c.TodayTokens, LastSeen: c.LastSeen,
+			InFlight: c.InFlight, RPMUsed: c.RPMUsed, TPMUsed: c.TPMUsed, TodayTokens: c.TodayTokens, LastSeen: c.LastSeen,
 		})
 	}
 	return st

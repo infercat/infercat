@@ -70,6 +70,11 @@ func (e *env) cmdConsole(ctx context.Context, pre string, args []string) error {
 }
 
 type consoleSettings struct {
+	LogPrompts            bool   `json:"log_prompts"`
+	Upstream              string `json:"upstream"`
+	DERPMapURL            string `json:"derpmap_url"`
+	Region                string `json:"region"`
+	ConfiguredWebURL      string `json:"configured_web_url"`
 	Name                  string `json:"name"`
 	WebURL                string `json:"web_url"`
 	Slots                 int    `json:"slots"`
@@ -186,14 +191,16 @@ func (e *env) consoleAPI(store *keys.FileStore, addr string, up upstream.Upstrea
 	})
 	route("GET /usage", func(w http.ResponseWriter, r *http.Request) (any, error) {
 		start := today()
+		days := 1
 		switch r.URL.Query().Get("window") {
 		case "", "today":
 		case "week":
 			start = start.AddDate(0, 0, -6)
+			days = 7
 		default:
 			return nil, errors.New("window must be today or week")
 		}
-		return usage.AggregateFile(settings.DataDir, usage.Filter{Since: start})
+		return usage.AggregateFile(settings.DataDir, usage.Filter{Since: start, Until: today().AddDate(0, 0, 1), Days: days})
 	})
 	route("GET /engine", func(w http.ResponseWriter, r *http.Request) (any, error) { return up.Info(), nil })
 	route("GET /settings", func(w http.ResponseWriter, r *http.Request) (any, error) { return settings, nil })

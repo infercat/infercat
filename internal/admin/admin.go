@@ -121,6 +121,7 @@ type Key struct {
 	Status      string    `json:"status"`
 	InFlight    int       `json:"in_flight"`
 	RPMUsed     int       `json:"rpm_used"`
+	TPMUsed     int       `json:"tpm_used"`
 	TodayTokens int       `json:"today_tokens"`
 	LastSeen    time.Time `json:"last_seen"`
 }

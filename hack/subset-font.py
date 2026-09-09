@@ -1,7 +1,8 @@
 #!/usr/bin/env python3
 """Rebuild: python3 hack/subset-font.py /path/to/NotoSansSC[wght].ttf
 Uses the existing fontTools[woff] build tool (4.60.2) and the same Google Fonts Noto Sans SC/OFL.
-Check only: python3 hack/subset-font.py --check. The web unit suite also reads the font cmap.
+Check only: python3 hack/subset-font.py --check. Add --console for console/copy.ts.
+The web and console unit suites also read their shipped font cmap.
 """
 import argparse
 import ast
@@ -14,13 +15,18 @@ root = Path(__file__).resolve().parent.parent
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument('source', nargs='?')
 parser.add_argument('--check', action='store_true')
+parser.add_argument('--console', action='store_true', help='subset/check console copy instead of web tables')
 args = parser.parse_args()
 values = []
-for language in ('en', 'zh'):
-    code = (root / f'web/src/i18n/{language}.ts').read_text()
-    values.extend(ast.literal_eval(m) for m in re.findall(r"\b\w+:\s*(\"(?:\\.|[^\"\\])*\"|'(?:\\.|[^'\\])*')", code))
+if args.console:
+    code = (root / 'console/copy.ts').read_text()
+    values.extend(ast.literal_eval(m) for m in re.findall(r"""("(?:\\.|[^"\\])*"|'(?:\\.|[^'\\])*')""", code))
+else:
+    for language in ('en', 'zh'):
+        code = (root / f'web/src/i18n/{language}.ts').read_text()
+        values.extend(ast.literal_eval(m) for m in re.findall(r"\b\w+:\s*(\"(?:\\.|[^\"\\])*\"|'(?:\\.|[^'\\])*')", code))
 text = ''.join(values)
-output = root / 'web/public/fonts/noto-sans-sc.woff2'
+output = root / ('console/public/fonts/noto-sans-sc.woff2' if args.console else 'web/public/fonts/noto-sans-sc.woff2')
 if not args.check:
     if not args.source:
         parser.error('source TTF required to rebuild')

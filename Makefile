@@ -98,4 +98,8 @@ client-check:
 
 .PHONY: console-check
 console-check:
-	cd console && pnpm install --frozen-lockfile && pnpm typecheck && pnpm lint && pnpm test && pnpm build
+	cd console && pnpm install --frozen-lockfile && pnpm typecheck && pnpm lint && pnpm test && pnpm check-dist
+
+.PHONY: console-build
+console-build:
+	cd console && pnpm install --frozen-lockfile && pnpm build

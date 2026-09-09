@@ -29,7 +29,7 @@ func TestConsoleKeyLifecycleAndCounts(t *testing.T) {
 		t.Fatal(err)
 	}
 	e := &env{plat: testPlatform(fakeAddr, nil), out: io.Discard, errw: io.Discard}
-	h := e.consoleAPI(store, fakeAddr, up, consoleSettings{Name: "test host", DataDir: dir, LogRequests: true})
+	h := e.consoleAPI(store, fakeAddr, up, consoleSettings{Name: "test host", DataDir: dir, LogRequests: true, LogPrompts: true, Upstream: "http://localhost:8080", DERPMapURL: "https://relay.example/map", Region: "nyc", ConfiguredWebURL: "", WebURL: "https://infercat.ai"})
 	call := func(method, path, body string, code int) []byte {
 		t.Helper()
 		r := httptest.NewRequest(method, path, strings.NewReader(body))
@@ -102,7 +102,7 @@ func TestConsoleKeyLifecycleAndCounts(t *testing.T) {
 		t.Fatalf("today: %+v", rep)
 	}
 	json.Unmarshal(call("GET", "/usage?window=week", "", 200), &rep)
-	if rep.Total.Requests != 2 || rep.Total.ErrorsByCode["key_revoked"] != 1 {
+	if rep.Total.Requests != 2 || rep.Total.ErrorsByCode["key_revoked"] != 1 || len(rep.Daily) != 7 || rep.Daily[6].Total.PromptTokens != 3 {
 		t.Fatalf("week: %+v", rep)
 	}
 	var detail consoleKey
@@ -127,7 +127,7 @@ func TestConsoleKeyLifecycleAndCounts(t *testing.T) {
 	}
 	var settings consoleSettings
 	json.Unmarshal(call("GET", "/settings", "", 200), &settings)
-	if !settings.LogRequests || settings.LogRequestsRemembered {
+	if !settings.LogRequests || settings.LogRequestsRemembered || !settings.LogPrompts || settings.Region != "nyc" || settings.ConfiguredWebURL != "" || settings.WebURL != "https://infercat.ai" {
 		t.Fatal(settings)
 	}
 }

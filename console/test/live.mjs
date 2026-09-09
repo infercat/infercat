@@ -1,0 +1,34 @@
+import { chromium } from 'playwright';
+import { readFile, writeFile, mkdir } from 'node:fs/promises';
+import { join } from 'node:path';
+const dir=process.env.INFERCAT_CONSOLE_PROOF_DIR;
+if(!dir) throw new Error('set INFERCAT_CONSOLE_PROOF_DIR to the isolated proof directory');
+const url=(await readFile(join(dir,'console-url'),'utf8')).trim();
+const id=(await readFile(join(dir,'alice-id'),'utf8')).trim();
+await mkdir('test/evidence',{recursive:true});
+const browser=await chromium.launch();
+try {
+ const page=await browser.newPage({viewport:{width:1280,height:900}});const errors=[],methods=[];
+ page.on('pageerror',e=>errors.push(e.message));
+ page.on('console',m=>{if(m.type()==='error')errors.push(m.text());});
+ page.on('request',r=>{if(new URL(r.url()).pathname.startsWith('/api/'))methods.push(r.method());});
+ await page.goto(url);await page.locator('#friends').waitFor();await page.evaluate(()=>document.fonts.ready);
+ if(await page.locator('#friends .tbl tbody tr').count()!==3)throw new Error('expected three keys');
+ const friends=await page.locator('#friends').innerText();
+ for(const text of ['alice','bob','carol','2 active','1 paused','40 rpm','60 rpm','10 rpm'])if(!friends.includes(text))throw new Error('missing '+text);
+ const row=page.locator(`[data-key="${id}"]`);
+ const before=await row.locator('.c-now').innerText();
+ const started=Date.now();
+ const response=fetch('http://127.0.0.1:19175/v1/chat/completions',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({model:'proof-model',messages:[{role:'user',content:'proof'}],max_tokens:8})});
+ await page.waitForFunction(id=>document.querySelector(`[data-key="${id}"] .c-now`)?.textContent.includes('1 in flight'),id,{timeout:5000});
+ const delay=Date.now()-started, during=await row.locator('.c-now').innerText();
+ await page.screenshot({path:'test/evidence/live-in-flight.png',fullPage:true});
+ const result=await response;if(!result.ok)throw new Error('friend request '+result.status);const body=await result.json();
+ await page.waitForFunction(id=>document.querySelector(`[data-key="${id}"] .c-now`)?.textContent.includes('idle'),id,{timeout:5000});
+ const after=await row.locator('.c-now').innerText();
+ await row.click();await page.screenshot({path:'test/evidence/live-drawer.png'});
+ const state=await page.evaluate(()=>({hash:location.hash,local:localStorage.length,session:sessionStorage.length}));
+ if(state.hash||state.local||state.session||errors.length||methods.some(m=>m!=='GET'))throw new Error(JSON.stringify({state,errors,methods}));
+ const report=`Three real keys with distinct limits, one paused: PASS\nFriend via real tunnel: POST /v1/chat/completions -> ${result.status}; ${body.choices[0].message.content}\nNow before: ${before}\nNow during (${delay} ms after request): ${during}\nNow after: ${after}\nBrowser API traffic: ${methods.length} GET / 0 writes; hash empty; localStorage=0; sessionStorage=0; errors=0\n`;
+ await writeFile('test/evidence/live.txt',report);console.log(report);
+} finally {await browser.close();}
