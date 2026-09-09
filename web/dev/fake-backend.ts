@@ -21,6 +21,8 @@ export interface FakeResponse {
 export interface FakeOptions {
   hostName?: string;
   models?: string[];
+  vision?: boolean | null;
+  rejectImages?: boolean;
   region?: string;
   /** Milliseconds between streamed tokens. */
   tokenDelayMs?: number;
@@ -127,6 +129,7 @@ export function handleFake(req: FakeRequest, opts: FakeOptions = {}): FakeRespon
         name: opts.hostName ?? "Max's workstation",
         upstream: { kind: 'llama.cpp', healthy: !opts.upstreamDown, model_context: 8192 },
         models,
+        vision: Object.fromEntries(models.map((id) => [id, opts.vision ?? null])),
         relay: { region: opts.region ?? 'sfo' },
         ...(opts.logPrompts ? { log_prompts: true } : {}),
       },
@@ -148,10 +151,13 @@ export function handleFake(req: FakeRequest, opts: FakeOptions = {}): FakeRespon
     }
     const parsed = JSON.parse(req.body || '{}') as {
       model?: string;
-      messages?: { role: string; content: string }[];
+      messages?: { role: string; content: string | { type: string; text?: string; image_url?: { url: string } }[] }[];
     };
     const last = [...(parsed.messages ?? [])].reverse().find((m) => m.role === 'user');
-    const text = (last?.content ?? '').trim();
+    const content = last?.content;
+    const text = (typeof content === 'string' ? content : content?.filter((p) => p.type === 'text').map((p) => p.text ?? '').join('') ?? '').trim();
+    const imageCount = (parsed.messages ?? []).reduce((n, m) => n + (Array.isArray(m.content) ? m.content.filter((p) => p.type === 'image_url').length : 0), 0);
+    if (imageCount && (opts.rejectImages || text.startsWith('/images'))) return error(400, 'invalid_request_error', 'images_not_supported', 'This model does not support image input.');
     const word = text.split(/\s/)[0] ?? '';
     const mode: StreamMode =
       word === '/cap' ? 'capped'
@@ -176,7 +182,7 @@ export function handleFake(req: FakeRequest, opts: FakeOptions = {}): FakeRespon
         'cache-control': 'no-cache',
         connection: 'close',
       },
-      sse: chatStream(parsed.model ?? models[0] ?? 'model', text, opts, mode),
+      sse: chatStream(parsed.model ?? models[0] ?? 'model', text, opts, mode, imageCount),
     };
   }
 
@@ -230,6 +236,7 @@ async function* chatStream(
   prompt: string,
   opts: FakeOptions,
   mode: StreamMode = 'normal',
+  imageCount = 0,
 ): AsyncGenerator<string, void, void> {
   const delay = opts.tokenDelayMs ?? 18;
   const id = `chatcmpl-${Math.random().toString(36).slice(2, 10)}`;
@@ -288,7 +295,7 @@ async function* chatStream(
     return;
   }
   if (mode === 'eof-no-done') return; // no usage chunk, no [DONE]: the connection just ends
-  const promptTokens = Math.ceil(prompt.length / 4) + 12;
+  const promptTokens = Math.ceil(prompt.length / 4) + 12 + imageCount * 640;
   const completionTokens = Math.ceil((REASONING.length + body.length) / 4);
   counters.tpm_used += promptTokens + completionTokens;
   counters.today_tokens += promptTokens + completionTokens;

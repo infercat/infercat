@@ -10,6 +10,8 @@ async function boot(): Promise<void> {
   if (import.meta.env.DEV && q.has('fake')) {
     const { installFakeTunnel } = await import('../dev/fake-infercat-tunnel.ts');
     installFakeTunnel({
+      ...(q.has('vision') ? { vision: q.get('vision') === 'true' ? true : q.get('vision') === 'false' ? false : null } : {}),
+      ...(q.has('rejectImages') ? { rejectImages: true } : {}),
       ...(q.has('connectMs') ? { connectMs: Number(q.get('connectMs')) } : {}),
       ...(q.has('tokenDelay') ? { tokenDelayMs: Number(q.get('tokenDelay')) } : {}),
       // Dev-only switches for the states ticket 007 has to show: a host that logs prompts, an
