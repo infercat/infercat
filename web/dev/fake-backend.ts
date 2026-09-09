@@ -14,6 +14,7 @@ export interface FakeResponse {
   status: number;
   headers: Record<string, string>;
   body?: string;
+  bytes?: Uint8Array;
   /** When set, the body is streamed as these SSE frames, in order, as they are produced. */
   sse?: AsyncIterable<string>;
 }
@@ -22,6 +23,10 @@ export interface FakeOptions {
   hostName?: string;
   models?: string[];
   vision?: boolean | null;
+  transcriptions?: boolean;
+  speech?: boolean;
+  audioFailure?: number;
+  audioDelayMs?: number;
   rejectImages?: boolean;
   region?: string;
   /** Milliseconds between streamed tokens. */
@@ -129,6 +134,7 @@ export function handleFake(req: FakeRequest, opts: FakeOptions = {}): FakeRespon
         name: opts.hostName ?? "Max's workstation",
         upstream: { kind: 'llama.cpp', healthy: !opts.upstreamDown, model_context: 8192 },
         models,
+        audio: { transcriptions: opts.transcriptions ? 'whisper-large-v3' : null, speech: opts.speech ? 'kokoro' : null },
         vision: Object.fromEntries(models.map((id) => [id, opts.vision ?? null])),
         relay: { region: opts.region ?? 'sfo' },
         ...(opts.logPrompts ? { log_prompts: true } : {}),
@@ -141,6 +147,18 @@ export function handleFake(req: FakeRequest, opts: FakeOptions = {}): FakeRespon
       object: 'list',
       data: models.map((id) => ({ id, object: 'model', owned_by: 'host' })),
     });
+  }
+
+  if (path.startsWith('/v1/audio/')) {
+    const hears = path === '/v1/audio/transcriptions';
+    if (!(hears ? opts.transcriptions : opts.speech)) return error(404, 'invalid_request_error', 'not_found', 'Audio route is not configured.');
+    if (opts.audioFailure) {
+      const refused = error(opts.audioFailure, 'upstream_error', opts.audioFailure === 429 ? (hears ? 'audio_budget_exhausted' : 'speech_budget_exhausted') : 'upstream_error', 'The fake audio engine refused this request.');
+      if (opts.audioFailure === 429) refused.headers['retry-after'] = '12';
+      return refused;
+    }
+    if (hears) return json(200, { text: req.body.includes('\r\nzh\r\n') ? '请用一句话回答这个问题。' : 'Please answer this question in one sentence.' });
+    return { status: 200, headers: { 'content-type': 'audio/mpeg' }, bytes: Uint8Array.from(atob(VOICE_TONE), (c) => c.charCodeAt(0)) };
   }
 
   if (path === '/v1/chat/completions' && req.method === 'POST') {
@@ -321,3 +339,6 @@ function tokenize(text: string): string[] {
 function sleep(ms: number): Promise<void> {
   return new Promise((r) => setTimeout(r, ms));
 }
+
+// Two seconds of a generated 440 Hz test tone (16 kHz mono MP3, 8 kbit/s); no recorded speech.
+const VOICE_TONE = 'SUQzBAAAAAAAIlRTU0UAAAAOAAADTGF2ZjYzLjEuMTAxAAAAAAAAAAAAAAD/81jAAAAAAAAAAAAASW5mbwAAAA8AAAA6AAAI3AAYHBwgICQoKCwsMDA0ODg8PEFFRUlJTU1RVVVZWV1dYWVlaWltcXF1dXl5fYKChoaKjo6SkpaWmp6eoqKmpqqurrKytrq6vr7Dw8fLy8/P09PX29vf3+Pn5+vr7+/z9/f7+/8AAAAATGF2YzYzLjEuAAAAAAAAAAAAAAAAJANAAAAAAAAACNyD8mezAAAAAAAAAAAAAAD/8xjEAAUgAt5hQwABtrIFJqw8PDw98D6z3eZ+44eH//iFSS//8xjEAgV4asQBkDABLxjXYckG8AzgWxIcCuLRk3eI3jT/0in/8xjEAwWoXogB1AAAFYckBwkDhAgP6KABABiUL4j7KrWEjrT/8xjEAwOoWpAgAHZCyvoARwOPpTaXLG7ShIdSVr4MFiAcoO//8xjECwP4WpAgAHZCv+rZGrfu1KDwhoZECAVIhdQBwTUrIA3/8xjEEgVYWmwAAbglKPUNKhIA5aSgGhWKLGbVKrdELNWGWcz/8xjEEwPIWqDgAjRGN3BmkMRxiMNbpbwSG1haKJSOxUeu7qr/8xjEGgN4WpggAHRCDgoD1VlhQeCmQ01ZrLRldrkGgZ6m26D/8xjEIwLQWqzAALBGh3BAyN08YDrqlRgQIA1+7HAASInRPw3/8xjELgQ4XqWAAjIqqKR7NfjKGpXaQEma9pxwKzaSozQBZyX/8xjENAPQUphgAHRCDQwDeW7kfIN2J1HcV3FaJRAsB9i0AGb/8xjEOwQgWqogALAOJCNrxSkeOqvDyoWHKlcIyF4PFQmYWTH/8xjEQQSgXnwAAPYk/Kqw1aCStgSfIAoBNIGCAfF52DjwAOf/8xjERQPgWqmAAHImPneW1vXaSH2uJFmqhq/XHjhIYVAJdcH/8xjETAQYVp0AAbJGAkS2h+oW1jlTS2HnFTCN1TZfdPmCEoH/8xjEUgOQWpAgAHRAOmWFxchwf2mBqqFWmZI+KiRUCEEx6YL/8xjEWgYAXmgAAHohgZqGOok08kJvqxEMB6OgPgiUarljsJ7/8xjEWQaAXmQABjgp8Rwy6gIIAu1hQWATSvTDRZvKHQAkDer/8xjEVgaQXmAABjgpR6oWxCnAvlQyNasXnuUMCE+eFO6Bg6D/8xjEUgW4XmwAAHohHTIfhteEqzUcANOzImSmYoI2GtDiaU3/8xjEUgQYWqUAAjJGBAS///0y6gIIABVFQIjsbJdSZB53JDX/8xjEWANwWrGAALBGEQwGDdSJhTUWblj+LTlNjLoZkBgNKLv/8xjEYQSoXpogAHQKOwMXQKdTkw1WhpqEjrTK+gBHA4+lNpr/8xjEZQQgWplgAHQmzT2qAgwDtbOIFeJmW3/VsjVu+cWmdrD/8xjEawVYVoQYAHZCY4HgIew2RBIFrTIAoxqhpgIMA707CRH/8xjEbAPYWrGgAXJGyoW5UqlUMTuGWcw3cGaQxHGIw1ulvBL/8xjEcwQoWqUAAHJCANrC0USkdiILbjuqEoDhYJAcDPBaazP/8xjEeQQgVqYgAXAPSqsTtcrGeq7wCO4HBJXL3ctX+RAAM/T/8xjEfwOgWpAgAHZAOxL2WGndCeRk8NqKR7P+1qvmE5gD0x//8xjEhwOwWrGAAbBGxM1MCV/SUVADoS3JEwDRSgXIN2J1HcX/8xjEjwUwWnAAA/gpdxWiEIwGu4RsCTH7yyUN3mcNKg4MA1n/8xjEkQO4Wq2AAbJGiygQWoRWvRxBmA6a2KMC4IY2SBIQ7Iz/8xjEmQN4WpggAHRCBCBabvrMk8nV9H6sJ2AHDW/Q+AKDANf/8xjEogMgWqzgALBGOIgpuVPh6zCRUtd4tia71nxAabLxjIX/8xjErAPgXqDgAjJGN0pSqt0jEsD+JUEphfZmChCvh+FnSCT/8xjEswN4XpwgAHRC1/kRDAejoD4IlGq5Y7Ce8Rwy6gKOB6L/8xjEvASAWongAHQK1alrXjORBd09kwwmbPaP6v/0zfmKFAD/8xjEwQUwXngAA/goPvWNarHmwkKjAl0MWhhssjWrF55WDAL/8xjEwwOAWqjgAfJGKAOMJ88Kd0DB0A6ZD8NrwlR/Z///s/T/8xjEzAPYWqUAAHBC1RwA07MiZKZigjYa0OJpTQQEv//9Mur/8xjE0wPwWq2AALAqHBAZwGvMt3IJEc0vzWkyDzuSF9cCADb/8xjE2gUAWnQAAXglAmCvEFVzFK0BS7XIYYHKbD6f//9f6k3/8xjE3QT4XnQAA/ZEX5M0IzIYJxJfkQQLg2kAYADCtoLciQP/8xjE4AUYWnQAAPYlcYSghkkEOzaXLG7XP6P///V+tQgCKPr/8xjE4gU4YnQABPgokOpK18GCxAOUHff9WyNW8p/sEx/3UYP/8xjE5AQYWqUAAjJGF8QjBY2AxUGQHQH6EoVG/3ceOta/N13/8xjE6gYgVox4AHRCW+GYimgcwOWDQCT0lcaMfjyRSobWWF//8xjE6AWwWnngDjhH/vJY4WCvEARDzPFhif6FIU24ALA1BUr/8xjE6AZIVpm4AHQmhoRHi1Z1Tu6ViKIvQkxBTUU0LjCqqqr/8xjE5QVYVoQYAHZCqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqr/8xjE5gT4WqJAAHQKqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqr/8xjE6QZAWoh4AHZCqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqr/8xjE5wPAVoQAAHZBqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqr/8xjE7wbgXoB4A/hGqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqr/8xjE6gWAWpGgAHYmqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqr/8xjE6wUAXqDBVAACqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqr/8xjE7gtgiqABmngAqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqr/8xjE1wUoBhh5wAgAqqqqqqqqqqqqqqqqqqqqqqqqqqqqqqo=';

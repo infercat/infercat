@@ -80,6 +80,7 @@ export class GatewayError extends Error {
     readonly retryAfterS?: number,
     readonly limit?: number,
     readonly inFlight?: number,
+    readonly rawBody?: string,
   ) {
     super(message);
     this.name = 'GatewayError';
@@ -104,8 +105,10 @@ async function gatewayError(res: Response): Promise<GatewayError> {
   let code = '';
   let type = '';
   let limit: number | undefined, inFlight: number | undefined;
+  let rawBody = '';
   try {
-    const parsed = (await res.json()) as { error?: { message?: string; code?: string; type?: string; limit?: number; in_flight?: number } };
+    rawBody = await res.text();
+    const parsed = JSON.parse(rawBody) as { error?: { message?: string; code?: string; type?: string; limit?: number; in_flight?: number } };
     if (parsed?.error) {
       message = parsed.error.message ?? message;
       code = parsed.error.code ?? '';
@@ -122,8 +125,13 @@ async function gatewayError(res: Response): Promise<GatewayError> {
     type,
     message,
     Number.isFinite(retry) && retry > 0 ? Math.ceil(retry) : undefined,
-    limit, inFlight,
+    limit, inFlight, rawBody,
   );
+}
+
+/** Audio uses the same authenticated error path; multipart is serialized before the tunnel. */
+export function postAudio(t: Transport, secret: string, kind: 'transcriptions' | 'speech', body: ArrayBuffer | string, contentType: string, signal: AbortSignal): Promise<Response> {
+  return call(t, secret, `/v1/audio/${kind}`, { method: 'POST', body, headers: { 'content-type': contentType }, signal });
 }
 
 /**
