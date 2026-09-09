@@ -62,3 +62,12 @@ export function attachmentFields(attachments: readonly DisplayAttachment[]): { i
   }
   return { images, files, attachmentOrder };
 }
+/** Retained extracted text only; the edited turn and unsent attachments are outside this budget. */
+export function retainedFileBytes(messages: readonly { id: string; files?: readonly AttachedFile[] }[], editingId?: string | null): number {
+  return messages.reduce((sum, m) => sum + (m.id === editingId ? 0 : (m.files ?? []).reduce((n, f) => n + new TextEncoder().encode(f.text).length, 0)), 0);
+}
+export interface AttachmentNotice { message: string; danger: boolean }
+export function rejectionNotice(error: unknown): AttachmentNotice {
+  const e = error as { message?: unknown; reason?: unknown; danger?: unknown } | null;
+  return { message: typeof e?.message === 'string' ? e.message : tr('app_could_not_read_that_image'), danger: e?.danger === true || ['count', 'storage', 'over_context', 'body_too_large'].includes(String(e?.reason)) };
+}

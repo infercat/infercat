@@ -112,6 +112,7 @@ try {
   const p = await connected(1280, 'en');
   await attach(p, 'drop', 5); await p.waitForFunction(() => document.querySelectorAll('.thumb img').length === 4);
   check((await p.locator('.image-notice').innerText()).includes('4 images'), 'four-image cap');
+  check(await p.locator('.attached-line.bad.image-notice').count() === 1, 'typed count refusal uses danger line');
   // Actual browser EXIF and IndexedDB transaction checks, using the same production functions.
   const actual = await p.evaluate(async () => {
     const { prepareImage } = await import('/src/images.ts');

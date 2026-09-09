@@ -1,4 +1,4 @@
-import { ACCEPT, admit, attachmentFields, type Attachment, type DisplayAttachment, type ClipboardData } from '../attachments';
+import { ACCEPT, admit, attachmentFields, retainedFileBytes, rejectionNotice, type AttachmentNotice, type Attachment, type DisplayAttachment, type ClipboardData } from '../attachments';
 import { AttachedImages, type ReadingAttachment } from './Images';
 import { imageCopy, fitsRequest, type ImageData } from '../images';
 import { readImages, storeImages, preparedFrom } from '../image-store';
@@ -119,7 +119,8 @@ export default function Chat({ state, live, dispatch, onRedial, reconnecting = f
   const [imageData, setImageData] = useState<ImageData>({});
   const [loadedImageRefs, setLoadedImageRefs] = useState('');
   const [missingChats, setMissingChats] = useState<Set<string>>(() => new Set());
-  const [imageNotice, setImageNotice] = useState('');
+  const [imageNotice, setImageNotice] = useState<AttachmentNotice | null>(null);
+  const [editingTurnId, setEditingTurnId] = useState<string | null>(null);
   const [banner, setBanner] = useState<FriendlyError | null>(null);
   const [retryUntil, setRetryUntil] = useState(0);
   const [now, setNow] = useState(() => Date.now());
@@ -327,7 +328,7 @@ export default function Chat({ state, live, dispatch, onRedial, reconnecting = f
       }
       const request = { model, messages, temperature: settings.temperature, ...thinkingFields(settings.thinking) };
       if (!fitsRequest(request)) {
-        setImageNotice(tr('app_over_message_size', { size: '4 MB' }));
+        setImageNotice(rejectionNotice({ reason: 'body_too_large', message: tr('app_over_message_size', { size: '4 MB' }) }));
         setStreaming(false); abort.current = null; return;
       }
       const note =
@@ -385,7 +386,7 @@ export default function Chat({ state, live, dispatch, onRedial, reconnecting = f
 
   async function send(text: string): Promise<void> {
     if (streaming || locked || readOnly || (text.trim() === '' && !attached.length)) return;
-    if (attached.some((a) => a.kind === 'image') && !vision) { setImageNotice(tr('app_model_cant_see_images', { model: modelLabel(model) })); return; }
+    if (attached.some((a) => a.kind === 'image') && !vision) { setImageNotice(rejectionNotice({ reason: 'no_vision', message: tr('app_model_cant_see_images', { model: modelLabel(model) }) })); return; }
     const sending = attached.flatMap((a) => a.kind === 'image' ? [a.image] : []);
     const fresh = Object.fromEntries(sending.map((i) => [i.id, i.data]));
     // The turn goes into the thread before anything is sent: if nothing comes back it is still
@@ -393,7 +394,7 @@ export default function Chat({ state, live, dispatch, onRedial, reconnecting = f
     const message: Message = { id: newId(), role: 'user', content: text.trim(), ...attachmentFields(attached) };
     const history = [...conv.messages, message];
     if (!fitsRequest({ model, messages: carried(history, settings, me.host.upstream.model_context, message, { ...imageData, ...fresh }).messages, temperature: settings.temperature, ...thinkingFields(settings.thinking) })) {
-      setImageNotice(tr('app_over_message_size', { size: '4 MB' })); return;
+      setImageNotice(rejectionNotice({ reason: 'body_too_large', message: tr('app_over_message_size', { size: '4 MB' }) })); return;
     }
     setStreaming(true);
     const next: Conversation = {
@@ -406,7 +407,7 @@ export default function Chat({ state, live, dispatch, onRedial, reconnecting = f
     persist(next); // before any I/O: a reload from here still has the reader's words (013)
     setDraft('');
     setAttached([]);
-    setImageNotice('');
+    setImageNotice(null);
     pinned.current = true;
     if (sending.length) await storeImages(scope, message.id, sending);
     if (!leaderRef.current) { setStreaming(false); return; }
@@ -445,7 +446,8 @@ export default function Chat({ state, live, dispatch, onRedial, reconnecting = f
     const next = newConversation();
     setConvs((prev) => [next, ...prev.filter((c) => c.messages.length > 0)]);
     setCurrentId(next.id);
-    setAttached([]); setDraft(''); setImageNotice('');
+    setEditingTurnId(null);
+    setAttached([]); setDraft(''); setImageNotice(null);
     setDrawer(false);
     setBanner(null);
     composer.current?.focus();
@@ -518,7 +520,8 @@ export default function Chat({ state, live, dispatch, onRedial, reconnecting = f
                 className="conv-open"
                 onClick={() => {
                   setCurrentId(c.id);
-                  setAttached([]); setDraft(''); setImageNotice('');
+                  setEditingTurnId(null);
+                  setAttached([]); setDraft(''); setImageNotice(null);
                   setDrawer(false);
                 }}
               >
@@ -613,6 +616,7 @@ export default function Chat({ state, live, dispatch, onRedial, reconnecting = f
                   key={m.id}
                   message={m}
                   imageData={imageData}
+                  onEditing={setEditingTurnId}
                   imagesLoaded={loadedImageRefs === imageRefs}
                   host={host}
                   live={streaming && i === conv.messages.length - 1}
@@ -682,7 +686,7 @@ export default function Chat({ state, live, dispatch, onRedial, reconnecting = f
           attachments={attached}
           onAttachments={setAttached}
           modelContext={me.host.upstream.model_context}
-          storedBytes={new TextEncoder().encode(JSON.stringify(conv)).length}
+          storedBytes={retainedFileBytes(conv.messages, editingTurnId)}
           vision={vision}
           model={modelLabel(model)}
           notice={imageNotice}
@@ -858,8 +862,8 @@ function Composer({
   storedBytes: number;
   vision: boolean;
   model: string;
-  notice: string;
-  onNotice: (text: string) => void;
+  notice: AttachmentNotice | null;
+  onNotice: (notice: AttachmentNotice | null) => void;
   accepts: (attachments: Attachment[]) => boolean;
   text: string;
   onText: (t: string) => void;
@@ -884,7 +888,7 @@ function Composer({
     if (disabled || streaming) return;
     const files = Array.isArray(input) ? input : Array.from(input.files);
     const inputs = files.length ? files.map((file) => ({ input: [file] as File[] | ClipboardData, name: file.name })) : [{ input, name: tr('f_paste') }];
-    onNotice('');
+    onNotice(null);
     for (const item of inputs) {
       const id = crypto.randomUUID(), controller = new AbortController();
       jobs.current.set(id, controller);
@@ -896,16 +900,16 @@ function Composer({
           if (!mounted.current || controller.signal.aborted) return;
           if (!added.length) { fallback?.(); return; }
           const next = [...current.current, ...added];
-          if (!accepts(next)) { onNotice(tr('app_over_message_size', { size: '4 MB' })); return; }
+          if (!accepts(next)) { onNotice(rejectionNotice({ reason: 'body_too_large', message: tr('app_over_message_size', { size: '4 MB' }) })); return; }
           update(next);
-        } catch (error) { if (mounted.current && !controller.signal.aborted) onNotice(error instanceof Error ? error.message : tr('app_could_not_read_that_image')); }
+        } catch (error) { if (mounted.current && !controller.signal.aborted) onNotice(rejectionNotice(error)); }
         finally { jobs.current.delete(id); if (mounted.current) setReading((prev) => prev.filter((r) => r.id !== id)); }
       });
     }
   }
   const data = Object.fromEntries(attachments.flatMap((a) => a.kind === 'image' ? [[a.image.id, a.image.data]] : []));
   const accept = ACCEPT(vision);
-  const oversized = notice === tr('app_over_message_size', { size: '4 MB' });
+  const danger = notice?.danger === true;
   // The field's height follows its content, never the other way round: measured from the text on
   // every change and on every viewport change, so a cleared field shrinks back and a rotated phone
   // re-fits. `scrollHeight` excludes the border and the box is border-box, so the border is added or
@@ -938,8 +942,8 @@ function Composer({
       onDragOver={(e) => { if (e.dataTransfer.types.includes('Files')) { e.preventDefault(); setOver(true); } }}
       onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setOver(false); }}
       onDrop={(e) => { e.preventDefault(); setOver(false); const files = Array.from(e.dataTransfer.files); if (files.length) void attach(files); }}>
-      <AttachedImages attachments={attachments} data={data} reading={reading} onCancel={(id) => { jobs.current.get(id)?.abort(); setReading((prev) => prev.filter((r) => r.id !== id)); }} onRemove={(id) => { update(current.current.filter((a) => a.id !== id)); onNotice(''); }} />
-      {oversized && <p className="attached-line bad image-notice" role="status">{notice}</p>}
+      <AttachedImages attachments={attachments} data={data} reading={reading} onCancel={(id) => { jobs.current.get(id)?.abort(); setReading((prev) => prev.filter((r) => r.id !== id)); }} onRemove={(id) => { update(current.current.filter((a) => a.id !== id)); onNotice(null); }} />
+      {danger && <p className="attached-line bad image-notice" role="status">{notice?.message}</p>}
       <div className={`composer-box ${over ? 'over' : ''}`}>
         <input ref={picker} type="file" accept={accept} multiple hidden onChange={(e) => { void attach(Array.from(e.target.files ?? [])); e.target.value = ''; }} />
         {accept !== '' && <button className="attach" aria-label={tr(ACCEPT(false) ? (vision ? 'app_attach' : 'app_attach_file') : 'app_attach_an_image')} onClick={() => { if (!disabled && !streaming) picker.current?.click(); }}>+</button>}
@@ -950,7 +954,7 @@ function Composer({
           aria-label={tr('app_message')}
           placeholder={tr('app_message_the_host_s_model')}
           disabled={disabled}
-          onChange={(e) => { onText(e.target.value); onNotice(''); }}
+          onChange={(e) => { onText(e.target.value); onNotice(null); }}
           onKeyDown={(e) => {
             // On a touch keyboard Return is the only way to make a new line, so Send is the only
             // way to send (014 promise 6). Enter mid-composition commits an IME candidate and must
@@ -977,7 +981,7 @@ function Composer({
           </button>
         )}
       </div>
-      {(over || (!oversized && notice) || hint) && <p className={`hint ${notice && !oversized ? 'image-notice' : ''}`} role={notice ? 'status' : undefined}>{over ? tr('app_drop_to_attach') : (!oversized && notice) || hint}</p>}
+      {(over || (!danger && notice?.message) || hint) && <p className={`hint ${notice && !danger ? 'image-notice' : ''}`} role={notice ? 'status' : undefined}>{over ? tr('app_drop_to_attach') : (!danger && notice?.message) || hint}</p>}
     </div>
   );
 }
