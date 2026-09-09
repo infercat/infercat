@@ -168,6 +168,7 @@ export const zh = {
   app_write_a_haiku_about_borrowing_a_stranger_s_gpu: '写一首关于借用陌生人 GPU 的俳句。',
   app_what_can_you_help_me_with: '你能帮我做些什么？',
   app_waiting_for_a_model: '正在等待模型。',
+  app_waiting_for_model_load: '正在等待 {host} 加载 {model}…',
   app_message: '消息',
   app_message_the_host_s_model: '给主机的模型发消息…',
   app_stop: '停止',

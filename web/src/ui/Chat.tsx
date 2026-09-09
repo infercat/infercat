@@ -114,6 +114,7 @@ export default function Chat({ state, live, dispatch, onRedial, reconnecting = f
   });
   const [currentId, setCurrentId] = useState('');
   const [streaming, setStreaming] = useState(false);
+  const [waitingForHeaders, setWaitingForHeaders] = useState(false);
   const [draft, setDraft] = useState('');
   const [attached, setAttached] = useState<Attachment[]>([]);
   const [imageData, setImageData] = useState<ImageData>({});
@@ -353,6 +354,7 @@ export default function Chat({ state, live, dispatch, onRedial, reconnecting = f
           undefined,
           host,
           refreshMe,
+          setWaitingForHeaders,
         )) {
           if (ev.kind === 'error') failed = { code: ev.code, error: ev.error };
           reply = reduceReply(reply, ev);
@@ -700,6 +702,7 @@ export default function Chat({ state, live, dispatch, onRedial, reconnecting = f
           text={draft}
           onText={setDraft}
           streaming={streaming}
+          status={streaming && waitingForHeaders ? tr('app_waiting_for_model_load', { host: host || tr('app_the_host_lowercase'), model: modelLabel(model) }) : null}
           touch={touch}
           disabled={locked || readOnly}
           hint={
@@ -849,6 +852,7 @@ function Composer({
   text,
   onText,
   streaming,
+  status,
   touch,
   disabled,
   hint,
@@ -868,6 +872,7 @@ function Composer({
   text: string;
   onText: (t: string) => void;
   streaming: boolean;
+  status: string | null;
   touch: boolean;
   /** The invite is off, or this tab does not own the store: nothing can be sent from here. */
   disabled: boolean;
@@ -981,7 +986,7 @@ function Composer({
           </button>
         )}
       </div>
-      {(over || (!danger && notice?.message) || hint) && <p className={`hint ${notice && !danger ? 'image-notice' : ''}`} role={notice ? 'status' : undefined}>{over ? tr('app_drop_to_attach') : (!danger && notice?.message) || hint}</p>}
+      {(status || over || (!danger && notice?.message) || hint) && <p className={`hint ${notice && !danger ? 'image-notice' : ''}`} role={status || notice ? 'status' : undefined}>{status || (over ? tr('app_drop_to_attach') : (!danger && notice?.message) || hint)}</p>}
     </div>
   );
 }

@@ -180,23 +180,18 @@ export type StreamEvent =
   | { kind: 'error'; code: string; error: FriendlyError };
 
 /**
- * How long the client waits for the *host* — not for the model. `noticeMs` is when the reply says
- * "still waiting"; `answerMs` is when a host that has not even answered the HTTP request is
- * declared asleep. That clock stops the moment a response head arrives: from then on the host is
- * demonstrably awake and only its own deadlines apply, so a slow GPU is never called offline
- * (014 promise 1; the bridge's own 30 s dial timeout is too long to be the first thing a friend
- * learns from). `idleMs` is the fourth silence (020 promise 2): the head is out and then nothing
- * — no token, no keepalive — for this long. On its own that is not evidence either (a long prompt
- * takes a slow GPU that long to read), so it is checked against /me, and only a host that is
- * unhealthy or unreachable ends the reply.
+ * The pre-header first-byte deadline matches the gateway's upstream patience: loading a model
+ * is normal work, not evidence that its host is asleep. The five-second notice uses this same
+ * phase; after headers, the existing idle timer checks host health before ending a slow stream.
  */
 export interface StreamDeadlines {
   noticeMs: number;
-  answerMs: number;
+  firstByteMs: number;
   idleMs: number;
 }
 
-export const DEFAULT_DEADLINES: StreamDeadlines = { noticeMs: 5_000, answerMs: 15_000, idleMs: 15_000 };
+export const FIRST_BYTE_TIMEOUT_MS = 120_000;
+export const DEFAULT_DEADLINES: StreamDeadlines = { noticeMs: 5_000, firstByteMs: FIRST_BYTE_TIMEOUT_MS, idleMs: 15_000 };
 
 /**
  * A chat completion as a stream of events. Nothing here throws: a failure anywhere — a non-200
@@ -216,6 +211,7 @@ export async function* chatEvents(
   deadlines: StreamDeadlines = DEFAULT_DEADLINES,
   hostName?: string,
   probe?: () => Promise<boolean>,
+  waitingForHeaders?: (waiting: boolean) => void,
 ): AsyncGenerator<StreamEvent, void, void> {
   const pump = new Pump<StreamEvent>();
   const ac = new AbortController();
@@ -227,21 +223,17 @@ export async function* chatEvents(
   let spoke = false; // a token arrived: there is something on screen
   let ended: StreamEvent | null = null; // we, not the reader, aborted — and this is why
   const sayWaiting = (): void => {
+    if (!answered) waitingForHeaders?.(true);
     if (!spoke) pump.push({ kind: 'waiting' });
   };
   let notice = setTimeout(sayWaiting, deadlines.noticeMs);
   const giveUp = setTimeout(() => {
-    // What we know at this point is that the host has not answered at all. Two things cause that:
-    // it is gone, or it is queued behind a full engine (the gateway parks a request for up to 30 s).
-    // A tunnel ping cannot tell them apart — measured against a real host killed mid-send, the
-    // relay kept answering pings for ~45 s after the process died — so the honest move is to stop
-    // waiting and say the likelier thing with the hedge the copy already carries ("probably"). A
-    // busy host that answers later says so in its own words, and Reconnect costs the reader 2 s.
+    // No response within the same budget as the gateway, including on-demand model loading.
     if (!answered) {
       ended = hostFailed('host_asleep', hostName);
       ac.abort();
     }
-  }, deadlines.answerMs);
+  }, deadlines.firstByteMs);
 
   // The fourth silence. `seen` counts what has arrived since the head; a probe that comes back
   // after more has arrived changes nothing, because the host is demonstrably still talking.
@@ -266,6 +258,8 @@ export async function* chatEvents(
   };
   const onAnswered = (): void => {
     answered = true;
+    clearTimeout(giveUp);
+    waitingForHeaders?.(false);
     armIdle();
   };
 
@@ -296,6 +290,7 @@ export async function* chatEvents(
   try {
     for await (const ev of pump.drain()) yield ev;
   } finally {
+    waitingForHeaders?.(false);
     clearTimeout(notice);
     clearTimeout(giveUp);
     if (idle !== null) clearTimeout(idle);
