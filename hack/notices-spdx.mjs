@@ -1,5 +1,7 @@
 // SPDX selection for the existing ALLOWED policy. Parsing never silently skips unknown syntax.
-import { readFileSync, writeFileSync } from 'node:fs';
+import { readFileSync, writeFileSync, existsSync } from 'node:fs';
+import { createHash } from 'node:crypto';
+import { createRequire } from 'node:module';
 import { join } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
@@ -53,6 +55,51 @@ export function packageLicenses(name, version, metadata, allowed) {
   return selectLicenses(override?.metadata === metadata ? override.license : metadata, allowed);
 }
 
+// Inventory comes only from the production lockfile closure, including every optional edge.
+// pnpm's installed report supplies metadata/text paths, never membership.
+export function lockedPackages(lock, installed) {
+  if (String(lock.lockfileVersion) !== '9.0' || !lock.importers?.['.'] || !lock.packages || !lock.snapshots) throw new Error('Unsupported pnpm lockfile');
+  const ids = new Set(), visited = new Set();
+  function walk(entry) {
+    for (const [name, value] of Object.entries({ ...entry.dependencies, ...entry.optionalDependencies })) {
+      const version = typeof value === 'string' ? value : value.version;
+      const key = `${name}@${version}`, id = key.split('(')[0];
+      if (visited.has(key)) continue;
+      if (!lock.snapshots[key] || !lock.packages[id]) throw new Error(`Missing locked package: ${key}`);
+      visited.add(key); ids.add(id); walk(lock.snapshots[key]);
+    }
+  }
+  walk(lock.importers['.']);
+  const metadata = new Map();
+  for (const [license, packages] of Object.entries(installed)) for (const pkg of packages) {
+    for (const version of pkg.versions) metadata.set(`${pkg.name}@${version}`, { ...pkg, versions: [version], license });
+  }
+  const groups = {}, family = '@napi-rs/canvas@1.0.8';
+  let familyText;
+  for (const id of [...ids].sort()) {
+    let pkg = metadata.get(id);
+    if (/^@napi-rs\/canvas-[a-z0-9-]+@1\.0\.8$/.test(id)) {
+      const name = id.slice(0, id.lastIndexOf('@'));
+      const parent = metadata.get(family);
+      if (lock.snapshots[family]?.optionalDependencies?.[name] !== '1.0.8' || !ids.has(family) || parent?.license !== 'MIT') throw new Error(`Unreviewed native family: ${id}`);
+      const root = parent.paths.find((path) => JSON.parse(readFileSync(join(path, 'package.json'), 'utf8')).version === '1.0.8');
+      familyText = readFileSync(join(root, 'LICENSE'), 'utf8');
+      // Reviewed parent LICENSE and all 11 registry package.json records at 1.0.8 (MIT, same repo).
+      // Native tarballs omit LICENSE; pin the parent's text, never infer from a name alone.
+      if (createHash('sha256').update(familyText).digest('hex') !== '8802fecf9da4367bc23bcf20b21cc143785fc6c92b152f3fa7fbe6ce08d344d6') throw new Error('Canvas family LICENSE changed');
+      if (pkg && pkg.license !== 'MIT') throw new Error(`Canvas licence changed: ${id}`);
+      for (const path of pkg?.paths ?? []) {
+        const file = join(path, 'LICENSE');
+        if (existsSync(file) && readFileSync(file, 'utf8') !== familyText) throw new Error(`Canvas native LICENSE differs: ${id}`);
+      }
+      pkg ??= { name, versions: ['1.0.8'], paths: [], license: 'MIT' };
+    }
+    if (!pkg) throw new Error(`No licence metadata for locked package: ${id}`);
+    (groups[pkg.license] ??= []).push(pkg);
+  }
+  return { groups, familyText };
+}
+
 /** One TSV entry per required licence; conjunctive obligations are never collapsed into one. */
 export function normalizePackages(groups, allowed) {
   const rows = [], texts = [];
@@ -86,7 +133,14 @@ export function normalizePackages(groups, allowed) {
 }
 if (process.argv[1] && import.meta.url === pathToFileURL(process.argv[1]).href) {
   try {
-    const result = normalizePackages(JSON.parse(readFileSync(process.argv[2], 'utf8')), new Set(process.argv[3].split(' ')));
+    const installed = JSON.parse(readFileSync(process.argv[2], 'utf8'));
+    // Reuse the already locked ESLint dependency; no new runtime or tool dependency.
+    const webRequire = createRequire(new URL('../web/package.json', import.meta.url));
+    const yaml = createRequire(webRequire.resolve('eslint/package.json'))('js-yaml');
+    const { groups, familyText } = lockedPackages(yaml.load(readFileSync(process.argv[5], 'utf8')), installed);
+    const result = normalizePackages(groups, new Set(process.argv[3].split(' ')));
+    if (familyText) result.markdown += `\n## @napi-rs/canvas native family 1.0.8 — MIT text\n\nAll locked variants are included through pdfjs-dist's optional production dependency.\nThe native packages declare MIT and the same upstream repository; their published tarballs\nomit LICENSE. Text comes from @napi-rs/canvas@1.0.8/LICENSE (pinned SHA-256); an installed\nvariant's own LICENSE, when present, must be byte-identical.\n\n\`\`\`\n${familyText.trimEnd()}\n\`\`\`\n`;
+
     writeFileSync(process.argv[4], result.markdown);
     process.stdout.write(result.tsv);
   } catch (error) { process.stderr.write(`notices: ${error.message}\n`); process.exitCode = 1; }
