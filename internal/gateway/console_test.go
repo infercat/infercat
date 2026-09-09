@@ -7,6 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/http/httptest"
+	"net/netip"
 	"strings"
 	"sync"
 	"testing"
@@ -154,4 +155,148 @@ func TestConsoleRotationAndBounds(t *testing.T) {
 	if w := consoleCall(disabled, "GET", "/console/", next, ""); w.Code != 404 {
 		t.Fatal("listener off", w.Code)
 	}
+}
+
+func TestConsoleFailureBudgetBeforeHashAndPeerIsolation(t *testing.T) {
+	store, _ := adminkey.Open(t.TempDir())
+	secret, _ := store.Mint(false)
+	events := &consoleEvents{}
+	logged := 0
+	h := Console(store, "127.0.0.1:1", func() string { return "local" }, events, func(string, ...any) { logged++ }).(*consoleGateway)
+	now := time.Now()
+	h.now = func() time.Time { return now }
+	hashes := 0
+	h.auth = func(s string) bool { hashes++; return store.Authenticate(s) }
+	call := func(peer, raw string) int {
+		r := httptest.NewRequest("GET", "/console/api/not-allowed", nil)
+		r.RemoteAddr = peer
+		r.Header.Set("Authorization", raw)
+		r.Header.Set("X-Forwarded-For", "different")
+		w := httptest.NewRecorder()
+		h.ServeHTTP(w, r)
+		return w.Code
+	}
+	for i := 0; i < 180; i++ {
+		if got := call("[::ffff:192.0.2.1]:1", "Bearer "+secret); got != 404 {
+			t.Fatal("success charged failure budget", got)
+		}
+	}
+	for i := 0; i < 30; i++ {
+		if got := call("192.0.2.1:2", "Bearer wrong"); got != 401 {
+			t.Fatal(i, got)
+		}
+	}
+	before := hashes
+	for _, raw := range []string{"Bearer " + secret, "Bearer wrong", ""} {
+		if got := call("192.0.2.1:3", raw); got != 429 {
+			t.Fatal(got)
+		}
+	}
+	if hashes != before || logged != 1 {
+		t.Fatal("hashed or repeatedly logged exhausted peer", hashes, logged)
+	}
+	if got := call("192.0.2.2:1", "Bearer "+secret); got != 404 {
+		t.Fatal("peer leaked", got)
+	}
+	now = now.Add(time.Minute)
+	if got := call("192.0.2.1:4", "Bearer "+secret); got != 404 {
+		t.Fatal("expiry", got)
+	}
+	for i := 0; i < 30; i++ {
+		if got := call("192.0.2.3:1", ""); got != 401 {
+			t.Fatal(got)
+		}
+	}
+	before = hashes
+	if got := call("192.0.2.3:2", "Bearer wrong"); got != 429 || hashes != before || logged != 2 {
+		t.Fatal("missing credentials bypassed budget", got)
+	}
+	var refused int
+	for _, e := range events.events {
+		if e.Status == 429 {
+			refused++
+		}
+		if e.Prompt != "" || e.Completion != "" {
+			t.Fatal("usage text")
+		}
+	}
+	if refused != 4 {
+		t.Fatal("refusal counts", refused)
+	}
+}
+func TestConsoleFailureReservationsAndBoundedMap(t *testing.T) {
+	store, _ := adminkey.Open(t.TempDir())
+	h := Console(store, "127.0.0.1:1", func() string { return "" }, nil).(*consoleGateway)
+	r := httptest.NewRequest("GET", "/console/", nil)
+	var finish []func(bool)
+	for i := 0; i < 30; i++ {
+		f := h.reserveAuthentication(r)
+		if f == nil {
+			t.Fatal(i)
+		}
+		finish = append(finish, f)
+	}
+	if h.reserveAuthentication(r) != nil {
+		t.Fatal("inflight reservations overrun")
+	}
+	finish[0](true)
+	f := h.reserveAuthentication(r)
+	if f == nil {
+		t.Fatal("success not refunded")
+	}
+	f(false)
+	for _, f := range finish[1:] {
+		f(false)
+	}
+	if h.reserveAuthentication(r) != nil {
+		t.Fatal("failures refunded")
+	}
+	h.failures = make(map[netip.Addr]*consoleFailure)
+	for i := 0; i < 4096; i++ {
+		h.failures[netip.AddrFrom4([4]byte{10, byte(i >> 8), byte(i), 1})] = &consoleFailure{started: time.Now()}
+	}
+	if h.reserveAuthentication(r) != nil || len(h.failures) != 4096 {
+		t.Fatal("cap evicted peers")
+	}
+	h.failures = make(map[netip.Addr]*consoleFailure)
+	peer := netip.MustParseAddr("192.0.2.77")
+	r = r.WithContext(context.WithValue(r.Context(), sessionContextKey{}, peer))
+	f = h.reserveAuthentication(r)
+	f(false)
+	if h.failures[peer] == nil {
+		t.Fatal("trusted session identity not used")
+	}
+}
+
+func TestConsoleConcurrentFailuresReserveBeforeHash(t *testing.T) {
+	store, _ := adminkey.Open(t.TempDir())
+	store.Mint(false)
+	h := Console(store, "127.0.0.1:1", func() string { return "" }, nil).(*consoleGateway)
+	entered := make(chan struct{}, 30)
+	release := make(chan struct{})
+	h.auth = func(string) bool { entered <- struct{}{}; <-release; return false }
+	var wg sync.WaitGroup
+	for i := 0; i < 30; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			if got := consoleCall(h, "GET", "/console/", "wrong", "").Code; got != 401 {
+				t.Error(got)
+			}
+		}()
+	}
+	for i := 0; i < 30; i++ {
+		select {
+		case <-entered:
+		case <-time.After(time.Second):
+			close(release)
+			wg.Wait()
+			t.Fatal("hash not entered")
+		}
+	}
+	if got := consoleCall(h, "GET", "/console/", "wrong", "").Code; got != 429 {
+		t.Fatal("did not reject before hashing", got)
+	}
+	close(release)
+	wg.Wait()
 }

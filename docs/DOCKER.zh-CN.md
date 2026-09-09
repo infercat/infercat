@@ -49,8 +49,10 @@ docker exec infercat infercat --data-dir /data keys revoke KEY_ID --yes
 本地控制台只监听**容器内部**的回环地址，因此无法从容器的桥接网络外访问。
 映射 9101 端口也不会改变这一点。请按上面的示例通过 `docker exec` 管理密钥和查看状态。
 
-如果挂载的数据已经启用远程访问，就可以在网页应用中使用管理码打开控制台。
-目前必须先在本地控制台启用远程访问并保留管理码。用于在终端启用远程访问的命令将在下个版本提供。
+在运行中的容器上执行 `docker exec infercat infercat --data-dir /data remote on` 即可启用远程访问。
+打开返回的链接或在网页中粘贴管理码，即可进入 `/console`。同样通过 `docker exec`
+执行 `remote status`、`remote rotate` 或 `remote off`；脚本可使用 `--json`。
+容器内部的回环控制台必须保持开启。这些命令使用主机的本地管理 API，不需要 shell 或映射控制台端口。
 管理码可以管理密钥和设置，应与朋友的邀请码分开保管。
 
 ## 构建但不发布

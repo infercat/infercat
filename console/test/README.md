@@ -74,3 +74,11 @@ transport, changes a limit, observes local rotation as refusal, then observes of
 All processes stop afterwards. Set CAPTURE_CONSOLE_FIXTURE=1 to refresh the labelled dev fixture; the proof writes ignored
 `console/test/evidence/remote-web/` screenshots, request summaries and bundle-size evidence.
 Public deployment and its post-deploy live gate follow the PM's landing/release coordination.
+
+## 090 recovery
+
+`INFERCAT_PROOF_BINARY=/tmp/infercat-090 node console/test/recovery-live.mjs` from the repo root
+starts a fresh isolated host with a damaged admin record and an isolated engine. It checks the
+English/Chinese Settings diagnostic, CLI repair/rotation/off/status, restart persistence, listener-off
+refusals and secret-free host logs. Browser screenshots and the report go to ignored
+`console/test/evidence/recovery/`; all started host, engine and browser processes are stopped.

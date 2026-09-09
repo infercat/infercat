@@ -248,6 +248,13 @@ whitelist. A separate `ia1.<address>.<secret>` bearer controls keys and settings
 Its SHA-256 hash and enabled-since timestamp live in mode-0600 `admin.json`, separate from
 friend keys. The switch persists across restarts; enabling requires the loopback console on.
 Off returns 404; a wrong bearer while on returns 401. Rotation invalidates the old bearer.
+A separate per-peer rolling failure budget allows 30 missing/wrong credentials per minute:
+in-flight checks reserve a slot before hashing, successful checks refund it, and exhaustion
+returns 429 before hashing even for a valid code. The trusted tunnel peer identity (or normalized
+remote IP fallback, never headers) owns the budget. Idle entries expire; the 4096-entry cap
+refuses new peers instead of evicting existing budgets. A credential-free exhaustion line is
+logged at most once per minute globally; usage retains refusal counts. The existing authenticated
+read/write request budgets are unchanged.
 The gateway forwards only validated methods/paths and the usage window to its literal loopback
 listener, adding the local token itself and replacing caller headers. Remote settings cannot
 change the console address; no console settings route accepts an engine URL or prompt logging.

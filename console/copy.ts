@@ -1,4 +1,5 @@
 export const copy = {
+  remote_recovery: ["Remote access is off: {0} is unreadable or invalid. Turn remote access on again to mint a new code.", "远程访问已关闭：{0} 无法读取或内容无效。请重新开启远程访问以生成新的管理码。"],
   remote_pill: ["through the tunnel", "经隧道"],
   remote_suffix: ["remote", "远程"],
   forget_console: ["Forget this console", "忘记这个控制台"],

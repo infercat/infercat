@@ -9,6 +9,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -17,19 +18,21 @@ import (
 )
 
 type State struct {
-	Enabled bool      `json:"enabled"`
-	Since   time.Time `json:"since,omitempty"`
-	InUse   bool      `json:"in_use"`
+	WarningFile string    `json:"warning_file,omitempty"`
+	Enabled     bool      `json:"enabled"`
+	Since       time.Time `json:"since,omitempty"`
+	InUse       bool      `json:"in_use"`
 }
 type record struct {
 	Hash  string    `json:"hash"`
 	Since time.Time `json:"since"`
 }
 type Store struct {
-	mu    sync.Mutex
-	path  string
-	value record
-	seen  time.Time
+	mu      sync.Mutex
+	path    string
+	value   record
+	seen    time.Time
+	warning bool
 }
 
 func Open(dir string) (*Store, error) {
@@ -39,24 +42,35 @@ func Open(dir string) (*Store, error) {
 		return s, nil
 	}
 	if err != nil {
-		return nil, err
+		return s.damaged(), nil
 	}
 	if err = json.Unmarshal(b, &s.value); err != nil {
-		return nil, err
+		return s.damaged(), nil
 	}
 	h, e := hex.DecodeString(strings.TrimPrefix(s.value.Hash, "sha256:"))
 	if e != nil || len(h) != sha256.Size || !strings.HasPrefix(s.value.Hash, "sha256:") {
-		return nil, errors.New("invalid admin.json hash")
+		return s.damaged(), nil
 	}
 	if err = os.Chmod(s.path, 0600); err != nil {
-		return nil, err
+		return s.damaged(), nil
 	}
 	return s, nil
+}
+func (s *Store) damaged() *Store { s.value = record{}; s.warning = true; return s }
+func (s *Store) Warning() string {
+	if path := s.State().WarningFile; path != "" {
+		return fmt.Sprintf("Remote access is off: %s is unreadable or invalid. Turn remote access on again to mint a new code.", path)
+	}
+	return ""
 }
 func (s *Store) State() State {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return State{Enabled: s.value.Hash != "", Since: s.value.Since, InUse: !s.seen.IsZero() && time.Since(s.seen) < 10*time.Minute}
+	warning := ""
+	if s.warning {
+		warning = s.path
+	}
+	return State{WarningFile: warning, Enabled: s.value.Hash != "", Since: s.value.Since, InUse: !s.seen.IsZero() && time.Since(s.seen) < 10*time.Minute}
 }
 func (s *Store) Authenticate(secret string) bool {
 	sum := sha256.Sum256([]byte(secret))
@@ -109,6 +123,7 @@ func (s *Store) Mint(rotate bool) (string, error) {
 	if err != nil {
 		return "", err
 	}
+	s.warning = false
 	s.value = next
 	s.seen = time.Time{}
 	return secret, nil
@@ -119,6 +134,7 @@ func (s *Store) Disable() error {
 	if err := os.Remove(s.path); err != nil && !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
+	s.warning = false
 	s.value = record{}
 	s.seen = time.Time{}
 	return nil
