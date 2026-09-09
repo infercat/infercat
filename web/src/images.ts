@@ -1,5 +1,9 @@
 import { appLanguage, tr } from './i18n/text';
 
+export const IMAGE_ACCEPT = 'image/*';
+export class ImageError extends Error {
+  constructor(readonly reason: 'no_vision' | 'count' | 'cant_read', message: string, options?: ErrorOptions) { super(message, options); this.name = 'ImageError'; }
+}
 export const MAX_IMAGES = 4;
 export const MAX_REQUEST_BYTES = 4 * 1024 * 1024;
 export interface ImageMeta { id: string; w: number; h: number; bytes: number }
@@ -19,9 +23,11 @@ export function dataURL(blob: Blob): Promise<string> {
   });
 }
 /** Browser decoding applies EXIF exactly once; canvas flattens alpha before JPEG encoding. */
-export async function prepareImage(file: Blob): Promise<PreparedImage> {
+export async function prepareImage(file: Blob, signal?: AbortSignal): Promise<PreparedImage> {
+  signal?.throwIfAborted();
   const bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' });
   try {
+    signal?.throwIfAborted();
     const { w, h } = imageSize(bitmap.width, bitmap.height);
     const canvas = document.createElement('canvas');
     canvas.width = w; canvas.height = h;
@@ -30,6 +36,7 @@ export async function prepareImage(file: Blob): Promise<PreparedImage> {
     ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, w, h);
     ctx.drawImage(bitmap, 0, 0, w, h);
     const blob = await new Promise<Blob>((resolve, reject) => canvas.toBlob((b) => b ? resolve(b) : reject(new Error('JPEG encoding failed')), 'image/jpeg', 0.85));
+    signal?.throwIfAborted();
     return { id: crypto.randomUUID(), w, h, bytes: blob.size, blob, data: await dataURL(blob) };
   } finally { bitmap.close(); }
 }

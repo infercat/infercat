@@ -26,7 +26,7 @@ try {
       document.querySelector('.composer textarea').dispatchEvent(new window.ClipboardEvent('paste',{clipboardData:dt,bubbles:true,cancelable:true}));
     });
     if (kind === 'vision') {
-      await page.waitForFunction(() => document.querySelectorAll('.thumb').length === 2);
+      await page.waitForFunction(() => document.querySelectorAll('.thumb img').length === 2);
       let sent;
       page.on('request', (r) => { if (r.url().endsWith('/v1/chat/completions')) sent = JSON.parse(r.postData()); });
       await page.locator('.composer textarea').fill('Describe the color and shape in the first image and the second image. One short sentence.');

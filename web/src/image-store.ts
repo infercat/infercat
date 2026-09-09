@@ -34,6 +34,8 @@ export async function storeImages(scope: string, messageId: string, images: read
       const req = store.index('scope').getAll(scope);
       req.onsuccess = () => {
         const turns = (req.result as StoredTurn[]).filter((t) => t.key !== key);
+        // Transactions serialize insertion order even when two writes share a clock tick.
+        next.at = Math.max(next.at, ...turns.map((t) => t.at + 1));
         if (images.length) { turns.push(next); store.put(next); } else store.delete(key);
         for (const old of evictedTurns(turns.map((t) => ({ key: t.key, at: t.at, bytes: t.images.reduce((n, i) => n + i.blob.size, 0) })))) store.delete(old);
       };

@@ -1,5 +1,6 @@
-import { AttachedImages } from './Images';
-import { imageCopy, imageMeta, fitsRequest, MAX_IMAGES, prepareImage, type ImageData, type ImageMeta, type PreparedImage } from '../images';
+import { ACCEPT, admit, attachmentFields, type Attachment, type DisplayAttachment, type ClipboardData } from '../attachments';
+import { AttachedImages, type ReadingAttachment } from './Images';
+import { imageCopy, fitsRequest, type ImageData } from '../images';
 import { readImages, storeImages, preparedFrom } from '../image-store';
 import { Text } from '../i18n/RichText';
 import { tr, privacy, appLanguage } from '../i18n/text';
@@ -114,7 +115,7 @@ export default function Chat({ state, live, dispatch, onRedial, reconnecting = f
   const [currentId, setCurrentId] = useState('');
   const [streaming, setStreaming] = useState(false);
   const [draft, setDraft] = useState('');
-  const [attached, setAttached] = useState<PreparedImage[]>([]);
+  const [attached, setAttached] = useState<Attachment[]>([]);
   const [imageData, setImageData] = useState<ImageData>({});
   const [loadedImageRefs, setLoadedImageRefs] = useState('');
   const [missingChats, setMissingChats] = useState<Set<string>>(() => new Set());
@@ -384,12 +385,12 @@ export default function Chat({ state, live, dispatch, onRedial, reconnecting = f
 
   async function send(text: string): Promise<void> {
     if (streaming || locked || readOnly || (text.trim() === '' && !attached.length)) return;
-    if (attached.length && !vision) { setImageNotice(tr('app_model_cant_see_images', { model: modelLabel(model) })); return; }
-    const sending = attached;
+    if (attached.some((a) => a.kind === 'image') && !vision) { setImageNotice(tr('app_model_cant_see_images', { model: modelLabel(model) })); return; }
+    const sending = attached.flatMap((a) => a.kind === 'image' ? [a.image] : []);
     const fresh = Object.fromEntries(sending.map((i) => [i.id, i.data]));
     // The turn goes into the thread before anything is sent: if nothing comes back it is still
     // there, marked as undelivered by derivation (022 promise 2), with something to press.
-    const message: Message = { id: newId(), role: 'user', content: text.trim(), ...(sending.length ? { images: sending.map(imageMeta) } : {}) };
+    const message: Message = { id: newId(), role: 'user', content: text.trim(), ...attachmentFields(attached) };
     const history = [...conv.messages, message];
     if (!fitsRequest({ model, messages: carried(history, settings, me.host.upstream.model_context, message, { ...imageData, ...fresh }).messages, temperature: settings.temperature, ...thinkingFields(settings.thinking) })) {
       setImageNotice(tr('app_over_message_size', { size: '4 MB' })); return;
@@ -417,16 +418,16 @@ export default function Chat({ state, live, dispatch, onRedial, reconnecting = f
    * that replaces it carries it as `previous`, behind a disclosure, so a reader who preferred the
    * old one has not lost it to a click (014 promise 16).
    */
-  async function replaceAnswer(text?: string, images?: ImageMeta[]): Promise<void> {
+  async function replaceAnswer(text?: string, attachments?: DisplayAttachment[]): Promise<void> {
     if (streaming || locked || readOnly) return;
     const idx = lastIndexOfRole(conv.messages, 'user');
     if (idx < 0) return;
     const replaced = conv.messages.slice(idx + 1).find((m) => m.content.trim() !== '')?.content;
-    const asked = text === undefined ? (conv.messages[idx] as Message) : { ...(conv.messages[idx] as Message), content: text.trim(), images: images ?? conv.messages[idx]?.images };
+    const asked = text === undefined ? (conv.messages[idx] as Message) : { ...(conv.messages[idx] as Message), content: text.trim(), ...(attachments ? attachmentFields(attachments) : {}) };
     const history: Message[] = [...conv.messages.slice(0, idx), asked];
-    if (images) {
+    if (attachments) {
       setStreaming(true);
-      await storeImages(scope, asked.id, await preparedFrom(images, imageData));
+      await storeImages(scope, asked.id, await preparedFrom(attachments.flatMap((a) => a.kind === 'image' ? [a.image] : []), imageData));
     }
     patch(conv.id, (c) => ({
       ...c,
@@ -438,7 +439,7 @@ export default function Chat({ state, live, dispatch, onRedial, reconnecting = f
   }
 
   const regenerate = () => replaceAnswer();
-  const resend = (text: string, images: ImageMeta[]) => { void replaceAnswer(text, images); };
+  const resend = (text: string, attachments: DisplayAttachment[]) => { void replaceAnswer(text, attachments); };
 
   function startNew(): void {
     const next = newConversation();
@@ -678,15 +679,17 @@ export default function Chat({ state, live, dispatch, onRedial, reconnecting = f
         {missingChats.has(conv.id) && <p className="image-notice" role="status">{tr('app_image_missing')}</p>}
         <Composer
           key={conv.id}
-          images={attached}
-          onImages={setAttached}
+          attachments={attached}
+          onAttachments={setAttached}
+          modelContext={me.host.upstream.model_context}
+          storedBytes={new TextEncoder().encode(JSON.stringify(conv)).length}
           vision={vision}
           model={modelLabel(model)}
           notice={imageNotice}
           onNotice={setImageNotice}
-          accepts={(images) => {
-            const asking: Message = { id: 'draft', role: 'user', content: draft, images: images.map(imageMeta) };
-            const data = { ...imageData, ...Object.fromEntries(images.map((i) => [i.id, i.data])) };
+          accepts={(attachments) => {
+            const asking: Message = { id: 'draft', role: 'user', content: draft, ...attachmentFields(attachments) };
+            const data = { ...imageData, ...Object.fromEntries(attachments.flatMap((a) => a.kind === 'image' ? [[a.image.id, a.image.data]] : [])) };
             return fitsRequest({ model, messages: carried([...conv.messages, asking], settings, me.host.upstream.model_context, asking, data).messages, temperature: settings.temperature, ...thinkingFields(settings.thinking) });
           }}
           ref={composer}
@@ -700,7 +703,7 @@ export default function Chat({ state, live, dispatch, onRedial, reconnecting = f
               ? tr('app_send_will_work_again_the_moment_your_host_resumes')
               : locked || readOnly || touch
                 ? null
-                : tr(vision ? 'app_hint_enter_sends_images' : 'app_enter_sends_shift_enter_makes_a_new_line')
+                : tr(ACCEPT(false) ? (vision ? 'app_hint_enter_sends_attach' : 'app_hint_enter_sends_files') : vision ? 'app_hint_enter_sends_images' : 'app_enter_sends_shift_enter_makes_a_new_line')
           }
           onSend={send}
           onStop={() => abort.current?.abort()}
@@ -772,6 +775,7 @@ function LimitsSheet({ live, messages, onClose }: { live: Live; messages: readon
             <strong>{tr('app_limits_context', { context: compact(context) })}</strong> {tr('app_the_model_s_memory_the_meter_is_what_the')}</p>
         )}
         <p>{tr('app_limits_images')}</p>
+        {ACCEPT(false) && <p>{tr('app_limits_files')}</p>}
         {/* Speed, from where the reader sits (032): this chat's medians and what is inside them. The
             relay round trip is quoted only when there is one: direct mode has no hop. */}
         {pace.n > 0 && (
@@ -837,7 +841,7 @@ function Empty({
 
 function Composer({
   ref,
-  images, onImages, vision, model, notice, onNotice, accepts,
+  attachments, onAttachments, vision, model, modelContext, storedBytes, notice, onNotice, accepts,
   text,
   onText,
   streaming,
@@ -848,13 +852,15 @@ function Composer({
   onStop,
 }: {
   ref: React.RefObject<HTMLTextAreaElement | null>;
-  images: PreparedImage[];
-  onImages: (images: PreparedImage[]) => void;
+  attachments: Attachment[];
+  onAttachments: (attachments: Attachment[]) => void;
+  modelContext: number;
+  storedBytes: number;
   vision: boolean;
   model: string;
   notice: string;
   onNotice: (text: string) => void;
-  accepts: (images: PreparedImage[]) => boolean;
+  accepts: (attachments: Attachment[]) => boolean;
   text: string;
   onText: (t: string) => void;
   streaming: boolean;
@@ -866,29 +872,39 @@ function Composer({
   onStop: () => void;
 }) {
   const picker = useRef<HTMLInputElement>(null);
-  const busy = useRef(false);
   const mounted = useRef(true);
-  const [reading, setReading] = useState(false);
+  const queue = useRef(Promise.resolve());
+  const current = useRef(attachments); current.current = attachments;
+  const jobs = useRef(new Map<string, AbortController>());
+  const [reading, setReading] = useState<ReadingAttachment[]>([]);
   const [over, setOver] = useState(false);
-  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
-  async function attach(files: File[]) {
-    if (disabled || streaming || busy.current) return;
-    if (!vision) { onNotice(tr('app_model_cant_see_images', { model })); return; }
-    busy.current = true; setReading(true); onNotice('');
-    let next = [...images];
-    try {
-      for (const file of files) {
-        if (next.length >= MAX_IMAGES) { onNotice(tr('app_image_limit')); break; }
-        const image = await prepareImage(file);
-        if (!mounted.current) return;
-        if (!accepts([...next, image])) { onNotice(tr('app_over_message_size', { size: '4 MB' })); break; }
-        next = [...next, image];
-        onImages(next);
-      }
-    } catch { if (mounted.current) onNotice(tr('app_could_not_read_that_image')); }
-    finally { busy.current = false; if (mounted.current) setReading(false); }
+  useEffect(() => { mounted.current = true; const active = jobs.current; return () => { mounted.current = false; for (const ac of active.values()) ac.abort(); }; }, []);
+  const update = (next: Attachment[]) => { current.current = next; onAttachments(next); };
+  function attach(input: File[] | ClipboardData, fallback?: () => void) {
+    if (disabled || streaming) return;
+    const files = Array.isArray(input) ? input : Array.from(input.files);
+    const inputs = files.length ? files.map((file) => ({ input: [file] as File[] | ClipboardData, name: file.name })) : [{ input, name: tr('f_paste') }];
+    onNotice('');
+    for (const item of inputs) {
+      const id = crypto.randomUUID(), controller = new AbortController();
+      jobs.current.set(id, controller);
+      setReading((prev) => [...prev, { id, name: item.name, controller }]);
+      queue.current = queue.current.then(async () => {
+        try {
+          controller.signal.throwIfAborted();
+          const added = await admit(item.input, controller.signal, { vision, model, modelContext, attachments: current.current, draft: text, storedBytes });
+          if (!mounted.current || controller.signal.aborted) return;
+          if (!added.length) { fallback?.(); return; }
+          const next = [...current.current, ...added];
+          if (!accepts(next)) { onNotice(tr('app_over_message_size', { size: '4 MB' })); return; }
+          update(next);
+        } catch (error) { if (mounted.current && !controller.signal.aborted) onNotice(error instanceof Error ? error.message : tr('app_could_not_read_that_image')); }
+        finally { jobs.current.delete(id); if (mounted.current) setReading((prev) => prev.filter((r) => r.id !== id)); }
+      });
+    }
   }
-  const data = Object.fromEntries(images.map((i) => [i.id, i.data]));
+  const data = Object.fromEntries(attachments.flatMap((a) => a.kind === 'image' ? [[a.image.id, a.image.data]] : []));
+  const accept = ACCEPT(vision);
   const oversized = notice === tr('app_over_message_size', { size: '4 MB' });
   // The field's height follows its content, never the other way round: measured from the text on
   // every change and on every viewport change, so a cleared field shrinks back and a rotated phone
@@ -911,15 +927,22 @@ function Composer({
   }, [ref, text]);
   return (
     <div className="composer"
-      onPaste={(e) => { const files = Array.from(e.clipboardData.files).filter((f) => f.type.startsWith('image/')); if (files.length) { e.preventDefault(); void attach(files); } }}
+      onPaste={(e) => {
+        const clipboard = e.clipboardData, pasted = clipboard.getData('text/plain');
+        const files = Array.from(clipboard.files), start = ref.current?.selectionStart ?? text.length, end = ref.current?.selectionEnd ?? start;
+        if (!files.length && pasted.length < 4000) return;
+        e.preventDefault();
+        const input = { files: clipboard.files, getData: () => pasted };
+        attach(input, () => { onText(text.slice(0, start) + pasted + text.slice(end)); });
+      }}
       onDragOver={(e) => { if (e.dataTransfer.types.includes('Files')) { e.preventDefault(); setOver(true); } }}
       onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setOver(false); }}
       onDrop={(e) => { e.preventDefault(); setOver(false); const files = Array.from(e.dataTransfer.files); if (files.length) void attach(files); }}>
-      <AttachedImages images={images} data={data} onRemove={(id) => { onImages(images.filter((i) => i.id !== id)); onNotice(''); }} />
+      <AttachedImages attachments={attachments} data={data} reading={reading} onCancel={(id) => { jobs.current.get(id)?.abort(); setReading((prev) => prev.filter((r) => r.id !== id)); }} onRemove={(id) => { update(current.current.filter((a) => a.id !== id)); onNotice(''); }} />
       {oversized && <p className="attached-line bad image-notice" role="status">{notice}</p>}
       <div className={`composer-box ${over ? 'over' : ''}`}>
-        <input ref={picker} type="file" accept="image/*" multiple hidden onChange={(e) => { void attach(Array.from(e.target.files ?? [])); e.target.value = ''; }} />
-        {vision && <button className="attach" aria-label={tr('app_attach_an_image')} onClick={() => { if (!disabled && !streaming && !reading) picker.current?.click(); }}>+</button>}
+        <input ref={picker} type="file" accept={accept} multiple hidden onChange={(e) => { void attach(Array.from(e.target.files ?? [])); e.target.value = ''; }} />
+        {accept !== '' && <button className="attach" aria-label={tr(ACCEPT(false) ? (vision ? 'app_attach' : 'app_attach_file') : 'app_attach_an_image')} onClick={() => { if (!disabled && !streaming) picker.current?.click(); }}>+</button>}
         <textarea
           ref={ref}
           value={text}
@@ -934,7 +957,7 @@ function Composer({
             // not send either (007 promise 9).
             if (touch || e.key !== 'Enter' || e.shiftKey || composing(e)) return;
             e.preventDefault();
-            if (!streaming && !reading && !disabled && (text.trim() !== '' || images.length > 0)) onSend(text);
+            if (!streaming && reading.length === 0 && !disabled && (text.trim() !== '' || attachments.length > 0)) onSend(text);
           }}
         />
         {streaming ? (
@@ -944,7 +967,7 @@ function Composer({
         ) : (
           <button
             className="primary small"
-            disabled={disabled || reading || (text.trim() === '' && images.length === 0)}
+            disabled={disabled || reading.length > 0 || (text.trim() === '' && attachments.length === 0)}
             onClick={() => {
               onSend(text);
               ref.current?.focus();

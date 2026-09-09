@@ -1,5 +1,12 @@
 // Approved landing spec, with PM copy rulings. HTML is authored here, never user input.
 export const zh = {
+  app_attach: "添加图片或文件",
+  app_attach_file: "添加文件",
+  app_hint_enter_sends_attach: "按 Enter 发送 · Shift+Enter 换行 · 可粘贴或拖入图片或文件",
+  app_hint_enter_sends_files: "按 Enter 发送 · Shift+Enter 换行 · 可粘贴或拖入文件",
+  app_limits_files: "文件以其文字发送。网页版在你的设备上把文字取出来——PDF 的文本层、Word 文件的段落、代码原样——按打字的文字计数，进度条已经把它们算在内。本对话里的每个文件都会随每次提问再发一遍。",
+
+  app_attachment_reading: '读取中…',
   app_image_limit: '每条消息最多 4 张图片。',
   app_attach_an_image: "添加图片",
   app_remove_image: "移除图片",
