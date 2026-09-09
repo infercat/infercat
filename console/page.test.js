@@ -48,7 +48,7 @@ test('settings distinguish configured/effective URL and report prompt logging tr
  expect(root.querySelector('#settings').textContent).toContain('https://infercat.ai');
  expect(root.querySelector('#settings').textContent).toContain('settings apply on restart');
 });
-test('drawer includes live TPM, seven limits, per-key exact usage and inert actions', () => {
+test('drawer includes live TPM, seven limits, per-key exact usage and enabled actions', () => {
  const root = mount(data(), 'en', 'k_7f3a2b');
  expect(root.querySelector('[role="dialog"]').textContent).toContain('3.1k/20k tpm');
  expect(root.querySelectorAll('.lims input:not([type="checkbox"])')).toHaveLength(6);
@@ -56,7 +56,7 @@ test('drawer includes live TPM, seven limits, per-key exact usage and inert acti
  expect(root.querySelector('.u2').textContent).toContain('262 ms');
  expect(root.querySelectorAll('.u2 tbody tr')).toHaveLength(5);
  expect(root.querySelector('.u2').textContent).toContain('38k → 3.1k');
- expect([...root.querySelectorAll('.drawer button:not([data-close])')].every(el => el.disabled)).toBe(true);
+ expect([...root.querySelectorAll('.drawer button:not([data-close])')].every(el => !el.disabled)).toBe(true);
  expect(root.querySelector('#page').hasAttribute('inert')).toBe(true);
 });
 test('complete bilingual copy and ZH section/drawer rendering', () => {

@@ -13,7 +13,7 @@ console.log(`CONSOLE_PREVIEW=${base}`);
 const browser = await chromium.launch();
 const results = [];
 try {
- for (const width of [1280,390]) for (const lang of ['en','zh']) for (const state of ['main','drawer','revoked','empty','offline','engine-down','pinned']) {
+ for (const width of [1280,390]) for (const lang of ['en','zh']) for (const state of ['main','drawer','revoked','empty','offline','engine-down','pinned','mint-form','mint','confirm']) {
   const context = await browser.newContext({ viewport: { width, height: width===1280?900:844 }, deviceScaleFactor: 1 });
   const page = await context.newPage();
   const errors=[]; let offline=false;
@@ -30,24 +30,35 @@ try {
   if(state==='engine-down') { data.engine.health.ok=false; data.engine.health.err='connection refused'; }
   await page.route('**/api/**',async route=>{
    if(offline) { await route.abort(); return; }
-   if(route.request().method()!=='GET') throw new Error('write from read-only page');
+   if(route.request().method()!=='GET') {
+    if(route.request().method()!=='POST' || !route.request().url().endsWith('/api/keys')) throw new Error('unexpected write');
+    const body=route.request().postDataJSON();
+    data.keys.push({...data.keys[0],id:'k_c31d08',name:body.name,limits:body.limits,status:'active',last_seen:'',today_tokens:0});
+    await route.fulfill({json:{key_id:'k_c31d08',name:body.name,invite:'ic1.tco2Fw8yq3znQ7KdLm4PvXe9RbHs2Wy6Tn.rrMAuK3fZp8QdL1xN0vY7cWbT4gHs9JmE2kR5uC7nNU',link:'https://infercat.ai/#ic1.tco2Fw8yq3znQ7KdLm4PvXe9RbHs2Wy6Tn.rrMAuK3fZp8QdL1xN0vY7cWbT4gHs9JmE2kR5uC7nNU'}});return;
+   }
    const url=new URL(route.request().url()); const key=url.pathname.slice(5);
    const payload=key==='usage'?(url.searchParams.get('window')==='week'?data.week:data.today):data[key];
    await route.fulfill({json:payload});
   });
   await page.goto(`${base}/?lang=${lang}#token=fixture-token`);
   await page.locator('#friends').waitFor(); await page.evaluate(()=>document.fonts.ready);
-  if(state==='drawer') {
+  if(state==='mint'||state==='mint-form') {
+   await page.locator('[data-action="new"]').click();await page.locator('#invite-name').fill('erin');
+   if(state==='mint') { await page.locator('form button[type="submit"]').click();await page.locator('.once').waitFor();await page.locator('[data-action="new"]:not(:disabled)').waitFor({state:'attached'}); }
+  }
+  if(state==='drawer'||state==='confirm') {
    await page.locator('[data-key="k_7f3a2b"]').click();
+   if(state==='confirm') await page.locator('[data-action="confirm"]').click();
    const h=await page.locator('.drawer').evaluate(el=>el.scrollHeight);
    await page.setViewportSize({width,height:Math.max(width===1280?900:844,h)});
   }
+  if(['mint','mint-form'].includes(state)) { const h=await page.locator('.drawer').evaluate(el=>el.scrollHeight);await page.setViewportSize({width,height:Math.max(width===1280?900:844,h)}); }
   if(state==='revoked') await page.locator('details summary').click();
   if(state==='offline') { offline=true; await page.locator('.stale').waitFor(); }
   const measurements=await page.evaluate(()=>({overflow:document.documentElement.scrollWidth-innerWidth,hash:location.hash,local:localStorage.length,session:sessionStorage.length}));
   if(measurements.overflow>0 || measurements.hash || measurements.local || measurements.session || errors.length) throw new Error(JSON.stringify({state,width,lang,measurements,errors}));
   const name=`${state}-${width}-${lang}`;
-  await page.screenshot({path:`${evidence}/${name}.png`,fullPage:state!=='drawer'});
+  await page.screenshot({path:`${evidence}/${name}.png`,fullPage:!['drawer','confirm','mint','mint-form'].includes(state)});
   results.push(`${name}: PASS (no overflow, no token storage, no unexpected browser errors)`);
   await context.close();
  }

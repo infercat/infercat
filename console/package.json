@@ -11,12 +11,16 @@
     "screenshots": "node test/screenshots.mjs"
   },
   "devDependencies": {
-    "vite": "7.1.7",
-    "vitest": "3.2.4",
-    "typescript": "5.9.3",
     "eslint": "9.36.0",
-    "typescript-eslint": "8.45.0",
     "jsdom": "26.1.0",
-    "playwright": "1.56.1"
+    "jsqr": "1.4.0",
+    "playwright": "1.56.1",
+    "typescript": "5.9.3",
+    "typescript-eslint": "8.45.0",
+    "vite": "7.1.7",
+    "vitest": "3.2.4"
+  },
+  "dependencies": {
+    "qrcode-generator": "2.0.4"
   }
 }
