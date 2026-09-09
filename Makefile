@@ -108,5 +108,5 @@ console-build:
 .PHONY: host-compat
 host-compat: web-lint
 	cd web && pnpm typecheck && pnpm exec vitest run src/host-compat.test.ts
-	cd web && pnpm exec playwright install --with-deps chromium
+	cd web && pnpm exec playwright install chromium
 	cd web && pnpm exec node dev/host-compat.mjs

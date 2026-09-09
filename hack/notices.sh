@@ -23,6 +23,8 @@ case "$mode" in write | check) ;; *) echo "usage: notices.sh [write|check]" >&2;
 
 root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 cd "$root"
+# go-licenses must recognize the stdlib from this module's selected toolchain.
+GOROOT=$(go env GOROOT); export GOROOT
 out=THIRD_PARTY_NOTICES.md
 tmp=$(mktemp -d)
 trap 'rm -rf "$tmp"' EXIT

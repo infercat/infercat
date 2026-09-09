@@ -39,6 +39,22 @@ jobs:
           cache: pnpm
           cache-dependency-path: web/pnpm-lock.yaml
 
+      - name: Playwright version
+        id: playwright
+        run: |
+          pnpm --dir web install --frozen-lockfile
+          node -p '"version=" + require("./web/node_modules/playwright/package.json").version' >> "$GITHUB_OUTPUT"
+
+      - name: Cache Playwright browsers
+        uses: actions/cache@v5
+        with:
+          path: ~/.cache/ms-playwright
+          key: ${{ runner.os }}-${{ runner.arch }}-playwright-${{ steps.playwright.outputs.version }}
+
+      # Browser binaries are cached; each fresh runner still needs its OS packages.
+      - name: Playwright system dependencies
+        run: pnpm --dir web exec playwright install-deps chromium
+
       - name: Go — build, vet, test
         run: |
           go build ./...
