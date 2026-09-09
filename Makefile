@@ -114,3 +114,9 @@ host-compat: web-lint wasm
 	cd web && pnpm exec playwright install chromium
 	cd web && pnpm exec node dev/host-compat.mjs
 	cd web && pnpm build && pnpm exec node dev/console-chunk-check.mjs
+
+# Opt-in real iOS proof; requires Xcode/runtime and an owned loopback engine.
+.PHONY: ios-proof
+ios-proof: build
+	python3 web/dev/ios-proof/run.py
+	python3 web/dev/ios-proof/export.py
