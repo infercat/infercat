@@ -16,6 +16,8 @@ function table(lang) {
   return result;
 }
 const tables = { en: table('en'), zh: table('zh') };
+// Designer's independent matrix fixture; the rendered SVG also decoded to the stable URL.
+const TRY_MATRIX = "1111111010111110001111111/1000001011001110001000001/1011101011110110001011101/1011101000110101101011101/1011101011011110001011101/1000001000100000101000001/1111111010101010101111111/0000000000100100100000000/1001111111111001010010111/0100000010011111000111110/1000111010000101100111001/1100110000001010110011111/0011101110111001101100001/1000000101000101100010010/1100111110111111011011111/1011000001010011100101101/1000011011000101111110110/0000000010011010100010110/1111111010110010101010001/1000001010001111100010010/1011101011001011111110011/1011101011100100011000011/1011101000001011010011111/1000001001100011001110111/1111111011101110101001001";
 
 async function checkCopy(page, lang, assert) {
   const checked = await page.evaluate((expected) => {
@@ -141,6 +143,27 @@ export async function landingEvidence(browser, base, shots, inspect = async () =
       return failures;
     });
     assert(!layout.length, `053 layout: ${layout.join(', ')}`);
+    const tryLayout = await page.locator('.landing-try').evaluate((row) => {
+      const issues = [], box = row.getBoundingClientRect(), frame = document.querySelector('.landing-demo').getBoundingClientRect();
+      const style = getComputedStyle(row), qr = row.querySelector('.try-qr'), svg = qr.querySelector('svg').getBoundingClientRect();
+      const link = row.querySelector('.try-go');
+      if (link.getAttribute('href') !== '/try' || link.hasAttribute('target')) issues.push('same-tab try link');
+      if (Math.abs(box.left - frame.left) > 1 || Math.abs(box.right - frame.right) > 1) issues.push('try/frame measure');
+      if (style.borderTopWidth !== '1px' || style.borderTopColor !== 'rgb(10, 10, 10)' || style.paddingTop !== '16px') issues.push('try rule');
+      if (row.scrollWidth > row.clientWidth + 1) issues.push('try overflow');
+      if (window.innerWidth < 900) {
+        if (getComputedStyle(qr).display !== 'none' || style.marginTop !== '24px') issues.push('phone QR/spacing');
+      } else if (svg.width !== 100 || svg.height !== 100 || Math.abs(svg.right - box.right) > 1 || style.marginTop !== '28px') issues.push('desktop QR/spacing');
+      return issues;
+    });
+    assert(!tryLayout.length, `068 layout: ${tryLayout.join(', ')}`);
+    if (width >= 900) {
+      const matrix = await page.locator('.try-qr path').evaluate((path) => Array.from({ length:25 }, (_, y) =>
+        Array.from({ length:25 }, (_, x) => path.isPointInFill(new DOMPoint(x + .5, y + .5)) ? '1' : '0').join('')).join('/'));
+      assert(matrix === TRY_MATRIX, '068 rendered QR matrix');
+    }
+
+
     await page.waitForFunction(() => document.querySelector('.demo-still')?.naturalWidth > 0);
     if (width !== 1024) await page.screenshot({ path: join(shots, `053-${width}-${lang}.png`), fullPage: true });
     await page.locator('.demo-play').click();
@@ -221,6 +244,7 @@ export async function landingEvidence(browser, base, shots, inspect = async () =
   }
   console.log(`049 video: ${checked} passed / 0 failed / 0 skipped of ${checked}`);
   console.log(`052 anatomy: ${checked} passed / 0 failed / 0 skipped of ${checked}`);
+  console.log(`068 try row: ${checked} passed / 0 failed / 0 skipped of ${checked}`);
   console.log(`053 layout: ${checked} passed / 0 failed / 0 skipped of ${checked}`);
   console.log(`043 landing: ${checked} passed / 0 failed / 0 skipped of ${checked}`);
 }

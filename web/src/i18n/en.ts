@@ -1,6 +1,10 @@
 // Approved landing spec, with PM copy rulings. HTML is authored here, never user input.
 export const en = {
   s0_eye: '00 · See it work',
+  s0_try: "Try it on our demo host<span aria-hidden=\"true\">→</span>",
+  s0_host: "<span>host <b>Max’s workstation</b></span><wbr><span> · Qwen3.8 27B</span><wbr><span> · 2 × RTX PRO 6000</span>",
+  s0_note: "Shared with everyone reading this page, 30 at a time. If it says the invite is busy, try again in a moment.",
+  s0_qr: "QR code for infercat.ai/try",
   demo_caption: 'Watch the demo',
   demo_label: 'Play the demo',
   nav_host: 'Host your own',

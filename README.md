@@ -26,6 +26,8 @@ Share the model on your machine with friends. You run one binary in front of the
 - **The friend** opens the web app and pastes the invite. The app carries the tunnel's client side as WebAssembly, so the browser connects to your host directly — through the relay, encrypted end to end.
 - **The tunnel** is [tailcat](https://github.com/tailscale/tailcat), Tailscale's open-source data plane without the control plane. There is no account on either side. The relay is a DERP server: public ones by default, or your own (`--derpmap-url`). Infercat is not affiliated with or endorsed by Tailscale Inc.
 
+**Try it first:** open https://infercat.ai/try and you are chatting with our demo host (Qwen3.8 27B), no install.
+
 ## Quickstart (host)
 
 You need an inference server running (llama.cpp, vLLM, Ollama or LM Studio; any OpenAI-compatible `/v1/chat/completions` works). Your friends need a browser.

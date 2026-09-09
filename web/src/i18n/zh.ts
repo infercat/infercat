@@ -1,6 +1,10 @@
 // Approved landing spec, with PM copy rulings. HTML is authored here, never user input.
 export const zh = {
   s0_eye: '00 · 看它运行',
+  s0_try: "在我们的演示主机上试试<span aria-hidden=\"true\">→</span>",
+  s0_host: "<span>主机 <b>Max’s workstation</b></span><wbr><span> · Qwen3.8 27B</span><wbr><span> · 2 × RTX PRO 6000</span>",
+  s0_note: "所有看到这个页面的人共用这台主机，同时最多 30 人。如果提示邀请码正忙，稍后再试。",
+  s0_qr: "infercat.ai/try 的二维码",
   demo_caption: '看演示',
   demo_label: '播放演示',
   nav_host: '自建主机',

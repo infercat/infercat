@@ -230,7 +230,12 @@ async function main() {
     console.log('047 Chinese chat: 2 passed / 0 failed / 0 skipped'); return;
   }
   await frameRuleEvidence(browser);
-  await landingEvidence(browser, BASE, shots);
+  await landingEvidence(browser, BASE, shots, async (page, label) => {
+    const [, width, , lang] = label.split('-');
+    if (width === '1024') return;
+    await settled(page);
+    await page.locator('#p-s0').screenshot({ path: join(shots, `068-${width}-${lang}-row.png`) });
+  });
   if (process.argv.includes('--landing-only')) { await browser.close(); stopAll(); return; }
 
   // --- desktop, light ---

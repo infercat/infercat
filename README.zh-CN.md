@@ -26,6 +26,8 @@
 - **朋友**打开网页版，粘贴邀请码。网页版自带编译成 WebAssembly 的隧道客户端，浏览器可以直接连上你的主机——经由中继，全程端到端加密。
 - **隧道**基于 [tailcat](https://github.com/tailscale/tailcat)，即 Tailscale 开源的数据面（去掉了控制面）。两端均无需账号。中继采用 DERP 服务器：默认使用公共中继，也可以自建（`--derpmap-url`）。Infercat 与 Tailscale Inc. 无关联，亦未获得其背书。
 
+**先试试：**打开 https://infercat.ai/try 即可与我们的演示主机（Qwen3.8 27B）对话，无需安装。
+
 ## 快速上手（主机端）
 
 你需要先启动一个推理服务（llama.cpp、vLLM、Ollama 或 LM Studio 均可；任何兼容 OpenAI `/v1/chat/completions` 的服务都能用）。朋友那边只要有个浏览器就行。
