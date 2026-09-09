@@ -5,6 +5,8 @@ app shows the same one under Settings. Dates are the tag's.
 
 ## Unreleased
 
+- Keep chat drafts editable while reconnecting; Send waits until the connection verifies.
+
 - Upgrade Tailcat to 0.6.0: clients accept both address forms while hosts preserve every
   existing invite and keep new addresses on the old form.
 

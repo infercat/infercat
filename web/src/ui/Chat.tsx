@@ -152,7 +152,8 @@ export default function Chat({ state, live, dispatch, onRedial, reconnecting = f
   }, [scope, imageRefs]);
   const waiting = Math.max(0, retryUntil - now);
   // Nothing can be sent while the invite is off, or from a tab that does not own the store.
-  const locked = live.key !== 'active' || reconnecting;
+  const locked = live.key !== 'active';
+  const sendBlocked = reconnecting;
   const readOnly = leader !== true;
 
   const patch = useCallback((id: string, fn: (c: Conversation) => Conversation) => {
@@ -388,7 +389,7 @@ export default function Chat({ state, live, dispatch, onRedial, reconnecting = f
   );
 
   async function send(text: string): Promise<void> {
-    if (streaming || locked || readOnly || (text.trim() === '' && !attached.length)) return;
+    if (streaming || locked || readOnly || sendBlocked || (text.trim() === '' && !attached.length)) return;
     if (attached.some((a) => a.kind === 'image') && !vision) { setImageNotice(rejectionNotice({ reason: 'no_vision', message: tr('app_model_cant_see_images', { model: modelLabel(model) }) })); return; }
     const sending = attached.flatMap((a) => a.kind === 'image' ? [a.image] : []);
     const fresh = Object.fromEntries(sending.map((i) => [i.id, i.data]));
@@ -423,7 +424,7 @@ export default function Chat({ state, live, dispatch, onRedial, reconnecting = f
    * old one has not lost it to a click (014 promise 16).
    */
   async function replaceAnswer(text?: string, attachments?: DisplayAttachment[]): Promise<void> {
-    if (streaming || locked || readOnly) return;
+    if (streaming || locked || readOnly || sendBlocked) return;
     const idx = lastIndexOfRole(conv.messages, 'user');
     if (idx < 0) return;
     const replaced = conv.messages.slice(idx + 1).find((m) => m.content.trim() !== '')?.content;
@@ -497,7 +498,7 @@ export default function Chat({ state, live, dispatch, onRedial, reconnecting = f
   // no answer, a /me that timed out): retrying over a session we have not proved alive is the
   // 30 s wait 014 promise 13 exists to remove, and the next /me that gets through changes the word.
   const action: ThreadAction | null =
-    readOnly || locked
+    readOnly || locked || sendBlocked
       ? null
       : !live.meOk
         ? { label: tr('app_reconnect'), run: () => onRedial(live) }
@@ -706,10 +707,11 @@ export default function Chat({ state, live, dispatch, onRedial, reconnecting = f
           status={streaming && waitingForHeaders ? tr('app_waiting_for_model_load', { host: host || tr('app_the_host_lowercase'), model: modelLabel(model) }) : null}
           touch={touch}
           disabled={locked || readOnly}
+          sendBlocked={sendBlocked}
           hint={
             live.key === 'paused'
               ? tr('app_send_will_work_again_the_moment_your_host_resumes')
-              : locked || readOnly || touch
+              : locked || readOnly || sendBlocked || touch
                 ? null
                 : tr(ACCEPT(false) ? (vision ? 'app_hint_enter_sends_attach' : 'app_hint_enter_sends_files') : vision ? 'app_hint_enter_sends_images' : 'app_enter_sends_shift_enter_makes_a_new_line')
           }
@@ -856,6 +858,7 @@ function Composer({
   status,
   touch,
   disabled,
+  sendBlocked = false,
   hint,
   onSend,
   onStop,
@@ -877,6 +880,8 @@ function Composer({
   touch: boolean;
   /** The invite is off, or this tab does not own the store: nothing can be sent from here. */
   disabled: boolean;
+  /** Wait to send while keeping the draft editable (redial, or another temporary wait). */
+  sendBlocked?: boolean;
   hint: string | null;
   onSend: (t: string) => void;
   onStop: () => void;
@@ -967,7 +972,7 @@ function Composer({
             // not send either (007 promise 9).
             if (touch || e.key !== 'Enter' || e.shiftKey || composing(e)) return;
             e.preventDefault();
-            if (!streaming && reading.length === 0 && !disabled && (text.trim() !== '' || attachments.length > 0)) onSend(text);
+            if (!streaming && reading.length === 0 && !disabled && !sendBlocked && (text.trim() !== '' || attachments.length > 0)) onSend(text);
           }}
         />
         {streaming ? (
@@ -977,7 +982,7 @@ function Composer({
         ) : (
           <button
             className="primary small"
-            disabled={disabled || reading.length > 0 || (text.trim() === '' && attachments.length === 0)}
+            disabled={disabled || sendBlocked || reading.length > 0 || (text.trim() === '' && attachments.length === 0)}
             onClick={() => {
               onSend(text);
               ref.current?.focus();
