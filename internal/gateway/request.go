@@ -186,6 +186,7 @@ func (q *request) authenticate() *gwError {
 	q.key = k
 	q.ev.KeyID = k.ID
 	q.g.lim.touch(k.ID)
+	q.g.seeSession(q.r.Context(), k.ID)
 	switch k.Status {
 	case keys.Active:
 		return nil

@@ -12,6 +12,7 @@ import (
 	"log"
 	"net"
 	"net/http"
+	"net/netip"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -73,9 +74,10 @@ type Gateway struct {
 	queueTimeout, readTimeout, writeTimeout, idleTimeout, queuedEvery time.Duration
 	maxBody                                                           int64
 
-	mu      sync.Mutex
-	servers []*http.Server
-	closed  bool
+	mu       sync.Mutex
+	sessions map[netip.Addr]sessionSeen
+	servers  []*http.Server
+	closed   bool
 }
 
 // The CLI (cmd/infercat, ticket 003) wires the gateway through exactly this interface.
@@ -141,7 +143,7 @@ func (g *Gateway) Handler() http.Handler { return http.HandlerFunc(g.serveHTTP) 
 
 // Serve blocks serving l (the tunnel listener) until l fails or Shutdown is called. It returns nil
 // after Shutdown, the listener's error otherwise, and http.ErrServerClosed if called after Shutdown.
-func (g *Gateway) Serve(l net.Listener) error { return g.serve(l, g.Handler()) }
+func (g *Gateway) Serve(l net.Listener) error { return g.serve(l, g.Handler(), sessionContext) }
 
 // ServeDev serves the API on a loopback TCP address with permissive CORS (origin *, headers
 // authorization and content-type, preflight answered) so the web app can be developed against real
@@ -163,12 +165,13 @@ func (g *Gateway) ServeDev(addr string) error {
 		return err
 	}
 	g.logf("gateway: dev listener on http://%s (permissive CORS, loopback only)", l.Addr())
-	return g.serve(l, cors(g.Handler()))
+	return g.serve(l, cors(g.Handler()), nil)
 }
 
-func (g *Gateway) serve(l net.Listener, h http.Handler) error {
+func (g *Gateway) serve(l net.Listener, h http.Handler, connContext func(context.Context, net.Conn) context.Context) error {
 	srv := &http.Server{
 		Handler:           h,
+		ConnContext:       connContext,
 		ReadHeaderTimeout: 30 * time.Second,
 		IdleTimeout:       2 * time.Minute,
 		ErrorLog:          log.New(logWriter{g.logf}, "gateway: http: ", 0),

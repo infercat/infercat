@@ -119,6 +119,8 @@ type Queue struct {
 }
 
 type Key struct {
+	Connected   bool      `json:"connected"`
+	Sessions    int       `json:"sessions"`
 	ID          string    `json:"id"`
 	Name        string    `json:"name"`
 	Status      string    `json:"status"`

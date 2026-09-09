@@ -217,7 +217,15 @@ These are constants; the `--queue-timeout`, `--request-timeout`, `--max-body` fl
 
 ## Admin API (003), unix socket `admin.sock`, HTTP
 
-`GET /status` → `{product, version, uptime_s, tunnel:{addr, region, clients}, upstream:{kind, url, healthy, since, model_context, slots}, queue:{in_flight, waiting}, keys:[{id,name,status,in_flight,rpm_used,today_tokens,last_seen}]}` — `queue` numbers are exact; `clients` = open port-80 connections. `POST /reload` re-reads `keys.json` now.
+`GET /status` → `{product, version, uptime_s, tunnel:{addr, region, clients}, upstream:{kind, url, healthy, since, model_context, slots}, queue:{in_flight, waiting}, keys:[{id,name,status,in_flight,rpm_used,today_tokens,last_seen,connected,sessions}]}` — `queue` numbers are exact; `clients` = open port-80 connections. `POST /reload` re-reads `keys.json` now.
+
+Per-key `connected` means a matching credential was seen through a tunnel session in the last
+60 seconds; `sessions` counts distinct node-derived peer addresses in that window, not open TCP
+connections. The address is stable across a client's TCP connections; a second matching key
+reassigns that session. Paused/revoked credentials count as sightings; unknown credentials and
+the dev listener do not. The gateway keeps this association in memory only, prunes expired
+sightings on writes/status reads, and clears it on restart. Session identities never enter
+usage events, usage snapshots, or disk. Remote-admin `in_use` keeps its separate rule below.
 
 The host console (`069`, Protection 1) listens only on a literal loopback IP, by default
 `127.0.0.1:9101`; remembered `serve --console off` disables it. `/api/*` shares the admin

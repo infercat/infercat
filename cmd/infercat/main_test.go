@@ -458,9 +458,10 @@ func TestResolveDataDirDefaultsUnderTheUserConfigDir(t *testing.T) {
 var _ gatewayServer = (*fakeGateway)(nil)
 
 type fakeGateway struct {
-	serving chan struct{} // closed when Serve is first called
-	done    chan struct{} // closed by Shutdown; Serve blocks until then
-	once    sync.Once
+	sessions map[string]int
+	serving  chan struct{} // closed when Serve is first called
+	done     chan struct{} // closed by Shutdown; Serve blocks until then
+	once     sync.Once
 }
 
 func newFakeGateway() *fakeGateway {
@@ -476,6 +477,7 @@ func (g *fakeGateway) ServeDev(string) error                     { return nil }
 func (g *fakeGateway) Shutdown(context.Context) error            { close(g.done); return nil }
 func (g *fakeGateway) Counters(string) usage.KeyCounters         { return usage.KeyCounters{} }
 func (g *fakeGateway) AllCounters() map[string]usage.KeyCounters { return nil }
+func (g *fakeGateway) Sessions() map[string]int                  { return g.sessions }
 func (g *fakeGateway) Queue() (int, int)                         { return 0, 0 }
 
 type fakeTunnel struct{}

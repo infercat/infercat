@@ -597,10 +597,12 @@ func buildStatus(ctx context.Context, started time.Time, tun tunnelServer, up up
 		return st
 	}
 	counters := gw.AllCounters()
+	sessions := gw.Sessions()
 	for _, k := range list {
 		c := counters[k.ID]
 		st.Keys = append(st.Keys, admin.Key{
 			ID: k.ID, Name: k.Name, Status: string(k.Status),
+			Connected: sessions[k.ID] > 0, Sessions: sessions[k.ID],
 			InFlight: c.InFlight, RPMUsed: c.RPMUsed, TPMUsed: c.TPMUsed, TodayTokens: c.TodayTokens, LastSeen: c.LastSeen,
 		})
 	}

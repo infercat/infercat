@@ -52,6 +52,7 @@ type tunnelOptions struct {
 }
 
 type gatewayServer interface {
+	Sessions() map[string]int
 	usage.Snapshot
 	Serve(l net.Listener) error
 	ServeDev(addr string) error
