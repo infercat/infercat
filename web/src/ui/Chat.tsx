@@ -1096,6 +1096,7 @@ function Composer({
 function RecordingLine({ state, host, onCancel }: { state: RecordingState; host: string; onCancel: () => void }) {
   if (state.kind === 'idle' || state.kind === 'blocked' || state.kind === 'missing') return null;
   const who = host || tr('app_the_host_lowercase');
+  if (state.kind === 'requesting') return <div className="spoken" role="status"><span>{tr('app_voice_waiting')}</span><button className="ghost tiny" onClick={onCancel}>{tr('app_voice_cancel')}</button></div>;
   if (state.kind === 'error') return <p className="spoken bad" role="status">{tr('app_voice_failed', { host: who, seconds: Math.round(state.seconds), title: describeError(state.error, host).title })}</p>;
   if (state.kind === 'done') {
     const count = voiceWords(state.text);

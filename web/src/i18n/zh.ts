@@ -15,6 +15,7 @@ export const zh = {
   app_mic: "说话",
   app_mic_stop: "停止录音",
   app_type_or_speak: "打字或说话…",
+  app_voice_waiting: "正在等待麦克风…",
   app_voice_cancel: "取消",
   app_voice_recording: "{m}:{ss}",
   app_voice_transcribing: "{seconds} 秒 · 正在由 {host} 转写…",

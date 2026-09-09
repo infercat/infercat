@@ -15,6 +15,7 @@ export const en = {
   app_mic: "Speak",
   app_mic_stop: "Stop recording",
   app_type_or_speak: "Type or speak…",
+  app_voice_waiting: "Waiting for the microphone…",
   app_voice_cancel: "Cancel",
   app_voice_recording: "{m}:{ss}",
   app_voice_transcribing: "{seconds} s · transcribing on {host}…",

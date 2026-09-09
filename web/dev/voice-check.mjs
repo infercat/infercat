@@ -17,6 +17,7 @@ async function connected(width, lang, extra = '&transcriptions&speech') {
     window.localStorage.setItem('bn.language', JSON.stringify(language));
     window.__level = .13; window.__micError = ''; window.__tracksStopped = 0;
     Object.defineProperty(window.navigator, 'mediaDevices', { configurable: true, value: { getUserMedia: async () => {
+      if (window.__holdMic) await new Promise((resolve) => { window.__permitMic = resolve; });
       if (window.__micError) throw new window.DOMException('microphone unavailable', window.__micError);
       return { getTracks: () => [{ stop: () => window.__tracksStopped++ }] };
     } } });
@@ -62,6 +63,15 @@ try {
     try {
       check(await mic.count() === 1, 'capability exposes microphone');
       await shot(page, `idle-${tag}`);
+      await page.evaluate(() => { window.__holdMic = true; }); await mic.click();
+      check((await page.locator('.composer .spoken').innerText()).includes(lang === 'zh' ? '正在等待麦克风' : 'Waiting for the microphone'), 'permission pending is honestly labelled');
+      check(await page.locator('.composer .waveform').count() === 0, 'no recording waveform before permission');
+      await shot(page, `waiting-${tag}`);
+      await page.locator('.composer .spoken button').click();
+      await page.evaluate(() => { window.__holdMic = false; window.__permitMic(); });
+      await page.waitForTimeout(30);
+      check(await page.locator('.composer .spoken').count() === 0, 'late permission stays cancelled');
+
       await page.getByRole('button', { name: lang === 'zh' ? '设置' : 'Settings', exact: true }).click();
       check((await page.locator('.sheet').innerText()).includes('whisper-large-v3') && (await page.locator('.sheet').innerText()).includes('kokoro'), 'Settings names both audio models');
       await page.locator('.sheet .small-print').first().scrollIntoViewIfNeeded(); await shot(page, `settings-${tag}`);
@@ -135,7 +145,9 @@ try {
     const no = await connected(width, lang, '');
     check(await no.page.locator('.mic').count() === 0, 'absent capability hides microphone'); await shot(no.page, `no-voice-${tag}`); await no.context.close();
     const bad = await connected(width, lang, '&transcriptions&speech&audioFailure=429');
-    await bad.page.locator('.mic').click(); await bad.page.waitForTimeout(100); await bad.page.locator('.mic').click();
+    await bad.page.locator('.mic').click();
+    await bad.page.waitForFunction(() => document.querySelector('.mic')?.getAttribute('aria-pressed') === 'true');
+    await bad.page.locator('.mic').click();
     await bad.page.locator('.spoken.bad').waitFor(); await shot(bad.page, `transcription-refused-${tag}`);
     check(await bad.page.locator('.banner .banner-actions button').count() === 1, 'audio cooldown never offers chat regeneration');
     await bad.page.locator('.composer textarea').fill('A reply to listen to.'); await bad.page.locator('.composer .primary').click();

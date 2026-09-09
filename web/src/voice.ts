@@ -43,6 +43,7 @@ export class VoiceRecorder {
   private context: AudioContext | null = null;
   private tick: ReturnType<typeof setInterval> | undefined;
   private cap: ReturnType<typeof setTimeout> | undefined;
+  private frame: number | undefined;
   private started = 0;
   private stoppedSeconds: number | null = null;
   constructor(private readonly upload: (clip: Blob, signal: AbortSignal) => Promise<string>, private readonly changed: (state: RecordingState) => void) {}
@@ -55,6 +56,9 @@ export class VoiceRecorder {
       if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
         this.emit({ kind: 'missing' }); return;
       }
+      // Activate audio on the click, before awaiting the permission prompt.
+      const context = new AudioContext(); this.context = context;
+      void context.resume().catch(() => {});
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       if (controller.signal.aborted) { stream.getTracks().forEach((track) => track.stop()); return; }
       this.stream = stream;
@@ -62,12 +66,6 @@ export class VoiceRecorder {
       const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
       this.recorder = recorder;
       const chunks: Blob[] = [];
-      const context = new AudioContext(); this.context = context;
-      void context.resume().catch(() => {});
-      const analyser = context.createAnalyser(); analyser.fftSize = 1024;
-      context.createMediaStreamSource(stream).connect(analyser);
-      const samples = new Float32Array(analyser.fftSize);
-      const waveform: number[] = Array(60).fill(0);
       recorder.ondataavailable = (event) => { if (!controller.signal.aborted && event.data.size) chunks.push(event.data); };
       recorder.onerror = () => {
         if (!controller.signal.aborted) { this.cancel(); this.emit({ kind: 'error', seconds: this.elapsed(), error: new Error('Microphone recording failed.') }); }
@@ -86,13 +84,23 @@ export class VoiceRecorder {
       };
       this.started = performance.now(); this.stoppedSeconds = null;
       recorder.start(250);
-      this.emit({ kind: 'recording', seconds: 0, level: 0, waveform: [...waveform] });
-      this.tick = setInterval(() => {
+      const analyser = context.createAnalyser(); analyser.fftSize = 1024;
+      context.createMediaStreamSource(stream).connect(analyser);
+      const samples = new Float32Array(analyser.fftSize);
+      const waveform: number[] = Array(60).fill(0);
+      const sample = () => {
         analyser.getFloatTimeDomainData(samples);
         const rms = Math.sqrt(samples.reduce((sum, n) => sum + n * n, 0) / samples.length);
         const level = Math.min(1, rms * 4); waveform.push(level); waveform.shift();
         this.emit({ kind: 'recording', seconds: this.elapsed(), level, waveform: [...waveform] });
-      }, 50);
+      };
+      // Read immediately, then on the first paint; no empty interval before feedback.
+      sample();
+      this.frame = requestAnimationFrame(() => {
+        if (controller.signal.aborted || recorder.state !== 'recording') return;
+        sample();
+        this.tick = setInterval(sample, 50);
+      });
       this.cap = setTimeout(() => this.stop(), RECORDING_LIMIT_SECONDS * 1000);
     } catch (error) {
       if (controller.signal.aborted) return;
@@ -104,7 +112,8 @@ export class VoiceRecorder {
   private elapsed(): number { return Math.min(RECORDING_LIMIT_SECONDS, Math.max(0, (performance.now() - this.started) / 1000)); }
   stop(): void {
     clearInterval(this.tick); clearTimeout(this.cap);
-    if (this.recorder?.state === 'recording') { this.stoppedSeconds = this.elapsed(); this.recorder.stop(); }
+    if (this.frame !== undefined) cancelAnimationFrame(this.frame);
+    if (this.recorder?.state === 'recording') { this.stoppedSeconds = this.elapsed(); this.recorder.stop(); this.releaseMedia(); }
   }
   cancel(): void {
     this.controller?.abort(); this.controller = null;
@@ -114,6 +123,7 @@ export class VoiceRecorder {
   clear(): void { if (this.state.kind === 'done' || this.state.kind === 'error' || this.state.kind === 'blocked' || this.state.kind === 'missing') this.emit({ kind: 'idle' }); }
   private releaseMedia(): void {
     clearInterval(this.tick); clearTimeout(this.cap);
+    if (this.frame !== undefined) cancelAnimationFrame(this.frame);
     this.stream?.getTracks().forEach((track) => track.stop()); this.stream = null;
     void this.context?.close().catch(() => {}); this.context = null; this.recorder = null;
   }

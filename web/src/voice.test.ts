@@ -30,6 +30,8 @@ describe('voice recorder ownership', () => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'performance'] });
     FakeRecorder.instances = []; FakeContext.level = .1;
     FakeRecorder.isTypeSupported = (mime) => mime.includes('webm');
+    vi.stubGlobal('requestAnimationFrame', (cb: () => void) => setTimeout(cb, 0));
+    vi.stubGlobal('cancelAnimationFrame', (id: ReturnType<typeof setTimeout>) => clearTimeout(id));
     vi.stubGlobal('MediaRecorder', FakeRecorder); vi.stubGlobal('AudioContext', FakeContext);
     vi.stubGlobal('navigator', { mediaDevices: { getUserMedia: vi.fn(async () => stream) } });
     stopTrack.mockClear();
@@ -51,6 +53,28 @@ describe('voice recorder ownership', () => {
     expect(states).toContainEqual({ kind: 'transcribing', seconds: 300 });
     expect(stopTrack).toHaveBeenCalled();
     recorder.clear(); expect(recorder.state.kind).toBe('idle');
+  });
+  it('activates audio on the gesture and starts capture before showing recording', async () => {
+    let permit!: (value: unknown) => void;
+    let activated = false;
+    class GestureContext extends FakeContext { resume = vi.fn(async () => { activated = true; }); }
+    vi.stubGlobal('AudioContext', GestureContext);
+    vi.stubGlobal('navigator', { mediaDevices: { getUserMedia: () => {
+      expect(activated).toBe(true);
+      return new Promise((resolve) => { permit = resolve; });
+    } } });
+    const recorder = new VoiceRecorder(vi.fn(), (state) => {
+      if (state.kind === 'recording') {
+        expect(FakeRecorder.instances.at(-1)?.state).toBe('recording');
+        expect(state.waveform.at(-1)).toBeGreaterThan(0);
+      }
+    });
+    const pending = recorder.start();
+    expect(recorder.state.kind).toBe('requesting');
+    permit(stream); await pending;
+    expect(recorder.state.kind).toBe('recording');
+    recorder.cancel();
+    expect(stopTrack).toHaveBeenCalledTimes(1);
   });
   it('cancel never uploads and a delayed old stop cannot stop a new take', async () => {
     const upload = vi.fn(async () => 'hello');
