@@ -1,7 +1,9 @@
 import { text, type CopyKey, type Lang } from './copy';
 import { emptyStats, type Snapshot, type Key, type Stats } from './types';
 
-export const escape = (v: unknown) => String(v ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]!);
+import { escape } from './html';
+export { escape } from './html';
+import { limitsForm, keyActions, specialDrawer, type DrawerState } from './actions';
 const compact = (n: number) => Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: n >= 10000 ? 0 : 1 }).format(n || 0).replace("K", "k");
 const duration = (s: number) => s >= 3600 ? `${Math.floor(s / 3600)}h${Math.floor(s % 3600 / 60)}m` : s >= 60 ? `${Math.floor(s / 60)}m` : `${Math.floor(s)}s`;
 const bytes = (n: number) => n >= 1e9 ? `${(n / 1e9).toFixed(1)} GB` : n >= 1e6 ? `${(n / 1e6).toFixed(1)} MB` : `${compact(n)} B`;
@@ -9,7 +11,7 @@ const tokens = (s: Stats) => s.prompt_tokens + s.completion_tokens;
 const meter = (value: number, max: number) => max > 0 ? `<progress class="meter-track" max="${max}" value="${Math.max(0, Math.min(value, max))}" aria-label="${value} / ${max}"></progress>` : '<span class="meter-track unknown"></span>';
 const mark = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="2" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"/><path d="M7 16 12 7l5 9" fill="none" stroke="currentColor" stroke-width="2"/></svg>';
 
-export function render(data: Snapshot | null, lang: Lang, selected: string | null, stale: number | null, now = Date.now(), hasToken = true, refreshedSeconds = 2): string {
+export function render(data: Snapshot | null, lang: Lang, selected: string | null, stale: number | null, now = Date.now(), hasToken = true, refreshedSeconds = 2, ui?: DrawerState, pending = false): string {
  const t = (k: CopyKey, ...args: (string | number)[]) => escape(text(lang, k, ...args));
  const label = (k: CopyKey) => `<span data-t="${k}">${t(k)}</span>`;
  const n = (v: number) => Intl.NumberFormat(lang === 'zh' ? 'zh-CN' : 'en').format(v || 0);
@@ -74,14 +76,14 @@ export function render(data: Snapshot | null, lang: Lang, selected: string | nul
  const k = keys.find(k => k.id === selected);
  if (k) {
   const l = live(k), a = today.keys?.find(v => v.key_id === k.id) || emptyStats, b = week.keys?.find(v => v.key_id === k.id) || emptyStats;
-  const limits: [CopyKey, keyof Key['limits']][] = [['l_rpm','rpm'],['l_tpm','tpm'],['l_conc','max_concurrent'],['l_out','max_output_tokens'],['l_ctx','max_context'],['l_daily','daily_tokens']];
   drawer = `<div class="scrim" data-close="true"></div><aside class="drawer" role="dialog" aria-modal="true" aria-labelledby="friend-title"><div class="drawer-head"><h3 id="friend-title">${escape(k.name)}</h3><button class="ghost tiny x" data-close="true">${t('close')}</button></div>
   <p class="meta">${escape(k.id)} · <b>${t(`s_${k.status}`)}</b> · ${t('created')} ${escape(k.created_at.slice(0, 10))}</p>
   <div class="dsec"><span class="field-label">${label('d_now')}</span><p class="nowline">${l.in_flight ? '<span class="live" aria-hidden="true">■</span> ' : ''}${nowLine(k)} · ${t('tpm', compact(l.tpm_used), limit(k.limits.tpm))}<br>${t('tokens_today', compact(l.today_tokens), limit(k.limits.daily_tokens))} · ${t('u_lastcall')} ${ago(k.last_seen)}</p></div>
-  <div class="dsec"><span class="field-label">${label('d_limits')}</span><div class="lims">${limits.map(([labelKey, prop]) => `<label for="limit-${prop}">${t(labelKey)}</label><input id="limit-${prop}" disabled value="${escape(k.limits[prop])}">${prop === 'max_context' ? `<p class="h">${t('context_hint', e.model_context ? n(e.model_context) : text(lang,'not_reported'))}</p>` : ''}`).join('')}<span>${label('l_models')}</span><span class="dim">${modelsLine(k)}</span><div class="models">${[...new Set([...e.models, ...(k.limits.models || [])])].map(model => `<label><input type="checkbox" disabled ${!k.limits.models?.length || k.limits.models.includes(model) ? 'checked' : ''}>${escape(model)}</label>`).join('')}</div></div><div class="dactions">${button('save_limits')}<span class="note">${t('readonly')}</span></div></div>
-  <div class="dsec"><span class="field-label">${label('d_usage')}</span>${usageTable(a,b,true,k.last_seen)}</div><div class="dsec"><span class="field-label">${label('d_key')}</span><div class="dactions">${button(k.status === 'paused' ? 'resume' : 'pause')}${button('rotate')}${button('revoke','ghost danger')}</div></div><p class="dfoot">${t('hash_only')}</p></aside>`;
+  ${limitsForm(data, lang, ui, k, pending)}
+  <div class="dsec"><span class="field-label">${label('d_usage')}</span>${usageTable(a,b,true,k.last_seen)}</div>${keyActions(lang, ui, k, pending)}<p class="dfoot">${t('hash_only')}</p></aside>`;
  }
- return `<div class="${stale !== null ? 'stale' : ''}"><div id="page" ${k ? 'inert' : ''}>${header}
+ if (ui?.mode === 'mint' || ui?.once) drawer = specialDrawer(data, lang, ui, pending);
+ return `<div class="${stale !== null ? 'stale' : ''}"><div id="page" ${drawer ? 'inert' : ''}>${header}
  <div class="strip"><div class="strip-in"><span>${(['friends','engine','usage','settings'] as const).map(id => `<a href="#${id}">${t(`ix_${id}`)}</a>`).join(' · ')}</span><span role="status">${stale !== null ? t('stale',stale) : t('refreshed',refreshedSeconds)}</span></div></div>
  ${!e.health.ok ? `<p class="degraded">${t('degraded',e.kind,e.url)}</p>` : ''}
  <main><section class="sec first overview"><div class="sec-in"><div class="facts">
@@ -90,7 +92,7 @@ export function render(data: Snapshot | null, lang: Lang, selected: string | nul
  ${fact('f_now',t('right_now',s.queue.in_flight,s.queue.waiting),t('throughput',compact(s.engine.tokens_per_s_1m)))}
  ${fact('f_today',t('today_value',n(day.model_calls),compact(tokens(day))),t('today_sub',day.errors,ms(day.ttft_median_ms)))}
  </div></div></section>
- <section class="sec" id="friends"><div class="sec-in"><div class="sec-head"><h2>${label('friends')}</h2><span class="count">${t('friends_count',current.length,active.length,current.filter(k=>k.status==='paused').length)}</span><p class="lead">${t('friends_lead')}</p><div class="act">${button('mint','primary')}</div></div>
+ <section class="sec" id="friends"><div class="sec-in"><div class="sec-head"><h2>${label('friends')}</h2><span class="count">${t('friends_count',current.length,active.length,current.filter(k=>k.status==='paused').length)}</span><p class="lead">${t('friends_lead')}</p><div class="act"><button type="button" class="primary" data-action="new" ${pending ? 'disabled' : ''}>${label('mint')}</button></div></div>
  ${current.length ? keyTable(current) : `<p class="empty">${t('no_keys')}</p>`}${revoked.length ? `<details class="dis"><summary>${t('revoked_n',revoked.length)}</summary>${keyTable(revoked,true)}</details>` : ''}<p class="foot-line">${t('counts_line')}</p></div></section>
  ${section('engine','engine',`${escape(e.kind)} · ${escape(e.url)}`,`<div class="facts8">${fact('e_kind',escape(e.kind),t('not_reported'))}${fact('e_health',e.health.ok ? t('healthy') : health,t('since',duration(since(e.health.since)),ago(e.probed_at)),!e.health.ok)}${fact('e_slots',n(e.slots),t(cfg.slots ? 'slots_override' : 'slots_auto'))}${fact('e_ctx',e.model_context ? n(e.model_context) : t('not_reported'),t('e_ctx_s'))}${fact('e_tps',compact(s.engine.tokens_per_s_1m)+' tok/s',t('e_tps_s'))}${fact('e_says',s.engine.metrics ? t('metrics',s.engine.busy,s.engine.waiting) : t('no_metrics'),s.engine.metrics ? t('e_says_s') : '')}${fact('e_mem',s.engine.memory_bytes ? bytes(s.engine.memory_bytes) : t('not_reported'),s.engine.metrics ? t('kv',s.engine.kv_cache_pct.toFixed(1)) : '')}${fact('e_peak',t('in_flight',s.engine.slots_peak_sampled),t('e_peak_s'))}</div>
  <table class="tbl models"><thead><tr>${(['m_model','m_ctx','m_calls','m_keys'] as CopyKey[]).map(key=>`<th${key==='m_keys'?' class="c-keys"':''}>${label(key)}</th>`).join('')}</tr></thead><tbody>${modelRows}</tbody></table><p class="foot-line">${t('engine_foot')}${!e.health.ok ? ' '+escape(e.health.err) : ''}</p>`)}
