@@ -1,3 +1,6 @@
+import { AttachedImages } from './Images';
+import { imageCopy, imageMeta, fitsRequest, MAX_IMAGES, prepareImage, type ImageData, type ImageMeta, type PreparedImage } from '../images';
+import { readImages, storeImages, preparedFrom } from '../image-store';
 import { Text } from '../i18n/RichText';
 import { tr, privacy, appLanguage } from '../i18n/text';
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
@@ -61,7 +64,7 @@ import {
   type Settings,
   type Thinking,
 } from '../storage';
-import { carried, chatSpeed, contextCarried, msText, rateText, reduceReply, saidInBanner, startReply, thinkingFields, tokensSaved, type Reply } from '../stream';
+import { carried, carriedImageCount, chatSpeed, contextCarried, msText, rateText, reduceReply, saidInBanner, startReply, thinkingFields, tokensSaved, type Reply } from '../stream';
 import { composing } from './composing';
 import MessageView from './Message';
 import { coarsePointer } from './pointer';
@@ -111,6 +114,11 @@ export default function Chat({ state, live, dispatch, onRedial, reconnecting = f
   const [currentId, setCurrentId] = useState('');
   const [streaming, setStreaming] = useState(false);
   const [draft, setDraft] = useState('');
+  const [attached, setAttached] = useState<PreparedImage[]>([]);
+  const [imageData, setImageData] = useState<ImageData>({});
+  const [loadedImageRefs, setLoadedImageRefs] = useState('');
+  const [missingChats, setMissingChats] = useState<Set<string>>(() => new Set());
+  const [imageNotice, setImageNotice] = useState('');
   const [banner, setBanner] = useState<FriendlyError | null>(null);
   const [retryUntil, setRetryUntil] = useState(0);
   const [now, setNow] = useState(() => Date.now());
@@ -131,6 +139,13 @@ export default function Chat({ state, live, dispatch, onRedial, reconnecting = f
   const conv = convs.find((c) => c.id === currentId) ?? (convs[0] as Conversation);
   const models = me.host.models.length > 0 ? me.host.models : listed;
   const model = modelFor(settings.model, models) ?? models[0] ?? '';
+  const vision = live.meOk && me.host.vision[model] === true;
+  const imageRefs = JSON.stringify(conv.messages.filter((m) => m.images?.length).map(({ id, images }) => ({ id, images })));
+  useEffect(() => {
+    let active = true;
+    void readImages(scope, JSON.parse(imageRefs)).then((data) => { if (active) { setImageData(data); setLoadedImageRefs(imageRefs); } });
+    return () => { active = false; };
+  }, [scope, imageRefs]);
   const waiting = Math.max(0, retryUntil - now);
   // Nothing can be sent while the invite is off, or from a tab that does not own the store.
   const locked = live.key !== 'active' || reconnecting;
@@ -284,19 +299,36 @@ export default function Chat({ state, live, dispatch, onRedial, reconnecting = f
   }, [conv.messages]);
 
   const run = useCallback(
-    async (convId: string, history: Message[], previous?: string) => {
+    async (convId: string, history: Message[], previous?: string, fresh: ImageData = {}) => {
       if (model === '') {
+        setStreaming(false);
         setBanner({
           title: tr('app_no_model_available'),
           detail: tr('app_this_host_has_not_shared_a_model_with_your'),
         });
         return;
       }
+      const ac = new AbortController();
+      abort.current = ac;
+      setStreaming(true);
+      const stored = await readImages(scope, history);
+      if (ac.signal.aborted) { setStreaming(false); abort.current = null; return; }
+      const data = { ...stored, ...fresh };
+      setImageData(data);
       const replyId = newId();
       // One derivation of what goes to the host (024): the meter reads the same function. A turn
       // too long for the model's memory on its own is left out, and this reply says so.
       const ctx = me.host.upstream.model_context;
-      const { messages, leftOut } = carried(history, settings, ctx, history[history.length - 1]);
+      const { messages, leftOut } = carried(history, settings, ctx, history[history.length - 1], data);
+      const imageCount = carriedImageCount(messages);
+      if (history.some((m) => !leftOut.includes(m) && m.images?.some((i) => !data[i.id]))) {
+        setMissingChats((seen) => new Set(seen).add(convId));
+      }
+      const request = { model, messages, temperature: settings.temperature, ...thinkingFields(settings.thinking) };
+      if (!fitsRequest(request)) {
+        setImageNotice(tr('app_over_message_size', { size: '4 MB' }));
+        setStreaming(false); abort.current = null; return;
+      }
       const note =
         leftOut.length === 0
           ? undefined
@@ -304,21 +336,17 @@ export default function Chat({ state, live, dispatch, onRedial, reconnecting = f
       patch(convId, (c) => ({
         ...c,
         updatedAt: Date.now(),
-        messages: [...history, { id: replyId, role: 'assistant', content: '', model, ...(previous ? { previous } : {}), ...(note ? { note } : {}), ...(settings.thinking !== 'default' ? { thinking: settings.thinking } : {}) }],
+        messages: [...history, { id: replyId, role: 'assistant', content: '', model, imageCount, ...(previous ? { previous } : {}), ...(note ? { note } : {}), ...(settings.thinking !== 'default' ? { thinking: settings.thinking } : {}) }],
       }));
       setBanner(null);
       setRetryUntil(0);
-      const ac = new AbortController();
-      abort.current = ac;
-      setStreaming(true);
-
       let reply: Reply = startReply(); // the clock behind the footer's numbers starts at Send (032)
       let failed: { code: string; error: FriendlyError } | null = null;
       try {
         for await (const ev of chatEvents(
           live.transport,
           live.secret,
-          { model, messages, temperature: settings.temperature, ...thinkingFields(settings.thinking) },
+          request,
           ac.signal,
           undefined,
           host,
@@ -326,6 +354,9 @@ export default function Chat({ state, live, dispatch, onRedial, reconnecting = f
         )) {
           if (ev.kind === 'error') failed = { code: ev.code, error: ev.error };
           reply = reduceReply(reply, ev);
+          if (ev.kind === 'error' && ev.code === 'images_not_supported') {
+            reply = { ...reply, note: imageCopy('app_engine_rejected_with_images', imageCount, { host }), details: ev.error.hostSaid ?? ev.error.detail };
+          }
           patch(convId, (c) => ({
             ...c,
             messages: c.messages.map((m) => (m.id === replyId ? { ...m, ...reply } : m)),
@@ -348,15 +379,22 @@ export default function Chat({ state, live, dispatch, onRedial, reconnecting = f
       }
       void refreshMe();
     },
-    [live.transport, live.secret, model, settings, patch, dispatch, refreshMe, host, me.host.upstream.model_context],
+    [live.transport, live.secret, model, settings, patch, dispatch, refreshMe, host, me.host.upstream.model_context, scope],
   );
 
-  function send(text: string): void {
-    if (streaming || locked || readOnly || text.trim() === '') return;
+  async function send(text: string): Promise<void> {
+    if (streaming || locked || readOnly || (text.trim() === '' && !attached.length)) return;
+    if (attached.length && !vision) { setImageNotice(tr('app_model_cant_see_images', { model: modelLabel(model) })); return; }
+    const sending = attached;
+    const fresh = Object.fromEntries(sending.map((i) => [i.id, i.data]));
     // The turn goes into the thread before anything is sent: if nothing comes back it is still
     // there, marked as undelivered by derivation (022 promise 2), with something to press.
-    const message: Message = { id: newId(), role: 'user', content: text.trim() };
+    const message: Message = { id: newId(), role: 'user', content: text.trim(), ...(sending.length ? { images: sending.map(imageMeta) } : {}) };
     const history = [...conv.messages, message];
+    if (!fitsRequest({ model, messages: carried(history, settings, me.host.upstream.model_context, message, { ...imageData, ...fresh }).messages, temperature: settings.temperature, ...thinkingFields(settings.thinking) })) {
+      setImageNotice(tr('app_over_message_size', { size: '4 MB' })); return;
+    }
+    setStreaming(true);
     const next: Conversation = {
       ...conv,
       title: conv.messages.length === 0 ? titleFrom(message.content) : conv.title,
@@ -366,8 +404,12 @@ export default function Chat({ state, live, dispatch, onRedial, reconnecting = f
     setConvs((prev) => prev.map((c) => (c.id === next.id ? next : c)));
     persist(next); // before any I/O: a reload from here still has the reader's words (013)
     setDraft('');
+    setAttached([]);
+    setImageNotice('');
     pinned.current = true;
-    void run(conv.id, history);
+    if (sending.length) await storeImages(scope, message.id, sending);
+    if (!leaderRef.current) { setStreaming(false); return; }
+    void run(conv.id, history, undefined, fresh);
   }
 
   /**
@@ -375,13 +417,17 @@ export default function Chat({ state, live, dispatch, onRedial, reconnecting = f
    * that replaces it carries it as `previous`, behind a disclosure, so a reader who preferred the
    * old one has not lost it to a click (014 promise 16).
    */
-  function replaceAnswer(text?: string): void {
+  async function replaceAnswer(text?: string, images?: ImageMeta[]): Promise<void> {
     if (streaming || locked || readOnly) return;
     const idx = lastIndexOfRole(conv.messages, 'user');
     if (idx < 0) return;
     const replaced = conv.messages.slice(idx + 1).find((m) => m.content.trim() !== '')?.content;
-    const asked = text === undefined ? (conv.messages[idx] as Message) : { ...(conv.messages[idx] as Message), content: text.trim() };
+    const asked = text === undefined ? (conv.messages[idx] as Message) : { ...(conv.messages[idx] as Message), content: text.trim(), images: images ?? conv.messages[idx]?.images };
     const history: Message[] = [...conv.messages.slice(0, idx), asked];
+    if (images) {
+      setStreaming(true);
+      await storeImages(scope, asked.id, await preparedFrom(images, imageData));
+    }
     patch(conv.id, (c) => ({
       ...c,
       // An edited first message is what this chat is now about; a title from the old one is stale.
@@ -392,12 +438,13 @@ export default function Chat({ state, live, dispatch, onRedial, reconnecting = f
   }
 
   const regenerate = () => replaceAnswer();
-  const resend = (text: string) => replaceAnswer(text);
+  const resend = (text: string, images: ImageMeta[]) => { void replaceAnswer(text, images); };
 
   function startNew(): void {
     const next = newConversation();
     setConvs((prev) => [next, ...prev.filter((c) => c.messages.length > 0)]);
     setCurrentId(next.id);
+    setAttached([]); setDraft(''); setImageNotice('');
     setDrawer(false);
     setBanner(null);
     composer.current?.focus();
@@ -470,6 +517,7 @@ export default function Chat({ state, live, dispatch, onRedial, reconnecting = f
                 className="conv-open"
                 onClick={() => {
                   setCurrentId(c.id);
+                  setAttached([]); setDraft(''); setImageNotice('');
                   setDrawer(false);
                 }}
               >
@@ -511,7 +559,7 @@ export default function Chat({ state, live, dispatch, onRedial, reconnecting = f
             {/* The pill's three states are the same three the line already says; the modifier only
                 lets the stylesheet colour the dot (038). No new state, no new element, no new copy. */}
             <span className={`path ${pathState(live)}`}>{pathLine(live, now)}</span>
-            <Meters live={live} used={contextCarried(conv.messages, settings, me.host.upstream.model_context)} onOpen={() => setLimitsSheet(true)} />
+            <Meters images={carriedImageCount(carried(conv.messages, settings, me.host.upstream.model_context, undefined, imageData).messages)} live={live} used={live.meOk ? contextCarried(conv.messages, settings, me.host.upstream.model_context) : null} onOpen={() => setLimitsSheet(true)} />
           </div>
           <button className="ghost tiny" onClick={() => setSheet(true)}>
             {tr('app_settings')}
@@ -563,6 +611,8 @@ export default function Chat({ state, live, dispatch, onRedial, reconnecting = f
                 <MessageView
                   key={m.id}
                   message={m}
+                  imageData={imageData}
+                  imagesLoaded={loadedImageRefs === imageRefs}
                   host={host}
                   live={streaming && i === conv.messages.length - 1}
                   busy={streaming}
@@ -625,7 +675,20 @@ export default function Chat({ state, live, dispatch, onRedial, reconnecting = f
           </div>
         )}
 
+        {missingChats.has(conv.id) && <p className="image-notice" role="status">{tr('app_image_missing')}</p>}
         <Composer
+          key={conv.id}
+          images={attached}
+          onImages={setAttached}
+          vision={vision}
+          model={modelLabel(model)}
+          notice={imageNotice}
+          onNotice={setImageNotice}
+          accepts={(images) => {
+            const asking: Message = { id: 'draft', role: 'user', content: draft, images: images.map(imageMeta) };
+            const data = { ...imageData, ...Object.fromEntries(images.map((i) => [i.id, i.data])) };
+            return fitsRequest({ model, messages: carried([...conv.messages, asking], settings, me.host.upstream.model_context, asking, data).messages, temperature: settings.temperature, ...thinkingFields(settings.thinking) });
+          }}
           ref={composer}
           text={draft}
           onText={setDraft}
@@ -637,7 +700,7 @@ export default function Chat({ state, live, dispatch, onRedial, reconnecting = f
               ? tr('app_send_will_work_again_the_moment_your_host_resumes')
               : locked || readOnly || touch
                 ? null
-                : tr('app_enter_sends_shift_enter_makes_a_new_line')
+                : tr(vision ? 'app_hint_enter_sends_images' : 'app_enter_sends_shift_enter_makes_a_new_line')
           }
           onSend={send}
           onStop={() => abort.current?.abort()}
@@ -670,8 +733,9 @@ function orNew(convs: Conversation[]): Conversation[] {
   return convs.length > 0 ? convs : [newConversation()];
 }
 
-function Meters({ live, used, onOpen }: { live: Live; used: number | null; onOpen: () => void }) {
+function Meters({ live, used, images, onOpen }: { live: Live; used: number | null; images: number; onOpen: () => void }) {
   const context = contextMeter(used, live.me.host.upstream.model_context);
+  if (context && images) context.label = imageCopy(context.unknown ? 'app_meter_context_unknown_images' : 'app_meter_context_images', images, { used: compact(used ?? 0), limit: compact(live.me.host.upstream.model_context) });
   const all: MeterView[] = context ? [...meters(live), context] : meters(live);
   return (
     <button className="meters" onClick={onOpen} aria-label={tr('app_what_these_limits_mean')}>
@@ -707,6 +771,7 @@ function LimitsSheet({ live, messages, onClose }: { live: Live; messages: readon
           <p>
             <strong>{tr('app_limits_context', { context: compact(context) })}</strong> {tr('app_the_model_s_memory_the_meter_is_what_the')}</p>
         )}
+        <p>{tr('app_limits_images')}</p>
         {/* Speed, from where the reader sits (032): this chat's medians and what is inside them. The
             relay round trip is quoted only when there is one: direct mode has no hop. */}
         {pace.n > 0 && (
@@ -772,6 +837,7 @@ function Empty({
 
 function Composer({
   ref,
+  images, onImages, vision, model, notice, onNotice, accepts,
   text,
   onText,
   streaming,
@@ -782,6 +848,13 @@ function Composer({
   onStop,
 }: {
   ref: React.RefObject<HTMLTextAreaElement | null>;
+  images: PreparedImage[];
+  onImages: (images: PreparedImage[]) => void;
+  vision: boolean;
+  model: string;
+  notice: string;
+  onNotice: (text: string) => void;
+  accepts: (images: PreparedImage[]) => boolean;
   text: string;
   onText: (t: string) => void;
   streaming: boolean;
@@ -792,6 +865,31 @@ function Composer({
   onSend: (t: string) => void;
   onStop: () => void;
 }) {
+  const picker = useRef<HTMLInputElement>(null);
+  const busy = useRef(false);
+  const mounted = useRef(true);
+  const [reading, setReading] = useState(false);
+  const [over, setOver] = useState(false);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
+  async function attach(files: File[]) {
+    if (disabled || streaming || busy.current) return;
+    if (!vision) { onNotice(tr('app_model_cant_see_images', { model })); return; }
+    busy.current = true; setReading(true); onNotice('');
+    let next = [...images];
+    try {
+      for (const file of files) {
+        if (next.length >= MAX_IMAGES) { onNotice(tr('app_image_limit')); break; }
+        const image = await prepareImage(file);
+        if (!mounted.current) return;
+        if (!accepts([...next, image])) { onNotice(tr('app_over_message_size', { size: '4 MB' })); break; }
+        next = [...next, image];
+        onImages(next);
+      }
+    } catch { if (mounted.current) onNotice(tr('app_could_not_read_that_image')); }
+    finally { busy.current = false; if (mounted.current) setReading(false); }
+  }
+  const data = Object.fromEntries(images.map((i) => [i.id, i.data]));
+  const oversized = notice === tr('app_over_message_size', { size: '4 MB' });
   // The field's height follows its content, never the other way round: measured from the text on
   // every change and on every viewport change, so a cleared field shrinks back and a rotated phone
   // re-fits. `scrollHeight` excludes the border and the box is border-box, so the border is added or
@@ -812,8 +910,16 @@ function Composer({
     return () => window.removeEventListener('resize', fit);
   }, [ref, text]);
   return (
-    <div className="composer">
-      <div className="composer-box">
+    <div className="composer"
+      onPaste={(e) => { const files = Array.from(e.clipboardData.files).filter((f) => f.type.startsWith('image/')); if (files.length) { e.preventDefault(); void attach(files); } }}
+      onDragOver={(e) => { if (e.dataTransfer.types.includes('Files')) { e.preventDefault(); setOver(true); } }}
+      onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setOver(false); }}
+      onDrop={(e) => { e.preventDefault(); setOver(false); const files = Array.from(e.dataTransfer.files); if (files.length) void attach(files); }}>
+      <AttachedImages images={images} data={data} onRemove={(id) => { onImages(images.filter((i) => i.id !== id)); onNotice(''); }} />
+      {oversized && <p className="attached-line bad image-notice" role="status">{notice}</p>}
+      <div className={`composer-box ${over ? 'over' : ''}`}>
+        <input ref={picker} type="file" accept="image/*" multiple hidden onChange={(e) => { void attach(Array.from(e.target.files ?? [])); e.target.value = ''; }} />
+        {vision && <button className="attach" aria-label={tr('app_attach_an_image')} onClick={() => { if (!disabled && !streaming && !reading) picker.current?.click(); }}>+</button>}
         <textarea
           ref={ref}
           value={text}
@@ -821,14 +927,14 @@ function Composer({
           aria-label={tr('app_message')}
           placeholder={tr('app_message_the_host_s_model')}
           disabled={disabled}
-          onChange={(e) => onText(e.target.value)}
+          onChange={(e) => { onText(e.target.value); onNotice(''); }}
           onKeyDown={(e) => {
             // On a touch keyboard Return is the only way to make a new line, so Send is the only
             // way to send (014 promise 6). Enter mid-composition commits an IME candidate and must
             // not send either (007 promise 9).
             if (touch || e.key !== 'Enter' || e.shiftKey || composing(e)) return;
             e.preventDefault();
-            if (!streaming && !disabled && text.trim() !== '') onSend(text);
+            if (!streaming && !reading && !disabled && (text.trim() !== '' || images.length > 0)) onSend(text);
           }}
         />
         {streaming ? (
@@ -838,7 +944,7 @@ function Composer({
         ) : (
           <button
             className="primary small"
-            disabled={disabled || text.trim() === ''}
+            disabled={disabled || reading || (text.trim() === '' && images.length === 0)}
             onClick={() => {
               onSend(text);
               ref.current?.focus();
@@ -848,7 +954,7 @@ function Composer({
           </button>
         )}
       </div>
-      {hint && <p className="hint">{hint}</p>}
+      {(over || (!oversized && notice) || hint) && <p className={`hint ${notice && !oversized ? 'image-notice' : ''}`} role={notice ? 'status' : undefined}>{over ? tr('app_drop_to_attach') : (!oversized && notice) || hint}</p>}
     </div>
   );
 }
@@ -927,6 +1033,7 @@ function SettingsSheet({
           {tr('app_settings_limits', { rpm: me.limits.rpm, daily: compact(me.limits.daily_tokens), concurrent: me.limits.max_concurrent, output: compact(me.limits.max_output_tokens) })}{' '}
           {tr('app_settings_engine', { engine: me.host.upstream.kind })}
           {me.host.upstream.model_context > 0 ? tr('app_settings_context', { context: compact(me.host.upstream.model_context) }) : ''}
+          {live.meOk && me.host.vision[chosen] === true ? tr('app_settings_vision') : ''}
           {live.meOk && !me.host.upstream.healthy ? tr('app_not_answering_right_now') : ''}.{' '}
           <Text name="app_settings_model_id" values={{ model: <code>{chosen || tr('app_none')}</code> }} />
           {live.ephemeral

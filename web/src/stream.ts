@@ -1,3 +1,4 @@
+import type { ImageData } from './images';
 import { tr } from './i18n/text';
 // The message lifecycle: one pure reducer from the stream events in api.ts to what the bubble
 // says. The rule it exists to enforce is that a reply is finished only when the host says it is —
@@ -181,6 +182,7 @@ export function carried(
   settings: Pick<Settings, 'systemPrompt'>,
   modelContext: number,
   asking?: Message,
+  images: ImageData = {},
 ): { messages: ChatMessage[]; leftOut: Message[] } {
   const messages: ChatMessage[] = [];
   const leftOut: Message[] = [];
@@ -193,7 +195,11 @@ export function carried(
       leftOut.push(m);
       continue;
     }
-    messages.push({ role: m.role, content: m.content });
+    const attached = m.role === 'user' ? (m.images ?? []).filter((i) => images[i.id]) : [];
+    messages.push({ role: m.role, content: attached.length ? [
+      ...attached.map((i) => ({ type: 'image_url' as const, image_url: { url: images[i.id]! } })),
+      { type: 'text', text: m.content },
+    ] : m.content });
   }
   return { messages, leftOut };
 }
@@ -204,7 +210,7 @@ export function contextCarried(
   settings: Pick<Settings, 'systemPrompt'>,
   modelContext: number,
 ): number {
-  return carried(history, settings, modelContext).messages.reduce((n, m) => n + estimateTokens(m.content) + PER_MESSAGE, 0);
+  return carried(history, settings, modelContext).messages.reduce((n, m) => n + estimateTokens(typeof m.content === 'string' ? m.content : m.content.filter((p) => p.type === 'text').map((p) => p.text).join('')) + PER_MESSAGE, 0);
 }
 
 function contextSlack(modelContext: number): number {
@@ -308,4 +314,9 @@ export function msText(ms: number): string {
 /** "42 tok/s"; a decimal only when there is little else. */
 export function rateText(tokPerS: number): string {
   return `${tokPerS >= 10 ? Math.round(tokPerS) : tokPerS.toFixed(1)} tok/s`;
+}
+
+/** Count exactly the parts emitted by carried(), after omission and missing-blob filtering. */
+export function carriedImageCount(messages: readonly ChatMessage[]): number {
+  return messages.reduce((n, m) => n + (Array.isArray(m.content) ? m.content.filter((p) => p.type === 'image_url').length : 0), 0);
 }

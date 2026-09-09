@@ -1,3 +1,4 @@
+import type { ImageMeta } from './images';
 import { tr } from './i18n/text';
 // Conversations, messages, settings, and the localStorage they survive in. Every access is behind
 // try/catch: a browser with storage disabled loses history but must still chat.
@@ -19,6 +20,9 @@ export interface Message {
   id: string;
   role: 'user' | 'assistant';
   content: string;
+  images?: ImageMeta[];
+  /** Number of images actually carried by this reply’s request. */
+  imageCount?: number;
   /** reasoning_content deltas, kept separate so the Thinking block can collapse. */
   reasoning?: string;
   model?: string;

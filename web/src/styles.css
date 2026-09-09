@@ -966,3 +966,62 @@ input[type='range']::-moz-range-thumb {
   .landing .invite-wide { display:none; }
   .landing .invite-phone { display:inline; }
 }
+
+
+/* ================= NEW: image attach (design record docs/brand/chat-images/design.md) ================= */
+
+/* The attach control: a square the height of the field row, ink-ruled like .secondary, a plain "+".
+   Rendered only when /me says the model sees images; it is never disabled. */
+.attach {
+  flex: 0 0 auto; width: calc(var(--field-size) * 1.5 + 24px); height: calc(var(--field-size) * 1.5 + 24px);
+  border: 1px solid var(--rule); display: grid; place-items: center;
+  font-size: 21px; font-weight: 400; line-height: 1; color: var(--text); padding: 0;
+}
+.attach:hover { background: var(--surface); }
+
+/* Attached, not yet sent: a row of 64 px squares above the field, and one mono line of what was
+   measured — count, the side they were scaled to, the bytes that will leave this device. */
+.attached {
+  display: flex; flex-wrap: wrap; align-items: center; gap: 8px 10px;
+  max-width: 46rem; margin: 0 auto 10px; width: 100%;
+}
+.thumb { position: relative; width: 64px; height: 64px; border: 1px solid var(--rule); background: var(--surface); flex: none; }
+.thumb img { display: block; width: 100%; height: 100%; object-fit: cover; }
+/* Remove sits in the corner as its own paper square: a rule inside a rule, no circle, no shadow. */
+.thumb-x {
+  position: absolute; top: -1px; right: -1px; width: 22px; height: 22px; padding: 0;
+  background: var(--paper); border: 1px solid var(--rule); color: var(--muted);
+  font-size: 15px; line-height: 1; display: grid; place-items: center;
+}
+.thumb-x:hover { color: var(--danger); }
+@media (pointer: coarse) { .thumb-x { width: 26px; height: 26px; } }
+.attached-line {
+  font-family: var(--mono); font-size: 10.5px; color: var(--muted);
+  font-variant-numeric: tabular-nums; white-space: nowrap; margin-left: 2px;
+}
+.attached-line.bad { color: var(--danger); }
+
+/* Dragging over the composer: the field row takes a dashed ink ring, and the hint says the one thing. */
+.composer-box.over { outline: 1px dashed var(--rule); outline-offset: 6px; }
+
+/* In the sent turn the images sit above the words, inside the same bubble, ruled in ink; the
+   bubble's own padding and grey are unchanged. Pressing one opens the sheet. */
+.bubble .shots { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 9px; }
+.bubble .shots:last-child { margin-bottom: 0; }
+.bubble .shot { display: block; padding: 0; border: 1px solid var(--rule); background: var(--paper); }
+.bubble .shot img { display: block; height: 120px; width: auto; max-width: 100%; }
+@media (max-width: 760px) { .bubble .shot img { height: 80px; } }
+.bubble.pending .shot { border-color: var(--rule); }
+
+/* The image, on the existing sheet: the downscaled file exactly as it was sent, captioned in mono. */
+.sheet.image { padding: 0; width: auto; max-width: min(100%, 1024px); }
+.sheet.image img { display: block; max-width: 100%; max-height: 78dvh; }
+.sheet.image figcaption {
+  font-family: var(--mono); font-size: 11px; color: var(--muted); padding: 8px 12px;
+  border-top: 1px solid var(--border); font-variant-numeric: tabular-nums;
+}
+.app.zh :is(.attached-line, .sheet.image figcaption) { font-family: var(--mono-cjk); }
+
+.image-notice { max-width: 46rem; margin: 8px auto; padding: 0 12px; font-size: 11px; white-space: normal; }
+.missing-image { width: 120px; min-height: 80px; padding: 6px !important; display: flex !important; flex-direction: column; gap: 6px; font: 10px var(--mono); color: var(--muted); }
+.sheet.image { color: var(--text); text-align: left; }

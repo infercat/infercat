@@ -1,3 +1,5 @@
+import { AttachedImages, ImageShots } from './Images';
+import { imageCopy, type ImageData, type ImageMeta } from '../images';
 import { tr } from '../i18n/text';
 import { useEffect, useRef, useState } from 'react';
 import { modelLabel } from '../api';
@@ -34,7 +36,9 @@ interface Props {
   saved: number | null;
   onContinue: () => void;
   onNewChat: () => void;
-  onResend: (text: string) => void;
+  imageData: ImageData;
+  imagesLoaded: boolean;
+  onResend: (text: string, images: ImageMeta[]) => void;
 }
 
 export default function MessageView({
@@ -53,22 +57,26 @@ export default function MessageView({
   onContinue,
   onNewChat,
   onResend,
+  imageData,
+  imagesLoaded,
 }: Props) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(m.content);
+  const [editImages, setEditImages] = useState(m.images ?? []);
 
   if (m.role === 'user') {
     if (editing) {
       return (
         <div className="row user">
           <div className="bubble editing">
+            <AttachedImages images={editImages} data={imageData} onRemove={(id) => setEditImages((v) => v.filter((i) => i.id !== id))} />
             <textarea value={draft} rows={Math.min(10, draft.split('\n').length + 1)} autoFocus onChange={(e) => setDraft(e.target.value)} />
             <div className="edit-actions">
               <button className="ghost" onClick={() => { setEditing(false); setDraft(m.content); }}>
                 {tr('app_cancel')}
               </button>
               {/* It replaces the answer below it, so it says so before it is pressed (promise 16). */}
-              <button className="primary small" onClick={() => { setEditing(false); onResend(draft); }} disabled={draft.trim() === ''}>
+              <button className="primary small" onClick={() => { setEditing(false); onResend(draft, editImages); }} disabled={draft.trim() === '' && !editImages.length}>
                 {tr('app_replace_answer')}
               </button>
             </div>
@@ -81,12 +89,12 @@ export default function MessageView({
     const pending = undelivered && !answering;
     return (
       <div className="row user">
-        <div className={`bubble ${pending ? 'pending' : ''}`}>{m.content}</div>
+        <div className={`bubble ${pending ? 'pending' : ''}`}>{m.images?.length ? <ImageShots images={m.images} data={imageData} loaded={imagesLoaded} host={host} /> : null}{m.content}</div>
         <div className="actions">
           {/* The pending turn (014 promise 1): the reader's words are still here and still theirs. */}
           {pending && <span className="pending-mark">{tr('app_not_delivered')}</span>}
           {last && !busy && !readOnly && (
-            <button className="ghost tiny" onClick={() => { setDraft(m.content); setEditing(true); }}>
+            <button className="ghost tiny" onClick={() => { setDraft(m.content); setEditImages(m.images ?? []); setEditing(true); }}>
               {tr('app_edit')}
             </button>
           )}
@@ -182,7 +190,7 @@ export default function MessageView({
       <div className="meta">
         <span className="meta-text">
           {m.model ? modelLabel(m.model) : ''}
-          {m.tokens ? tr('app_message_usage', { input: m.tokens.in, output: m.tokens.out }) : ''}
+          {m.tokens ? (m.imageCount ? imageCopy('app_message_usage_images', m.imageCount, { input: m.tokens.in.toLocaleString('en-US'), output: m.tokens.out.toLocaleString('en-US') }) : tr('app_message_usage', { input: m.tokens.in, output: m.tokens.out })) : ''}
           {/* A stopped reply never gets its usage chunk, but the host counted what it made. */}
           {!m.tokens && m.status === 'stopped' ? tr('app_still_counted_against_today_s_tokens') : ''}
           {/* What was asked of the engine, and what it did (031): an engine that thought anyway is
