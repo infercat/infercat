@@ -1164,7 +1164,7 @@ function IOSInstallSheet({ invite, onClose }: { invite: string; onClose: () => v
     <h3>{tr('app_ios_sheet_title')}</h3><p className="lead-line">{tr('app_ios_sheet_lead')}</p>
     <ol className="how">
       <li><span className="n">01</span><span>{tr('app_ios_step_1')}</span><span className="step-action"><button className="secondary small" onClick={() => { void navigator.clipboard?.writeText(invite).then(() => setCopied(true)).catch(() => setCopied(false)); }}>{tr(copied ? 'app_copied' : 'app_ios_copy_invite')}</button></span></li>
-      <li><span className="n">02</span><span>{text('app_ios_step_2')}</span></li>
+      <li><span className="n">02</span><span>{text('app_ios_step_2')}<br />{tr('app_ios_step_2_older')}</span></li>
       <li><span className="n">03</span><span>{text('app_ios_step_3')}</span></li>
     </ol><div className="sheet-actions"><button className="primary small" onClick={onClose}>{tr('app_got_it')}</button></div>
   </section></div>;
