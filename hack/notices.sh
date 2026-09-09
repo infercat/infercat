@@ -1,7 +1,7 @@
 #!/bin/sh
 # notices.sh — build (or verify) THIRD_PARTY_NOTICES.md, the notice we owe every dependency whose
 # licence asks for one. Three parts, because we ship three things: the host binary's Go tree
-# (`go-licenses report`), the web bundle's npm tree (`pnpm licenses list --json --prod`), and the
+# (`go-licenses report`), the web bundle's locked npm production tree, and the
 # two typefaces the web bundle carries as woff2 files (FONTS below — an inventory, because a font
 # checked into public/ has no package manager to ask).
 #
@@ -70,13 +70,14 @@ LC_ALL=C sort -u "$tmp/go.all" >"$tmp/go.tsv"
 [ -d web/node_modules ] || (cd web && pnpm install --frozen-lockfile >/dev/null 2>&1)
 (cd web && pnpm licenses list --json --prod 2>/dev/null) >"$tmp/web.json" ||
   { echo "notices: pnpm licenses list failed" >&2; exit 1; }
-node hack/notices-spdx.mjs "$tmp/web.json" "$ALLOWED" "$tmp/web-texts.md" >"$tmp/web.tsv"
+node --test hack/notices-spdx.test.mjs >&2
+node hack/notices-spdx.mjs "$tmp/web.json" "$ALLOWED" "$tmp/web-texts.md" web/pnpm-lock.yaml >"$tmp/web.tsv"
 [ -s "$tmp/web.tsv" ] || { echo "notices: pnpm reported no packages" >&2; exit 1; }
 
 # The embedded console has its own production dependency tree.
 [ -d console/node_modules ] || (cd console && pnpm install --frozen-lockfile >/dev/null 2>&1)
 (cd console && pnpm licenses list --json --prod 2>/dev/null) >"$tmp/console.json"
-node hack/notices-spdx.mjs "$tmp/console.json" "$ALLOWED" "$tmp/console-texts.md" >"$tmp/console.tsv"
+node hack/notices-spdx.mjs "$tmp/console.json" "$ALLOWED" "$tmp/console-texts.md" console/pnpm-lock.yaml >"$tmp/console.tsv"
 cat "$tmp/console.tsv" >>"$tmp/web.tsv"
 cat "$tmp/console-texts.md" >>"$tmp/web-texts.md"
 
@@ -119,7 +120,7 @@ fi
   echo "not one of: $ALLOWED."
   echo
   echo "Three things ship: the host binary (Go — the union over every release platform: $TARGETS),"
-  echo "the web and console bundles (npm, production only), and the two typefaces that bundle carries as"
+  echo "the web and console bundles (npm, locked production closure across platforms), and the two typefaces that bundle carries as"
   echo "woff2 files under \`web/public/fonts\` (self-hosted, so the app asks no third party for a font)."
   echo "Full licence texts live at the URLs below; the two the tunnel is built on and the Open Font"
   echo "License of each typeface are reproduced verbatim at the end of this file."
