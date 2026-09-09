@@ -43,7 +43,8 @@ type stamp struct {
 // restart. Writes are atomic (temp file + rename) and the file is kept at mode 0600 because it
 // holds the hash of every friend's secret (docs/PRINCIPLES.md, Protection 2).
 type FileStore struct {
-	path string
+	path    string
+	changes chan struct{}
 
 	mu        sync.Mutex
 	keys      []*Key
@@ -62,6 +63,17 @@ func NewFileStore(dataDir string) (*FileStore, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s, s.reload(true)
+}
+
+// Changes coalesces successful commits. Consumers must re-read the current snapshot.
+// Notification never blocks a committed mutation or calls out under the store mutex.
+func (s *FileStore) Changes() <-chan struct{} {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if s.changes == nil {
+		s.changes = make(chan struct{}, 1)
+	}
+	return s.changes
 }
 
 // Path is the file this store reads and writes.
@@ -386,5 +398,11 @@ func (s *FileStore) save() error {
 	}
 	s.lastCheck = s.now()
 	s.loaded = true
+	if s.changes != nil {
+		select {
+		case s.changes <- struct{}{}:
+		default:
+		}
+	}
 	return nil
 }

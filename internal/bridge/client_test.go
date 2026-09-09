@@ -22,7 +22,7 @@ import (
 	"github.com/infercat/infercat/internal/usage"
 )
 
-func receive(t *testing.T, c *websocket.Conn) frame {
+func receiveFrame(t *testing.T, c *websocket.Conn) frame {
 	t.Helper()
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
@@ -35,6 +35,16 @@ func receive(t *testing.T, c *websocket.Conn) frame {
 		t.Fatal(err)
 	}
 	return f
+}
+func receive(t *testing.T, c *websocket.Conn) frame {
+	t.Helper()
+	for {
+		f := receiveFrame(t, c)
+		if f.Type != "keys" {
+			return f
+		}
+		transmit(t, c, frame{Type: "keys_ready"})
+	}
 }
 func transmit(t *testing.T, c *websocket.Conn, f frame) {
 	t.Helper()
@@ -68,7 +78,7 @@ func bridgeServer(t *testing.T) (Config, <-chan *websocket.Conn) {
 	t.Cleanup(func() { http.DefaultClient = oldClient; s.Close() })
 	return Config{Endpoint: s.URL, Host: "test", Token: strings.Repeat("a", 64)}, connections
 }
-func connect(t *testing.T, ch <-chan *websocket.Conn) *websocket.Conn {
+func connectRaw(t *testing.T, ch <-chan *websocket.Conn) *websocket.Conn {
 	t.Helper()
 	select {
 	case c := <-ch:
@@ -79,11 +89,20 @@ func connect(t *testing.T, ch <-chan *websocket.Conn) *websocket.Conn {
 		return nil
 	}
 }
-func startSession(t *testing.T, c Config, h http.Handler) {
+func connect(t *testing.T, ch <-chan *websocket.Conn) *websocket.Conn {
+	t.Helper()
+	c := connectRaw(t, ch)
+	if f := receiveFrame(t, c); f.Type != "keys" {
+		t.Fatal("missing initial key snapshot")
+	}
+	transmit(t, c, frame{Type: "keys_ready"})
+	return c
+}
+func startSession(t *testing.T, c Config, h http.Handler, syncKeys ...keySync) {
 	t.Helper()
 	ctx, cancel := context.WithCancel(context.Background())
 	done := make(chan error, 1)
-	go func() { done <- session(ctx, c, h) }()
+	go func() { done <- session(ctx, c, h, syncKeys...) }()
 	t.Cleanup(func() {
 		cancel()
 		select {
@@ -92,6 +111,68 @@ func startSession(t *testing.T, c Config, h http.Handler) {
 			t.Error("session did not stop")
 		}
 	})
+}
+
+func TestActiveKeySnapshotsOnConnectAndCommittedChange(t *testing.T) {
+	c, ch := bridgeServer(t)
+	store, err := keys.NewFileStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	alice, aliceSecret, err := store.Add(context.Background(), "alice", keys.Limits{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	bob, bobSecret, err := store.Add(context.Background(), "bob", keys.Limits{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := store.SetStatus(context.Background(), bob.ID, keys.Paused); err != nil {
+		t.Fatal(err)
+	}
+	changes := store.Changes()
+	startSession(t, c, http.NotFoundHandler(), keySync{store: store, changed: changes})
+	conn := connectRaw(t, ch)
+
+	initial := receiveFrame(t, conn)
+	wantAlice := strings.TrimPrefix(keys.HashSecret(aliceSecret), "sha256:")
+	if initial.Type != "keys" || len(initial.Hashes) != 1 || initial.Hashes[0] != wantAlice {
+		t.Fatalf("initial snapshot = %+v", initial)
+	}
+	if strings.Contains(strings.Join(initial.Hashes, ","), aliceSecret) {
+		t.Fatal("plaintext secret reached the bridge frame")
+	}
+	transmit(t, conn, frame{Type: "keys_ready"})
+
+	// Drain the coalesced notifications created before subscription, then resume bob.
+	select {
+	case <-changes:
+	default:
+	}
+	if err := store.SetStatus(context.Background(), bob.ID, keys.Active); err != nil {
+		t.Fatal(err)
+	}
+	updated := receiveFrame(t, conn)
+	wantBob := strings.TrimPrefix(keys.HashSecret(bobSecret), "sha256:")
+	if updated.Type != "keys" || len(updated.Hashes) != 2 {
+		t.Fatalf("updated snapshot = %+v", updated)
+	}
+	got := map[string]bool{}
+	for _, hash := range updated.Hashes {
+		got[hash] = true
+	}
+	if !got[wantAlice] || !got[wantBob] {
+		t.Fatalf("updated hashes = %v", updated.Hashes)
+	}
+	transmit(t, conn, frame{Type: "keys_ready"})
+
+	if err := store.SetStatus(context.Background(), alice.ID, keys.Revoked); err != nil {
+		t.Fatal(err)
+	}
+	revoked := receiveFrame(t, conn)
+	if revoked.Type != "keys" || len(revoked.Hashes) != 1 || revoked.Hashes[0] != wantBob {
+		t.Fatalf("revoked snapshot = %+v", revoked)
+	}
 }
 func request(t *testing.T, c *websocket.Conn, id, secret string, body []byte) (frame, []byte) {
 	t.Helper()
@@ -202,7 +283,15 @@ func TestReloadReconnectAndOff(t *testing.T) {
 	if err := Save(dir, c); err != nil {
 		t.Fatal(err)
 	}
-	var manager Manager
+	store, err := keys.NewFileStore(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	key, secret, err := store.Add(context.Background(), "external", keys.Limits{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	manager := Manager{Keys: store}
 	t.Cleanup(manager.Close)
 	reload := func() {
 		t.Helper()
@@ -211,8 +300,30 @@ func TestReloadReconnectAndOff(t *testing.T) {
 		}
 	}
 	reload()
-	conn := connect(t, ch)
+	conn := connectRaw(t, ch)
+	initial := receiveFrame(t, conn)
+	want := strings.TrimPrefix(keys.HashSecret(secret), "sha256:")
+	if initial.Type != "keys" || len(initial.Hashes) != 1 || initial.Hashes[0] != want {
+		t.Fatalf("initial hashes = %v", initial.Hashes)
+	}
+	transmit(t, conn, frame{Type: "keys_ready"})
+
+	// Model the CLI's separate FileStore followed by the running host's /reload callback.
+	writer, err := keys.NewFileStore(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := writer.SetStatus(context.Background(), key.ID, keys.Paused); err != nil {
+		t.Fatal(err)
+	}
+	if err := store.Reload(); err != nil {
+		t.Fatal(err)
+	}
 	reload()
+	if f := receiveFrame(t, conn); f.Type != "keys" || len(f.Hashes) != 0 {
+		t.Fatalf("unchanged bridge config did not publish the reloaded empty set: %+v", f)
+	}
+	transmit(t, conn, frame{Type: "keys_ready"})
 	select {
 	case <-ch:
 		t.Fatal("unchanged reload opened another socket")
