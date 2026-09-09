@@ -11,6 +11,8 @@ export interface Limits {
   max_output_tokens: number;
   max_context: number;
   daily_tokens: number;
+  daily_audio_seconds?: number;
+  daily_speech_chars?: number;
   models?: string[];
 }
 
@@ -24,7 +26,7 @@ export interface Me {
     models: string[];
     /** Per-model capability; null means the engine did not report it. */
     vision?: Record<string, boolean | null>;
-    audio?: { transcriptions: boolean; speech: boolean };
+    audio?: { transcriptions: string | null; speech: string | null };
     relay: { region: string };
     /** The host runs with --log-prompts. Absent on a gateway older than ticket 006: absent = false. */
     log_prompts?: boolean;
@@ -36,8 +38,8 @@ export function modelVision(me: Me, model: string): boolean | null {
   return me.host.vision?.[model] ?? null;
 }
 
-export function hostAudio(me: Me, kind: 'transcriptions' | 'speech'): boolean {
-  return me.host.audio?.[kind] === true;
+export function hostAudio(me: Me, kind: 'transcriptions' | 'speech'): string | null {
+  return me.host.audio?.[kind] || null;
 }
 
 /** The host's name, trimmed. It can be empty, and "You’re on ." is not a sentence: callers check. */

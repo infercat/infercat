@@ -107,6 +107,11 @@ func (s *FileStore) reload(force bool) error {
 	if doc.Version != FileVersion {
 		return fmt.Errorf("%s: version %d is not understood by this build (want %d)", s.path, doc.Version, FileVersion)
 	}
+	for _, k := range doc.Keys {
+		if k != nil {
+			k.Limits = AudioDefaults(k.Limits)
+		}
+	}
 	s.keys, s.st, s.loaded = doc.Keys, cur, true
 	return nil
 }
@@ -170,6 +175,7 @@ func (s *FileStore) List(ctx context.Context) ([]*Key, error) {
 // WithDefaults fills the zero fields of l from DefaultLimits. MaxContext 0 (= the upstream's
 // context) and an empty Models list (= every model) are meaningful values and are left alone.
 func WithDefaults(l Limits) Limits {
+	l = AudioDefaults(l)
 	d := DefaultLimits()
 	if l.RPM == 0 {
 		l.RPM = d.RPM

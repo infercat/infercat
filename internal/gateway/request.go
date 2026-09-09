@@ -19,6 +19,8 @@ import (
 type endpoint string
 
 const (
+	transcribeEndpoint endpoint = "/v1/audio/transcriptions"
+	speechEndpoint     endpoint = "/v1/audio/speech"
 	chatEndpoint       endpoint = "/v1/chat/completions"
 	embeddingsEndpoint endpoint = "/v1/embeddings"
 	// modelsEndpoint has no stage list; it is put on the record so the settle table can say what
@@ -31,7 +33,7 @@ const (
 // connect; counting it made the friend's first message read "2 of 20 used this minute" (ticket 014
 // ruling; measured on the real stack, 014 Log).
 func (e endpoint) countsAgainstRPM() bool {
-	return e == chatEndpoint || e == embeddingsEndpoint
+	return e == chatEndpoint || e == embeddingsEndpoint || e == transcribeEndpoint || e == speechEndpoint
 }
 
 // outcome is how a request ended, set by the stage that ended it (DESIGN §1.4). finish reads it
@@ -67,6 +69,7 @@ type normalized struct {
 // rejection, client abort, timeout, and panic all leave through it; no stage releases anything
 // itself (ticket 006 design ruling).
 type request struct {
+	audio *audioRequest
 	g     *Gateway
 	w     http.ResponseWriter
 	r     *http.Request
@@ -116,6 +119,10 @@ func (q *request) serve() {
 		q.me()
 	case r.Method == http.MethodGet && r.URL.Path == "/v1/models":
 		q.models()
+	case r.Method == http.MethodPost && r.URL.Path == string(transcribeEndpoint) && q.g.cfg.Transcribe != nil:
+		q.proxyAudio(transcribeEndpoint, q.g.cfg.Transcribe)
+	case r.Method == http.MethodPost && r.URL.Path == string(speechEndpoint) && q.g.cfg.Speech != nil:
+		q.proxyAudio(speechEndpoint, q.g.cfg.Speech)
 	case r.Method == http.MethodPost && r.URL.Path == string(chatEndpoint):
 		q.proxy(chatEndpoint)
 	case r.Method == http.MethodPost && r.URL.Path == string(embeddingsEndpoint):
@@ -413,6 +420,9 @@ func (q *request) finish() {
 	}
 	if q.adm != nil {
 		counted, charged := q.settleRow()
+		if q.audio != nil {
+			q.settleAudio()
+		}
 		q.g.lim.settle(q.adm, counted, charged)
 	}
 	if q.buffered {
@@ -446,6 +456,9 @@ func (q *request) finish() {
 // A request that never reached an outcome (the pipeline was abandoned by a panic) is a rejection.
 // The event keeps what was observed; only the non-stream Cut charge differs from its token sum.
 func (q *request) settleRow() (counted bool, charged int) {
+	if q.audio != nil {
+		return q.audio.dispatched.Load() || (q.outcome == outcomeQueueLost && q.ev.Code == string(CodeQueueTimeout)), 0
+	}
 	if !q.kind.countsAgainstRPM() {
 		return false, 0
 	}
@@ -470,6 +483,9 @@ func (q *request) settleRow() (counted bool, charged int) {
 func (q *request) fail(e *gwError) {
 	if q.wroteHeader {
 		q.ev.Code = string(e.Code)
+		if q.audio != nil {
+			return
+		}
 		if e.Code != CodeClientClosed && q.r.Context().Err() == nil {
 			q.armWrite()
 			writeStreamError(q.w, e)

@@ -5,6 +5,8 @@
     "status": "active"
   },
   "limits": {
+    "daily_audio_seconds": 3600,
+    "daily_speech_chars": 200000,
     "rpm": 20,
     "tpm": 20000,
     "max_concurrent": 1,
@@ -30,6 +32,10 @@
     ],
     "vision": {
       "compat-model": true
+    },
+    "audio": {
+      "transcriptions": null,
+      "speech": null
     },
     "relay": {
       "region": "New York City"

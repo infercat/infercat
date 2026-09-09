@@ -48,7 +48,7 @@ func (e *env) cmdKeys(ctx context.Context, pre string, args []string) error {
 	}
 }
 
-// limitFlags registers the seven limit flags and returns a reader that applies only the ones the
+// limitFlags registers the nine limit flags and returns a reader that applies only the ones the
 // host actually typed, so `keys limits ID --rpm 60` leaves everything else alone.
 func limitFlags(fs *flag.FlagSet) func(base keys.Limits) keys.Limits {
 	rpm := fs.Int("rpm", 0, "requests per minute")
@@ -57,6 +57,8 @@ func limitFlags(fs *flag.FlagSet) func(base keys.Limits) keys.Limits {
 	outTok := fs.Int("max-output-tokens", 0, "clamp on max_tokens")
 	maxCtx := fs.Int("max-context", 0, "context ceiling; 0 = the upstream's")
 	daily := fs.Int("daily-tokens", 0, "tokens per UTC day")
+	audio := fs.Int("daily-audio-seconds", 0, "transcription seconds per UTC day")
+	speech := fs.Int("daily-speech-chars", 0, "speech Unicode code points per UTC day")
 	models := fs.String("models", "", "comma-separated model allowlist; empty = every model")
 	return func(l keys.Limits) keys.Limits {
 		fs.Visit(func(f *flag.Flag) {
@@ -71,6 +73,10 @@ func limitFlags(fs *flag.FlagSet) func(base keys.Limits) keys.Limits {
 				l.MaxOutputTokens = *outTok
 			case "max-context":
 				l.MaxContext = *maxCtx
+			case "daily-audio-seconds":
+				l.DailyAudioSeconds = *audio
+			case "daily-speech-chars":
+				l.DailySpeechChars = *speech
 			case "daily-tokens":
 				l.DailyTokens = *daily
 			case "models":
@@ -275,11 +281,11 @@ func (e *env) keysList(ctx context.Context, pre string, args []string) error {
 	}
 	seen := rep.LastSeen()
 	tw := tabwriter.NewWriter(e.out, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(tw, "ID\tNAME\tSTATUS\tRPM\tTPM\tDAILY\tCREATED\tLAST SEEN")
+	fmt.Fprintln(tw, "ID\tNAME\tSTATUS\tRPM\tTPM\tDAILY\tAUDIO S/DAY\tSPEECH CHARS/DAY\tCREATED\tLAST SEEN")
 	for _, k := range list {
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
 			k.ID, k.Name, k.Status,
-			limitNum(k.Limits.RPM), limitNum(k.Limits.TPM), limitNum(k.Limits.DailyTokens),
+			limitNum(k.Limits.RPM), limitNum(k.Limits.TPM), limitNum(k.Limits.DailyTokens), limitNum(k.Limits.DailyAudioSeconds), limitNum(k.Limits.DailySpeechChars),
 			k.CreatedAt.Local().Format("2006-01-02"), ago(seen[k.ID]))
 	}
 	return tw.Flush()
@@ -470,6 +476,8 @@ Limit flags:
   --max-output-tokens N   clamp on max_tokens
   --max-context N         context ceiling (0 = the upstream's)
   --daily-tokens N        tokens per UTC day
+  --daily-audio-seconds N transcription seconds per UTC day (default 3600)
+  --daily-speech-chars N  speech code points per UTC day (default 200000)
   --models a,b            model allowlist (empty = every model); the host pin still applies
 
 Other flags:

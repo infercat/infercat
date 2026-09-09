@@ -133,3 +133,45 @@ the owner of history, adds no host storage), not a stateful API.
   *chat-templated* prompt (~13+ tokens more); near the context ceiling a request the gateway admits is
   rejected by the engine as a raw `400`, shown to the friend as `invalid_request` instead of the true
   `422 context_too_long`, so the friend's client retries instead of shortening.
+
+## Audio budgets (078)
+
+`keys add` / `keys limits` accept `--daily-audio-seconds` (default 3600) and
+`--daily-speech-chars` (default 200000). Absent or zero legacy fields receive
+these defaults in memory; reading a key does not rewrite it. `keys list` shows
+both limits. Negative limits mean unlimited, as with the existing limits.
+Audio calls share per-key RPM/concurrency and the existing global engine queue;
+they do not spend tokens. Model allowlists and the host's model pin apply to audio
+model IDs too; include them in a host pin if using one.
+
+Before dispatch, transcription reserves measured duration from complete PCM or
+IEEE-float WAV headers, or FLAC STREAMINFO. Other containers (including MP3,
+OGG/Opus, and MP4/M4A in this slice), missing duration, or unparseable headers
+reserve `--max-transcription-seconds` (default 300). A measured upload above this
+ceiling is refused. Bytes are never called seconds. Speech reserves the number
+of Unicode code points in `input`. Live reservations count against the daily
+allowance so parallel requests cannot reserve the same remaining capacity.
+Insufficient room returns `audio_budget_exhausted` or `speech_budget_exhausted`
+(429, Retry-After to the next UTC midnight) before the engine is called.
+
+Default or `response_format=json` requests are sent upstream as `verbose_json`
+so the host can reconcile duration, then returned to the client as `{"text"}`.
+Explicit `verbose_json` is passed through. `text`, `srt`, and `vtt` responses
+have no duration metadata and charge the reservation (300 seconds for an
+unmeasurable upload, or its measured container duration), even for short clips.
+
+Before-dispatch failures release reservations. After dispatch, a complete
+transcription response's finite nonnegative `duration` is charged in full;
+otherwise the reservation is charged. Interrupted calls charge their reservation.
+Unknown-duration fallback charges set `seconds_estimated:true`. Speech charges
+its reserved characters after dispatch, including interrupted calls. The UTC day
+of settlement is used for both live charges and history replay.
+
+The bound for unmeasurable audio is on admission, not actual decoded duration:
+a file may exceed its policy reservation. Its full engine-reported duration is
+recorded as `seconds`, with the reservation in `reserved_seconds` and the excess
+in `overrun_seconds`. An overrun can put the day over budget; subsequent requests
+are refused until the next UTC day. Already-dispatched calls still settle in full.
+The host ceiling does not truncate audio or falsify the engine's measurement.
+For refused calls, `reserved_seconds` names the requested reservation, not a
+charge; `seconds` is zero/absent, and no reservation remains held.

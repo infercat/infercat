@@ -26,10 +26,13 @@ import (
 // here: it is the engine's slot count, read live (DESIGN §1.5). Deadlines and the body cap are
 // constants (§1.6), each bounding one party's failure.
 type Config struct {
-	ModelsPinned []string      // host-wide model allowlist; empty means all models
-	LogPrompts   bool          // put prompt/completion text into usage events (Protection 3: opt-in)
-	HostName     string        // shown in /me
-	RelayRegion  func() string // shown in /me; nil → ""
+	Transcribe, Speech           upstream.AudioEngine
+	TranscribeModel, SpeechModel string
+	MaxTranscriptionSeconds      float64
+	ModelsPinned                 []string      // host-wide model allowlist; empty means all models
+	LogPrompts                   bool          // put prompt/completion text into usage events (Protection 3: opt-in)
+	HostName                     string        // shown in /me
+	RelayRegion                  func() string // shown in /me; nil → ""
 	// DataDir is where usage.jsonl lives; New reads it once to seed today's per-key counters.
 	// Empty means no history to seed from, and the counters start at zero as they always did.
 	DataDir string
@@ -54,14 +57,15 @@ const (
 // Gateway serves the API on any number of listeners (the tunnel, and loopback in dev mode) and
 // implements usage.Snapshot for the admin status API.
 type Gateway struct {
-	cfg    Config
-	up     upstream.Engine // the gateway's whole view of the engine (DESIGN §3.4)
-	store  keys.Store
-	rec    usage.Recorder
-	logf   func(string, ...any)
-	lim    *limiter
-	queue  slotQueue    // global slots; capacity = up.Info().Slots, read at every decision
-	bodies atomic.Int32 // request bodies held in memory (per-key slots bound it; tests read it)
+	audioHistoryErr error
+	cfg             Config
+	up              upstream.Engine // the gateway's whole view of the engine (DESIGN §3.4)
+	store           keys.Store
+	rec             usage.Recorder
+	logf            func(string, ...any)
+	lim             *limiter
+	queue           slotQueue    // global slots; capacity = up.Info().Slots, read at every decision
+	bodies          atomic.Int32 // request bodies held in memory (per-key slots bound it; tests read it)
 
 	// The deadlines, the keepalive and the body cap, unexported: tests shorten them, hosts get the constants.
 	queueTimeout, readTimeout, writeTimeout, idleTimeout, queuedEvery time.Duration
@@ -84,6 +88,9 @@ var _ interface {
 func New(cfg Config, up upstream.Engine, store keys.Store, rec usage.Recorder, logf func(string, ...any)) *Gateway {
 	if logf == nil {
 		logf = func(string, ...any) {}
+	}
+	if cfg.MaxTranscriptionSeconds <= 0 {
+		cfg.MaxTranscriptionSeconds = 300
 	}
 	g := &Gateway{
 		cfg:   cfg,
@@ -116,8 +123,13 @@ func (g *Gateway) seedCounters() {
 	day := g.lim.now().UTC().Truncate(24 * time.Hour)
 	rep, err := usage.AggregateFile(g.cfg.DataDir, usage.Filter{Since: day})
 	if err != nil {
+		g.audioHistoryErr = err
 		g.logf("gateway: today's usage history is unreadable (%v); per-key counters start at zero", err)
 		return
+	}
+	if rep.Malformed > 0 {
+		g.audioHistoryErr = fmt.Errorf("usage history has %d malformed rows", rep.Malformed)
+		g.logf("audio refused: %v", g.audioHistoryErr)
 	}
 	g.lim.seedToday(rep, day)
 }

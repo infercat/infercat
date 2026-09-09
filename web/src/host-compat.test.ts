@@ -17,7 +17,7 @@ describe('shipped host capabilities', () => {
     for (const m of host.members) {
       if (!(m.name!.getText(source) in old.host)) expect((m as ts.PropertySignature).questionToken).toBeDefined();
     }
-    expect(Object.keys(current.host).sort()).toEqual(['log_prompts', 'models', 'name', 'relay', 'upstream', 'vision']);
+    expect(Object.keys(current.host).sort()).toEqual(['audio', 'log_prompts', 'models', 'name', 'relay', 'upstream', 'vision']);
   });
   it('requires current fixture coverage for Go wire field names', () => {
     const proxy = readFileSync(new URL('../../internal/gateway/proxy.go', import.meta.url), 'utf8');
@@ -34,15 +34,15 @@ describe('shipped host capabilities', () => {
   });
   it('defaults absent capabilities honestly, retaining explicit false and unknown', () => {
     expect(modelVision(old as Me, 'compat-model')).toBeNull();
-    expect(hostAudio(old as Me, 'transcriptions')).toBe(false);
-    expect(hostAudio(old as Me, 'speech')).toBe(false);
+    expect(hostAudio(old as Me, 'transcriptions')).toBeNull();
+    expect(hostAudio(old as Me, 'speech')).toBeNull();
     expect(modelVision(current as Me, 'compat-model')).toBe(true);
     expect(modelVision(current as Me, 'missing')).toBeNull();
-    const me = { ...current, host: { ...current.host, vision: { text: false, unknown: null }, audio: { transcriptions: true, speech: false } } } as Me;
+    const me = { ...current, host: { ...current.host, vision: { text: false, unknown: null }, audio: { transcriptions: 'asr-model', speech: null } } } as Me;
     expect(modelVision(me, 'text')).toBe(false);
     expect(modelVision(me, 'unknown')).toBeNull();
-    expect(hostAudio(me, 'transcriptions')).toBe(true);
-    expect(hostAudio(me, 'speech')).toBe(false);
+    expect(hostAudio(me, 'transcriptions')).toBe('asr-model');
+    expect(hostAudio(me, 'speech')).toBeNull();
     expect(logsPrompts({ ...me, host: { ...me.host, log_prompts: undefined } })).toBe(false);
   });
   it('keeps capability property reads inside the API accessor boundary', () => {

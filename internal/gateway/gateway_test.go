@@ -118,7 +118,7 @@ func TestMeShape(t *testing.T) {
 		"":         {"key", "limits", "usage", "host"},
 		"key":      {"id", "name", "status"},
 		"usage":    {"rpm_used", "tpm_used", "today_tokens", "in_flight"},
-		"host":     {"name", "upstream", "models", "vision", "relay", "log_prompts"},
+		"host":     {"name", "upstream", "models", "vision", "audio", "relay", "log_prompts"},
 		"upstream": {"kind", "healthy", "model_context"},
 		"relay":    {"region"},
 	}

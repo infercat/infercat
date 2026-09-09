@@ -58,6 +58,13 @@ func (e *env) cmdServe(ctx context.Context, pre string, args []string) error {
 	fs.String("data-dir", dataDir, dataDirUsage)
 	upURL := fs.String("upstream", cfg.Upstream, "inference server URL; detected when empty")
 	upKey := fs.String("upstream-key", cfg.UpstreamKey, "bearer token for the inference server")
+	transcribeModel := fs.String("upstream-transcribe-model", cfg.UpstreamTranscribeModel, "host's default transcription model")
+	speechModel := fs.String("upstream-speech-model", cfg.UpstreamSpeechModel, "host's default speech model")
+	transcribeURL := fs.String("upstream-transcribe", cfg.UpstreamTranscribe, "explicit OpenAI transcription engine URL")
+	transcribeKey := fs.String("upstream-transcribe-key", cfg.UpstreamTranscribeKey, "transcription engine bearer")
+	speechURL := fs.String("upstream-speech", cfg.UpstreamSpeech, "explicit OpenAI speech engine URL")
+	speechKey := fs.String("upstream-speech-key", cfg.UpstreamSpeechKey, "speech engine bearer")
+	maxAudio := fs.Int("max-transcription-seconds", intOr(cfg.MaxTranscriptionSeconds, 300), "maximum measured duration and unknown-duration reservation")
 	models := fs.String("models", cfg.Models, "comma-separated host model pin; all forgets it")
 	slots := fs.Int("slots", cfg.Slots, "parallel requests the engine can serve; 0 asks the engine")
 	logPrompts := fs.Bool("log-prompts", false, "record prompts and completions in usage.jsonl (off by default; not remembered)")
@@ -73,6 +80,17 @@ func (e *env) cmdServe(ctx context.Context, pre string, args []string) error {
 		return err
 	}
 
+	if *maxAudio <= 0 {
+		return errors.New("--max-transcription-seconds must be positive")
+	}
+	transcribe, err := upstream.OpenAudio(ctx, *transcribeURL, *transcribeKey)
+	if err != nil {
+		return err
+	}
+	speech, err := upstream.OpenAudio(ctx, *speechURL, *speechKey)
+	if err != nil {
+		return err
+	}
 	consoleListener, err := admin.ListenConsole(*consoleAddr)
 	if err != nil {
 		return err
@@ -89,6 +107,8 @@ func (e *env) cmdServe(ctx context.Context, pre string, args []string) error {
 	*upURL = forgetIfAuto(*upURL)
 	if err := saveConfig(dataDir, config{
 		Upstream: *upURL, UpstreamKey: *upKey, Slots: *slots, Models: strings.Join(pinned, ","),
+		UpstreamTranscribeModel: *transcribeModel, UpstreamSpeechModel: *speechModel,
+		UpstreamTranscribe: *transcribeURL, UpstreamTranscribeKey: *transcribeKey, UpstreamSpeech: *speechURL, UpstreamSpeechKey: *speechKey, MaxTranscriptionSeconds: *maxAudio,
 		DevListen: *devListen, DERPMapURL: *derpMapURL,
 		Region: *region, Name: *name, WebURL: *webURLFlag, Console: *consoleAddr,
 	}); err != nil {
@@ -145,11 +165,13 @@ func (e *env) cmdServe(ctx context.Context, pre string, args []string) error {
 	}
 
 	gw, err := e.plat.newGateway(gatewayOptions{
-		ModelsPinned: pinned,
-		LogPrompts:   *logPrompts,
-		HostName:     hostName,
-		RelayRegion:  func() string { return tun.Status().Region },
-		DataDir:      dataDir, // today's counters are seeded from usage.jsonl there
+		ModelsPinned:    pinned,
+		TranscribeModel: *transcribeModel, SpeechModel: *speechModel,
+		Transcribe: transcribe, Speech: speech, MaxTranscriptionSeconds: float64(*maxAudio),
+		LogPrompts:  *logPrompts,
+		HostName:    hostName,
+		RelayRegion: func() string { return tun.Status().Region },
+		DataDir:     dataDir, // today's counters are seeded from usage.jsonl there
 	}, up, store, events, e.logf)
 	if err != nil {
 		return fmt.Errorf("gateway: %w", err)
@@ -165,8 +187,17 @@ func (e *env) cmdServe(ctx context.Context, pre string, args []string) error {
 		st := buildStatus(ctx, started, tun, up, gw, store, tele)
 		st.Console = consoleAddress
 		st.ModelsPinned = pinned
+		st.Audio = audioStatus(transcribe, speech)
 		return st
-	}, store.Reload, events, e.consoleAPI(store, tun.Addr(), up, consoleSettings{
+	}, func() error {
+		err := store.Reload()
+		for _, a := range []upstream.AudioEngine{transcribe, speech} {
+			if a != nil {
+				err = errors.Join(err, a.Refresh(ctx))
+			}
+		}
+		return err
+	}, events, e.consoleAPI(store, tun.Addr(), up, consoleSettings{
 		Name: hostName, WebURL: webURL(config{WebURL: *webURLFlag}), Slots: *slots,
 		LogRequests: *logRequests, DataDir: dataDir, LogPrompts: *logPrompts,
 		Upstream: *upURL, DERPMapURL: *derpMapURL, Region: *region, ConfiguredWebURL: *webURLFlag,
@@ -181,6 +212,7 @@ func (e *env) cmdServe(ctx context.Context, pre string, args []string) error {
 	}
 
 	e.printStartup(ctx, startup{
+		transcribe: transcribe, speech: speech,
 		tun: tun, up: up, store: store, dataDir: dataDir, consoleAddr: consoleAddress, pinned: pinned,
 		hostName: hostName, webURL: webURL(config{WebURL: *webURLFlag}), newIdentity: newIdentity,
 	})
@@ -317,15 +349,16 @@ func refreshLoop(ctx context.Context, up upstream.Upstream, logf func(string, ..
 // startup is everything the banner names. It is a struct because the banner grew the four lines
 // the strangers asked for (web, name, access, data) and a positional list of seven was worse.
 type startup struct {
-	pinned      []string
-	consoleAddr string
-	tun         tunnelServer
-	up          upstream.Upstream
-	store       keys.Store
-	dataDir     string
-	hostName    string
-	webURL      string
-	newIdentity bool // this run created host.key.json: explain the file, once
+	transcribe, speech upstream.AudioEngine
+	pinned             []string
+	consoleAddr        string
+	tun                tunnelServer
+	up                 upstream.Upstream
+	store              keys.Store
+	dataDir            string
+	hostName           string
+	webURL             string
+	newIdentity        bool // this run created host.key.json: explain the file, once
 }
 
 // printStartup writes the block docs the ticket fixes the order of: product, upstream, tunnel,
@@ -361,7 +394,17 @@ func (e *env) printStartup(ctx context.Context, s startup) {
 	if s.hostName != "" {
 		fmt.Fprintf(e.out, "name      %s  (shown to your friends)\n", s.hostName)
 	}
-	fmt.Fprintf(e.out, "access    friends reach only %s on %s\n", friendRoutes, info.URL)
+	routes := friendRoutes(s.transcribe != nil, s.speech != nil)
+	for _, route := range []string{"transcriptions", "speech"} {
+		if a, ok := audioStatus(s.transcribe, s.speech)[route]; ok {
+			fmt.Fprintf(e.out, "audio     /v1/audio/%s  %s  %s\n", route, a.URL, healthWord(a.Healthy, a.Since))
+		}
+	}
+	if s.transcribe == nil && s.speech == nil {
+		fmt.Fprintf(e.out, "access    friends reach only %s on %s\n", routes, info.URL)
+	} else {
+		fmt.Fprintf(e.out, "access    friends reach only %s (engines above)\n", routes)
+	}
 	fmt.Fprintf(e.out, "          nothing else on this machine — no other port, no files\n")
 	fmt.Fprintf(e.out, "data      %s\n", s.dataDir)
 	if s.consoleAddr != "" {
@@ -398,7 +441,16 @@ func (e *env) printStartup(ctx context.Context, s startup) {
 // friendRoutes is the whole of what the tunnel exposes, checked against internal/gateway's router
 // (request.go serve): /me and /healthz are answered by the gateway itself and never touch the
 // engine, so the sentence names the three routes that reach it.
-const friendRoutes = "/v1/models, /v1/chat/completions and /v1/embeddings"
+func friendRoutes(transcribe, speech bool) string {
+	routes := []string{"/v1/models", "/v1/chat/completions", "/v1/embeddings"}
+	if transcribe {
+		routes = append(routes, "/v1/audio/transcriptions")
+	}
+	if speech {
+		routes = append(routes, "/v1/audio/speech")
+	}
+	return strings.Join(routes[:len(routes)-1], ", ") + " and " + routes[len(routes)-1]
+}
 
 // telemetry is what the admin status reads beyond the seams' own snapshots (029): the event hub
 // for tokens per second, the sampled slot peak, and the host's display name.
@@ -577,6 +629,13 @@ Flags you pass are remembered in config.json, so the next serve needs none of th
 Ctrl-C drains in-flight requests for up to 10s, then stops.
 
 Flags:
+  --upstream-transcribe URL  explicit OpenAI transcription engine base URL
+  --upstream-transcribe-model ID  default model (otherwise first probed id)
+  --upstream-speech-model ID default model (otherwise first probed id)
+  --upstream-transcribe-key TOKEN  transcription engine bearer
+  --upstream-speech URL      explicit OpenAI speech engine base URL
+  --upstream-speech-key TOKEN speech engine bearer
+  --max-transcription-seconds N  measured upload ceiling / unknown reservation (default 300)
   --upstream URL          inference server; detected when absent, in the order
                           llama.cpp/llama-swap :8080, Ollama :11434, LM Studio :1234, vLLM :8000.
                           --upstream auto forgets a remembered URL and detects again
@@ -609,3 +668,14 @@ Flags:
 
 There is no daemon mode: run it under your supervisor of choice (launchd, systemd, tmux).
 `
+
+func audioStatus(transcribe, speech upstream.AudioEngine) map[string]admin.Upstream {
+	out := map[string]admin.Upstream{}
+	for route, a := range map[string]upstream.AudioEngine{"transcriptions": transcribe, "speech": speech} {
+		if a != nil {
+			i := a.Info()
+			out[route] = admin.Upstream{URL: i.URL, Healthy: i.Health.OK, Since: i.Health.Since, Slots: 1}
+		}
+	}
+	return out
+}
