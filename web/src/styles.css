@@ -1071,3 +1071,44 @@ input[type='range']::-moz-range-thumb {
   white-space: pre-wrap; overflow-wrap: anywhere; overflow-y: auto; min-height: 0;
 }
 .app.zh :is(.chip-line, .sheet.file .caption) { font-family: var(--mono-cjk); }
+
+/* ================= NEW: the installable app (design record docs/brand/pwa/design.md) ================= */
+
+/* Standalone: the paper runs to every edge and the system's own areas are paid for in padding, never
+   in a second colour. On iOS with status-bar-style `default` the web view starts under the status
+   bar, so only the bottom inset (home indicator) and the side insets (landscape) are ever non-zero;
+   the top line is here for the black-translucent fallback and costs nothing when the inset is 0. */
+@media (display-mode: standalone) {
+  .topbar { padding-top: calc(8px + env(safe-area-inset-top)); }
+  .composer { padding-bottom: calc(12px + env(safe-area-inset-bottom)); }
+  .sidebar { padding-top: env(safe-area-inset-top); padding-bottom: env(safe-area-inset-bottom); }
+  .sheet-wrap { padding-bottom: calc(20px + env(safe-area-inset-bottom)); }
+  .connect { padding-top: calc(12vh + env(safe-area-inset-top)); }
+  .toast, .banner { padding-left: max(14px, env(safe-area-inset-left)); padding-right: max(14px, env(safe-area-inset-right)); }
+}
+/* The overscroll ground is paper too: a rubber-band on iOS must not reveal a grey the palette does not own. */
+html { background: var(--paper); }
+body { overscroll-behavior-y: none; }
+
+/* The install line: the existing toast ("Chat deleted · Undo") asking one question, once. Two
+   actions where the toast had one; the first is the thread's own action colour (the wall's precedent). */
+.toast-actions { display: flex; gap: 4px; flex: none; }
+.toast.install .toast-actions .ghost.tiny:first-child { color: var(--accent-text); font-weight: 600; }
+
+/* The manual path on the existing sheet: three steps, numbered in mono because they are a list a
+   machine will be walked through, each behind a hairline like the connect card's progress list. */
+.how { list-style: none; margin: 0 0 4px; padding: 0; }
+.how li { display: grid; grid-template-columns: 2.4ch minmax(0, 1fr); gap: 4px 12px; padding: 11px 0; border-top: 1px solid var(--border); font-size: 14px; line-height: 1.5; }
+.how li:first-child { border-top: 0; padding-top: 0; }
+.how .n { font-family: var(--mono); font-size: 11px; color: var(--muted); padding-top: 3px; font-variant-numeric: tabular-nums; }
+.how .n::after { content: ''; }
+.how .step-action { grid-column: 2; }
+.how .secondary.small { padding: 6px 12px; font-size: 12.5px; }
+/* iOS's own glyph, drawn as one ink stroke: the reader has to find this button, so it is shown. */
+.how .share { display: inline-block; width: 14px; height: 16px; vertical-align: -3px; margin: 0 2px; }
+.sheet .lead-line { color: var(--muted); font-size: 14px; margin: -8px 0 16px; }
+
+/* Settings: the install line is one sentence in the existing small print; its action is a link. */
+.small-print .act { color: var(--accent-text); font-weight: 500; padding: 0; font-size: inherit; text-decoration: underline; text-underline-offset: 2px; }
+.app.zh :is(.how .n, .toast) { font-family: var(--cjk); }
+.app.zh .how .n { font-family: var(--mono-cjk); }

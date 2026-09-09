@@ -1,3 +1,5 @@
+import { useInstall, noteCompletedReply, acceptInstall, dismissInstall } from '../install';
+import { encodeInvite } from '../invite';
 import { ACCEPT, admit, attachmentFields, retainedFileBytes, rejectionNotice, type AttachmentNotice, type Attachment, type DisplayAttachment, type ClipboardData } from '../attachments';
 import { AttachedImages, type ReadingAttachment } from './Images';
 import { imageCopy, fitsRequest, type ImageData } from '../images';
@@ -105,6 +107,10 @@ export default function Chat({ state, live, dispatch, onRedial, reconnecting = f
   const me = live.me;
   const host = hostName(me);
   const touch = coarsePointer();
+  const install = useInstall();
+  const [iosInstall, setIOSInstall] = useState(false);
+  const closeIOS = useCallback(() => setIOSInstall(false), []);
+  const showInstall = useCallback(() => { if (acceptInstall() === 'ios') { setSheet(false); setIOSInstall(true); } }, []);
 
   const [listed, setListed] = useState<string[]>([]);
   // Merged over the defaults: a build that did not know a setting stored none of it.
@@ -113,6 +119,7 @@ export default function Chat({ state, live, dispatch, onRedial, reconnecting = f
     adoptInviteScope(live.addr, live.me.key.id); // an earlier build's invite-scoped chats, once (024)
     return orNew(loadChats(scope));
   });
+  useEffect(() => { if (convs.some((c) => c.messages.some((m) => m.role === 'assistant' && m.status === 'complete'))) noteCompletedReply(); }, [convs]);
   const [currentId, setCurrentId] = useState('');
   const [streaming, setStreaming] = useState(false);
   const [waitingForHeaders, setWaitingForHeaders] = useState(false);
@@ -153,7 +160,8 @@ export default function Chat({ state, live, dispatch, onRedial, reconnecting = f
   const waiting = Math.max(0, retryUntil - now);
   // Nothing can be sent while the invite is off, or from a tab that does not own the store.
   const locked = live.key !== 'active';
-  const sendBlocked = reconnecting;
+  const sendBlocked = reconnecting || live.offline === true;
+  const currentLive = useRef(live); currentLive.current = live;
   const readOnly = leader !== true;
 
   const patch = useCallback((id: string, fn: (c: Conversation) => Conversation) => {
@@ -177,6 +185,7 @@ export default function Chat({ state, live, dispatch, onRedial, reconnecting = f
   const refreshMe = useCallback((): Promise<boolean> => {
     return getMe(live.transport, live.secret, timeoutSignal(ME_TIMEOUT_MS))
       .then((next) => {
+        if (currentLive.current.offline || currentLive.current.transport !== live.transport) return false;
         dispatch({ t: 'meOk', me: next });
         save(keys.me, next);
         return next.host.upstream.healthy;
@@ -184,7 +193,7 @@ export default function Chat({ state, live, dispatch, onRedial, reconnecting = f
       .catch((err: unknown) => {
         // The machine decides: an invite code changes the key's state, anything else keeps the
         // snapshot but stops presenting it as current.
-        dispatch({ t: 'meError', error: describeError(err, host) });
+        if (!currentLive.current.offline && currentLive.current.transport === live.transport) dispatch({ t: 'meError', error: describeError(err, host) });
         return false;
       });
   }, [live.transport, live.secret, dispatch, host, keys.me]);
@@ -208,7 +217,7 @@ export default function Chat({ state, live, dispatch, onRedial, reconnecting = f
   // line and the pill can never be older than that (020 promise 4). A failure says so rather than
   // leaving the last number on screen as if it were current.
   useEffect(() => {
-    if (reconnecting) return; // the session on screen is the one being replaced: nothing to ask it
+    if (reconnecting || live.offline) return; // the session on screen is the one being replaced: nothing to ask it
     const tick = () => {
       void live.transport
         .ping()
@@ -218,24 +227,24 @@ export default function Chat({ state, live, dispatch, onRedial, reconnecting = f
     };
     const timer = setInterval(tick, POLL_MS);
     return () => clearInterval(timer);
-  }, [live.transport, dispatch, refreshMe, reconnecting]);
+  }, [live.transport, live.offline, dispatch, refreshMe, reconnecting]);
 
   // The moment a cooldown reaches zero the numbers it was about have changed: ask, rather than
   // showing "0 messages left" above an enabled Try again (promise 4).
   const cooled = retryUntil > 0 && now >= retryUntil;
   useEffect(() => {
-    if (cooled && !reconnecting) void refreshMe();
-  }, [cooled, refreshMe, reconnecting]);
+    if (cooled && !reconnecting && !live.offline) void refreshMe();
+  }, [cooled, refreshMe, reconnecting, live.offline]);
 
   // /v1/models is a fallback, not a routine (014 promise 5): /me already carries the models this
   // invite may use, so asking again spends one of the friend's own requests for an answer we
   // already have. Only a host that reported none — LM Studio with nothing loaded — is worth asking.
   useEffect(() => {
-    if (me.host.models.length > 0) return;
+    if (me.host.models.length > 0 || reconnecting || live.offline) return;
     void getModels(live.transport, live.secret)
       .then((list) => list.length > 0 && setListed(list))
       .catch(() => {});
-  }, [live.transport, live.secret, me.host.models.length]);
+  }, [live.transport, live.secret, live.offline, reconnecting, me.host.models.length]);
 
   // One clock, for the things on screen that are about elapsed time: the retry countdown and the
   // age of a stale path measurement. Re-derived from Date.now() on every tick and whenever the tab
@@ -505,7 +514,7 @@ export default function Chat({ state, live, dispatch, onRedial, reconnecting = f
         : lost.size > 0
           ? { label: cooling ? tr('app_try_again_in', { duration: waitText(waiting) }) : tr('app_try_again'), run: regenerate, disabled: cooling }
           : { label: tr('app_regenerate'), run: regenerate };
-  const degraded = state.name === 'degraded' ? degradedLine(state.reason, live) : null;
+  const degraded = state.name === 'degraded' && !live.offline ? degradedLine(state.reason, live) : null;
   const unknown = metersUnknown(live);
   const limits = { maxOutputTokens: me.limits.max_output_tokens, modelContext: me.host.upstream.model_context };
 
@@ -566,7 +575,7 @@ export default function Chat({ state, live, dispatch, onRedial, reconnecting = f
           <div className="truth">
             {/* The pill's three states are the same three the line already says; the modifier only
                 lets the stylesheet colour the dot (038). No new state, no new element, no new copy. */}
-            <span className={`path ${pathState(live)}`}>{pathLine(live, now)}</span>
+            <span className={`path ${sendBlocked ? 'reconnecting' : pathState(live)}`}>{live.offline ? tr('app_path_no_network') : reconnecting ? tr('app_path_reconnecting', { host }) : pathLine(live, now)}</span>
             <Meters images={carriedImageCount(carried(conv.messages, settings, me.host.upstream.model_context, undefined, imageData).messages)} live={live} used={live.meOk ? contextCarried(conv.messages, settings, me.host.upstream.model_context) : null} onOpen={() => setLimitsSheet(true)} />
           </div>
           <button className="ghost tiny" onClick={() => setSheet(true)}>
@@ -586,9 +595,9 @@ export default function Chat({ state, live, dispatch, onRedial, reconnecting = f
         )}
         {leader === false && (
           <p className="degraded follower" role="status">
-            <span>{tr('app_this_chat_is_open_in_another_tab')}</span>
+            <span>{tr(install.platform.standalone ? 'app_this_chat_is_open_in_another_window' : 'app_this_chat_is_open_in_another_tab')}</span>
             <button className="ghost tiny" onClick={() => takeOver.current()}>
-              {tr('app_use_this_tab_instead')}
+              {tr(install.platform.standalone ? 'app_use_this_window_instead' : 'app_use_this_tab_instead')}
             </button>
           </p>
         )}
@@ -629,6 +638,7 @@ export default function Chat({ state, live, dispatch, onRedial, reconnecting = f
                   undelivered={lost.has(m.id)}
                   carried={softened.has(m.id)}
                   readOnly={readOnly}
+                  sendBlocked={sendBlocked || locked || readOnly || streaming}
                   last={i >= lastUser && i >= conv.messages.length - 2}
                   action={action}
                   limits={limits}
@@ -660,6 +670,12 @@ export default function Chat({ state, live, dispatch, onRedial, reconnecting = f
           </div>
         )}
 
+        {install.suggest && !undo && !banner && !degraded && !readOnly && (
+          <div className="toast install" role="status"><span>{tr('app_install_ask')}</span>
+            <span className="toast-actions"><button className="ghost tiny" onClick={showInstall}>{tr('app_install_add')}</button>
+              <button className="ghost tiny" onClick={dismissInstall}>{tr('app_install_not_now')}</button></span>
+          </div>
+        )}
         {banner && (
           <div className="banner" role="alert">
             <div>
@@ -709,7 +725,7 @@ export default function Chat({ state, live, dispatch, onRedial, reconnecting = f
           disabled={locked || readOnly}
           sendBlocked={sendBlocked}
           hint={
-            live.key === 'paused'
+            live.offline ? tr('app_offline_hint') : live.key === 'paused'
               ? tr('app_send_will_work_again_the_moment_your_host_resumes')
               : locked || readOnly || sendBlocked || touch
                 ? null
@@ -723,6 +739,7 @@ export default function Chat({ state, live, dispatch, onRedial, reconnecting = f
       {sheet && (
         <SettingsSheet
           settings={settings}
+          onInstall={showInstall}
           models={models}
           live={live}
           thinks={settings.thinking !== 'default' || conv.messages.some((m) => Boolean(m.reasoning))}
@@ -730,6 +747,7 @@ export default function Chat({ state, live, dispatch, onRedial, reconnecting = f
           onClose={() => setSheet(false)}
         />
       )}
+      {iosInstall && <IOSInstallSheet invite={encodeInvite(live.addr, live.secret)} onClose={closeIOS} />}
       {limitsSheet && <LimitsSheet live={live} messages={conv.messages} onClose={() => setLimitsSheet(false)} />}
     </div>
   );
@@ -999,6 +1017,7 @@ function Composer({
 
 function SettingsSheet({
   settings,
+  onInstall,
   models,
   live,
   thinks,
@@ -1006,6 +1025,7 @@ function SettingsSheet({
   onClose,
 }: {
   settings: Settings;
+  onInstall: () => void;
   models: string[];
   live: Live;
   /** The model has shown its thinking in this chat, or a choice is already in force (031 promise 2). */
@@ -1083,6 +1103,7 @@ function SettingsSheet({
         <p className="dim small-print build">
           {tr('app_app_version')} {VERSION} · MIT · <a href={SOURCE_URL}>{tr('source')}</a>
         </p>
+        <InstallSettings onInstall={onInstall} />
         <div className="sheet-actions">
           <button className="ghost" onClick={onClose}>
             {tr('app_cancel')}
@@ -1106,4 +1127,45 @@ function SettingsSheet({
 function lastIndexOfRole(messages: Message[], role: Message['role']): number {
   for (let i = messages.length - 1; i >= 0; i--) if (messages[i]?.role === role) return i;
   return -1;
+}
+
+function InstallSettings({ onInstall }: { onInstall: () => void }) {
+  const { path } = useInstall();
+  if (!path) return null;
+  const keys = {
+    phone: 'app_install_settings_phone', ios: 'app_install_settings_phone', desktop: 'app_install_settings_desktop',
+    safari: 'app_install_settings_safari_desktop', 'installed-phone': 'app_install_installed_phone', 'installed-desktop': 'app_install_installed_desktop',
+  } as const;
+  const action = path === 'phone' || path === 'ios' ? 'app_install_settings_action_phone' : path === 'desktop' ? 'app_install_settings_action_desktop' : null;
+  return <p className="small-print install-settings">{tr(keys[path])}{action && <> <button className="ghost tiny act" onClick={onInstall}>{tr(action)}</button></>}</p>;
+}
+function IOSInstallSheet({ invite, onClose }: { invite: string; onClose: () => void }) {
+  const ref = useRef<HTMLElement>(null);
+  const [copied, setCopied] = useState(false);
+  useEffect(() => {
+    const previous = document.activeElement as HTMLElement | null;
+    ref.current?.focus();
+    const key = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') onClose();
+      if (event.key === 'Tab') {
+        const buttons = ref.current?.querySelectorAll('button');
+        const first = buttons?.[0], last = buttons?.[buttons.length - 1];
+        if (event.shiftKey && (document.activeElement === first || document.activeElement === ref.current)) { event.preventDefault(); last?.focus(); }
+        else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first?.focus(); }
+      }
+    };
+    document.addEventListener('keydown', key);
+    return () => { document.removeEventListener('keydown', key); previous?.focus(); };
+  }, [onClose]);
+  const text = (key: 'app_ios_step_2' | 'app_ios_step_3') => tr(key).split(/(\*\*[^*]+\*\*|⎙)/).map((part, i) => part === '⎙'
+    ? <svg className="share" key={i} viewBox="0 0 14 16" aria-hidden="true"><path d="M4 6H1.5v8.5h11V6H10M7 10V1M4 4l3-3 3 3" fill="none" stroke="currentColor" strokeWidth="1.3" /></svg>
+    : part.startsWith('**') ? <strong key={i}>{part.slice(2, -2)}</strong> : <span key={i}>{part}</span>);
+  return <div className="sheet-wrap" onClick={onClose}><section ref={ref} className="sheet" role="dialog" aria-modal="true" aria-label={tr('app_ios_sheet_title')} tabIndex={-1} onClick={(e) => e.stopPropagation()}>
+    <h3>{tr('app_ios_sheet_title')}</h3><p className="lead-line">{tr('app_ios_sheet_lead')}</p>
+    <ol className="how">
+      <li><span className="n">01</span><span>{tr('app_ios_step_1')}</span><span className="step-action"><button className="secondary small" onClick={() => { void navigator.clipboard?.writeText(invite).then(() => setCopied(true)).catch(() => setCopied(false)); }}>{tr(copied ? 'app_copied' : 'app_ios_copy_invite')}</button></span></li>
+      <li><span className="n">02</span><span>{text('app_ios_step_2')}</span></li>
+      <li><span className="n">03</span><span>{text('app_ios_step_3')}</span></li>
+    </ol><div className="sheet-actions"><button className="primary small" onClick={onClose}>{tr('app_got_it')}</button></div>
+  </section></div>;
 }

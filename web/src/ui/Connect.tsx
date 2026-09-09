@@ -38,7 +38,9 @@ declare const __DEFAULT_DIRECT_URL__: string;
  * history or in a screenshot of the address bar. Not a hook or an initializer — those run twice
  * under StrictMode.
  */
+const networkDown = (): boolean => navigator.onLine === false;
 const HASH_INVITE = takeHashInvite();
+export const arrivedByLink = (): boolean => HASH_INVITE !== '';
 
 /**
  * A code that arrived by link or from the last visit connects by itself — the click on the link,
@@ -71,6 +73,7 @@ const STEPS: { at: SessionState['name']; label: string }[] = [
 
 interface Props {
   state: SessionState;
+  offline?: boolean;
   dispatch: (e: SessionEvent) => void;
 }
 
@@ -84,7 +87,7 @@ export default function Connect(props: Props) {
   return <LanguageProvider><ConnectBody {...props} /></LanguageProvider>;
 }
 
-function ConnectBody({ state, dispatch }: Props) {
+function ConnectBody({ state, dispatch, offline = false }: Props) {
   const { t } = useLanguage();
   const params = new URLSearchParams(typeof location === 'undefined' ? '' : location.search);
   const dev = import.meta.env.DEV;
@@ -105,16 +108,20 @@ function ConnectBody({ state, dispatch }: Props) {
   const [clipboard] = useState(() => clipboardReader(typeof navigator === 'undefined' ? null : navigator));
   const fieldId = `${useId()}code`;
   const attempt = useRef(0);
+  const wasOffline = useRef(offline);
   /** The bridge's own progress lines for the attempt in flight: the witness the failure copy reads (033). */
   const handshake = useRef<string[]>([]);
   const field = useRef<HTMLTextAreaElement>(null);
 
   useEffect(() => {
+    if (offline) { attempt.current++; setDisclosure(null); wasOffline.current = true; return; }
+    const resumed = wasOffline.current; wasOffline.current = false;
     // A link is consent; so is a return visit, unless the reader's last move was Disconnect
     // (022 promise 5) — then the card waits for them.
     if (
-      !autoconnected &&
-      state.name === 'idle' &&
+      (!autoconnected || resumed) &&
+      (state.name === 'idle' || resumed) &&
+      !(state.name === 'disconnected' && state.reason?.fatal) &&
       text !== '' &&
       inviteProblem(text) === null &&
       dialsOnArrival(lastHost, HASH_INVITE !== '')
@@ -124,8 +131,8 @@ function ConnectBody({ state, dispatch }: Props) {
       return;
     }
     field.current?.focus();
-    // Mount only: this is the entry point, not a reactive form.
-  }, []);
+    // Entry or network recovery only; typing never starts a dial.
+  }, [offline]);
 
   // The handshake bound (033): 8 s to mark the wait, 20 s to end the attempt the way Cancel does —
   // superseded, so what it opens later is closed. Auto-connect and Connect both pass through here.
@@ -139,6 +146,7 @@ function ConnectBody({ state, dispatch }: Props) {
   }, [handshaking, lastHost, dispatch]);
 
   async function connect(): Promise<void> {
+    if (offline || networkDown()) return;
     const raw = text.trim();
     let addr: string;
     let secret: string;
@@ -163,9 +171,11 @@ function ConnectBody({ state, dispatch }: Props) {
     try {
       // Only the tab holding the identity lock may use — or overwrite — the stored tunnel key.
       const exclusive = mode === 'tunnel' ? await claimTunnelIdentity() : true;
+      if (mine !== attempt.current || networkDown()) return;
       const saved = exclusive ? load<string>(KEYS.privateKey, '') : '';
       const opened = await openTransport(addr, {
         mode,
+        assetBase: import.meta.env.PROD ? `/runtime/${encodeURIComponent(VERSION)}/` : undefined,
         directURL: __DEFAULT_DIRECT_URL__,
         ...(saved ? { privateKey: saved } : {}),
         onWasmProgress: (pct) => mine === attempt.current && dispatch({ t: 'wasmProgress', pct }),
@@ -181,14 +191,14 @@ function ConnectBody({ state, dispatch }: Props) {
       transport = opened.transport;
       reached = 'verifying';
       // Ended by the bound or Cancel meanwhile: closed here, never handed to a newer attempt.
-      if (mine !== attempt.current) {
+      if (mine !== attempt.current || networkDown()) {
         transport.close();
         return;
       }
       // From here the machine owns it: every path out of `verifying` closes it.
       dispatch({ t: 'sessionUp', transport });
       const me = await getMe(transport, secret);
-      if (mine !== attempt.current) return; // cancelled while verifying; the machine closed it
+      if (mine !== attempt.current || networkDown()) return; // cancelled while verifying; the machine closed it
       save(KEYS.invite, raw);
       // What the connect screen may say next time before it has reconnected: a name and a scope,
       // both public. Never the secret (014 promise 9).
@@ -450,7 +460,7 @@ function ConnectBody({ state, dispatch }: Props) {
         <button
           className="primary"
           onClick={() => void connect()}
-          disabled={text.trim() === '' || malformed || needsNewCode}
+          disabled={offline || text.trim() === '' || malformed || needsNewCode}
         >
           {returning ? tr('app_reconnect') : <Copy name="f_connect" />}
         </button>
@@ -463,7 +473,8 @@ function ConnectBody({ state, dispatch }: Props) {
       </div>
       {remembered !== '' && !failure && forgetHint}
 
-      {failure && (
+      {offline && <p className="notice" role="status">{tr('app_offline_card')}</p>}
+      {!offline && failure && (
         <div className="failure" role="alert">
           <strong>{failure.title}</strong>
           <p>{failure.detail}</p>

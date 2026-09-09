@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import type { Plugin } from 'vite';
 import { defineConfig } from 'vitest/config';
 import react from '@vitejs/plugin-react';
+import { offlineShell, publicAssetURL, staticAssetPath } from './dev/precache';
 
 // The product name lives in src/product.ts and nowhere else (docs/PRINCIPLES.md). This plugin reads it
 // (and the one-line description) out of that file and fills the <title>, the description and
@@ -13,8 +14,10 @@ const productSource = readFileSync(new URL('./src/product.ts', import.meta.url),
 const productName = /PRODUCT_NAME = '([^']+)'/.exec(productSource)?.[1] ?? 'app';
 const productDescription = /DESCRIPTION =\s*'([^']+)'/.exec(productSource)?.[1] ?? '';
 const webURL = (process.env.VITE_WEB_URL ?? '').replace(/\/+$/, '');
-const manifest = JSON.stringify(
+const productVersion = process.env.VITE_APP_VERSION ?? /Version\s*=\s*"([^"]+)"/.exec(readFileSync(new URL('../internal/product/product.go', import.meta.url), 'utf8'))?.[1] ?? '0.0.1-dev';
+const manifest = (built = false) => JSON.stringify(
   {
+    id: '/', lang: 'en', dir: 'ltr',
     name: productName,
     short_name: productName,
     description: productDescription,
@@ -25,9 +28,11 @@ const manifest = JSON.stringify(
     background_color: '#ffffff',
     theme_color: '#ffffff',
     icons: [
-      { src: '/icon-192.png', sizes: '192x192', type: 'image/png' },
-      { src: '/icon-512.png', sizes: '512x512', type: 'image/png' },
-      { src: '/icon-maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
+      { src: built ? publicAssetURL('icon-192.png') : '/icon-192.png', sizes: '192x192', type: 'image/png' },
+      { src: built ? publicAssetURL('icon-512.png') : '/icon-512.png', sizes: '512x512', type: 'image/png' },
+      { src: built ? publicAssetURL('icon-maskable-512.png') : '/icon-maskable-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
+      { src: built ? publicAssetURL('icon-maskable-192.png') : '/icon-maskable-192.png', sizes: '192x192', type: 'image/png', purpose: 'maskable' },
+      { src: built ? publicAssetURL('icon-monochrome-512.png') : '/icon-monochrome-512.png', sizes: '512x512', type: 'image/png', purpose: 'monochrome' },
     ],
   },
   null,
@@ -36,19 +41,20 @@ const manifest = JSON.stringify(
 const MANIFEST = 'manifest.webmanifest';
 const productNameHtml: Plugin = {
   name: 'product-name-html',
-  transformIndexHtml: (html: string) =>
+  transformIndexHtml: (html: string, context) =>
     html
       .replaceAll('%PRODUCT_NAME%', productName)
       .replaceAll('%PRODUCT_DESCRIPTION%', productDescription)
-      .replaceAll('%WEB_URL%', webURL),
+      .replaceAll('%WEB_URL%', webURL)
+      .replace('/manifest.webmanifest', context.server ? '/manifest.webmanifest' : `/${staticAssetPath(MANIFEST, manifest(true))}`),
   generateBundle() {
-    this.emitFile({ type: 'asset', fileName: MANIFEST, source: manifest });
+    this.emitFile({ type: 'asset', fileName: MANIFEST, source: manifest(true) });
   },
   configureServer(server) {
     server.middlewares.use((req, res, next) => {
       if (req.url !== `/${MANIFEST}`) return next();
       res.setHeader('content-type', 'application/manifest+json');
-      res.end(manifest);
+      res.end(manifest());
     });
   },
 };
@@ -58,16 +64,18 @@ const webPort = Number(process.env.WEB_PORT ?? 49173);
 const gatewayPort = Number(process.env.FAKE_GATEWAY_PORT ?? 49090);
 
 export default defineConfig({
-  plugins: [react(), productNameHtml],
+  plugins: [react(), productNameHtml, offlineShell(productVersion)],
   server: { host: '127.0.0.1', port: webPort, strictPort: true },
   preview: { host: '127.0.0.1', port: webPort + 1, strictPort: true },
   define: {
+    'import.meta.env.VITE_APP_VERSION': JSON.stringify(productVersion),
     // Default target for Direct mode in dev: the fake gateway. Overridden by VITE_DIRECT_URL.
     __DEFAULT_DIRECT_URL__: JSON.stringify(
       process.env.VITE_DIRECT_URL ?? `http://127.0.0.1:${gatewayPort}`,
     ),
   },
-  build: { target: 'es2022', chunkSizeWarningLimit: 900 },
+  experimental: { renderBuiltUrl: (filename, context) => context.type === 'public' ? publicAssetURL(filename) : undefined },
+  build: { manifest: true, target: 'es2022', chunkSizeWarningLimit: 900 },
   test: {
     environment: 'node',
     include: ['src/**/*.test.ts'],

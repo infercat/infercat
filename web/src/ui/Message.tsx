@@ -26,6 +26,8 @@ interface Props {
   carried: boolean;
   /** A follower tab (020 promise 6): nothing here may start a request or edit the thread. */
   readOnly: boolean;
+  /** A temporary send wait preserves an open edit until replacement can be submitted. */
+  sendBlocked?: boolean;
   /** Actions only appear on the last exchange, the way ChatGPT does it. */
   last: boolean;
   /** The one action this exchange offers, named for what it will do (Regenerate / Try again /
@@ -52,6 +54,7 @@ export default function MessageView({
   undelivered,
   carried,
   readOnly,
+  sendBlocked = false,
   last,
   action,
   limits,
@@ -79,7 +82,7 @@ export default function MessageView({
                 {tr('app_cancel')}
               </button>
               {/* It replaces the answer below it, so it says so before it is pressed (promise 16). */}
-              <button className="primary small" onClick={() => { setEditing(false); onEditing(null); onResend(draft, editAttachments); }} disabled={draft.trim() === '' && !editAttachments.length}>
+              <button className="primary small" onClick={() => { if (sendBlocked) return; setEditing(false); onEditing(null); onResend(draft, editAttachments); }} disabled={sendBlocked || (draft.trim() === '' && !editAttachments.length)}>
                 {tr('app_replace_answer')}
               </button>
             </div>

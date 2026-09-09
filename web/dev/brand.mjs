@@ -4,6 +4,7 @@ import { readFileSync, statSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
+import { ICONS, iconHTML } from '../../hack/pwa-icons.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const web = join(here, '..');
@@ -34,13 +35,7 @@ const MONO = "'IBM Plex Mono', ui-monospace, SFMono-Regular, 'SF Mono', Menlo, C
 // list and the PWA install prompt (1.09:1 on Chrome's #202124). The SVG favicon still flips to
 // paper on a dark scheme by its own media query; a rasterised PNG cannot, so it brings its paper
 // with it — which is also what the two icons that were already opaque do.
-const ICONS = [
-  ['favicon.png', 96, P.paper, 0],
-  ['apple-touch-icon.png', 180, P.paper, 0.1],
-  ['icon-192.png', 192, P.paper, 0],
-  ['icon-512.png', 512, P.paper, 0],
-  ['icon-maskable-512.png', 512, P.paper, 0.2],
-];
+
 
 // The README's mark, as two flat one-colour files. GitHub chooses between them with <picture> and
 // its own page theme; the `prefers-color-scheme` query inside favicon.svg resolves against the
@@ -63,15 +58,6 @@ const flatMark = (scheme) =>
   mark
     .replace(/<style>[\s\S]*?<\/style>/, `<style>${baseRules}${scheme === 'paper' ? darkBlock : ''}</style>`)
     .replace(/<!--[\s\S]*?-->/, MARK_NOTE);
-
-function iconPage(edge, ground, pad) {
-  const inner = Math.round(edge * (1 - 2 * pad));
-  return `<!doctype html><meta charset="utf-8"><style>
-    html, body { margin: 0; width: ${edge}px; height: ${edge}px; overflow: hidden; background: ${ground ?? 'transparent'}; }
-    body { display: grid; place-items: center; }
-    svg { width: ${inner}px; height: ${inner}px; display: block; }
-  </style>${mark}`;
-}
 
 // The measured bottom-row axis and x-height centres match the approved 050 sheet.
 function cardPage(w, h, lines, heroTop) {
@@ -105,7 +91,7 @@ async function main() {
   for (const [name, edge, ground, pad] of ICONS) {
     const ctx = await browser.newContext({ viewport: { width: edge, height: edge }, deviceScaleFactor: 1, colorScheme: 'light' });
     const page = await ctx.newPage();
-    await page.setContent(iconPage(edge, ground, pad));
+    await page.setContent(iconHTML(mark, edge, ground, pad));
     const file = join(pub, name);
     await page.screenshot({ path: file, omitBackground: ground === null });
     report(file);

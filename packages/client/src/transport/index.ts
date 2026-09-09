@@ -118,6 +118,8 @@ function toBytes(body: BodyInit | null | undefined): Uint8Array | undefined {
 
 export interface OpenOptions {
   mode: 'direct' | 'tunnel';
+  /** App-owned, versioned directory containing the matching Go runtime and wasm. */
+  assetBase?: string;
   directURL?: string;
   derpMapURL?: string;
   /** tailcat PrivateKey JSON kept from a previous visit, so the host sees one client identity. */
@@ -149,7 +151,7 @@ export async function openTransport(addr: string, opts: OpenOptions): Promise<Op
   }
 
   opts.onWasmProgress?.(tunnelGlobal() ? 100 : null);
-  const bridge = await loadInfercatTunnel((p) => opts.onWasmProgress?.(p.pct));
+  const bridge = await loadInfercatTunnel((p) => opts.onWasmProgress?.(p.pct), opts.assetBase);
 
   opts.onWasmLoaded?.();
   const session = await bridge.connect({

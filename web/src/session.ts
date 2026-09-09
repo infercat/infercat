@@ -43,6 +43,12 @@ export interface Live {
    * session last degraded (022 promise 1). The schedule is probeDelay(probed); zero while connected.
    */
   probed: number;
+  /** Device has no network: history stays readable, no transport work is allowed. */
+  offline?: boolean;
+  /** Restored history has not verified in this page yet; a failed first dial returns to the card. */
+  snapshot?: boolean;
+  /** Candidate identity, persisted only if this verify is accepted and owns the identity lock. */
+  privateKeyJSON?: string;
 }
 
 /**
@@ -85,6 +91,7 @@ export type SessionEvent =
   | { t: 'streamError'; code: string; error: FriendlyError }
   /** Throw this session away and dial the same host again (014 promise 13). */
   | { t: 'redial' }
+  | { t: 'offline'; transport: Transport }
   /** A self-probe came back, whatever it found: the next one waits longer (022 promise 1). */
   | { t: 'probed' }
   /** The attempt failed, or the reader pressed Disconnect (`error` null). */
@@ -94,7 +101,12 @@ export const IDLE: SessionState = { name: 'idle' };
 
 export function reduce(s: SessionState, e: SessionEvent): SessionState {
   const l = live(s);
+  if (l?.offline && !['offline', 'redial', 'abort'].includes(e.t)) return s;
   switch (e.t) {
+    case 'offline': {
+      const held = l ?? redialTarget(s);
+      return held ? { name: 'degraded', reason: 'path', live: { ...held, transport: e.transport, offline: true, meOk: false, pathOk: false } } : IDLE;
+    }
     case 'start':
       return e.mode === 'direct' ? { name: 'connecting' } : { name: 'loadingWasm', pct: null };
     case 'wasmProgress':
@@ -125,7 +137,7 @@ export function reduce(s: SessionState, e: SessionEvent): SessionState {
       // A redial that failed — no dial, or a /me that hung past its bound — goes back to the session
       // it was replacing, degraded (023): the chat stays, the header says the host is not answering,
       // the self-probe keeps asking. Never a permanent "Opening a fresh connection…".
-      if ((s.name === 'connecting' || s.name === 'verifying') && s.redial) return settle(afterFailure(s.redial, e.error));
+      if ((s.name === 'connecting' || s.name === 'verifying') && s.redial) return s.redial.snapshot ? { name: 'disconnected', reason: e.error } : settle(afterFailure(s.redial, e.error));
       // Verifying: the invite never checked out, so the transport we opened for it goes. At verify
       // time there is no chat to keep, so even a pause has to be said on the connect screen.
       if (s.name === 'verifying') return { name: 'disconnected', reason: e.error };
@@ -152,7 +164,7 @@ export function reduce(s: SessionState, e: SessionEvent): SessionState {
     // `connecting` is what drops it — `dropped()` closes it — and the redial effect in App.tsx is
     // what dials again. Only from a live session: there is nothing to redial from anywhere else.
     case 'redial':
-      return l ? { name: 'connecting', redial: l } : s;
+      return l ? { name: 'connecting', redial: { ...l, offline: false, meOk: false, pathOk: false } } : s;
     case 'probed':
       return s.name === 'degraded' ? settle({ ...s.live, probed: s.live.probed + 1 }) : s;
     case 'abort':
@@ -246,7 +258,7 @@ function settle(l: Live): SessionState {
  * the ordinary poll, and a revoked invite cannot heal at all.
  */
 export function probing(s: SessionState): boolean {
-  return s.name === 'degraded' && s.reason !== 'key';
+  return s.name === 'degraded' && s.reason !== 'key' && !s.live.offline;
 }
 
 /** How long after the last probe the next one goes out: 5 s, then 10, 20, and 30 s from there. */

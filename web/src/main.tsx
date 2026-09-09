@@ -1,7 +1,13 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import App from './App';
+import { initializeInstall } from './install';
 import './styles.css';
+
+initializeInstall();
+if (import.meta.env.PROD && 'serviceWorker' in navigator) {
+  void navigator.serviceWorker.register('/sw.js', { updateViaCache: 'none' }).catch((error: unknown) => console.warn('Offline shell unavailable', error));
+}
 
 async function boot(): Promise<void> {
   // Dev-only: ?fake installs the in-page stand-in for the wasm bridge so Tunnel mode can be

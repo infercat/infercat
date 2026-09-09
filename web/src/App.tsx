@@ -1,7 +1,9 @@
 import { tr } from './i18n/text';
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
-import { describeError, getMe, hostName, ME_TIMEOUT_MS, timeoutSignal } from './api';
-import Connect from './ui/Connect';
+import { describeError, getMe, hostName, ME_TIMEOUT_MS, timeoutSignal, type Me } from './api';
+import Connect, { arrivedByLink } from './ui/Connect';
+import { decodeInvite } from './invite';
+import { platform } from './install';
 import {
   dropped,
   IDLE,
@@ -15,8 +17,9 @@ import {
   type SessionEvent,
   type SessionState,
 } from './session';
-import { KEYS, load } from './storage';
-import { openTransport, type Transport } from './transport';
+import { KEYS, load, save, scopedKeys, hostScope, loadChats, type LastHost } from './storage';
+import { VERSION } from './product';
+import { claimTunnelIdentity, openTransport, type Transport } from './transport';
 
 declare const __DEFAULT_DIRECT_URL__: string;
 
@@ -30,12 +33,16 @@ const Chat = lazy(() => import('./ui/Chat'));
  * it); this enacts that decision and nothing else does. That is why there is no leak to find.
  */
 export function useSession(): [SessionState, (e: SessionEvent) => void] {
-  const [state, setState] = useState<SessionState>(IDLE);
-  const cur = useRef<SessionState>(IDLE);
+  const [state, setState] = useState<SessionState>(() => restoredSession());
+  const cur = useRef<SessionState>(state);
 
   const dispatch = useCallback((e: SessionEvent) => {
     const prev = cur.current;
     const next = reduce(prev, e);
+    if (acceptedVerification(prev, e, next)) {
+      save(scopedKeys(hostScope(e.live.addr)).me, e.live.me);
+      if (!e.live.ephemeral && e.live.privateKeyJSON) save(KEYS.privateKey, e.live.privateKeyJSON);
+    }
     for (const t of dropped(prev, e, next)) shut(t);
     if (next === prev) return;
     cur.current = next;
@@ -53,6 +60,36 @@ export function useSession(): [SessionState, (e: SessionEvent) => void] {
   return [state, dispatch];
 }
 
+/** A closed shell transport cannot accidentally issue requests before verification. */
+export function shellTransport(): Transport {
+  return { kind: 'tunnel', close() {}, ping: async () => null, fetch: async () => { throw new TypeError('No verified connection'); } };
+}
+export function restoredSession(online = typeof navigator === 'undefined' || navigator.onLine !== false, standalone = typeof matchMedia !== 'undefined' && platform().standalone, viaLink = arrivedByLink()): SessionState {
+  if (viaLink || (online && !standalone)) return IDLE;
+  const last = load<LastHost | null>(KEYS.lastHost, null);
+  if (!last || last.left) return IDLE;
+  try {
+    const { addr, secret } = decodeInvite(load<string>(KEYS.invite, ''));
+    const scope = hostScope(addr), me = load<Me | null>(scopedKeys(scope).me, null);
+    if (scope !== last.scope || !loadChats(scope).length || !usableSnapshot(me)) return IDLE;
+    const held: Live = { addr, secret, me, transport: shellTransport(), mode: 'tunnel', path: null, pathAt: 0, pathOk: false, meOk: false, key: me.key.status, ephemeral: true, probed: 0, snapshot: true, offline: !online };
+    return online ? { name: 'connecting', redial: held } : { name: 'degraded', reason: 'path', live: held };
+  } catch { return IDLE; }
+}
+function usableSnapshot(me: Me | null): me is Me {
+  return !!me && typeof me.key?.id === 'string' && typeof me.key.name === 'string' && ['active', 'paused', 'revoked'].includes(me.key.status)
+    && typeof me.host?.name === 'string' && Array.isArray(me.host.models) && me.host.models.every((m) => typeof m === 'string')
+    && typeof me.host.relay?.region === 'string' && typeof me.host.upstream?.kind === 'string' && typeof me.host.upstream.healthy === 'boolean'
+    && Number.isFinite(me.host.upstream.model_context)
+    && ['rpm', 'tpm', 'max_concurrent', 'max_output_tokens', 'max_context', 'daily_tokens'].every((k) => Number.isFinite(me.limits?.[k as keyof Me['limits']]))
+    && ['rpm_used', 'tpm_used', 'today_tokens', 'in_flight'].every((k) => Number.isFinite(me.usage?.[k as keyof Me['usage']]));
+}
+
+/** Snapshot only an accepted verify, never a candidate the pure reducer rejected. */
+export function acceptedVerification(before: SessionState, event: SessionEvent, after: SessionState): event is Extract<SessionEvent, { t: 'verified' }> {
+  return event.t === 'verified' && before !== after && live(after)?.transport === event.live.transport;
+}
+
 function shut(t: Transport): void {
   try {
     t.close();
@@ -62,36 +99,39 @@ function shut(t: Transport): void {
 }
 
 /** One dial per host at a time (023): whoever asks while one is in flight joins it. */
-const dialling = new Map<string, Promise<Live>>();
+const dialling = new Map<Transport, Promise<Live>>();
 
 /**
  * The same host, dialled again, carrying everything the old session knew: Reconnect by hand (014
  * promise 13) and the self-probe by itself (022 promise 1). A second ask while a dial is in flight
- * joins it (023) — two sessions under one identity leave one deaf at the relay. `onOpened` sees the
- * transport before /me (only for the call that dials); one the invite does not verify over, or
- * that does not answer /me within its bound, is closed here.
+ * joins it (023) — two sessions under one identity leave one deaf at the relay. A candidate stays
+ * private until /me verifies; failed or timed-out candidates are closed here. A new shell transport
+ * after going offline cannot accidentally join the obsolete dial.
  */
-function dialAgain(from: Live, onOpened?: (t: Transport) => void): Promise<Live> {
-  const joined = dialling.get(from.addr);
+function dialAgain(from: Live): Promise<Live> {
+  const joined = dialling.get(from.transport);
   if (joined) return joined;
-  const dial = dialFresh(from, onOpened);
-  dialling.set(from.addr, dial);
-  const done = () => dialling.delete(from.addr);
+  const dial = dialFresh(from);
+  dialling.set(from.transport, dial);
+  const done = () => dialling.delete(from.transport);
   dial.then(done, done);
   return dial;
 }
 
-async function dialFresh(from: Live, onOpened?: (t: Transport) => void): Promise<Live> {
+let restoredIdentity: Promise<boolean> | undefined;
+async function dialFresh(from: Live): Promise<Live> {
+  const exclusive = from.snapshot ? await (restoredIdentity ??= claimTunnelIdentity()) : !from.ephemeral;
   const opened = await openTransport(from.addr, {
     mode: from.mode,
+    assetBase: import.meta.env.PROD ? `/runtime/${encodeURIComponent(VERSION)}/` : undefined,
     directURL: __DEFAULT_DIRECT_URL__,
-    ...(from.ephemeral ? {} : { privateKey: load<string>(KEYS.privateKey, '') }),
+    ...(!exclusive ? {} : { privateKey: load<string>(KEYS.privateKey, '') }),
   });
-  onOpened?.(opened.transport);
   try {
     const me = await getMe(opened.transport, from.secret, timeoutSignal(ME_TIMEOUT_MS));
     return {
       ...from,
+      offline: false, snapshot: false, ephemeral: !exclusive, privateKeyJSON: opened.privateKeyJSON,
       transport: opened.transport,
       me,
       path: opened.path,
@@ -117,17 +157,19 @@ async function dialFresh(from: Live, onOpened?: (t: Transport) => void): Promise
  */
 function useRedial(state: SessionState, dispatch: (e: SessionEvent) => void): void {
   const from = state.name === 'connecting' || state.name === 'verifying' ? (state.redial ?? null) : null;
+  const active = useRef<Live | null>(null);
   useEffect(() => {
-    if (!from) return;
-    let live = true;
-    // From `sessionUp` on the machine owns the transport: every path out of `verifying` closes it.
-    void dialAgain(from, (t) => (live ? dispatch({ t: 'sessionUp', transport: t }) : shut(t)))
-      .then((next) => (live ? dispatch({ t: 'verified', live: next }) : shut(next.transport)))
+    if (!from || navigator.onLine === false) return;
+    active.current = from;
+    // StrictMode may replay the effect: both observers share one dial and the current owner.
+    // The candidate stays private until /me answers, then the reducer adopts or closes it.
+    void dialAgain(from)
+      .then((next) => (active.current === from ? dispatch({ t: 'verified', live: next }) : shut(next.transport)))
       .catch((err: unknown) => {
-        if (live) dispatch({ t: 'meError', error: describeError(err, hostName(from.me)) });
+        if (active.current === from) dispatch({ t: 'meError', error: describeError(err, hostName(from.me)) });
       });
     return () => {
-      live = false;
+      active.current = null;
     };
   }, [from, dispatch]);
 }
@@ -158,17 +200,21 @@ function useProbe(state: SessionState, dispatch: (e: SessionEvent) => void): voi
       probed,
       async () => {
         const l = live(latest.current);
-        if (!l) return;
+        if (!l || l.offline || navigator.onLine === false) return;
         try {
           if (l.meOk) {
-            dispatch({ t: 'meOk', me: await getMe(l.transport, l.secret, timeoutSignal(ME_TIMEOUT_MS)) });
+            const me = await getMe(l.transport, l.secret, timeoutSignal(ME_TIMEOUT_MS));
+            if (live(latest.current)?.transport === l.transport && !live(latest.current)?.offline) dispatch({ t: 'meOk', me });
           } else {
             // Lands in the reducer, which keeps it only while this session still needs replacing;
             // a candidate that arrives after Reconnect or Disconnect is closed by dropped().
-            dispatch({ t: 'verified', live: await dialAgain(l) });
+            const next = await dialAgain(l);
+            const current = live(latest.current) ?? redialTarget(latest.current);
+            if (current?.transport === l.transport && !current.offline) dispatch({ t: 'verified', live: next });
+            else shut(next.transport);
           }
         } catch (err) {
-          if (l.meOk) dispatch({ t: 'meError', error: describeError(err, hostName(l.me)) });
+          if (l.meOk && live(latest.current)?.transport === l.transport && !live(latest.current)?.offline) dispatch({ t: 'meError', error: describeError(err, hostName(l.me)) });
         }
       },
       dispatch,
@@ -176,8 +222,32 @@ function useProbe(state: SessionState, dispatch: (e: SessionEvent) => void): voi
   }, [on, probed, dispatch]);
 }
 
+/** Device events reuse the redial path; pending messages are never replayed. */
+function useDevice(state: SessionState, dispatch: (e: SessionEvent) => void): boolean {
+  const [offline, setOffline] = useState(() => navigator.onLine === false);
+  const latest = useRef(state); latest.current = state;
+  useEffect(() => {
+    let hiddenAt: number | null = document.hidden ? Date.now() : null;
+    const off = () => { setOffline(true); dispatch({ t: 'offline', transport: shellTransport() }); };
+    const on = () => {
+      if (navigator.onLine === false) return;
+      setOffline(false);
+      if (live(latest.current)?.offline) dispatch({ t: 'redial' });
+    };
+    const visibility = () => {
+      if (document.hidden) { hiddenAt = Date.now(); return; }
+      const resume = hiddenAt !== null && Date.now() - hiddenAt > 30_000; hiddenAt = null;
+      if (resume && platform().standalone && navigator.onLine !== false && live(latest.current)) dispatch({ t: 'redial' });
+    };
+    window.addEventListener('offline', off); window.addEventListener('online', on); document.addEventListener('visibilitychange', visibility);
+    return () => { window.removeEventListener('offline', off); window.removeEventListener('online', on); document.removeEventListener('visibilitychange', visibility); };
+  }, [dispatch]);
+  return offline;
+}
+
 export default function App() {
   const [state, dispatch] = useSession();
+  const offline = useDevice(state, dispatch);
   useRedial(state, dispatch);
   useProbe(state, dispatch);
   // During a redial the chat stays mounted, rendered from the session being redialled (023): same
@@ -186,7 +256,7 @@ export default function App() {
   const reconnecting = redialTarget(state);
   const l = live(state) ?? reconnecting;
 
-  if (!l) return <Connect state={state} dispatch={dispatch} />;
+  if (!l) return <Connect state={state} dispatch={dispatch} offline={offline} />;
 
   return (
     <Suspense fallback={<div className="booting">{tr('app_opening')}</div>}>
