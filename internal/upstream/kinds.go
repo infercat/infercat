@@ -3,6 +3,7 @@ package upstream
 import (
 	"context"
 	"encoding/json"
+	"slices"
 	"strings"
 	"time"
 )
@@ -21,6 +22,9 @@ type modelsResponse struct {
 }
 
 type propsResponse struct {
+	Modalities struct {
+		Vision *bool `json:"vision"`
+	} `json:"modalities"`
 	TotalSlots                int    `json:"total_slots"`
 	ModelAlias                string `json:"model_alias"`
 	ModelPath                 string `json:"model_path"`
@@ -87,7 +91,7 @@ func (c *client) Refresh(ctx context.Context) error {
 	if kind == Unknown {
 		kind, err = sniff(ctx, c)
 	}
-	next := Info{URL: c.base.String(), Kind: kind, Slots: 1}
+	next := Info{URL: c.base.String(), Kind: kind, Slots: 1, Vision: make(map[string]*bool)}
 	if err == nil {
 		switch kind {
 		case LlamaCPP:
@@ -142,6 +146,9 @@ func (c *client) refreshLlamaCPP(ctx context.Context, in *Info) error {
 	if len(in.Models) == 0 && props.ModelAlias != "" {
 		in.Models = []string{props.ModelAlias}
 	}
+	for _, id := range in.Models {
+		in.Vision[id] = props.Modalities.Vision
+	}
 	return nil
 }
 
@@ -156,6 +163,14 @@ func (c *client) refreshOllama(ctx context.Context, in *Info) error {
 			name = m.Model
 		}
 		in.Models = append(in.Models, name)
+		in.Vision[name] = nil
+		var show struct {
+			Capabilities []string `json:"capabilities"`
+		}
+		if err := c.doJSON(ctx, "POST", "/api/show", map[string]string{"model": name}, &show); err == nil && show.Capabilities != nil {
+			vision := slices.Contains(show.Capabilities, "vision")
+			in.Vision[name] = &vision
+		}
 	}
 	// Ollama does not publish a per-model context on /api/tags; 0 means "the upstream's".
 	return nil
@@ -168,11 +183,32 @@ func (c *client) refreshOpenAI(ctx context.Context, in *Info) error {
 	}
 	for _, m := range models.Data {
 		in.Models = append(in.Models, m.ID)
+		in.Vision[m.ID] = nil
+		if in.Kind == VLLM {
+			vision := true // Optimistic: /v1/models does not advertise multimodal support.
+			in.Vision[m.ID] = &vision
+		}
 		if n := m.MaxModelLen; n > 0 && (in.ModelContext == 0 || n < in.ModelContext) {
 			in.ModelContext = n
 		}
 		if n := m.LoadedContextLength; n > 0 && (in.ModelContext == 0 || n < in.ModelContext) {
 			in.ModelContext = n
+		}
+	}
+	if in.Kind == LMStudio {
+		var native struct {
+			Data []struct {
+				ID   string `json:"id"`
+				Type string `json:"type"`
+			} `json:"data"`
+		}
+		if err := c.getJSON(ctx, "/api/v0/models", &native); err == nil {
+			for _, m := range native.Data {
+				if _, served := in.Vision[m.ID]; served && m.Type != "" {
+					vision := m.Type == "vlm"
+					in.Vision[m.ID] = &vision
+				}
+			}
 		}
 	}
 	return nil

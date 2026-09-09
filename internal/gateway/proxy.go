@@ -343,7 +343,8 @@ type meResponse struct {
 			Healthy      bool          `json:"healthy"`
 			ModelContext int           `json:"model_context"`
 		} `json:"upstream"`
-		Models []string `json:"models"`
+		Models []string         `json:"models"`
+		Vision map[string]*bool `json:"vision"`
 		Relay  struct {
 			Region string `json:"region"`
 		} `json:"relay"`
@@ -362,9 +363,11 @@ func (q *request) me() {
 	m.Host.LogPrompts = q.g.cfg.LogPrompts
 	m.Host.Upstream.Kind, m.Host.Upstream.Healthy, m.Host.Upstream.ModelContext = info.Kind, info.Health.OK, info.ModelContext
 	m.Host.Models = []string{}
+	m.Host.Vision = make(map[string]*bool)
 	for _, id := range info.Models {
 		if q.key.AllowsModel(id) {
 			m.Host.Models = append(m.Host.Models, id)
+			m.Host.Vision[id] = info.Vision[id]
 		}
 	}
 	if q.g.cfg.RelayRegion != nil {
@@ -415,16 +418,21 @@ func snippet(r io.Reader) string {
 func upstreamMessage(r io.Reader) (msg, typ string) {
 	s := snippet(r)
 	var e struct {
-		Message string `json:"message"`
-		Type    string `json:"type"`
-		Error   struct {
-			Message string `json:"message"`
-			Type    string `json:"type"`
-		} `json:"error"`
+		Message string          `json:"message"`
+		Type    string          `json:"type"`
+		Error   json.RawMessage `json:"error"`
 	}
 	if json.Unmarshal([]byte(s), &e) == nil {
-		if e.Error.Message != "" {
-			return e.Error.Message, e.Error.Type
+		var nested struct {
+			Message string `json:"message"`
+			Type    string `json:"type"`
+		}
+		if json.Unmarshal(e.Error, &nested) == nil && nested.Message != "" {
+			return nested.Message, nested.Type
+		}
+		var sentence string // Ollama's native error shape.
+		if json.Unmarshal(e.Error, &sentence) == nil && sentence != "" {
+			return sentence, ""
 		}
 		if e.Message != "" {
 			return e.Message, e.Type
@@ -444,6 +452,11 @@ func upstreamMessage(r io.Reader) (msg, typ string) {
 // host's problem: 502 upstream_error.
 func (q *request) upstreamStatusErr(resp *http.Response) *gwError {
 	msg, typ := upstreamMessage(resp.Body)
+	lower := strings.ToLower(msg)
+	if resp.StatusCode >= 400 && resp.StatusCode < 500 && hasImageParts(q.n.body["messages"]) &&
+		(strings.Contains(lower, "image") || strings.Contains(lower, "multimodal") || strings.Contains(lower, "multi-modal")) && !contextOverflow(typ, msg) {
+		return errf(CodeImagesNotSupported, 0, "%s", msg)
+	}
 	if resp.StatusCode == http.StatusBadRequest || resp.StatusCode == http.StatusUnprocessableEntity {
 		if contextOverflow(typ, msg) {
 			q.g.logf("gateway: the engine rejected a prompt the pre-check counted at %d tokens as over its context: %s", q.prompt, msg)
@@ -455,6 +468,22 @@ func (q *request) upstreamStatusErr(resp *http.Response) *gwError {
 		return errf(CodeInvalidRequest, 0, "the host's engine rejected this request (HTTP %d): %s", resp.StatusCode, msg)
 	}
 	return errf(CodeUpstreamError, 0, "upstream returned HTTP %d: %s", resp.StatusCode, msg)
+}
+
+// hasImageParts checks structure, never text that happens to mention an image.
+func hasImageParts(v any) bool {
+	messages, _ := v.([]any)
+	for _, message := range messages {
+		m, _ := message.(map[string]any)
+		parts, _ := m["content"].([]any)
+		for _, part := range parts {
+			p, _ := part.(map[string]any)
+			if p["type"] == "image_url" {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // contextOverflow is the engine saying the prompt (plus the output it was asked for) does not fit

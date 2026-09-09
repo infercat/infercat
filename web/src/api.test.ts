@@ -217,7 +217,7 @@ describe('getMe', () => {
       key: { id: 'k_1', name: 'alice', status: 'active' },
       limits: { rpm: 20, tpm: 20000, max_concurrent: 1, max_output_tokens: 2048, max_context: 0, daily_tokens: 200000 },
       usage: { rpm_used: 1, tpm_used: 2, today_tokens: 3, in_flight: 0 },
-      host: { name: 'desk', upstream: { kind: 'llama.cpp', healthy: true, model_context: 8192 }, models: ['m'], relay: { region: 'sfo' } },
+      host: { name: 'desk', upstream: { kind: 'llama.cpp', healthy: true, model_context: 8192 }, models: ['m'], vision: { m: null }, relay: { region: 'sfo' } },
     };
     const seen: { path?: string; init?: RequestInit } = {};
     const got = await getMe(transportOf(new Response(JSON.stringify(me)), seen), 'sekrit');

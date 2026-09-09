@@ -31,13 +31,14 @@ type Health struct {
 // while Unknown there is one slot, no context and no models (E1). A failed refresh keeps every
 // field and only flips Health (E2), so /me keeps telling the truth about what it knew.
 type Info struct {
-	URL          string    `json:"url"`
-	Kind         Kind      `json:"kind"`
-	Health       Health    `json:"health"`
-	ModelContext int       `json:"model_context"` // last known; 0 while Unknown or unreported
-	Slots        int       `json:"slots"`         // last known, override applied; 1 while Unknown
-	Models       []string  `json:"models"`        // last known
-	ProbedAt     time.Time `json:"probed_at"`
+	URL          string           `json:"url"`
+	Kind         Kind             `json:"kind"`
+	Health       Health           `json:"health"`
+	ModelContext int              `json:"model_context"` // last known; 0 while Unknown or unreported
+	Slots        int              `json:"slots"`         // last known, override applied; 1 while Unknown
+	Models       []string         `json:"models"`        // last known
+	Vision       map[string]*bool `json:"vision"`        // model id to capability; nil value means unknown
+	ProbedAt     time.Time        `json:"probed_at"`
 }
 
 // Engine is what the gateway is allowed to know about the engine (§3.4): its state, its

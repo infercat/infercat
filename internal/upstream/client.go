@@ -80,6 +80,16 @@ func (c *client) Info() Info {
 	defer c.mu.RUnlock()
 	i := c.info
 	i.Models = append([]string(nil), c.info.Models...)
+	if c.info.Vision != nil {
+		i.Vision = make(map[string]*bool, len(c.info.Vision))
+		for id, vision := range c.info.Vision {
+			i.Vision[id] = nil
+			if vision != nil {
+				v := *vision
+				i.Vision[id] = &v
+			}
+		}
+	}
 	return i
 }
 

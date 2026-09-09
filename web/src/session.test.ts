@@ -49,6 +49,7 @@ const ME: Me = {
     name: 'desk',
     upstream: { kind: 'llama.cpp', healthy: true, model_context: 8192 },
     models: ['m'],
+    vision: { m: null },
     relay: { region: 'sfo' },
   },
 };

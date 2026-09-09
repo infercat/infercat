@@ -27,6 +27,7 @@ const (
 	CodeQueueTimeout       Code = "queue_timeout"
 	CodeUpstreamDown       Code = "upstream_down"
 	CodeUpstreamError      Code = "upstream_error"
+	CodeImagesNotSupported Code = "images_not_supported"
 	CodeInvalidRequest     Code = "invalid_request"
 	CodeNotFound           Code = "not_found"
 	CodeClientClosed       Code = "client_closed"
@@ -50,6 +51,7 @@ var codeTable = map[Code]codeRow{
 	CodeQueueTimeout:       {http.StatusServiceUnavailable, "upstream_error"},
 	CodeUpstreamDown:       {http.StatusServiceUnavailable, "upstream_error"},
 	CodeUpstreamError:      {http.StatusBadGateway, "upstream_error"},
+	CodeImagesNotSupported: {http.StatusBadRequest, "invalid_request_error"},
 	CodeInvalidRequest:     {http.StatusBadRequest, "invalid_request_error"},
 	CodeNotFound:           {http.StatusNotFound, "invalid_request_error"},
 }
