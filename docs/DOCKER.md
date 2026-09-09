@@ -67,3 +67,38 @@ manifests are published only by the tagged release workflow.
 
 The image carries the application's `LICENSE` and `THIRD_PARTY_NOTICES.md` under
 `/usr/share/licenses/infercat/`; the base's package copyright notices remain under `/usr/share/doc/`.
+
+## Apple's container tool
+
+Verified with Apple `container` 1.4.1 on Apple silicon. To build without Rosetta, set
+`rosetta = false` under `[build]` in `~/.config/container/config.toml`, preserving other
+settings, then restart the idle runtime with `container system stop && container system start`.
+On an Apple-only Mac, stock `make release-dry` produces the release binaries and packages but
+fails at the image stage because it requires Docker/Buildx; it is not a successful full dry run.
+Use the resulting Linux arm64 binary with the unchanged Dockerfile, licence and notices:
+
+```sh
+image_context=$(mktemp -d)
+cp Dockerfile LICENSE THIRD_PARTY_NOTICES.md dist/cli_linux_arm64*/infercat "$image_context/"
+container build --platform linux/arm64 -t infercat:local "$image_context"
+container network inspect default
+```
+
+Use the network's reported `ipv4Gateway` as the host address (192.168.64.1 in this example),
+and bind your engine to that address on the Mac, using its actual port. The gateway becomes
+available when a container or builder activates the network. `host.docker.internal` is not
+provided; this form needs no DNS or packet-filter changes. Before the first run, initialize
+the **new** named volume once: Docker copies the image directory's ownership into a new
+volume; Apple's tool does not. The pinned helper below changes only the volume root's owner;
+the Infercat image continues to run as 65532:65532, with no shell:
+
+```sh
+container run --rm --user 0 -v infercat:/data docker.io/library/busybox@sha256:9db7b59979c38555a39def84a31fb98b5296952f9e3afd4f6f11f05b07adfab0 chown 65532:65532 /data
+container run -d --name infercat -v infercat:/data infercat:local --data-dir /data serve --upstream http://192.168.64.1:8080
+container exec infercat infercat --data-dir /data keys add alice
+container exec infercat infercat --data-dir /data status
+```
+
+Use `container exec` in place of `docker exec` for the other management commands above.
+Keep the same volume when replacing the container. See Apple's [configuration](https://github.com/apple/container/blob/1.4.1/docs/container-system-config.md#build)
+and [volume reference](https://github.com/apple/container/blob/1.4.1/docs/volumes.md).

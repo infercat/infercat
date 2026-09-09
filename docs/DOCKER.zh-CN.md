@@ -63,3 +63,36 @@ docker exec infercat infercat --data-dir /data keys revoke KEY_ID --yes
 
 镜像内 `/usr/share/licenses/infercat/` 包含应用的 `LICENSE` 和 `THIRD_PARTY_NOTICES.md`；
 基础镜像的软件包版权声明保留在 `/usr/share/doc/` 下。
+
+## Apple 的 container 工具
+
+已在 Apple 芯片 Mac 上使用 Apple `container` 1.4.1 验证。如需在未安装 Rosetta 的情况下
+构建，请在 `~/.config/container/config.toml` 的 `[build]` 下设置 `rosetta = false`，
+保留其他设置，并在没有容器运行时用 `container system stop && container system start` 重启运行时。
+仅有 Apple 工具的 Mac 上，原有的 `make release-dry` 会生成发布二进制和安装包，但在镜像阶段
+因需要 Docker/Buildx 而失败；这不算完整的 dry run 成功。
+使用已生成的 Linux arm64 二进制，以及未改动的 Dockerfile、许可证和第三方声明进行构建：
+
+```sh
+image_context=$(mktemp -d)
+cp Dockerfile LICENSE THIRD_PARTY_NOTICES.md dist/cli_linux_arm64*/infercat "$image_context/"
+container build --platform linux/arm64 -t infercat:local "$image_context"
+container network inspect default
+```
+
+将网络报告的 `ipv4Gateway` 用作主机地址（本例为 192.168.64.1），并让 Mac 上的引擎绑定
+该地址，端口使用引擎实际监听的端口。容器或构建器启用网络后，这个网关地址才可用。
+这里不提供 `host.docker.internal`；使用网关地址不需要更改 DNS 或数据包过滤规则。
+首次运行前，对**新**命名卷初始化一次：Docker 会将镜像目录的所有权复制到新卷，Apple 工具不会。
+下面按摘要固定的辅助镜像只修改卷根目录的所有者；Infercat 镜像仍以 65532:65532 运行，不含 shell：
+
+```sh
+container run --rm --user 0 -v infercat:/data docker.io/library/busybox@sha256:9db7b59979c38555a39def84a31fb98b5296952f9e3afd4f6f11f05b07adfab0 chown 65532:65532 /data
+container run -d --name infercat -v infercat:/data infercat:local --data-dir /data serve --upstream http://192.168.64.1:8080
+container exec infercat infercat --data-dir /data keys add alice
+container exec infercat infercat --data-dir /data status
+```
+
+上文其他管理命令也将 `docker exec` 换成 `container exec` 即可。替换容器时保留同一个卷。
+另见 Apple 的[配置说明](https://github.com/apple/container/blob/1.4.1/docs/container-system-config.md#build)
+和[卷参考文档](https://github.com/apple/container/blob/1.4.1/docs/volumes.md)。
