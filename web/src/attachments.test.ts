@@ -1,5 +1,5 @@
 import { afterEach, expect, it, vi } from 'vitest';
-import { ACCEPT, admit, attachmentFields, attachedLine, sentContent, sentText, turnAttachments, type DisplayAttachment } from './attachments';
+import { retainedFileBytes, rejectionNotice, ACCEPT, admit, attachmentFields, attachedLine, sentContent, sentText, turnAttachments, type DisplayAttachment } from './attachments';
 import { prepareImage } from './images';
 
 const image = { id: 'image', w: 1024, h: 512, bytes: 1024 };
@@ -42,4 +42,19 @@ it('uses one text part after available images and omits missing bytes', () => {
   expect(sentContent(turn)).toBe('question');
   expect(sentContent(turn, { image: 'data:image/jpeg;base64,AA==' })).toEqual([{ type: 'image_url', image_url: { url: 'data:image/jpeg;base64,AA==' } }, { type: 'text', text: 'question' }]);
   expect(attachedLine({})).toBe('');
+});
+
+it('counts UTF-8 extracted text only, excluding the edited turn', () => {
+  const file = { name: 'a very long name.txt', kind: 'TXT', text: '你好', source: 'file' as const };
+  const messages = [{ id: 'old', content: 'ignored words', files: [file] }, { id: 'editing', files: [{ ...file, text: 'omit me' }] }, { id: 'text-only', content: 'not file text' }];
+  expect(retainedFileBytes(messages, 'editing')).toBe(6);
+  expect(retainedFileBytes(messages)).toBe(13);
+  expect(retainedFileBytes([])).toBe(0);
+});
+it('classifies either arm by typed severity regardless of translated copy', () => {
+  for (const reason of ['count', 'storage', 'over_context', 'body_too_large']) {
+    expect(rejectionNotice(Object.assign(new Error('任意文字'), { name: 'FileError', reason }))).toEqual({ message: '任意文字', danger: true });
+  }
+  expect(rejectionNotice({ message: 'custom', danger: true }).danger).toBe(true);
+  expect(rejectionNotice({ message: 'Over the 4 MB one message can carry — remove an image.', reason: 'cant_read' }).danger).toBe(false);
 });

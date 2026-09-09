@@ -39,6 +39,7 @@ interface Props {
   onNewChat: () => void;
   imageData: ImageData;
   imagesLoaded: boolean;
+  onEditing: (id: string | null) => void;
   onResend: (text: string, attachments: DisplayAttachment[]) => void;
 }
 
@@ -60,6 +61,7 @@ export default function MessageView({
   onResend,
   imageData,
   imagesLoaded,
+  onEditing,
 }: Props) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(m.content);
@@ -73,11 +75,11 @@ export default function MessageView({
             <AttachedImages attachments={editAttachments} data={imageData} onRemove={(id) => setEditAttachments((v) => v.filter((i) => i.id !== id))} />
             <textarea value={draft} rows={Math.min(10, draft.split('\n').length + 1)} autoFocus onChange={(e) => setDraft(e.target.value)} />
             <div className="edit-actions">
-              <button className="ghost" onClick={() => { setEditing(false); setDraft(m.content); }}>
+              <button className="ghost" onClick={() => { setEditing(false); onEditing(null); setDraft(m.content); }}>
                 {tr('app_cancel')}
               </button>
               {/* It replaces the answer below it, so it says so before it is pressed (promise 16). */}
-              <button className="primary small" onClick={() => { setEditing(false); onResend(draft, editAttachments); }} disabled={draft.trim() === '' && !editAttachments.length}>
+              <button className="primary small" onClick={() => { setEditing(false); onEditing(null); onResend(draft, editAttachments); }} disabled={draft.trim() === '' && !editAttachments.length}>
                 {tr('app_replace_answer')}
               </button>
             </div>
@@ -95,7 +97,7 @@ export default function MessageView({
           {/* The pending turn (014 promise 1): the reader's words are still here and still theirs. */}
           {pending && <span className="pending-mark">{tr('app_not_delivered')}</span>}
           {last && !busy && !readOnly && (
-            <button className="ghost tiny" onClick={() => { setDraft(m.content); setEditAttachments(turnAttachments(m)); setEditing(true); }}>
+            <button className="ghost tiny" onClick={() => { setDraft(m.content); setEditAttachments(turnAttachments(m)); setEditing(true); onEditing(m.id); }}>
               {tr('app_edit')}
             </button>
           )}
