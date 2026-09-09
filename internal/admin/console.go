@@ -20,7 +20,8 @@ func ListenConsole(address string) (net.Listener, error) {
 	return net.Listen("tcp", address)
 }
 
-// ServeConsole shares the authenticated admin handler, never the tunnel's gateway.
+// ServeConsole shares the authenticated admin handler. Opt-in remote requests arrive through
+// the gateway's restricted proxy with a host-injected per-run token.
 func (s *Server) ServeConsole(l net.Listener, bundle fs.FS) *http.Server {
 	mux := http.NewServeMux()
 	mux.Handle("/api/", http.StripPrefix("/api", s.srv.Handler))

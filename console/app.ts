@@ -2,12 +2,14 @@ import { render } from './render';
 import { text, type Lang } from './copy';
 import { draft, type DrawerState, type Invite } from './actions';
 import { inviteQR } from './qr';
+import { settingValues, type SettingsUI, type SettingsPatch } from './settings';
 import type { Snapshot } from './types';
 
 export function createConsole(root: HTMLElement, token: string | null, request: typeof fetch = fetch, now = Date.now, encodeQR = inviteQR) {
  let data: Snapshot | null = null, selected: string | null = null, stale: number | null = null;
  let lang: Lang = new URLSearchParams(location.search).get('lang') === 'zh' ? 'zh' : 'en';
  let lastAnswer = now(), stopped = false, authorized = !!token, pending = false;
+ const settingsUI:SettingsUI={draft:{}};
  let ui: DrawerState | undefined, generation = 0, revision = 0;
  let activeRequest: AbortController | undefined, mutation: AbortController | undefined;
  let reading: Promise<boolean> | undefined, copyTimer: ReturnType<typeof setTimeout> | undefined;
@@ -19,7 +21,7 @@ export function createConsole(root: HTMLElement, token: string | null, request: 
   const identity = focused?.id || '', action = focused?.dataset.action, model = focused?.dataset.model;
   const key = focused?.dataset.key, close = focused?.dataset.close, language = focused?.dataset.lang;
   const selection = focused instanceof HTMLInputElement && focused.type === 'text' ? [focused.selectionStart, focused.selectionEnd] : null;
-  root.innerHTML = render(data, lang, selected, stale, now(), authorized, Math.max(0, Math.floor((now() - lastAnswer) / 1000)), ui, pending);
+  root.innerHTML = render(data, lang, selected, stale, now(), authorized, Math.max(0, Math.floor((now() - lastAnswer) / 1000)), ui, pending,settingsUI);
   document.documentElement.lang = lang === 'zh' ? 'zh-CN' : 'en';
   document.body.classList.toggle('zh', lang === 'zh');
   const details = root.querySelector('details'); if (details) details.open = open;
@@ -45,7 +47,12 @@ export function createConsole(root: HTMLElement, token: string | null, request: 
  }
  const input = (event: Event) => {
   const el = event.target;
-  if (!ui || !(el instanceof HTMLInputElement) || pending) return;
+  if (!(el instanceof HTMLInputElement) || pending) return;
+  if (el.dataset.setting && data) {
+   const key=el.dataset.setting as keyof SettingsPatch, value=el.type==='checkbox'?el.checked:el.type==='number'&&el.value!==''?Number(el.value):el.value;
+   if(value===settingValues(data.settings)[key])delete settingsUI.draft[key];else Object.assign(settingsUI.draft,{[key]:value});settingsUI.saved=false;settingsUI.error=undefined;draw();return;
+  }
+  if(!ui)return;
   if (el.id === 'invite-name') ui.name = el.value;
   else if (el.dataset.model !== undefined) {
    const models = new Set(ui.limits.models?.length ? ui.limits.models : data?.engine.models || []); if (el.checked) models.add(el.dataset.model); else models.delete(el.dataset.model);
@@ -75,18 +82,25 @@ export function createConsole(root: HTMLElement, token: string | null, request: 
   const action = target?.dataset.action;
   if (action === 'copy-link' || action === 'copy-code') { void copy(action === 'copy-link' ? 'link' : 'code'); return; }
   if (action === 'done' && ui?.once) {
+   if(ui.mode==='admin'){closeDrawer();return;}
    const id = ui.once.key_id; discard(); selected = id;
    const key = data?.keys.find(k => k.id === id); ui = key ? draft(key) : undefined; if (!key) selected = null;
    draw(true); return;
   }
   if (!authorized || pending) return;
+  if(action==='remote-confirm'){settingsUI.confirm=true;draw();return;}
+  if(action==='remote-keep'){settingsUI.confirm=false;draw();return;}
+  if(action==='remote-off'){if(settingsUI.confirm)void saveSettings(true);return;}
+  if(action==='remote-enable'||action==='remote-rotate'){discard();selected=null;ui=draft();ui.mode='admin';draw(true);void mutate(action);return;}
   if (action === 'new') { discard(); selected = null; ui = draft(); draw(true); return; }
   if (action === 'confirm' && ui) { ui.confirm = true; draw(); return; }
   if (action === 'keep' && ui) { ui.confirm = false; draw(); return; }
   if (action && ['pause','resume','rotate','revoke'].includes(action)) void mutate(action);
  };
  const submit = (event: Event) => {
-  if (!(event.target instanceof HTMLFormElement) || !ui) return;
+  if (!(event.target instanceof HTMLFormElement))return;
+  if(event.target.dataset.form==='settings'){event.preventDefault();if(event.target.reportValidity())void saveSettings();return;}
+  if(!ui)return;
   event.preventDefault();
   const name = root.querySelector<HTMLInputElement>('#invite-name');
   if (name && (!name.reportValidity() || !name.value.trim())) { name.focus(); return; }
@@ -129,7 +143,8 @@ export function createConsole(root: HTMLElement, token: string | null, request: 
  }
  async function mutate(action: string) {
   if (!ui || !authorized || pending || stopped || !data) return;
-  if (action !== 'mint' && (!selected || data.keys.find(k => k.id === selected)?.status === 'revoked')) return;
+  const remoteAction=action.startsWith('remote-');
+  if (!remoteAction && action !== 'mint' && (!selected || data.keys.find(k => k.id === selected)?.status === 'revoked')) return;
   if (action === 'revoke' && !ui.confirm) return;
   const version = generation, id = selected, current = ui;
   const body = action === 'mint' ? { name: ui.name.trim(), limits: ui.limits } : action === 'limits' ? ui.limits : undefined;
@@ -138,7 +153,7 @@ export function createConsole(root: HTMLElement, token: string | null, request: 
   const timeout = setTimeout(() => controller.abort(), 10000);
   let committed = false;
   try {
-   const path = action === 'mint' ? 'keys' : 'keys/' + encodeURIComponent(id!) + (action === 'limits' ? '' : '/' + action);
+   const path = remoteAction ? 'remote/'+action.slice(7) : action === 'mint' ? 'keys' : 'keys/' + encodeURIComponent(id!) + (action === 'limits' ? '' : '/' + action);
    const response = await request('/api/' + path, { method: action === 'limits' ? 'PATCH' : 'POST', headers: { ...headers, 'Content-Type': 'application/json' }, body: body ? JSON.stringify(body) : undefined, signal: controller.signal, cache: 'no-store' });
    if (response.status === 401) { authorized = false; discard(); selected = null; }
    if (!response.ok) {
@@ -149,10 +164,10 @@ export function createConsole(root: HTMLElement, token: string | null, request: 
     const value = await response.json();
     if (version === generation && ui && !stopped) {
      ui.confirm = false; ui.dirty = false;
-     if (action === 'mint' || action === 'rotate') {
+     if (remoteAction || action === 'mint' || action === 'rotate') {
       const invite = value as Invite;
       if (typeof invite.invite !== 'string' || typeof invite.key_id !== 'string') throw new Error('invalid invite result');
-      ui.once = invite; ui.rotated = action === 'rotate'; selected = invite.key_id;
+      ui.once = invite; ui.rotated = action === 'rotate'||action==='remote-rotate'; selected = invite.key_id;
       try { ui.qr = encodeQR(invite.link || invite.invite); } catch { ui.qrFailed = true; }
      } else if (action === 'limits') ui.message = 'saved_limits';
     }
@@ -171,6 +186,19 @@ export function createConsole(root: HTMLElement, token: string | null, request: 
    }
    pending = false; if (!stopped) draw();
   }
+ }
+ async function saveSettings(off=false) {
+  if(pending||stopped||!authorized||!data?.settings.writes_supported)return;
+  pending=true;revision++;activeRequest?.abort();settingsUI.error=undefined;settingsUI.saved=false;draw();
+  const controller=new AbortController();mutation=controller;const timeout=setTimeout(()=>controller.abort(),10000);
+  try {
+   const response=await request('/api/'+(off?'remote/off':'settings'),{method:off?'POST':'PATCH',headers:{...headers,'Content-Type':'application/json'},body:off?undefined:JSON.stringify(settingsUI.draft),signal:controller.signal,cache:'no-store'});
+   if(response.status===401){authorized=false;discard();selected=null;}
+   const value=await response.json();
+   if(!response.ok){settingsUI.error=typeof value.error==='string'?value.error:'HTTP '+response.status;}
+   else {if(!off)settingsUI.draft={};settingsUI.confirm=false;settingsUI.saved=true;}
+  } catch {settingsUI.error=text(lang,'unknown_write');}
+  finally {clearTimeout(timeout);mutation=undefined;await reading;if(!stopped&&authorized)await readSnapshot();pending=false;if(!stopped)draw();}
  }
  root.addEventListener('click', click); root.addEventListener('keydown', keydown); root.addEventListener('input',input); root.addEventListener('submit',submit);
  draw(); void refresh();

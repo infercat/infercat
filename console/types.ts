@@ -15,6 +15,6 @@ export interface Status {
  queue: { in_flight: number; waiting: number };
  engine: { tokens_per_s_1m: number; metrics: boolean; busy: number; waiting: number; memory_bytes: number; kv_cache_pct: number; slots_peak_sampled: number };
 }
-export interface Settings { name: string; web_url: string; configured_web_url: string; slots: number; log_requests: boolean; log_requests_remembered: boolean; log_prompts: boolean; upstream: string; derpmap_url: string; region: string; data_dir: string }
+export interface Settings { writes_supported?:boolean; default_web_url?:string; configured_console?:string; console_address?:string; running_slots?:number; saved_at?:Record<string,string>; remote?:{enabled:boolean;since?:string;in_use:boolean}; name: string; web_url: string; configured_web_url: string; slots: number; log_requests: boolean; log_requests_remembered: boolean; log_prompts: boolean; upstream: string; derpmap_url: string; region: string; data_dir: string }
 export interface Snapshot { status: Status; keys: Key[]; engine: Engine; settings: Settings; today: Report; week: Report }
 export const emptyStats: Stats = { requests: 0, model_calls: 0, app_polls: 0, errors: 0, prompt_tokens: 0, completion_tokens: 0, ttft_median_ms: 0, ttft_p95_ms: 0, total_median_ms: 0, total_p95_ms: 0 };

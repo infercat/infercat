@@ -175,3 +175,13 @@ are refused until the next UTC day. Already-dispatched calls still settle in ful
 The host ceiling does not truncate audio or falsify the engine's measurement.
 For refused calls, `reserved_seconds` names the requested reservation, not a
 charge; `seconds` is zero/absent, and no reservation remains held.
+
+## Remote console
+
+Opt-in admin access has budgets separate from friend keys: reads allow 240 starts per rolling
+minute and six concurrent requests; writes allow 20 starts per rolling minute and one concurrent
+request. Reads cannot spend the write budget. Saturation returns 429 with Retry-After. No model
+token, audio, or queue budget is charged to the admin code. The request body is bounded to 16 KiB,
+the proxied response to 8 MiB, and loopback forwarding to ten seconds. Caller headers and response
+authorization headers are not forwarded. No redirects are followed. Off is 404, not a login hint.
+Rotation/off refuse subsequent old-bearer requests; already accepted operations are not replayed.

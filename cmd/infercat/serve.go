@@ -19,6 +19,8 @@ import (
 
 	consolebundle "github.com/infercat/infercat/console"
 	"github.com/infercat/infercat/internal/admin"
+	"github.com/infercat/infercat/internal/adminkey"
+	"github.com/infercat/infercat/internal/gateway"
 	"github.com/infercat/infercat/internal/keys"
 	"github.com/infercat/infercat/internal/product"
 	// only for tunnel.KeyFile: the host identity's file name is the tunnel's to define, and a
@@ -155,16 +157,27 @@ func (e *env) cmdServe(ctx context.Context, pre string, args []string) error {
 	}
 	defer tun.Close()
 
-	// Subscribe before the gateway can serve a request, so the first request line is never lost
-	// to a printer goroutine that has not subscribed yet (CI caught this as a flaky test, 2026-09-09).
-	var requestLines <-chan usage.Event
-	if *logRequests {
-		ch, stop := events.Subscribe()
-		defer stop()
-		requestLines = ch
+	remoteStore, err := adminkey.Open(dataDir)
+	if err != nil {
+		return err
 	}
+	state := &consoleState{remote: remoteStore, value: consoleSettings{
+		WritesSupported: true, DefaultWebURL: product.WebURL, Name: hostName, WebURL: webURL(config{WebURL: *webURLFlag}), Slots: *slots,
+		ConfiguredConsole: *consoleAddr, ConsoleAddress: consoleAddress,
+		LogRequests: *logRequests, DataDir: dataDir, LogPrompts: *logPrompts,
+		Upstream: *upURL, DERPMapURL: *derpMapURL, Region: *region, ConfiguredWebURL: *webURLFlag,
+	}}
+	state.logs.Store(*logRequests)
+	// Subscribe before serving even when disabled; the live switch gates printing, never recording.
+	requestLines, stopLines := events.Subscribe()
+	defer stopLines()
+	remoteHandler := gateway.Console(remoteStore, consoleAddress, func() string {
+		b, _ := os.ReadFile(filepath.Join(dataDir, admin.TokenName))
+		return strings.TrimSpace(string(b))
+	}, events)
 
 	gw, err := e.plat.newGateway(gatewayOptions{
+		RemoteConsole: remoteHandler, LiveHostName: state.name,
 		ModelsPinned:    pinned,
 		TranscribeModel: *transcribeModel, SpeechModel: *speechModel,
 		Transcribe: transcribe, Speech: speech, MaxTranscriptionSeconds: float64(*maxAudio),
@@ -180,12 +193,15 @@ func (e *env) cmdServe(ctx context.Context, pre string, args []string) error {
 	tele := &telemetry{events: events, name: hostName}
 	go tele.sample(ctx, gw, tun)
 	if requestLines != nil {
-		go printRequests(ctx, requestLines, e.out, keyNamer(ctx, store))
+		go printRequests(ctx, requestLines, e.out, keyNamer(ctx, store), state.logs.Load)
 	}
 	started := time.Now()
 	adm, err := admin.Serve(dataDir, func() admin.Status {
 		st := buildStatus(ctx, started, tun, up, gw, store, tele)
 		st.Console = consoleAddress
+		st.Name = state.name()
+		remoteState := remoteStore.State()
+		st.Remote = &remoteState
 		st.ModelsPinned = pinned
 		st.Audio = audioStatus(transcribe, speech)
 		return st
@@ -197,11 +213,7 @@ func (e *env) cmdServe(ctx context.Context, pre string, args []string) error {
 			}
 		}
 		return err
-	}, events, e.consoleAPI(store, tun.Addr(), up, consoleSettings{
-		Name: hostName, WebURL: webURL(config{WebURL: *webURLFlag}), Slots: *slots,
-		LogRequests: *logRequests, DataDir: dataDir, LogPrompts: *logPrompts,
-		Upstream: *upURL, DERPMapURL: *derpMapURL, Region: *region, ConfiguredWebURL: *webURLFlag,
-	}))
+	}, events, e.consoleAPI(store, tun.Addr(), up, state.value, state))
 	if err != nil {
 		return fmt.Errorf("admin API: %w", err)
 	}
@@ -481,12 +493,15 @@ func (t *telemetry) sample(ctx context.Context, gw gatewayServer, tun tunnelServ
 
 // printRequests is `serve --log-requests`: the request line on the host's terminal, from the
 // same stream `status --watch` reads.
-func printRequests(ctx context.Context, ch <-chan usage.Event, w io.Writer, name func(string) string) {
+func printRequests(ctx context.Context, ch <-chan usage.Event, w io.Writer, name func(string) string, enabled ...func() bool) {
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case ev := <-ch:
+			if len(enabled) > 0 && !enabled[0]() {
+				continue
+			}
 			fmt.Fprintln(w, requestLine(ev, name(ev.KeyID)))
 		}
 	}

@@ -1,6 +1,6 @@
 // Package admin is the host's authenticated management surface: a tiny HTTP server on a
 // unix socket in the data dir (a loopback port on Windows), and the client the `status`
-// subcommand uses. It is never exposed through the tunnel (docs/PRINCIPLES.md, Protection 1).
+// subcommand uses. Opt-in remote access forwards only the console whitelist through the gateway.
 package admin
 
 import (
@@ -14,6 +14,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/infercat/infercat/internal/adminkey"
 	"github.com/infercat/infercat/internal/product"
 	"github.com/infercat/infercat/internal/usage"
 )
@@ -32,6 +33,7 @@ var ErrNoDaemon = errors.New("no running host found for this data dir")
 // for `serve` and "bridge" for a `connect` given a data dir (ticket 029 promise 5): a bridge has
 // one session, its local endpoint under Upstream, and no keys.
 type Status struct {
+	Remote       *adminkey.State     `json:"remote,omitempty"`
 	Audio        map[string]Upstream `json:"audio,omitempty"`
 	ModelsPinned []string            `json:"models_pinned,omitempty"`
 

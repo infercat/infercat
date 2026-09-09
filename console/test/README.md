@@ -23,3 +23,29 @@ INFERCAT_PROOF_BINARY=/tmp/infercat-075 node test/actions-live.mjs
 It mints through the UI, connects through the real tunnel, and asserts answer → pause/403 → resume/200 → rotate/old-401/new-200 → revoke/403. It writes `test/evidence/actions-live.txt` and two live screenshots, then stops its host, friends and local engine. The screenshots contain disposable proof invites, never a real user's invite. No existing installation or data directory is used.
 
 The two optional limits are `daily_audio_seconds` and `daily_speech_chars`, verified against the 078 key type. Each existing-key field appears only when returned by the API, including a returned zero; older hosts receive no unknown fields.
+
+## 085 host-side proof
+
+`pnpm test` also covers settings success/refusal/ambiguity, dirty drafts across polls, and local
+admin-code enable/rotate/off with inline confirmation and pending-close secret disposal.
+`node test/remote-screenshots.mjs` writes 28 local states at 1280/390 in EN/ZH. Compare `remote-settings-*`
+with the frozen `settings-*`, `remote-admin-*` with `remote-on-*`, and `remote-off-*`/`remote-on-*` with
+the corresponding Settings state/never-list mocks in `infercat-pm/docs/brand/console-remote/`.
+The header and CLOSED remote-page states belong to 086 under the PM's split, not this fixture.
+Intentional differences: bearer use is “in use”/“not in use,” no invented device count; the admin
+card says browser support needs a newer web app until 086; the never-list describes the counts-only
+API without claiming prompts cannot exist on disk when the host uses --log-prompts.
+
+```sh
+go build -o /tmp/infercat-085 ./cmd/infercat
+go build -o /tmp/infercat-085-tunnel ./console/test/tunnel.go
+cd console
+INFERCAT_PROOF_BINARY=/tmp/infercat-085 INFERCAT_PROOF_TUNNEL=/tmp/infercat-085-tunnel node test/remote-live.mjs
+```
+
+The opt-in fixture launches only its own new host, engine and tunnel client. Curl traverses the
+real relay/session, with a loopback proof adapter restricted to console routes plus read probes
+of /me and /v1/models. It checks the remote limit change, live host name, admin-not-chat refusal,
+remote console-address refusal, rotation, in-use state and off=404, then stops every process.
+`remote-live.txt`, `remote-live-code.png` and `remote-live-state.png` are in ignored `test/evidence/`.
+The temporary curl header belongs only to the disposable proof code, which is rotated and disabled.

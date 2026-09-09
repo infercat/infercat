@@ -378,6 +378,9 @@ func (q *request) me() {
 	m.Usage.RPMUsed, m.Usage.TPMUsed, m.Usage.TodayTokens, m.Usage.InFlight = cnt.RPMUsed, cnt.TPMUsed, cnt.TodayTokens, cnt.InFlight
 	info := q.g.up.Info()
 	m.Host.Name = q.g.cfg.HostName
+	if q.g.cfg.LiveHostName != nil {
+		m.Host.Name = q.g.cfg.LiveHostName()
+	}
 	m.Host.Audio.Transcriptions = audioModel(q.g.cfg.Transcribe, q.g.cfg.TranscribeModel)
 	m.Host.Audio.Speech = audioModel(q.g.cfg.Speech, q.g.cfg.SpeechModel)
 	for _, model := range []**string{&m.Host.Audio.Transcriptions, &m.Host.Audio.Speech} {

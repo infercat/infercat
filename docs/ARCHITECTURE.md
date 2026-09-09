@@ -226,13 +226,32 @@ requires the per-run bearer in `admin.token` (0600, removed at shutdown on every
 Unix CLI clients read it too. The startup banner prints only the console address and the command
 to open it; only `infercat console` (including `--print`) emits a URL with the token in its fragment.
 The page consumes it into memory and clears the fragment, never using browser storage. Responses forbid caching; there is no CORS grant, and the listener
-rejects alternate Host headers. The console is never attached to the tunnel. The JSON API adds
+rejects alternate Host headers. The console is host-local by default; the opt-in exception is described below. The JSON API adds
 key list/detail, mint, pause/resume/revoke/rotate, partial limits updates, aggregate usage
 (`today` or trailing seven UTC days, with explicit daily counts), engine info including probe
 error, and settings. Key reads exclude hashes; usage exposes counts only. `log_requests` in
 settings is the runtime value and `log_requests_remembered` is false. Writes use the CLI's
 store operations and shared mint/rotation helpers, then reload the running store; a notification
 failure after a committed write is logged without reporting the write as a refusal.
+
+085 adds one opt-in exception to Protection 1: while remote access is enabled, the existing
+port-80 gateway accepts `/console/` (authenticated status) and an explicit `/console/api/*`
+whitelist. A separate `ia1.<address>.<secret>` bearer controls keys and settings, never `/v1`.
+Its SHA-256 hash and enabled-since timestamp live in mode-0600 `admin.json`, separate from
+friend keys. The switch persists across restarts; enabling requires the loopback console on.
+Off returns 404; a wrong bearer while on returns 401. Rotation invalidates the old bearer.
+The gateway forwards only validated methods/paths and the usage window to its literal loopback
+listener, adding the local token itself and replacing caller headers. Remote settings cannot
+change the console address; no console settings route accepts an engine URL or prompt logging.
+The bearer is “in use” when accepted within ten minutes (bearer-only, not a device count).
+Remote requests produce counts-only `kind: "console"` usage events. Browser entry is ticket 086;
+released web apps reject the unfamiliar `ia1` prefix with their existing unsupported-prefix copy.
+
+Settings PATCH validates the whole whitelist before an atomic config write. Name applies live
+to status and `/me`; the web URL applies to the next generated link; slots and console address
+wait for the next start. Log-requests changes live for this run only and is never persisted.
+Non-HTTPS web URLs are refused except literal loopback/RFC-1918 IPv4 or localhost HTTP URLs;
+credentials, query and fragment are refused. No reachability check or implied trust verification.
 
 ## Measurement (`docs/MEASURE.md`, PM)
 

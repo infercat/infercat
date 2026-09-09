@@ -2,6 +2,7 @@ import { text, type CopyKey, type Lang } from './copy';
 import { emptyStats, type Snapshot, type Key, type Stats } from './types';
 
 import { escape } from './html';
+import { settingsSection, type SettingsUI } from './settings';
 export { escape } from './html';
 import { limitsForm, keyActions, specialDrawer, type DrawerState } from './actions';
 const compact = (n: number) => Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: n >= 10000 ? 0 : 1 }).format(n || 0).replace("K", "k");
@@ -11,7 +12,7 @@ const tokens = (s: Stats) => s.prompt_tokens + s.completion_tokens;
 const meter = (value: number, max: number) => max > 0 ? `<progress class="meter-track" max="${max}" value="${Math.max(0, Math.min(value, max))}" aria-label="${value} / ${max}"></progress>` : '<span class="meter-track unknown"></span>';
 const mark = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="2" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"/><path d="M7 16 12 7l5 9" fill="none" stroke="currentColor" stroke-width="2"/></svg>';
 
-export function render(data: Snapshot | null, lang: Lang, selected: string | null, stale: number | null, now = Date.now(), hasToken = true, refreshedSeconds = 2, ui?: DrawerState, pending = false): string {
+export function render(data: Snapshot | null, lang: Lang, selected: string | null, stale: number | null, now = Date.now(), hasToken = true, refreshedSeconds = 2, ui?: DrawerState, pending = false, settingsUI:SettingsUI = {draft:{}}): string {
  const t = (k: CopyKey, ...args: (string | number)[]) => escape(text(lang, k, ...args));
  const label = (k: CopyKey) => `<span data-t="${k}">${t(k)}</span>`;
  const n = (v: number) => Intl.NumberFormat(lang === 'zh' ? 'zh-CN' : 'en').format(v || 0);
@@ -82,7 +83,7 @@ export function render(data: Snapshot | null, lang: Lang, selected: string | nul
   ${limitsForm(data, lang, ui, k, pending)}
   <div class="dsec"><span class="field-label">${label('d_usage')}</span>${usageTable(a,b,true,k.last_seen)}</div>${keyActions(lang, ui, k, pending)}<p class="dfoot">${t('hash_only')}</p></aside>`;
  }
- if (ui?.mode === 'mint' || ui?.once) drawer = specialDrawer(data, lang, ui, pending);
+ if (ui?.mode === 'mint' || ui?.mode === 'admin' || ui?.once) drawer = specialDrawer(data, lang, ui, pending);
  return `<div class="${stale !== null ? 'stale' : ''}"><div id="page" ${drawer ? 'inert' : ''}>${header}
  <div class="strip"><div class="strip-in"><span>${(['friends','engine','usage','settings'] as const).map(id => `<a href="#${id}">${t(`ix_${id}`)}</a>`).join(' · ')}</span><span role="status">${stale !== null ? t('stale',stale) : t('refreshed',refreshedSeconds)}</span></div></div>
  ${!e.health.ok ? `<p class="degraded">${t('degraded',e.kind,e.url)}</p>` : ''}
@@ -97,7 +98,7 @@ export function render(data: Snapshot | null, lang: Lang, selected: string | nul
  ${section('engine','engine',`${escape(e.kind)} · ${escape(e.url)}`,`<div class="facts8">${fact('e_kind',escape(e.kind),t('not_reported'))}${fact('e_health',e.health.ok ? t('healthy') : health,t('since',duration(since(e.health.since)),ago(e.probed_at)),!e.health.ok)}${fact('e_slots',n(e.slots),t(cfg.slots ? 'slots_override' : 'slots_auto'))}${fact('e_ctx',e.model_context ? n(e.model_context) : t('not_reported'),t('e_ctx_s'))}${fact('e_tps',compact(s.engine.tokens_per_s_1m)+' tok/s',t('e_tps_s'))}${fact('e_says',s.engine.metrics ? t('metrics',s.engine.busy,s.engine.waiting) : t('no_metrics'),s.engine.metrics ? t('e_says_s') : '')}${fact('e_mem',s.engine.memory_bytes ? bytes(s.engine.memory_bytes) : t('not_reported'),s.engine.metrics ? t('kv',s.engine.kv_cache_pct.toFixed(1)) : '')}${fact('e_peak',t('in_flight',s.engine.slots_peak_sampled),t('e_peak_s'))}</div>
  <table class="tbl models"><thead><tr>${(['m_model','m_ctx','m_calls','m_keys'] as CopyKey[]).map(key=>`<th${key==='m_keys'?' class="c-keys"':''}>${label(key)}</th>`).join('')}</tr></thead><tbody>${modelRows}</tbody></table><p class="foot-line">${t('engine_foot')}${!e.health.ok ? ' '+escape(e.health.err) : ''}</p>`)}
  ${section('usage','usage',t('usage_src'),`<div class="usage">${usageTable(day,week.total)}<div><p class="days-cap">${t('days_cap')}</p><div class="days">${days}</div><p class="foot-line">${t('usage_foot')}</p></div></div>${!week.total.requests ? `<p class="empty">${t('no_usage')}</p>`:''}${week.malformed_lines ? `<p class="notice">${t('malformed',week.malformed_lines)}</p>`:''}`)}
- ${section('settings','settings',t('settings_src',cfg.data_dir),`<div class="form">${field('st_name',cfg.name,'st_name_h')}${field('st_web',cfg.configured_web_url,'st_web_h')}${field('st_slots',cfg.slots,'slots_hint')}
+ ${cfg.writes_supported ? settingsSection(data,lang,settingsUI,pending) : section('settings','settings',t('settings_src',cfg.data_dir),`<div class="form">${field('st_name',cfg.name,'st_name_h')}${field('st_web',cfg.configured_web_url,'st_web_h')}${field('st_slots',cfg.slots,'slots_hint')}
  <div class="field"><span class="field-label">${label('st_log')}</span><label class="check"><input type="checkbox" disabled ${cfg.log_requests?'checked':''}><span>${t('st_log_h')} (${t('not_remembered')})</span></label></div>
  <div class="form-actions">${button('save')}<span class="saved">${t('restart')}</span></div><p class="field-hint">${t('effective_web',cfg.web_url)}</p><div class="ro">${fact('ro_data',escape(cfg.data_dir),t('ro_data_s'))}${fact('ro_up',escape(e.url),cfg.upstream ? '--upstream' : t('ro_up_s'))}${fact('ro_relay',cfg.derpmap_url || cfg.region ? `${escape(cfg.derpmap_url || '—')} · ${escape(cfg.region || 'auto')}` : t('default_relay'),t('ro_relay_s'))}</div><p class="truth">${t(cfg.log_prompts?'prompts_on':'prompts_off')}</p></div>`)}
  </main><footer class="strip"><div class="strip-in"><span>Infercat ${escape(s.version)} · MIT · <a href="https://github.com/infercat/infercat" target="_blank" rel="noreferrer">${t('source')}</a></span><span>${t('made')}</span></div></footer></div>${drawer}</div>`;

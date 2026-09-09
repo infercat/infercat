@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"io"
 	"net"
+	"net/http"
 	"os"
 	"os/signal"
 	"path/filepath"
@@ -58,6 +59,8 @@ type gatewayServer interface {
 }
 
 type gatewayOptions struct {
+	RemoteConsole                http.Handler
+	LiveHostName                 func() string
 	Transcribe, Speech           upstream.AudioEngine
 	TranscribeModel, SpeechModel string
 	MaxTranscriptionSeconds      float64

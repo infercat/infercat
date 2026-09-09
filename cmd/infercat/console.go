@@ -17,6 +17,7 @@ import (
 	"time"
 
 	"github.com/infercat/infercat/internal/admin"
+	"github.com/infercat/infercat/internal/adminkey"
 	"github.com/infercat/infercat/internal/keys"
 	"github.com/infercat/infercat/internal/upstream"
 	"github.com/infercat/infercat/internal/usage"
@@ -60,6 +61,15 @@ func (e *env) cmdConsole(ctx context.Context, pre string, args []string) error {
 	}
 	fmt.Fprintln(e.out, link)
 	if !*printOnly {
+		label := "off"
+		if st.Remote != nil && st.Remote.Enabled {
+			label = "on · not in use"
+			if st.Remote.InUse {
+				label = "on · in use"
+			}
+		}
+		fmt.Fprintln(e.out, "remote    "+label)
+
 		for _, name := range []string{"open", "xdg-open"} {
 			if path, err := osexec.LookPath(name); err == nil {
 				return osexec.CommandContext(ctx, path, link).Run()
@@ -70,17 +80,24 @@ func (e *env) cmdConsole(ctx context.Context, pre string, args []string) error {
 }
 
 type consoleSettings struct {
-	LogPrompts            bool   `json:"log_prompts"`
-	Upstream              string `json:"upstream"`
-	DERPMapURL            string `json:"derpmap_url"`
-	Region                string `json:"region"`
-	ConfiguredWebURL      string `json:"configured_web_url"`
-	Name                  string `json:"name"`
-	WebURL                string `json:"web_url"`
-	Slots                 int    `json:"slots"`
-	LogRequests           bool   `json:"log_requests"`
-	LogRequestsRemembered bool   `json:"log_requests_remembered"`
-	DataDir               string `json:"data_dir"`
+	DefaultWebURL         string               `json:"default_web_url,omitempty"`
+	WritesSupported       bool                 `json:"writes_supported,omitempty"`
+	ConfiguredConsole     string               `json:"configured_console,omitempty"`
+	ConsoleAddress        string               `json:"console_address,omitempty"`
+	RunningSlots          int                  `json:"running_slots,omitempty"`
+	SavedAt               map[string]time.Time `json:"saved_at,omitempty"`
+	Remote                *adminkey.State      `json:"remote,omitempty"`
+	LogPrompts            bool                 `json:"log_prompts"`
+	Upstream              string               `json:"upstream"`
+	DERPMapURL            string               `json:"derpmap_url"`
+	Region                string               `json:"region"`
+	ConfiguredWebURL      string               `json:"configured_web_url"`
+	Name                  string               `json:"name"`
+	WebURL                string               `json:"web_url"`
+	Slots                 int                  `json:"slots"`
+	LogRequests           bool                 `json:"log_requests"`
+	LogRequestsRemembered bool                 `json:"log_requests_remembered"`
+	DataDir               string               `json:"data_dir"`
 }
 
 type consoleKey struct {
@@ -112,7 +129,11 @@ func decodeConsole(w http.ResponseWriter, r *http.Request, out any) error {
 	return nil
 }
 
-func (e *env) consoleAPI(store *keys.FileStore, addr string, up upstream.Upstream, settings consoleSettings) http.Handler {
+func (e *env) consoleAPI(store *keys.FileStore, addr string, up upstream.Upstream, settings consoleSettings, states ...*consoleState) http.Handler {
+	var state *consoleState
+	if len(states) > 0 {
+		state = states[0]
+	}
 	mux := http.NewServeMux()
 	var mu sync.Mutex // serialize duplicate checks and patches with other API mutations
 	route := func(pattern string, f func(http.ResponseWriter, *http.Request) (any, error)) {
@@ -203,7 +224,26 @@ func (e *env) consoleAPI(store *keys.FileStore, addr string, up upstream.Upstrea
 		return usage.AggregateFile(settings.DataDir, usage.Filter{Since: start, Until: today().AddDate(0, 0, 1), Days: days})
 	})
 	route("GET /engine", func(w http.ResponseWriter, r *http.Request) (any, error) { return up.Info(), nil })
-	route("GET /settings", func(w http.ResponseWriter, r *http.Request) (any, error) { return settings, nil })
+	route("GET /settings", func(w http.ResponseWriter, r *http.Request) (any, error) {
+		if state != nil {
+			v := state.snapshot()
+			v.RunningSlots = up.Info().Slots
+			return v, nil
+		}
+		return settings, nil
+	})
+	if state != nil {
+		route("PATCH /settings", func(w http.ResponseWriter, r *http.Request) (any, error) {
+			var p admin.SettingsPatch
+			if err := decodeConsole(w, r, &p); err != nil {
+				return nil, err
+			}
+			return state.patch(p, consoleRemote(r))
+		})
+		for _, action := range []string{"enable", "rotate", "off"} {
+			route("POST /remote/"+action, func(w http.ResponseWriter, r *http.Request) (any, error) { return state.remoteAction(action, addr) })
+		}
+	}
 	applied := func() (any, error) {
 		if err := store.Reload(); err != nil {
 			e.logf("admin reload after committed change: %v", err)

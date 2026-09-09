@@ -26,6 +26,8 @@ import (
 // here: it is the engine's slot count, read live (DESIGN §1.5). Deadlines and the body cap are
 // constants (§1.6), each bounding one party's failure.
 type Config struct {
+	RemoteConsole                http.Handler
+	LiveHostName                 func() string
 	Transcribe, Speech           upstream.AudioEngine
 	TranscribeModel, SpeechModel string
 	MaxTranscriptionSeconds      float64
@@ -217,6 +219,14 @@ func (g *Gateway) AllCounters() map[string]usage.KeyCounters { return g.lim.allC
 func (g *Gateway) Queue() (inFlight, waiting int) { return g.queue.counts() }
 
 func (g *Gateway) serveHTTP(w http.ResponseWriter, r *http.Request) {
+	if r.URL.Path == "/console" || strings.HasPrefix(r.URL.Path, "/console/") {
+		if g.cfg.RemoteConsole == nil {
+			http.NotFound(w, r)
+		} else {
+			g.cfg.RemoteConsole.ServeHTTP(w, r)
+		}
+		return
+	}
 	if r.ContentLength != 0 {
 		// A body is coming (declared, or -1 = chunked): bound how long it may take from this moment,
 		// valid key or not (promise 4). This also bounds net/http's post-handler discard of a body that
