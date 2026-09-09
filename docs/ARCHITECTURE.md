@@ -228,3 +228,13 @@ Every published latency/throughput number comes from a command written there and
 ### JavaScript client workspace
 
 `packages/client` provides the private, browser-only `@infercat/client` v0: an `ic1` invite creates a session with tunnel-bound fetch, `/me`, path status, and OpenAI SDK constructor options. The app's `web/src/transport` re-exports the shared implementation in `packages/client/src/transport`; the library never imports app UI or state. It uses the existing version-coupled `InfercatTunnel` wasm interface and a matching `wasm_exec.js`, defaults to the hosted artifact, and accepts an explicit artifact URL. Fetch preserves HTTP error responses, while `me()` throws typed gateway errors; close aborts active requests. See the package README for browser requirements, the Go runtime limitation that blocks Node, artifact pinning, and isolated-host verification.
+
+The read-only console (`074`) refreshes authenticated snapshots every two seconds and joins live
+key counters (including TPM) to key limits and usage. It keeps the last facts muted while retrying
+an unavailable host. EN/ZH share one copy table; rows open a keyboard-accessible drawer, and all
+write controls remain disabled. Usage adds exact per-model call counts and UTC daily buckets for
+the host and each key; percentiles are computed from samples, never added. Settings expose only
+whitelisted display fields, including the runtime prompt-logging truth and configured/effective
+web URL. Missing model context and historical uptime are not inferred. `make console-build`
+updates the embedded bundle; `make check` builds separately and refuses stale committed
+`console/dist` bytes without rewriting them.

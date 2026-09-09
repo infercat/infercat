@@ -16,6 +16,7 @@ type Filter struct {
 	KeyID string    // empty = every key
 	Since time.Time // zero = from the beginning
 	Until time.Time // exclusive; zero = no upper bound
+	Days  int       // optional daily buckets starting at Since (UTC), for console reads
 }
 
 func (f Filter) match(e *Event) bool {
@@ -45,7 +46,8 @@ func ModelCall(e *Event) bool {
 
 // Stats are the numbers `usage` prints, for one key or for the whole file.
 type Stats struct {
-	KeyID string `json:"key_id,omitempty"`
+	KeyID  string         `json:"key_id,omitempty"`
+	Models map[string]int `json:"model_calls_by_model,omitempty"`
 	// Requests is every recorded call; ModelCalls and AppPolls split it into what the friend did
 	// and what their app did. Requests == ModelCalls + AppPolls.
 	Requests         int            `json:"requests"`
@@ -74,6 +76,12 @@ func (s *Stats) add(e *Event) {
 	call := ModelCall(e)
 	if call {
 		s.ModelCalls++
+		if e.Model != "" {
+			if s.Models == nil {
+				s.Models = map[string]int{}
+			}
+			s.Models[e.Model]++
+		}
 	} else {
 		s.AppPolls++
 	}
@@ -136,16 +144,35 @@ func percentile(v []int64, p int) int64 {
 
 // Report is the whole-file answer: one Stats for everything plus one per key.
 type Report struct {
+	Daily     []Day    `json:"daily,omitempty"`
 	Total     Stats    `json:"total"`
 	Keys      []*Stats `json:"keys"`
 	Malformed int      `json:"malformed_lines"`
+}
+
+type Day struct {
+	Date  string   `json:"date"`
+	Total Stats    `json:"total"`
+	Keys  []*Stats `json:"keys"`
+}
+
+func emptyReport(f Filter) *Report {
+	r := &Report{}
+	for i := 0; i < f.Days; i++ {
+		r.Daily = append(r.Daily, Day{Date: f.Since.UTC().AddDate(0, 0, i).Format("2006-01-02"), Keys: []*Stats{}})
+	}
+	return r
 }
 
 // Aggregate reads JSONL events and summarises the ones the filter admits. Lines that do not
 // parse are counted and skipped: a half-written final line from a killed host must not make
 // `usage` fail.
 func Aggregate(r io.Reader, f Filter) (*Report, error) {
-	rep := &Report{}
+	rep := emptyReport(f)
+	byDay := make([]map[string]*Stats, len(rep.Daily))
+	for i := range byDay {
+		byDay[i] = map[string]*Stats{}
+	}
 	byKey := map[string]*Stats{}
 	rd := bufio.NewReaderSize(r, 64*1024)
 	for {
@@ -175,10 +202,29 @@ func Aggregate(r io.Reader, f Filter) (*Report, error) {
 				byKey[e.KeyID] = s
 			}
 			s.add(&e)
+			day := int(e.TS.UTC().Truncate(24*time.Hour).Sub(f.Since.UTC().Truncate(24*time.Hour)) / (24 * time.Hour))
+			if day >= 0 && day < len(rep.Daily) {
+				rep.Daily[day].Total.add(&e)
+				ds := byDay[day][e.KeyID]
+				if ds == nil {
+					ds = &Stats{KeyID: e.KeyID}
+					byDay[day][e.KeyID] = ds
+				}
+				ds.add(&e)
+			}
 		}
 		if errors.Is(err, io.EOF) {
 			break
 		}
+	}
+	for i := range rep.Daily {
+		d := &rep.Daily[i]
+		d.Total.finish()
+		for _, s := range byDay[i] {
+			s.finish()
+			d.Keys = append(d.Keys, s)
+		}
+		sort.Slice(d.Keys, func(a, b int) bool { return d.Keys[a].KeyID < d.Keys[b].KeyID })
 	}
 	rep.Total.finish()
 	for _, s := range byKey {
@@ -234,7 +280,7 @@ func AggregateFile(dataDir string, f Filter) (*Report, error) {
 	fh, err := os.Open(filepath.Join(dataDir, FileName))
 	if err != nil {
 		if errors.Is(err, os.ErrNotExist) {
-			return &Report{}, nil
+			return emptyReport(f), nil
 		}
 		return nil, err
 	}

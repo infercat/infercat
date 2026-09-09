@@ -264,3 +264,37 @@ func readLines(t *testing.T, p string) []string {
 	}
 	return strings.Split(strings.TrimRight(string(b), "\n"), "\n")
 }
+
+func TestConsoleDailyBucketsKeepUTCKeysModelsAndPercentiles(t *testing.T) {
+	start := time.Date(2026, 9, 1, 0, 0, 0, 0, time.UTC)
+	input := strings.NewReader(`{"ts":"2026-09-01T23:00:00-04:00","key_id":"a","endpoint":"/v1/chat/completions","model":"m1","status":200,"prompt_tokens":2,"completion_tokens":3,"total_ms":10,"prompt":"PRIVATE"}
+{"ts":"2026-09-02T05:00:00Z","key_id":"b","endpoint":"/v1/chat/completions","model":"m2","status":200,"prompt_tokens":4,"total_ms":90}
+{"ts":"2026-09-03T05:00:00Z","key_id":"a","endpoint":"/v1/chat/completions","model":"m1","status":429,"code":"rate_limited"}
+{"ts":"2026-09-02T06:00:00Z","key_id":"a","endpoint":"/v1/models","model":"m1","status":200}
+{"ts":"2026-09-08T00:00:00Z","key_id":"a","endpoint":"/v1/chat/completions","model":"m1","status":200}
+`)
+	rep, err := Aggregate(input, Filter{Since: start, Until: start.AddDate(0, 0, 7), Days: 7})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(rep.Daily) != 7 || rep.Daily[0].Total.Requests != 0 || rep.Daily[1].Total.Requests != 3 || rep.Daily[2].Total.Errors != 1 {
+		t.Fatalf("daily: %+v", rep.Daily)
+	}
+	if rep.Total.Models["m1"] != 2 || rep.Total.Models["m2"] != 1 {
+		t.Fatal(rep.Total.Models)
+	}
+	if rep.Total.TotalMedianMS != 10 || rep.Total.TotalP95MS != 90 || rep.Daily[1].Total.TotalP95MS != 90 {
+		t.Fatal("percentiles must be computed from samples", rep.Total)
+	}
+	if len(rep.Daily[1].Keys) != 2 || rep.Daily[1].Keys[0].KeyID != "a" || rep.Daily[1].Keys[0].PromptTokens != 2 {
+		t.Fatal(rep.Daily[1].Keys)
+	}
+	b, _ := json.Marshal(rep)
+	if strings.Contains(string(b), "PRIVATE") {
+		t.Fatal("text in report")
+	}
+	empty, err := AggregateFile(t.TempDir(), Filter{Since: start, Days: 7})
+	if err != nil || len(empty.Daily) != 7 {
+		t.Fatal(empty, err)
+	}
+}
