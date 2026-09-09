@@ -2,3 +2,7 @@
 # dependency allowed to run an install script; its postinstall selects the platform binary.
 allowBuilds:
   esbuild: true
+
+packages:
+  - .
+  - ../packages/client
