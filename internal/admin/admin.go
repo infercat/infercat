@@ -32,6 +32,8 @@ var ErrNoDaemon = errors.New("no running host found for this data dir")
 // for `serve` and "bridge" for a `connect` given a data dir (ticket 029 promise 5): a bridge has
 // one session, its local endpoint under Upstream, and no keys.
 type Status struct {
+	ModelsPinned []string `json:"models_pinned,omitempty"`
+
 	Console  string   `json:"console,omitempty"`
 	Product  string   `json:"product"`
 	Version  string   `json:"version"`

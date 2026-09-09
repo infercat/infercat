@@ -11,6 +11,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -57,6 +58,7 @@ func (e *env) cmdServe(ctx context.Context, pre string, args []string) error {
 	fs.String("data-dir", dataDir, dataDirUsage)
 	upURL := fs.String("upstream", cfg.Upstream, "inference server URL; detected when empty")
 	upKey := fs.String("upstream-key", cfg.UpstreamKey, "bearer token for the inference server")
+	models := fs.String("models", cfg.Models, "comma-separated host model pin; all forgets it")
 	slots := fs.Int("slots", cfg.Slots, "parallel requests the engine can serve; 0 asks the engine")
 	logPrompts := fs.Bool("log-prompts", false, "record prompts and completions in usage.jsonl (off by default; not remembered)")
 	devListen := fs.String("dev-listen", cfg.DevListen, "also serve the gateway on this loopback address, with permissive CORS")
@@ -80,9 +82,13 @@ func (e *env) cmdServe(ctx context.Context, pre string, args []string) error {
 		defer consoleListener.Close()
 		consoleAddress = consoleListener.Addr().String()
 	}
+	if strings.TrimSpace(*models) == "all" {
+		*models = ""
+	}
+	pinned := splitModels(*models)
 	*upURL = forgetIfAuto(*upURL)
 	if err := saveConfig(dataDir, config{
-		Upstream: *upURL, UpstreamKey: *upKey, Slots: *slots,
+		Upstream: *upURL, UpstreamKey: *upKey, Slots: *slots, Models: strings.Join(pinned, ","),
 		DevListen: *devListen, DERPMapURL: *derpMapURL,
 		Region: *region, Name: *name, WebURL: *webURLFlag, Console: *consoleAddr,
 	}); err != nil {
@@ -139,10 +145,11 @@ func (e *env) cmdServe(ctx context.Context, pre string, args []string) error {
 	}
 
 	gw, err := e.plat.newGateway(gatewayOptions{
-		LogPrompts:  *logPrompts,
-		HostName:    hostName,
-		RelayRegion: func() string { return tun.Status().Region },
-		DataDir:     dataDir, // today's counters are seeded from usage.jsonl there
+		ModelsPinned: pinned,
+		LogPrompts:   *logPrompts,
+		HostName:     hostName,
+		RelayRegion:  func() string { return tun.Status().Region },
+		DataDir:      dataDir, // today's counters are seeded from usage.jsonl there
 	}, up, store, events, e.logf)
 	if err != nil {
 		return fmt.Errorf("gateway: %w", err)
@@ -157,6 +164,7 @@ func (e *env) cmdServe(ctx context.Context, pre string, args []string) error {
 	adm, err := admin.Serve(dataDir, func() admin.Status {
 		st := buildStatus(ctx, started, tun, up, gw, store, tele)
 		st.Console = consoleAddress
+		st.ModelsPinned = pinned
 		return st
 	}, store.Reload, events, e.consoleAPI(store, tun.Addr(), up, consoleSettings{
 		Name: hostName, WebURL: webURL(config{WebURL: *webURLFlag}), Slots: *slots,
@@ -172,7 +180,7 @@ func (e *env) cmdServe(ctx context.Context, pre string, args []string) error {
 	}
 
 	e.printStartup(ctx, startup{
-		tun: tun, up: up, store: store, dataDir: dataDir, consoleAddr: consoleAddress,
+		tun: tun, up: up, store: store, dataDir: dataDir, consoleAddr: consoleAddress, pinned: pinned,
 		hostName: hostName, webURL: webURL(config{WebURL: *webURLFlag}), newIdentity: newIdentity,
 	})
 
@@ -308,6 +316,7 @@ func refreshLoop(ctx context.Context, up upstream.Upstream, logf func(string, ..
 // startup is everything the banner names. It is a struct because the banner grew the four lines
 // the strangers asked for (web, name, access, data) and a positional list of seven was worse.
 type startup struct {
+	pinned      []string
 	consoleAddr string
 	tun         tunnelServer
 	up          upstream.Upstream
@@ -329,7 +338,20 @@ func (e *env) printStartup(ctx context.Context, s startup) {
 	}
 	fmt.Fprintf(e.out, "%s %s\n", product.Name, product.Version)
 	fmt.Fprintf(e.out, "upstream  %s  %s%s\n", kindWord(string(info.Kind)), info.URL, health)
-	fmt.Fprintf(e.out, "          %s  context %s  slots %d\n", modelList(info.Models), contextStr(info.ModelContext), info.Slots)
+	models := modelList(info.Models)
+	if len(s.pinned) > 0 {
+		models = modelList(s.pinned) + " (pinned)"
+	}
+	fmt.Fprintf(e.out, "          %s  context %s  slots %d\n", models, contextStr(info.ModelContext), info.Slots)
+	var missing []string
+	for _, id := range s.pinned {
+		if !slices.Contains(info.Models, id) {
+			missing = append(missing, id)
+		}
+	}
+	if len(missing) > 0 {
+		fmt.Fprintf(e.out, "          not currently reported by the engine: %s\n", modelList(missing))
+	}
 	fmt.Fprintf(e.out, "tunnel    %s\n", orDash(s.tun.Addr()))
 	fmt.Fprintf(e.out, "relay     %s\n", orDash(s.tun.Status().Region))
 	if s.webURL != "" {
@@ -558,6 +580,7 @@ Flags:
                           llama.cpp :8080, Ollama :11434, LM Studio :1234, vLLM :8000.
                           --upstream auto forgets a remembered URL and detects again
   --upstream-key TOKEN    bearer token for the inference server
+  --models a,b            pin models for every key; all forgets the pin
   --slots N               parallel requests the engine can serve (0 = ask the engine)
   --dev-listen ADDR       also serve on this loopback address, permissive CORS
   --derpmap-url URL       relay map URL

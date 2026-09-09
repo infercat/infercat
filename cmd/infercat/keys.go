@@ -470,7 +470,7 @@ Limit flags:
   --max-output-tokens N   clamp on max_tokens
   --max-context N         context ceiling (0 = the upstream's)
   --daily-tokens N        tokens per UTC day
-  --models a,b            model allowlist (empty = every model)
+  --models a,b            model allowlist (empty = every model); the host pin still applies
 
 Other flags:
   --force                 mint a second key for a name that already has an active one

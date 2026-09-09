@@ -11,7 +11,7 @@ export VITE_APP_VERSION := $(PRODUCT_VERSION)
 # image URL in index.html, which must be absolute to be picked up.
 export VITE_WEB_URL := $(shell sed -n 's/^[[:space:]]*WebURL[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' internal/product/product.go)
 
-.PHONY: build test vet wasm web web-test check clean release-dry notices notices-check brand launch-check deploy-web
+.PHONY: build test vet wasm web web-test web-lint check clean release-dry notices notices-check brand launch-check deploy-web
 
 build:
 	go build -o bin/infercat ./cmd/infercat
@@ -24,7 +24,7 @@ test:
 vet:
 	go vet ./...
 
-check: console-check vet test client-check
+check: console-check vet test client-check web-lint
 	sh hack/install_test.sh
 	@if command -v shellcheck >/dev/null 2>&1; then shellcheck -s sh hack/install.sh; else echo "shellcheck: skipped (not installed)"; fi
 	@echo "CHECK OK"
@@ -38,6 +38,9 @@ web: console-check wasm
 
 web-test:
 	cd web && pnpm test
+
+web-lint:
+	cd web && pnpm install --frozen-lockfile && pnpm lint
 
 # The icon set, the social-card image and GitHub's social preview, rendered from the SVG mark and
 # the real connect screen (web/dev/brand.mjs). Re-run after a rename or a new mark; commit the PNGs.

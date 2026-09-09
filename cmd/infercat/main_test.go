@@ -1022,3 +1022,101 @@ func TestNoEnginePointsToEngineQuickstart(t *testing.T) {
 		t.Fatalf("hint = %q, want %q", output.String(), want)
 	}
 }
+
+func TestServeRemembersModelPinAndAllClearsIt(t *testing.T) {
+	dir, err := os.MkdirTemp("", "ic066-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(dir)
+	store, err := keys.NewFileStore(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	_, secret, err := store.Add(context.Background(), "friend", keys.DefaultLimits())
+	if err != nil {
+		t.Fatal(err)
+	}
+	engine := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		switch r.URL.Path {
+		case "/props":
+			io.WriteString(w, `{"total_slots":1,"default_generation_settings":{"n_ctx":4096}}`)
+		case "/v1/models":
+			io.WriteString(w, `{"data":[{"id":"private"},{"id":"public"}]}`)
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer engine.Close()
+	for _, tc := range []struct {
+		args []string
+		want string
+	}{
+		{[]string{"--models", " public, offline "}, "public,offline"},
+		{nil, "public,offline"},
+		{[]string{"--models", "all"}, ""},
+		{nil, ""},
+	} {
+		gw := newFakeGateway()
+		plat := testPlatform(fakeAddr, nil)
+		plat.startTunnel = func(context.Context, tunnelOptions) (tunnelServer, error) { return fakeTunnel{}, nil }
+		var handler http.Handler
+		plat.newGateway = func(o gatewayOptions, up upstream.Upstream, store keys.Store, rec usage.Recorder, logf func(string, ...any)) (gatewayServer, error) {
+			wired, err := newPlatform().newGateway(o, up, store, rec, logf)
+			if err != nil {
+				return nil, err
+			}
+			handler = wired.(interface{ Handler() http.Handler }).Handler()
+			return gw, nil
+		}
+		ctx, cancel := context.WithCancel(context.Background())
+		var out, errw lockedBuffer
+		done := make(chan int, 1)
+		args := append([]string{"serve", "--console", "off", "--data-dir", dir, "--upstream", engine.URL}, tc.args...)
+		go func() { done <- run(ctx, args, &out, &errw, nil, false, plat) }()
+		select {
+		case <-gw.serving:
+		case <-time.After(5 * time.Second):
+			cancel()
+			t.Fatalf("serve not ready: %s", errw.String())
+		}
+		req := httptest.NewRequest(http.MethodGet, "/v1/models", nil)
+		req.Header.Set("Authorization", "Bearer "+secret)
+		response := httptest.NewRecorder()
+		handler.ServeHTTP(response, req)
+		if response.Code != 200 || strings.Contains(response.Body.String(), `"private"`) != (tc.want == "") {
+			t.Errorf("serve pin did not reach the gateway: %d %s", response.Code, response.Body.String())
+		}
+		cfg, cfgErr := loadConfig(dir)
+		st, statusErr := admin.Fetch(ctx, dir)
+		cancel()
+		select {
+		case code := <-done:
+			if code != 0 {
+				t.Fatalf("serve: %d %s", code, errw.String())
+			}
+		case <-time.After(5 * time.Second):
+			t.Fatal("serve did not stop")
+		}
+		t.Logf("remembered=%q; status.models_pinned=%q; GET /v1/models=%s", cfg.Models, strings.Join(st.ModelsPinned, ","), response.Body.String())
+		if cfgErr != nil || cfg.Models != tc.want {
+			t.Fatalf("config: %+v %v, want %q", cfg, cfgErr, tc.want)
+		}
+		if statusErr != nil || strings.Join(st.ModelsPinned, ",") != tc.want {
+			t.Fatalf("status: %+v %v", st.ModelsPinned, statusErr)
+		}
+		var display lockedBuffer
+		writeStatus(&display, st)
+		for name, text := range map[string]string{"banner": out.String(), "status": display.String()} {
+			if strings.Contains(text, "(pinned)") != (tc.want != "") {
+				t.Fatalf("%s pin indication: %s", name, text)
+			}
+		}
+		if tc.want != "" && !strings.Contains(out.String(), "not currently reported by the engine: offline") {
+			t.Fatalf("unreported id: %s", out.String())
+		}
+		if tc.want == "" && strings.Contains(string(readFile(t, filepath.Join(dir, configName))), `"models"`) {
+			t.Fatal("all left a remembered pin")
+		}
+	}
+}

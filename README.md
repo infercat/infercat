@@ -131,6 +131,7 @@ xattr -d com.apple.quarantine ./infercat
 | `--name NAME` | the host name your friends see (default: this machine's hostname) |
 | `--web-url URL` | where friends open the web app; invites then print as a link |
 | `--slots N` | parallel requests the engine can serve (0 = ask the engine) |
+| `--models a,b` | pin models for every key, intersected with each key’s allowlist; `--models all` forgets the pin |
 | `--region NAME` / `--derpmap-url URL` | preferred relay region / a self-hosted relay map |
 | `--dev-listen ADDR` | also serve on loopback with permissive CORS, for web development |
 | `--log-prompts`, `--ephemeral`, `--verbose` | per-run: log message content; throwaway host identity; tunnel log on the terminal |

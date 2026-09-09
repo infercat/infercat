@@ -26,9 +26,10 @@ import (
 // here: it is the engine's slot count, read live (DESIGN §1.5). Deadlines and the body cap are
 // constants (§1.6), each bounding one party's failure.
 type Config struct {
-	LogPrompts  bool          // put prompt/completion text into usage events (Protection 3: opt-in)
-	HostName    string        // shown in /me
-	RelayRegion func() string // shown in /me; nil → ""
+	ModelsPinned []string      // host-wide model allowlist; empty means all models
+	LogPrompts   bool          // put prompt/completion text into usage events (Protection 3: opt-in)
+	HostName     string        // shown in /me
+	RelayRegion  func() string // shown in /me; nil → ""
 	// DataDir is where usage.jsonl lives; New reads it once to seed today's per-key counters.
 	// Empty means no history to seed from, and the counters start at zero as they always did.
 	DataDir string

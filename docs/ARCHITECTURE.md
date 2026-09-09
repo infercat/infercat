@@ -121,7 +121,7 @@ Auth: `Authorization: Bearer <secret>` on every route except `/healthz`.
 |---|---|
 | `GET /healthz` | `{"ok":true}` always; no auth; no other info |
 | `GET /me` | `{key:{id,name,status}, limits:Limits, usage:{rpm_used, tpm_used, today_tokens, in_flight}, host:{name, upstream:{kind,healthy,model_context}, models:[ids], vision:{id:true|false|null}, relay:{region}, log_prompts:bool}}`. `kind` is `"unknown"` until an engine answered a signature probe; `healthy` reflects the last probe; the client discloses `log_prompts`. `vision` contains only invite-visible model ids and is refreshed with every probe (null = unknown); the app reads the selected model’s entry. llama.cpp reports `/props` modalities.vision, Ollama `/api/show` capabilities, LM Studio `/api/v0/models` type (`vlm`); vLLM assumes true on a successful model probe. Failed engine refreshes preserve prior state. Image-bearing requests refused by a 4xx naming images/multimodal input return `images_not_supported` (400, no retry) with the engine’s message, except context overflow retains its existing mapping. |
-| `GET /v1/models` | engine list filtered by the key's allowed models; per-key concurrency applies; **not counted against RPM** (ruled 2026-09-02, ticket 014: the friend's meter counts messages) |
+| `GET /v1/models` | engine list filtered by the intersection of the host pin and the key's allowed models; per-key concurrency applies; **not counted against RPM** (ruled 2026-09-02, ticket 014: the friend's meter counts messages) |
 | `POST /v1/chat/completions` | stream and non-stream. Gateway MUST: flush every SSE chunk immediately; inject `stream_options.include_usage=true` when streaming; normalize the body once (strip engine-override aliases such as `n_predict`/`n`/`best_of`/`priority`, fill `model`, clamp `max_tokens` to the key's cap and shrink it to fit the context and the TPM/daily windows, floor 16); pass `reasoning_content` through untouched. An engine 400/422 caused by the request maps to 400 `invalid_request` with the engine's message — except a context overflow (llama.cpp `exceed_context_size_error`, vLLM "maximum context length"), which maps to 422 `context_too_long` so clients never retry it (036); 5xx → 502 |
 | `POST /v1/embeddings` | pass-through with auth + limits |
 | anything else | 404 in error format |
@@ -144,6 +144,12 @@ with real `fetch` before the wasm path exists. Loopback only; refuses non-loopba
 ```
 Defaults for a new key: rpm 20 · tpm 20000 · max_concurrent 1 · max_output_tokens 4096 · max_context 0 (= upstream's) ·
 daily_tokens 200000 · models [] (= all). Secret shown once at `keys add`; store keeps `sha256:` hex only.
+
+`serve --models a,b` remembers a host-wide pin in config.json; `--models all` removes it. The pin
+intersects every key's allowlist for model listings, `/me` model metadata and request admission
+(`model_not_allowed` on refusal). Omitted models still select the first permitted engine model,
+then the first model in the effective allowlist. Unreported pinned ids are allowed (swap engines
+may load them later); the banner identifies them, and admin status exposes `models_pinned`.
 
 ## Usage events (types by PM in `internal/usage/usage.go`; recorder by 003)
 

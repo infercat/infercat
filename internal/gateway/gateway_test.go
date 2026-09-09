@@ -1176,3 +1176,63 @@ func TestLimiterWindowsWithFakeClock(t *testing.T) {
 		t.Fatalf("the surviving entry must be the second admission: %+v", st.log)
 	}
 }
+
+func TestHostModelPinIntersectsEverySurface(t *testing.T) {
+	for _, tc := range []struct {
+		name      string
+		key, want []string
+	}{
+		{"unrestricted key", nil, []string{"m2"}},
+		{"overlap", []string{"m1", "m2"}, []string{"m2"}},
+		{"disjoint", []string{"m1"}, nil},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			h := newHarness(t, Config{ModelsPinned: []string{"m2", "offline"}}, nil)
+			h.setKey(func(k *keys.Key) { k.Limits.Models = tc.key })
+			for _, route := range []string{"/v1/models", "/me"} {
+				r := h.get(route)
+				if r.status != 200 {
+					t.Fatalf("%s: %d %s", route, r.status, r.body)
+				}
+				var body map[string]any
+				if err := json.Unmarshal(r.body, &body); err != nil {
+					t.Fatal(err)
+				}
+				var got []string
+				if route == "/me" {
+					for _, id := range body["host"].(map[string]any)["models"].([]any) {
+						got = append(got, id.(string))
+					}
+				} else {
+					for _, row := range body["data"].([]any) {
+						got = append(got, row.(map[string]any)["id"].(string))
+					}
+				}
+				if !reflect.DeepEqual(got, tc.want) {
+					t.Fatalf("%s: %v, want %v", route, got, tc.want)
+				}
+			}
+			for _, route := range []string{"/v1/chat/completions", "/v1/embeddings"} {
+				h.expectErr(h.post(route, chatBody("m1", 2, "")), CodeModelNotAllowed)
+			}
+			if len(tc.want) == 0 {
+				h.expectErr(h.post("/v1/chat/completions", chatBody("", 2, "")), CodeModelNotAllowed)
+				h.expectErr(h.post("/v1/chat/completions", chatBody("m2", 2, "")), CodeModelNotAllowed)
+			} else {
+				if got := h.post("/v1/chat/completions", chatBody("", 2, "")); got.status != 200 {
+					t.Fatalf("default: %d %s", got.status, got.body)
+				}
+				if got := h.up.body(t)["model"]; got != "m2" {
+					t.Fatalf("default escaped pin: %v", got)
+				}
+			}
+		})
+	}
+	h := newHarness(t, Config{ModelsPinned: []string{"offline"}}, nil)
+	if got := h.post("/v1/chat/completions", chatBody("", 2, "")); got.status != 200 {
+		t.Fatalf("unreported pin: %d %s", got.status, got.body)
+	}
+	if got := h.up.body(t)["model"]; got != "offline" {
+		t.Fatalf("unreported pin default: %v", got)
+	}
+}

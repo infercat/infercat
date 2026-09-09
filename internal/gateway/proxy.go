@@ -13,6 +13,7 @@ import (
 	"io"
 	"net"
 	"net/http"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -91,9 +92,9 @@ func stripOverrides(body map[string]any) []string {
 // are stripped (promise 1, overrideKeys), a missing model is filled and the allowlist enforced, the
 // output cap is clamped to the key's, and streams get include_usage. Everything else in body passes
 // through byte-identical. It returns what the later stages read (DESIGN §1.7).
-func normalize(kind endpoint, body map[string]any, k *keys.Key, engineModels []string) (normalized, *gwError) {
+func normalize(kind endpoint, body map[string]any, k *keys.Key, engineModels, pinned []string) (normalized, *gwError) {
 	n := normalized{body: body, stripped: stripOverrides(body)}
-	model, err := resolveModel(body, k, engineModels)
+	model, err := resolveModel(body, k, engineModels, pinned)
 	if err != nil {
 		return n, err
 	}
@@ -173,28 +174,41 @@ func (q *request) countTokens(text string, messages []byte) int {
 	return n
 }
 
-// resolveModel fills a missing model (first engine model the key allows, else the key's first
-// allowed model) and enforces the allowlist.
-func resolveModel(body map[string]any, k *keys.Key, engineModels []string) (string, *gwError) {
+// resolveModel chooses the first permitted engine model, then the first effective allowlist entry.
+// An empty intersection must refuse rather than let the engine choose its own default.
+func resolveModel(body map[string]any, k *keys.Key, engineModels, pinned []string) (string, *gwError) {
 	m, _ := body["model"].(string)
 	if m == "" {
 		for _, id := range engineModels {
-			if k.AllowsModel(id) {
+			if allowsModel(k, pinned, id) {
 				m = id
 				break
 			}
 		}
-		if m == "" && len(k.Limits.Models) > 0 {
-			m = k.Limits.Models[0]
+		fallback := k.Limits.Models
+		if len(fallback) == 0 {
+			fallback = pinned
+		}
+		for _, id := range fallback {
+			if m == "" && allowsModel(k, pinned, id) {
+				m = id
+			}
 		}
 		if m != "" {
 			body["model"] = m
 		}
 	}
-	if m != "" && !k.AllowsModel(m) {
+	if m == "" && len(pinned) > 0 {
+		return "", errf(CodeModelNotAllowed, 0, "no model is allowed for this key")
+	}
+	if m != "" && !allowsModel(k, pinned, m) {
 		return "", errf(CodeModelNotAllowed, 0, "model %q is not allowed for this key", m)
 	}
 	return m, nil
+}
+
+func allowsModel(k *keys.Key, pinned []string, model string) bool {
+	return k.AllowsModel(model) && (len(pinned) == 0 || slices.Contains(pinned, model))
 }
 
 // clampMaxTokens caps max_tokens / max_completion_tokens to the key's MaxOutputTokens (never
@@ -315,7 +329,7 @@ func (q *request) models() {
 	}
 	out := make([]map[string]any, 0, len(list.Data))
 	for _, m := range list.Data {
-		if id, _ := m["id"].(string); q.key.AllowsModel(id) {
+		if id, _ := m["id"].(string); allowsModel(q.key, q.g.cfg.ModelsPinned, id) {
 			out = append(out, m)
 		}
 	}
@@ -365,7 +379,7 @@ func (q *request) me() {
 	m.Host.Models = []string{}
 	m.Host.Vision = make(map[string]*bool)
 	for _, id := range info.Models {
-		if q.key.AllowsModel(id) {
+		if allowsModel(q.key, q.g.cfg.ModelsPinned, id) {
 			m.Host.Models = append(m.Host.Models, id)
 			m.Host.Vision[id] = info.Vision[id]
 		}

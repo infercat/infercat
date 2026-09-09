@@ -181,6 +181,9 @@ func writeStatus(w io.Writer, st admin.Status) {
 	fmt.Fprintf(w, "upstream  %s  %s  %s  context %s  slots %d\n",
 		kindWord(st.Upstream.Kind), st.Upstream.URL, healthWord(st.Upstream.Healthy, st.Upstream.Since),
 		contextStr(st.Upstream.ModelContext), st.Upstream.Slots)
+	if len(st.ModelsPinned) > 0 {
+		fmt.Fprintf(w, "models    %s (pinned)\n", modelList(st.ModelsPinned))
+	}
 	fmt.Fprintf(w, "tunnel    %s  relay %s  %s\n", orDash(st.Tunnel.Addr), orDash(st.Tunnel.Region), plural(st.Tunnel.Clients, "client"))
 	writeSessions(w, st.Tunnel)
 	fmt.Fprintf(w, "queue     %d in flight, %d waiting  (peak %d in flight, sampled)\n", st.Queue.InFlight, st.Queue.Waiting, st.Engine.SlotsPeak)

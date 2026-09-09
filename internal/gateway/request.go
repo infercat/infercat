@@ -244,7 +244,7 @@ func (q *request) readBody() *gwError {
 // returns a value; the stage puts it on the record and the event. Shrink-to-fit (005) needs the
 // token count and so runs in checkBudgets.
 func (q *request) normalize() *gwError {
-	n, err := normalize(q.kind, q.n.body, q.key, q.g.up.Info().Models)
+	n, err := normalize(q.kind, q.n.body, q.key, q.g.up.Info().Models, q.g.cfg.ModelsPinned)
 	if err != nil {
 		return err
 	}

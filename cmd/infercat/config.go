@@ -20,6 +20,7 @@ const configName = "config.json"
 // Keys a newer build no longer knows (queue_timeout, request_timeout, max_body, retired by ticket
 // 010) are ignored on load and dropped on the next save.
 type config struct {
+	Models      string `json:"models,omitempty"`
 	Console     string `json:"console,omitempty"`
 	Upstream    string `json:"upstream,omitempty"`
 	UpstreamKey string `json:"upstream_key,omitempty"`

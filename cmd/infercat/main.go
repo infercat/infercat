@@ -58,6 +58,8 @@ type gatewayServer interface {
 }
 
 type gatewayOptions struct {
+	ModelsPinned []string
+
 	LogPrompts  bool
 	HostName    string
 	RelayRegion func() string

@@ -131,6 +131,7 @@ xattr -d com.apple.quarantine ./infercat
 | `--name NAME` | 朋友看到的主机名称（默认：本机的主机名） |
 | `--web-url URL` | 朋友打开网页版的地址；配置后邀请信息会直接打印为链接 |
 | `--slots N` | 引擎可并发处理的请求数（0 = 自动询问引擎） |
+| `--models a,b` | 为所有密钥固定可用模型，与各密钥的模型列表取交集；`--models all` 清除固定列表 |
 | `--region NAME` / `--derpmap-url URL` | 偏好的中继区域 / 自建中继映射表地址 |
 | `--dev-listen ADDR` | 额外在本地回环地址监听并放宽 CORS，用于前端开发 |
 | `--log-prompts`、`--ephemeral`、`--verbose` | 单次运行选项：记录消息内容；临时主机身份；在终端打印隧道日志 |
