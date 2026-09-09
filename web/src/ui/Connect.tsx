@@ -10,7 +10,8 @@ import { tr, privacy } from '../i18n/text';
 // landing sections remain available at every width, without owning any connection behaviour.
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { describeError, getMe, hostName, logsPrompts, type FriendlyError, type Me } from '../api';
-import { decodeInvite, inviteFromHash, InviteError, inviteHint, maskInvite } from '../invite';
+import { decodeCode as decodeInvite,isAdminCode } from '../admin-route';
+import { inviteFromHash, InviteError, inviteHint, maskInvite } from '../invite';
 import { HOST_URL, PRODUCT_NAME, SOURCE_URL, VERSION } from '../product';
 import { boundHandshake, handshakeFailure, type Live, type SessionEvent, type SessionState } from '../session';
 import {
@@ -72,6 +73,7 @@ const STEPS: { at: SessionState['name']; label: string }[] = [
 ];
 
 interface Props {
+ onAdmin?: (code:string)=>void;
   state: SessionState;
   offline?: boolean;
   dispatch: (e: SessionEvent) => void;
@@ -87,7 +89,7 @@ export default function Connect(props: Props) {
   return <LanguageProvider><ConnectBody {...props} /></LanguageProvider>;
 }
 
-function ConnectBody({ state, dispatch, offline = false }: Props) {
+function ConnectBody({ state, dispatch, offline = false, onAdmin }: Props) {
   const { t } = useLanguage();
   const params = new URLSearchParams(typeof location === 'undefined' ? '' : location.search);
   const dev = import.meta.env.DEV;
@@ -158,6 +160,7 @@ function ConnectBody({ state, dispatch, offline = false }: Props) {
       field.current?.focus();
       return;
     }
+    if(isAdminCode(raw)){onAdmin?.(raw);return;}
     setDisclosure(null);
     const mine = ++attempt.current;
     handshake.current = [];
@@ -462,7 +465,7 @@ function ConnectBody({ state, dispatch, offline = false }: Props) {
           onClick={() => void connect()}
           disabled={offline || text.trim() === '' || malformed || needsNewCode}
         >
-          {returning ? tr('app_reconnect') : <Copy name="f_connect" />}
+          {isAdminCode(text)?tr('app_open_console'):returning ? tr('app_reconnect') : <Copy name="f_connect" />}
         </button>
         {/* While a failure is showing, the same action lives inside it, next to the reason. */}
         {remembered !== '' && !failure && (
@@ -654,6 +657,7 @@ function About({ tail = '' }: { tail?: ReactNode }) {
 function Hint({ text }: { text: string }) {
   const { t } = useLanguage();
   const { state, host } = inviteHint(text);
+  if(isAdminCode(text)&&state==='valid')return <p className="code-hint">{tr('app_admin_hint',{host})}</p>;
   if (state === 'empty') return <p className="code-hint"><Copy name="f_hint_empty" /></p>;
   if (state === 'invalid') {
     return <p className="code-hint bad">{tr('app_invalid_invite_hint', { product: PRODUCT_NAME })}</p>;

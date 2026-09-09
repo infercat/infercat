@@ -354,3 +354,6 @@ input[readonly] { background: var(--surface); color: var(--muted); border-color:
 .drawer>.trust { margin:16px 0; }
 @media(max-width:700px){.remote,.never-grid{grid-template-columns:1fr}.never-grid{gap:14px}}
 .zh :is(.apply,.preview,.rstate,.here){font-family:var(--mono-cjk)}
+
+.path.via-tunnel,.who .rem { color:var(--accent-text); }
+.path.via-tunnel::before { background:var(--accent); }

@@ -6,3 +6,4 @@ allowBuilds:
 packages:
   - .
   - ../packages/client
+  - ../console

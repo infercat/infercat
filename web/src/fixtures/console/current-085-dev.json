@@ -1,0 +1,423 @@
+{
+  "status": {
+    "remote": {
+      "enabled": true,
+      "since": "2026-09-09T09:22:08.51162Z",
+      "in_use": true
+    },
+    "console": "127.0.0.1:56328",
+    "product": "Infercat",
+    "version": "0.1.2-dev",
+    "uptime_s": 4,
+    "mode": "host",
+    "name": "086 renamed remotely",
+    "tunnel": {
+      "addr": "tco2FwWCD7F4do7kvVuqONLsgwPZSeCSwWck00OA4ITBTIJnUWGGFrWCBnSdTmccJ_zweaWuw6wbjgmagD8hAhlXyE3BwQ_rxiFmFpGQEt",
+      "region": "New York City",
+      "clients": 0,
+      "sessions": [
+        {
+          "key": "fd7a:115c:a1e0:789d:da2f:5c0a:3e0a:639d",
+          "path": "unknown",
+          "conns": 0,
+          "rx_bytes": 3987,
+          "tx_bytes": 35611,
+          "since": "2026-09-09T05:22:09.284181-04:00",
+          "last_byte": "2026-09-09T05:22:11.337081-04:00",
+          "active": true
+        }
+      ],
+      "rx_bytes": 3987,
+      "tx_bytes": 35611
+    },
+    "upstream": {
+      "kind": "llama.cpp",
+      "url": "http://127.0.0.1:56327",
+      "healthy": true,
+      "since": "2026-09-09T05:22:07.889008-04:00",
+      "model_context": 4096,
+      "slots": 2
+    },
+    "queue": {
+      "in_flight": 0,
+      "waiting": 0
+    },
+    "engine": {
+      "slots_peak_sampled": 0,
+      "tokens_per_s_1m": 0,
+      "metrics": true,
+      "busy": 0,
+      "waiting": 0,
+      "memory_bytes": 0,
+      "kv_cache_pct": 0
+    },
+    "process": {
+      "goroutines": 153,
+      "heap_bytes": 4698520,
+      "sys_bytes": 24922376,
+      "rss_bytes": 0
+    },
+    "keys": [
+      {
+        "id": "k_930486",
+        "name": "proof-friend",
+        "status": "active",
+        "in_flight": 0,
+        "rpm_used": 0,
+        "tpm_used": 0,
+        "today_tokens": 0,
+        "last_seen": "0001-01-01T00:00:00Z"
+      }
+    ]
+  },
+  "keys": [
+    {
+      "id": "k_930486",
+      "name": "proof-friend",
+      "status": "active",
+      "limits": {
+        "daily_audio_seconds": 3600,
+        "daily_speech_chars": 200000,
+        "rpm": 9,
+        "tpm": 20000,
+        "max_concurrent": 1,
+        "max_output_tokens": 4096,
+        "max_context": 0,
+        "daily_tokens": 200000
+      },
+      "created_at": "2026-09-09T09:22:08Z",
+      "last_seen": "0001-01-01T00:00:00Z",
+      "today_tokens": 0
+    }
+  ],
+  "engine": {
+    "url": "http://127.0.0.1:56327",
+    "kind": "llama.cpp",
+    "health": {
+      "ok": true,
+      "since": "2026-09-09T05:22:07.889008-04:00",
+      "err": ""
+    },
+    "model_context": 4096,
+    "slots": 2,
+    "models": [
+      "proof-model"
+    ],
+    "vision": {
+      "proof-model": null
+    },
+    "probed_at": "2026-09-09T05:22:07.889008-04:00"
+  },
+  "settings": {
+    "default_web_url": "https://infercat.ai",
+    "writes_supported": true,
+    "configured_console": "127.0.0.1:0",
+    "console_address": "127.0.0.1:56328",
+    "running_slots": 2,
+    "saved_at": {
+      "name": "2026-09-09T09:22:10.884121Z"
+    },
+    "remote": {
+      "enabled": true,
+      "since": "2026-09-09T09:22:08.51162Z",
+      "in_use": true
+    },
+    "log_prompts": false,
+    "upstream": "http://127.0.0.1:56327",
+    "derpmap_url": "",
+    "region": "",
+    "configured_web_url": "http://127.0.0.1:49087/",
+    "name": "086 renamed remotely",
+    "web_url": "http://127.0.0.1:49087/",
+    "slots": 0,
+    "log_requests": false,
+    "log_requests_remembered": false,
+    "data_dir": "/var/folders/py/4kyvk9wx1gg1ljrx0g0wl8000000gn/T/ic086-sj9f4D/host"
+  },
+  "today": {
+    "daily": [
+      {
+        "date": "2026-09-09",
+        "total": {
+          "seconds": 0,
+          "characters": 0,
+          "requests": 26,
+          "model_calls": 0,
+          "app_polls": 26,
+          "errors": 0,
+          "prompt_tokens": 0,
+          "completion_tokens": 0,
+          "ttft_median_ms": 0,
+          "ttft_p95_ms": 0,
+          "total_median_ms": 0,
+          "total_p95_ms": 0,
+          "first_seen": "2026-09-09T09:22:09.330179Z",
+          "last_seen": "2026-09-09T09:22:11.337051Z",
+          "last_call": "0001-01-01T00:00:00Z"
+        },
+        "keys": [
+          {
+            "seconds": 0,
+            "characters": 0,
+            "requests": 26,
+            "model_calls": 0,
+            "app_polls": 26,
+            "errors": 0,
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "ttft_median_ms": 0,
+            "ttft_p95_ms": 0,
+            "total_median_ms": 0,
+            "total_p95_ms": 0,
+            "first_seen": "2026-09-09T09:22:09.330179Z",
+            "last_seen": "2026-09-09T09:22:11.337051Z",
+            "last_call": "0001-01-01T00:00:00Z"
+          }
+        ]
+      }
+    ],
+    "total": {
+      "seconds": 0,
+      "characters": 0,
+      "requests": 26,
+      "model_calls": 0,
+      "app_polls": 26,
+      "errors": 0,
+      "prompt_tokens": 0,
+      "completion_tokens": 0,
+      "ttft_median_ms": 0,
+      "ttft_p95_ms": 0,
+      "total_median_ms": 0,
+      "total_p95_ms": 0,
+      "first_seen": "2026-09-09T09:22:09.330179Z",
+      "last_seen": "2026-09-09T09:22:11.337051Z",
+      "last_call": "0001-01-01T00:00:00Z"
+    },
+    "keys": [
+      {
+        "seconds": 0,
+        "characters": 0,
+        "requests": 26,
+        "model_calls": 0,
+        "app_polls": 26,
+        "errors": 0,
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "ttft_median_ms": 0,
+        "ttft_p95_ms": 0,
+        "total_median_ms": 0,
+        "total_p95_ms": 0,
+        "first_seen": "2026-09-09T09:22:09.330179Z",
+        "last_seen": "2026-09-09T09:22:11.337051Z",
+        "last_call": "0001-01-01T00:00:00Z"
+      }
+    ],
+    "malformed_lines": 0
+  },
+  "week": {
+    "daily": [
+      {
+        "date": "2026-09-03",
+        "total": {
+          "seconds": 0,
+          "characters": 0,
+          "requests": 0,
+          "model_calls": 0,
+          "app_polls": 0,
+          "errors": 0,
+          "prompt_tokens": 0,
+          "completion_tokens": 0,
+          "ttft_median_ms": 0,
+          "ttft_p95_ms": 0,
+          "total_median_ms": 0,
+          "total_p95_ms": 0,
+          "first_seen": "0001-01-01T00:00:00Z",
+          "last_seen": "0001-01-01T00:00:00Z",
+          "last_call": "0001-01-01T00:00:00Z"
+        },
+        "keys": []
+      },
+      {
+        "date": "2026-09-04",
+        "total": {
+          "seconds": 0,
+          "characters": 0,
+          "requests": 0,
+          "model_calls": 0,
+          "app_polls": 0,
+          "errors": 0,
+          "prompt_tokens": 0,
+          "completion_tokens": 0,
+          "ttft_median_ms": 0,
+          "ttft_p95_ms": 0,
+          "total_median_ms": 0,
+          "total_p95_ms": 0,
+          "first_seen": "0001-01-01T00:00:00Z",
+          "last_seen": "0001-01-01T00:00:00Z",
+          "last_call": "0001-01-01T00:00:00Z"
+        },
+        "keys": []
+      },
+      {
+        "date": "2026-09-05",
+        "total": {
+          "seconds": 0,
+          "characters": 0,
+          "requests": 0,
+          "model_calls": 0,
+          "app_polls": 0,
+          "errors": 0,
+          "prompt_tokens": 0,
+          "completion_tokens": 0,
+          "ttft_median_ms": 0,
+          "ttft_p95_ms": 0,
+          "total_median_ms": 0,
+          "total_p95_ms": 0,
+          "first_seen": "0001-01-01T00:00:00Z",
+          "last_seen": "0001-01-01T00:00:00Z",
+          "last_call": "0001-01-01T00:00:00Z"
+        },
+        "keys": []
+      },
+      {
+        "date": "2026-09-06",
+        "total": {
+          "seconds": 0,
+          "characters": 0,
+          "requests": 0,
+          "model_calls": 0,
+          "app_polls": 0,
+          "errors": 0,
+          "prompt_tokens": 0,
+          "completion_tokens": 0,
+          "ttft_median_ms": 0,
+          "ttft_p95_ms": 0,
+          "total_median_ms": 0,
+          "total_p95_ms": 0,
+          "first_seen": "0001-01-01T00:00:00Z",
+          "last_seen": "0001-01-01T00:00:00Z",
+          "last_call": "0001-01-01T00:00:00Z"
+        },
+        "keys": []
+      },
+      {
+        "date": "2026-09-07",
+        "total": {
+          "seconds": 0,
+          "characters": 0,
+          "requests": 0,
+          "model_calls": 0,
+          "app_polls": 0,
+          "errors": 0,
+          "prompt_tokens": 0,
+          "completion_tokens": 0,
+          "ttft_median_ms": 0,
+          "ttft_p95_ms": 0,
+          "total_median_ms": 0,
+          "total_p95_ms": 0,
+          "first_seen": "0001-01-01T00:00:00Z",
+          "last_seen": "0001-01-01T00:00:00Z",
+          "last_call": "0001-01-01T00:00:00Z"
+        },
+        "keys": []
+      },
+      {
+        "date": "2026-09-08",
+        "total": {
+          "seconds": 0,
+          "characters": 0,
+          "requests": 0,
+          "model_calls": 0,
+          "app_polls": 0,
+          "errors": 0,
+          "prompt_tokens": 0,
+          "completion_tokens": 0,
+          "ttft_median_ms": 0,
+          "ttft_p95_ms": 0,
+          "total_median_ms": 0,
+          "total_p95_ms": 0,
+          "first_seen": "0001-01-01T00:00:00Z",
+          "last_seen": "0001-01-01T00:00:00Z",
+          "last_call": "0001-01-01T00:00:00Z"
+        },
+        "keys": []
+      },
+      {
+        "date": "2026-09-09",
+        "total": {
+          "seconds": 0,
+          "characters": 0,
+          "requests": 26,
+          "model_calls": 0,
+          "app_polls": 26,
+          "errors": 0,
+          "prompt_tokens": 0,
+          "completion_tokens": 0,
+          "ttft_median_ms": 0,
+          "ttft_p95_ms": 0,
+          "total_median_ms": 0,
+          "total_p95_ms": 0,
+          "first_seen": "2026-09-09T09:22:09.330179Z",
+          "last_seen": "2026-09-09T09:22:11.337051Z",
+          "last_call": "0001-01-01T00:00:00Z"
+        },
+        "keys": [
+          {
+            "seconds": 0,
+            "characters": 0,
+            "requests": 26,
+            "model_calls": 0,
+            "app_polls": 26,
+            "errors": 0,
+            "prompt_tokens": 0,
+            "completion_tokens": 0,
+            "ttft_median_ms": 0,
+            "ttft_p95_ms": 0,
+            "total_median_ms": 0,
+            "total_p95_ms": 0,
+            "first_seen": "2026-09-09T09:22:09.330179Z",
+            "last_seen": "2026-09-09T09:22:11.337051Z",
+            "last_call": "0001-01-01T00:00:00Z"
+          }
+        ]
+      }
+    ],
+    "total": {
+      "seconds": 0,
+      "characters": 0,
+      "requests": 26,
+      "model_calls": 0,
+      "app_polls": 26,
+      "errors": 0,
+      "prompt_tokens": 0,
+      "completion_tokens": 0,
+      "ttft_median_ms": 0,
+      "ttft_p95_ms": 0,
+      "total_median_ms": 0,
+      "total_p95_ms": 0,
+      "first_seen": "2026-09-09T09:22:09.330179Z",
+      "last_seen": "2026-09-09T09:22:11.337051Z",
+      "last_call": "0001-01-01T00:00:00Z"
+    },
+    "keys": [
+      {
+        "seconds": 0,
+        "characters": 0,
+        "requests": 26,
+        "model_calls": 0,
+        "app_polls": 26,
+        "errors": 0,
+        "prompt_tokens": 0,
+        "completion_tokens": 0,
+        "ttft_median_ms": 0,
+        "ttft_p95_ms": 0,
+        "total_median_ms": 0,
+        "total_p95_ms": 0,
+        "first_seen": "2026-09-09T09:22:09.330179Z",
+        "last_seen": "2026-09-09T09:22:11.337051Z",
+        "last_call": "0001-01-01T00:00:00Z"
+      }
+    ],
+    "malformed_lines": 0
+  }
+}

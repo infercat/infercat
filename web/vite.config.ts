@@ -65,7 +65,7 @@ const gatewayPort = Number(process.env.FAKE_GATEWAY_PORT ?? 49090);
 
 export default defineConfig({
   plugins: [react(), productNameHtml, offlineShell(productVersion)],
-  server: { host: '127.0.0.1', port: webPort, strictPort: true },
+  server: { fs: { allow: ['..'] }, host: '127.0.0.1', port: webPort, strictPort: true },
   preview: { host: '127.0.0.1', port: webPort + 1, strictPort: true },
   define: {
     'import.meta.env.VITE_APP_VERSION': JSON.stringify(productVersion),

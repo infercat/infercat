@@ -1,0 +1,7 @@
+import {readFileSync,statSync,writeFileSync,mkdirSync} from 'node:fs';
+import {gzipSync} from 'node:zlib';
+import assert from 'node:assert/strict';
+const manifest=JSON.parse(readFileSync('dist/.vite/manifest.json','utf8')),entry=manifest['index.html'],remote=Object.entries(manifest).find(([key])=>key.endsWith('/RemoteConsole.tsx'))?.[1];assert.ok(entry&&remote);
+const seen=new Set();function visit(key){if(seen.has(key))return;seen.add(key);for(const child of manifest[key]?.imports||[])visit(child);}visit('index.html');assert.ok(![...seen].some(key=>manifest[key].file===remote.file),'remote console must not be in eager imports');
+const bytes=readFileSync('dist/'+remote.file),font=Object.entries(manifest).find(([key])=>key.includes('console/public/fonts/noto-sans-sc.woff2'))?.[1];assert.ok(font);assert.ok(readFileSync('dist/'+font.file).equals(readFileSync('../console/public/fonts/noto-sans-sc.woff2')));assert.ok(readFileSync('dist/fonts/noto-sans-sc.woff2').equals(readFileSync('public/fonts/noto-sans-sc.woff2')));assert.ok(!readFileSync('dist/'+font.file).equals(readFileSync('dist/fonts/noto-sans-sc.woff2')));
+const report=`Lazy console chunk: ${remote.file}, ${bytes.length} bytes / ${gzipSync(bytes).length} gzip; absent from initial import graph. Console CJK: ${statSync('dist/'+font.file).size} bytes, distinct from chat CJK.\n`;console.log(report);mkdirSync('../console/test/evidence/remote-web',{recursive:true});writeFileSync('../console/test/evidence/remote-web/chunks.txt',report);

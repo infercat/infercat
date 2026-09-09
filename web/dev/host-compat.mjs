@@ -3,6 +3,7 @@ import { readFileSync } from 'node:fs';
 import assert from 'node:assert/strict';
 import { createServer } from 'vite';
 import { chromium } from 'playwright';
+import { consoleCompat } from './console-compat.mjs';
 import { assertLive } from './live-assert.mjs';
 const invite = `ic1.tcCOMPATproofaddressCOMPATproofaddress.${'D'.repeat(43)}`;
 const server = await createServer({ server: { port: 0, strictPort: false } });
@@ -52,5 +53,6 @@ try {
       }
     } finally { await context.close(); }
   }
+  passed+=await consoleCompat(base,browser);
   console.log(`Host compatibility: ${passed} passed / 0 failed / 0 skipped`);
 } finally { await browser.close(); await server.close(); }

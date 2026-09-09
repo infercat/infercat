@@ -130,7 +130,7 @@ export interface InviteHint {
 export function inviteHint(text: string): InviteHint {
   if (text.trim() === '') return { state: 'empty', host: '' };
   try {
-    return { state: 'valid', host: `${decodeInvite(text).addr.slice(0, 6)}…` };
+    return { state: 'valid', host: `${decodeInvite(text.trim().startsWith('ia1.')?'ic1.'+text.trim().slice(4):text).addr.slice(0, 6)}…` };
   } catch {
     return { state: 'invalid', host: '' };
   }

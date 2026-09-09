@@ -49,3 +49,28 @@ of /me and /v1/models. It checks the remote limit change, live host name, admin-
 remote console-address refusal, rotation, in-use state and off=404, then stops every process.
 `remote-live.txt`, `remote-live-code.png` and `remote-live-state.png` are in ignored `test/evidence/`.
 The temporary curl header belongs only to the disposable proof code, which is rotated and disabled.
+
+## 086 web console
+
+The workspace exports `mountConsole`, which reuses the renderer in a Shadow DOM root. Its font
+faces have distinct names and content-addressed URLs; the chat subset remains at its own path.
+Unmount removes the console's faces and restores the document language/title. No iframe,
+transport-loaded bundle or service-worker bridge is involved.
+
+`make check` includes the web console fixture matrix and the production chunk/asset check.
+`web/dev/console-compat.mjs` verifies prefix entry, remembered-chat isolation, 401/404/429 behavior,
+remote field restrictions and font/style cleanup. `console-chunk-check.mjs` walks the initial
+import graph, measures the lazy chunk, and compares the two CJK assets to their source subsets.
+
+With a local web build served at a supplied URL, run from `web/`:
+
+```sh
+INFERCAT_PROOF_BINARY=/tmp/infercat-086 INFERCAT_PROOF_WEB=http://127.0.0.1:49086/ node dev/console-live.mjs
+```
+
+This explicitly opt-in proof starts only a fresh isolated host and engine. Separate browser
+contexts run the local console and the web console; the web console uses the real WASM/relay
+transport, changes a limit, observes local rotation as refusal, then observes off as CLOSED.
+All processes stop afterwards. Set CAPTURE_CONSOLE_FIXTURE=1 to refresh the labelled dev fixture; the proof writes ignored
+`console/test/evidence/remote-web/` screenshots, request summaries and bundle-size evidence.
+Public deployment and its post-deploy live gate follow the PM's landing/release coordination.

@@ -1,4 +1,14 @@
 export const copy = {
+  remote_pill: ["through the tunnel", "经隧道"],
+  remote_suffix: ["remote", "远程"],
+  forget_console: ["Forget this console", "忘记这个控制台"],
+  remote_refused: ["This admin code was refused. Open a fresh code from the host.", "这个管理码被拒绝。请在主机上获取新的管理码。"],
+  remote_closed: ["Closed · observed at {0}. Nothing here answers any more; the console is still on the host.", "已关闭 · 在 {0} 观察到。这里不再有任何响应；控制台仍在主机上。"],
+  remote_budget: ["Too many console requests — try again in {0} s. The action was not retried.", "控制台请求过多——请在 {0} 秒后重试。操作没有自动重试。"],
+  remote_address: ["not from here · --console, on the host", "不能在这里更改 · 请在主机上使用 --console"],
+  remote_here: ["you are on the tunnel now — turning this off ends this session too", "你现在就在隧道上——关闭也会结束这个会话"],
+  admin_send_live: ["Open the link on your phone. The web app reads ia1 and opens this console instead of a chat.", "在手机上打开这个链接。网页版读到 ia1，会打开这个控制台，而不是聊天。"],
+
   admin_meta: ["this console · through the tunnel", "这个控制台 · 经隧道"],
   admin_copy: ["Copy code", "复制管理码"],
   one_change: ["1 change · invites already sent keep working — they carry the code, not the URL", "1 项修改 · 已发出的邀请码仍然有效——它们携带的是码，不是网址"],

@@ -1,5 +1,17 @@
 // Approved landing spec, with PM copy rulings. HTML is authored here, never user input.
 export const zh = {
+  app_admin_title: "远程控制台",
+  app_admin_code: "管理码",
+  app_admin_trust: "拿到管理码的人可以控制主机的密钥。它只保留到这个页面关闭。",
+  app_admin_expected: "请粘贴以 ia1 开头的管理码。",
+  app_open_console: "打开控制台",
+  app_forget_console: "忘记这个控制台",
+  app_admin_hint: "识别为管理码 · 打开主机 {host} 的控制台",
+  app_admin_timeout: "主机没有响应。请重新打开控制台。",
+  app_admin_direct: "直连 · {ms} ms",
+  app_admin_relay: "经 {place} 中继 · {ms} ms",
+  app_admin_path_unknown: "未报告连接路径",
+
   app_attach: "添加图片或文件",
   app_attach_file: "添加文件",
   app_hint_enter_sends_attach: "按 Enter 发送 · Shift+Enter 换行 · 可粘贴或拖入图片或文件",

@@ -1,3 +1,4 @@
+import { takeAdminRoute } from './admin-route';
 import { tr } from './i18n/text';
 import { lazy, Suspense, useCallback, useEffect, useRef, useState } from 'react';
 import { describeError, getMe, hostName, ME_TIMEOUT_MS, timeoutSignal, type Me } from './api';
@@ -245,7 +246,7 @@ function useDevice(state: SessionState, dispatch: (e: SessionEvent) => void): bo
   return offline;
 }
 
-export default function App() {
+function ChatApp({onAdmin}:{onAdmin:(code:string)=>void}) {
   const [state, dispatch] = useSession();
   const offline = useDevice(state, dispatch);
   useRedial(state, dispatch);
@@ -256,7 +257,7 @@ export default function App() {
   const reconnecting = redialTarget(state);
   const l = live(state) ?? reconnecting;
 
-  if (!l) return <Connect state={state} dispatch={dispatch} offline={offline} />;
+  if (!l) return <Connect state={state} dispatch={dispatch} offline={offline} onAdmin={onAdmin} />;
 
   return (
     <Suspense fallback={<div className="booting">{tr('app_opening')}</div>}>
@@ -271,4 +272,14 @@ export default function App() {
       />
     </Suspense>
   );
+}
+
+const RemoteConsole=lazy(()=>import('./ui/RemoteConsole'));
+let incoming=takeAdminRoute(),routeNumber=0;
+export default function App(){
+ const [route,setRoute]=useState(()=>({...incoming,version:routeNumber}));
+ const openAdmin=useCallback((code:string)=>{history.pushState(null,'','/console'+location.search);setRoute({console:true,code,version:++routeNumber});},[]);
+ const leave=useCallback(()=>{history.pushState(null,'','/'+location.search);setRoute({console:false,code:'',version:++routeNumber});},[]);
+ useEffect(()=>{incoming={console:false,code:''};const pop=()=>{const next=takeAdminRoute();setRoute(prev=>!next.code&&prev.console===next.console?prev:{...next,version:++routeNumber});};window.addEventListener('popstate',pop);window.addEventListener('hashchange',pop);return()=>{window.removeEventListener('popstate',pop);window.removeEventListener('hashchange',pop);};},[]);
+ return route.console?<Suspense fallback={<div className="booting">{tr('app_opening')}</div>}><RemoteConsole key={route.version} code={route.code} onLeave={leave}/></Suspense>:<ChatApp onAdmin={openAdmin}/>;
 }

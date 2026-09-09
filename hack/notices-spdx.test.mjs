@@ -128,3 +128,8 @@ test('peer-qualified snapshots are traversed separately but package notices are 
   const installed = { MIT: [{ name: 'a', versions: ['1'] }, { name: 'b', versions: ['1'] }, { name: 'peer', versions: ['1', '2'] }] };
   assert.equal(renderLocked(lock, installed).tsv, 'a\t1\tMIT\nb\t1\tMIT\npeer\t1\tMIT\npeer\t2\tMIT\n');
 });
+test('workspace links traverse locked production imports without dev packages or cycles',()=>{
+ const lock={lockfileVersion:'9.0',importers:{'.':{dependencies:{console:{version:'link:../console'}}},'../console':{dependencies:{runtime:{version:'1'},root:{version:'link:../web'}},devDependencies:{dev:{version:'9'}}},'../web':{dependencies:{console:{version:'link:../console'}}}},packages:{'runtime@1':{}},snapshots:{'runtime@1':{}}};
+ const installed={MIT:[{name:'runtime',versions:['1'],paths:[]}]};assert.match(renderLocked(lock,installed).tsv,/runtime/);assert.doesNotMatch(renderLocked(lock,installed).tsv,/console|root|dev/);
+ delete lock.importers['../console'];assert.throws(()=>renderLocked(lock,installed),/Missing locked workspace/);
+});

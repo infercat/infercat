@@ -1,3 +1,4 @@
+import type { RemoteState } from './remote';
 import { render } from './render';
 import { text, type Lang } from './copy';
 import { draft, type DrawerState, type Invite } from './actions';
@@ -5,25 +6,37 @@ import { inviteQR } from './qr';
 import { settingValues, type SettingsUI, type SettingsPatch } from './settings';
 import type { Snapshot } from './types';
 
-export function createConsole(root: HTMLElement, token: string | null, request: typeof fetch = fetch, now = Date.now, encodeQR = inviteQR) {
+export function createConsole(root: HTMLElement, token: string | null, request: typeof fetch = fetch, now = Date.now, encodeQR = inviteQR, remote?:RemoteState) {
  let data: Snapshot | null = null, selected: string | null = null, stale: number | null = null;
- let lang: Lang = new URLSearchParams(location.search).get('lang') === 'zh' ? 'zh' : 'en';
+ let lang: Lang = new URLSearchParams(location.search).get('lang') === 'zh' ? 'zh' : new URLSearchParams(location.search).get('lang')==='en'?'en':remote?.language||'en';
  let lastAnswer = now(), stopped = false, authorized = !!token, pending = false;
  const settingsUI:SettingsUI={draft:{}};
  let ui: DrawerState | undefined, generation = 0, revision = 0;
  let activeRequest: AbortController | undefined, mutation: AbortController | undefined;
  let reading: Promise<boolean> | undefined, copyTimer: ReturnType<typeof setTimeout> | undefined;
- const headers: HeadersInit = token ? { Authorization: `Bearer ${token}` } : {};
+ const headers: Record<string,string> = token ? { Authorization: `Bearer ${token}` } : {};
+ const originalRequest=request;
+ request=async(input,init)=>{
+  const response=await originalRequest(input,init);
+  if(remote){
+   if(response.status===401){remote.refused=true;authorized=false;discard();selected=null;}
+   if(response.status===404&&(input==='/api/status'||input==='/api/settings')){remote.closedAt=now();authorized=false;discard();selected=null;}
+   if(response.status===429){const seconds=Number(response.headers.get('Retry-After'));remote.retryAt=now()+Math.max(1,Number.isFinite(seconds)&&seconds>0?seconds:60)*1000;}
+  }
+  return response;
+ };
+ const errorLine=(response:Response,value:{error?:unknown})=>response.status===429&&remote?text(lang,'remote_budget',Math.max(1,Math.ceil(((remote.retryAt||now())-now())/1000))):typeof value.error==='string'?value.error:'HTTP '+response.status;
  function draw(focusClose = false) {
   const scroll = root.querySelector('.drawer')?.scrollTop || 0;
   const open = root.querySelector('details')?.open || false;
-  const focused = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+  const focused = (root.getRootNode() instanceof ShadowRoot ? (root.getRootNode() as ShadowRoot).activeElement : document.activeElement) as HTMLElement|null;
   const identity = focused?.id || '', action = focused?.dataset.action, model = focused?.dataset.model;
   const key = focused?.dataset.key, close = focused?.dataset.close, language = focused?.dataset.lang;
   const selection = focused instanceof HTMLInputElement && focused.type === 'text' ? [focused.selectionStart, focused.selectionEnd] : null;
-  root.innerHTML = render(data, lang, selected, stale, now(), authorized, Math.max(0, Math.floor((now() - lastAnswer) / 1000)), ui, pending,settingsUI);
+  root.innerHTML = render(data, lang, selected, stale, now(), authorized, Math.max(0, Math.floor((now() - lastAnswer) / 1000)), ui, pending,settingsUI,remote);
   document.documentElement.lang = lang === 'zh' ? 'zh-CN' : 'en';
-  document.body.classList.toggle('zh', lang === 'zh');
+  (remote?root:document.body).classList.toggle('zh', lang === 'zh');
+  if(remote)document.title=(data?.status.name||'Infercat')+' · Console · '+text(lang,'remote_suffix');
   const details = root.querySelector('details'); if (details) details.open = open;
   const drawer = root.querySelector('.drawer'); if (drawer) drawer.scrollTop = scroll;
   let next: HTMLElement | undefined | null;
@@ -74,8 +87,11 @@ export function createConsole(root: HTMLElement, token: string | null, request: 
   } catch { if (version === generation && ui && !stopped) { ui.error = text(lang,'copy_failed'); draw(); } }
  }
  const click = (event: Event) => {
+  const anchor=event.target instanceof Element?event.target.closest<HTMLAnchorElement>('a[href^="#"]'):null;
+  if(remote&&anchor){event.preventDefault();root.querySelector(anchor.getAttribute('href')!)?.scrollIntoView();return;}
   const target = event.target instanceof Element ? event.target.closest<HTMLElement>('[data-key],[data-close],[data-lang],[data-action]') : null;
   if (target instanceof HTMLButtonElement && target.disabled) return;
+  if (target?.dataset.action==='leave'){remote?.leave();return;}
   if (target?.dataset.close) { closeDrawer(); return; }
   if (target?.dataset.lang) { lang = target.dataset.lang as Lang; draw(); return; }
   if (target?.dataset.key) { openKey(target.dataset.key); return; }
@@ -110,13 +126,14 @@ export function createConsole(root: HTMLElement, token: string | null, request: 
   if (ui && event.key === 'Escape') { event.preventDefault(); closeDrawer(); }
   else if (ui && event.key === 'Tab') {
    const controls = [...root.querySelectorAll<HTMLElement>('.drawer button:not(:disabled),.drawer input:not(:disabled)')];
-   const index = controls.indexOf(document.activeElement as HTMLElement);
+   const index = controls.indexOf((root.getRootNode() instanceof ShadowRoot ? (root.getRootNode() as ShadowRoot).activeElement : document.activeElement) as HTMLElement);
    if (index < 0 || (!event.shiftKey && index === controls.length - 1) || (event.shiftKey && index === 0)) {
     event.preventDefault(); controls[event.shiftKey ? controls.length - 1 : 0]?.focus();
    }
   } else if ((event.key === 'Enter' || event.key === ' ') && (event.target as HTMLElement)?.dataset.key) { event.preventDefault(); click(event); }
  };
  async function readSnapshot(): Promise<boolean> {
+  if(remote?.retryAt&&remote.retryAt>now())return false;
   const controller = new AbortController(), readRevision = revision; activeRequest = controller;
   const timeout = setTimeout(() => controller.abort(), 5000);
   try {
@@ -138,7 +155,7 @@ export function createConsole(root: HTMLElement, token: string | null, request: 
   finally { clearTimeout(timeout); if (!stopped) draw(); }
  }
  function refresh(): Promise<boolean> {
-  if (!authorized || stopped || pending) return Promise.resolve(false);
+  if (!authorized || stopped || pending || remote?.retryAt && remote.retryAt>now()) return Promise.resolve(false);
   return reading ||= readSnapshot().finally(() => { reading = undefined; });
  }
  async function mutate(action: string) {
@@ -158,7 +175,7 @@ export function createConsole(root: HTMLElement, token: string | null, request: 
    if (response.status === 401) { authorized = false; discard(); selected = null; }
    if (!response.ok) {
     const error = await response.json().catch(() => ({}));
-    if (version === generation && ui) { ui.error = typeof error.error === 'string' ? error.error : 'HTTP ' + response.status; if (action === 'mint') ui.duplicateId = data?.keys.find(k => k.status !== 'revoked' && k.name === ui?.name.trim())?.id; }
+    if (version === generation && ui) { ui.error = errorLine(response,error); if (action === 'mint') ui.duplicateId = data?.keys.find(k => k.status !== 'revoked' && k.name === ui?.name.trim())?.id; }
    } else {
     committed = true;
     const value = await response.json();
@@ -167,6 +184,7 @@ export function createConsole(root: HTMLElement, token: string | null, request: 
      if (remoteAction || action === 'mint' || action === 'rotate') {
       const invite = value as Invite;
       if (typeof invite.invite !== 'string' || typeof invite.key_id !== 'string') throw new Error('invalid invite result');
+      if(remote&&action==='remote-rotate'&&invite.invite.startsWith('ia1.'))headers.Authorization='Bearer '+invite.invite.split('.')[2];
       ui.once = invite; ui.rotated = action === 'rotate'||action==='remote-rotate'; selected = invite.key_id;
       try { ui.qr = encodeQR(invite.link || invite.invite); } catch { ui.qrFailed = true; }
      } else if (action === 'limits') ui.message = 'saved_limits';
@@ -192,10 +210,10 @@ export function createConsole(root: HTMLElement, token: string | null, request: 
   pending=true;revision++;activeRequest?.abort();settingsUI.error=undefined;settingsUI.saved=false;draw();
   const controller=new AbortController();mutation=controller;const timeout=setTimeout(()=>controller.abort(),10000);
   try {
-   const response=await request('/api/'+(off?'remote/off':'settings'),{method:off?'POST':'PATCH',headers:{...headers,'Content-Type':'application/json'},body:off?undefined:JSON.stringify(settingsUI.draft),signal:controller.signal,cache:'no-store'});
+   const response=await request('/api/'+(off?'remote/off':'settings'),{method:off?'POST':'PATCH',headers:{...headers,'Content-Type':'application/json'},body:off?undefined:JSON.stringify(remote?Object.fromEntries(Object.entries(settingsUI.draft).filter(([key])=>key!=='console')):settingsUI.draft),signal:controller.signal,cache:'no-store'});
    if(response.status===401){authorized=false;discard();selected=null;}
-   const value=await response.json();
-   if(!response.ok){settingsUI.error=typeof value.error==='string'?value.error:'HTTP '+response.status;}
+   const value=await response.json().catch(()=>({}));
+   if(!response.ok){settingsUI.error=errorLine(response,value);}
    else {if(!off)settingsUI.draft={};settingsUI.confirm=false;settingsUI.saved=true;}
   } catch {settingsUI.error=text(lang,'unknown_write');}
   finally {clearTimeout(timeout);mutation=undefined;await reading;if(!stopped&&authorized)await readSnapshot();pending=false;if(!stopped)draw();}

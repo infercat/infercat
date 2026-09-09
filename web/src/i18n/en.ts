@@ -1,5 +1,17 @@
 // Approved landing spec, with PM copy rulings. HTML is authored here, never user input.
 export const en = {
+  app_admin_title: "Remote console",
+  app_admin_code: "Admin code",
+  app_admin_trust: "Anyone with this admin code controls the host’s keys. It is kept only until this page closes.",
+  app_admin_expected: "Paste an admin code beginning with ia1.",
+  app_open_console: "Open console",
+  app_forget_console: "Forget this console",
+  app_admin_hint: "Reads as an admin code · opens the console of host {host}",
+  app_admin_timeout: "The host did not answer. Try opening the console again.",
+  app_admin_direct: "direct · {ms} ms",
+  app_admin_relay: "relayed via {place} · {ms} ms",
+  app_admin_path_unknown: "path not reported",
+
   app_attach: "Attach an image or a file",
   app_attach_file: "Attach a file",
   app_hint_enter_sends_attach: "Enter sends · Shift+Enter makes a new line · paste or drop an image or a file",

@@ -1112,3 +1112,5 @@ body { overscroll-behavior-y: none; }
 .small-print .act { color: var(--accent-text); font-weight: 500; padding: 0; font-size: inherit; text-decoration: underline; text-underline-offset: 2px; }
 .app.zh :is(.how .n, .toast) { font-family: var(--cjk); }
 .app.zh .how .n { font-family: var(--mono-cjk); }
+.admin-entry { max-width:560px;margin:48px auto;padding:24px; }
+.admin-entry textarea { width:100%;min-height:100px;margin:12px 0; }

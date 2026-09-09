@@ -2,6 +2,7 @@ import { text, type CopyKey, type Lang } from './copy';
 import { emptyStats, type Snapshot, type Key, type Stats } from './types';
 
 import { escape } from './html';
+import type { RemoteState } from './remote';
 import { settingsSection, type SettingsUI } from './settings';
 export { escape } from './html';
 import { limitsForm, keyActions, specialDrawer, type DrawerState } from './actions';
@@ -12,7 +13,7 @@ const tokens = (s: Stats) => s.prompt_tokens + s.completion_tokens;
 const meter = (value: number, max: number) => max > 0 ? `<progress class="meter-track" max="${max}" value="${Math.max(0, Math.min(value, max))}" aria-label="${value} / ${max}"></progress>` : '<span class="meter-track unknown"></span>';
 const mark = '<svg viewBox="0 0 24 24" aria-hidden="true"><rect x="2" y="2" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2"/><path d="M7 16 12 7l5 9" fill="none" stroke="currentColor" stroke-width="2"/></svg>';
 
-export function render(data: Snapshot | null, lang: Lang, selected: string | null, stale: number | null, now = Date.now(), hasToken = true, refreshedSeconds = 2, ui?: DrawerState, pending = false, settingsUI:SettingsUI = {draft:{}}): string {
+export function render(data: Snapshot | null, lang: Lang, selected: string | null, stale: number | null, now = Date.now(), hasToken = true, refreshedSeconds = 2, ui?: DrawerState, pending = false, settingsUI:SettingsUI = {draft:{}}, remote?:RemoteState): string {
  const t = (k: CopyKey, ...args: (string | number)[]) => escape(text(lang, k, ...args));
  const label = (k: CopyKey) => `<span data-t="${k}">${t(k)}</span>`;
  const n = (v: number) => Intl.NumberFormat(lang === 'zh' ? 'zh-CN' : 'en').format(v || 0);
@@ -29,9 +30,11 @@ export function render(data: Snapshot | null, lang: Lang, selected: string | nul
  const fact = (key: CopyKey, value: string, sub = '', bad = false) => `<div class="fact"><p class="k">${label(key)}</p><p class="v mono${bad ? ' bad' : ''}">${value}</p><p class="s">${sub}</p></div>`;
  const button = (key: CopyKey, cls = 'secondary') => `<button type="button" class="${cls}" disabled>${label(key)}</button>`;
  const header = `<header class="head"><div class="head-in"><div class="brand">${mark}<span class="wordmark">Infercat<span class="sub">${label('console')}</span></span></div>
- <div class="who"><strong>${escape(data?.status.name || '')}</strong><span class="dim">${data ? `${escape(data.engine.kind)} · ${escape(data.engine.models?.join(', '))} · ${duration(data.status.uptime_s)}` : ''}</span></div>
- <div class="head-right"><span class="path">${label('on_machine')}</span><span class="langs"><button data-lang="en" ${lang === 'en' ? 'aria-current="true"' : ''}>EN</button> · <button data-lang="zh" ${lang === 'zh' ? 'aria-current="true"' : ''}>中文</button></span><span class="build">${escape(data?.status.version || import.meta.env.VITE_APP_VERSION)}</span></div></div></header>`;
- if (!data || !hasToken) return `${header}<main class="sec-in" role="status">${!hasToken ? t('need_token') : stale !== null ? t('stale', stale) : t('loading')}</main>`;
+ <div class="who"><strong>${remote?`<span class="host-name">${escape(data?.status.name||'')}</span>`:escape(data?.status.name||'')}${remote?` <span class="rem">· ${t('remote_suffix')}</span>`:''}</strong><span class="dim">${data ? `${escape(data.engine.kind)} · ${escape(data.engine.models?.join(', '))} · ${duration(data.status.uptime_s)}` : ''}</span></div>
+ <div class="head-right"><span class="path ${remote?'via-tunnel':''}">${label(remote?'remote_pill':'on_machine')}</span>${remote?`<button class="ghost tiny" data-action="leave">${t('forget_console')}</button>`:''}<span class="langs"><button data-lang="en" ${lang === 'en' ? 'aria-current="true"' : ''}>EN</button> · <button data-lang="zh" ${lang === 'zh' ? 'aria-current="true"' : ''}>中文</button></span><span class="build">${escape(data?.status.version || import.meta.env.VITE_APP_VERSION)}</span></div></div></header>`;
+ const terminal=remote?.refused?t('remote_refused'):remote?.closedAt?t('remote_closed',new Date(remote.closedAt).toLocaleTimeString(lang==='zh'?'zh-CN':'en-GB')):'';
+ const budget=remote?.retryAt&&remote.retryAt>now?t('remote_budget',Math.ceil((remote.retryAt-now)/1000)):'';
+ if (!data || !hasToken&&!remote) return `${header}<main class="sec-in" role="status">${terminal||budget||(!hasToken ? t('need_token') : stale !== null ? t('stale', stale) : t('loading'))}</main>`;
  const { status: s, settings: cfg, keys, today, week } = data;
  const e = { ...data.engine, models: data.engine.models || [] };
  const day = today.total, health = e.health.ok ? `${t('healthy')} ${duration(since(e.health.since))}` : t('down', duration(since(e.health.since)));
@@ -85,9 +88,9 @@ export function render(data: Snapshot | null, lang: Lang, selected: string | nul
  }
  if (ui?.mode === 'mint' || ui?.mode === 'admin' || ui?.once) drawer = specialDrawer(data, lang, ui, pending);
  return `<div class="${stale !== null ? 'stale' : ''}"><div id="page" ${drawer ? 'inert' : ''}>${header}
- <div class="strip"><div class="strip-in"><span>${(['friends','engine','usage','settings'] as const).map(id => `<a href="#${id}">${t(`ix_${id}`)}</a>`).join(' · ')}</span><span role="status">${stale !== null ? t('stale',stale) : t('refreshed',refreshedSeconds)}</span></div></div>
+ <div class="strip"><div class="strip-in"><span>${(['friends','engine','usage','settings'] as const).map(id => `<a href="#${id}">${t(`ix_${id}`)}</a>`).join(' · ')}</span><span role="status">${remote?`${t('remote_suffix')} · ${escape(typeof remote.path==='function'?remote.path(lang):remote.path)} · `:''}${terminal||budget||(stale !== null ? t('stale',stale) : t('refreshed',refreshedSeconds))}</span></div></div>
  ${!e.health.ok ? `<p class="degraded">${t('degraded',e.kind,e.url)}</p>` : ''}
- <main><section class="sec first overview"><div class="sec-in"><div class="facts">
+ ${terminal?`<p class="closed" role="alert">${terminal}</p>`:''}<main ${terminal?'inert':''}><section class="sec first overview"><div class="sec-in"><div class="facts">
  ${fact('f_engine',`${e.kind === 'unknown' ? t('unknown') : escape(e.kind)} · ${health}`,t('engine_sub',e.slots,e.model_context ? compact(e.model_context) : text(lang,'not_reported')),!e.health.ok)}
  ${fact('f_tunnel',`${t('relay')} ${escape(s.tunnel.region || '—')}`,t('tunnel_sub',s.tunnel.clients,bytes(s.tunnel.rx_bytes),bytes(s.tunnel.tx_bytes)))}
  ${fact('f_now',t('right_now',s.queue.in_flight,s.queue.waiting),t('throughput',compact(s.engine.tokens_per_s_1m)))}
@@ -98,7 +101,7 @@ export function render(data: Snapshot | null, lang: Lang, selected: string | nul
  ${section('engine','engine',`${escape(e.kind)} · ${escape(e.url)}`,`<div class="facts8">${fact('e_kind',escape(e.kind),t('not_reported'))}${fact('e_health',e.health.ok ? t('healthy') : health,t('since',duration(since(e.health.since)),ago(e.probed_at)),!e.health.ok)}${fact('e_slots',n(e.slots),t(cfg.slots ? 'slots_override' : 'slots_auto'))}${fact('e_ctx',e.model_context ? n(e.model_context) : t('not_reported'),t('e_ctx_s'))}${fact('e_tps',compact(s.engine.tokens_per_s_1m)+' tok/s',t('e_tps_s'))}${fact('e_says',s.engine.metrics ? t('metrics',s.engine.busy,s.engine.waiting) : t('no_metrics'),s.engine.metrics ? t('e_says_s') : '')}${fact('e_mem',s.engine.memory_bytes ? bytes(s.engine.memory_bytes) : t('not_reported'),s.engine.metrics ? t('kv',s.engine.kv_cache_pct.toFixed(1)) : '')}${fact('e_peak',t('in_flight',s.engine.slots_peak_sampled),t('e_peak_s'))}</div>
  <table class="tbl models"><thead><tr>${(['m_model','m_ctx','m_calls','m_keys'] as CopyKey[]).map(key=>`<th${key==='m_keys'?' class="c-keys"':''}>${label(key)}</th>`).join('')}</tr></thead><tbody>${modelRows}</tbody></table><p class="foot-line">${t('engine_foot')}${!e.health.ok ? ' '+escape(e.health.err) : ''}</p>`)}
  ${section('usage','usage',t('usage_src'),`<div class="usage">${usageTable(day,week.total)}<div><p class="days-cap">${t('days_cap')}</p><div class="days">${days}</div><p class="foot-line">${t('usage_foot')}</p></div></div>${!week.total.requests ? `<p class="empty">${t('no_usage')}</p>`:''}${week.malformed_lines ? `<p class="notice">${t('malformed',week.malformed_lines)}</p>`:''}`)}
- ${cfg.writes_supported ? settingsSection(data,lang,settingsUI,pending) : section('settings','settings',t('settings_src',cfg.data_dir),`<div class="form">${field('st_name',cfg.name,'st_name_h')}${field('st_web',cfg.configured_web_url,'st_web_h')}${field('st_slots',cfg.slots,'slots_hint')}
+ ${cfg.writes_supported ? settingsSection(data,lang,settingsUI,pending,!!remote) : section('settings','settings',t('settings_src',cfg.data_dir),`<div class="form">${field('st_name',cfg.name,'st_name_h')}${field('st_web',cfg.configured_web_url,'st_web_h')}${field('st_slots',cfg.slots,'slots_hint')}
  <div class="field"><span class="field-label">${label('st_log')}</span><label class="check"><input type="checkbox" disabled ${cfg.log_requests?'checked':''}><span>${t('st_log_h')} (${t('not_remembered')})</span></label></div>
  <div class="form-actions">${button('save')}<span class="saved">${t('restart')}</span></div><p class="field-hint">${t('effective_web',cfg.web_url)}</p><div class="ro">${fact('ro_data',escape(cfg.data_dir),t('ro_data_s'))}${fact('ro_up',escape(e.url),cfg.upstream ? '--upstream' : t('ro_up_s'))}${fact('ro_relay',cfg.derpmap_url || cfg.region ? `${escape(cfg.derpmap_url || '—')} · ${escape(cfg.region || 'auto')}` : t('default_relay'),t('ro_relay_s'))}</div><p class="truth">${t(cfg.log_prompts?'prompts_on':'prompts_off')}</p></div>`)}
  </main><footer class="strip"><div class="strip-in"><span>Infercat ${escape(s.version)} · MIT · <a href="https://github.com/infercat/infercat" target="_blank" rel="noreferrer">${t('source')}</a></span><span>${t('made')}</span></div></footer></div>${drawer}</div>`;

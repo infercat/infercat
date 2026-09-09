@@ -2,7 +2,7 @@
 import { readFileSync, writeFileSync, existsSync } from 'node:fs';
 import { createHash } from 'node:crypto';
 import { createRequire } from 'node:module';
-import { join } from 'node:path';
+import { join,posix } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 const OVERRIDES = {
@@ -60,16 +60,22 @@ export function packageLicenses(name, version, metadata, allowed) {
 export function lockedPackages(lock, installed) {
   if (String(lock.lockfileVersion) !== '9.0' || !lock.importers?.['.'] || !lock.packages || !lock.snapshots) throw new Error('Unsupported pnpm lockfile');
   const ids = new Set(), visited = new Set();
-  function walk(entry) {
+  function walk(entry, importer) {
     for (const [name, value] of Object.entries({ ...entry.dependencies, ...entry.optionalDependencies })) {
       const version = typeof value === 'string' ? value : value.version;
+      if(typeof version==='string'&&version.startsWith('link:')) {
+        const target=importer===undefined?'':posix.normalize(posix.join(importer,version.slice(5)));
+        if(!lock.importers[target])throw new Error(`Missing locked workspace: ${target||version}`);
+        const mark='workspace:'+target;if(visited.has(mark))continue;visited.add(mark);
+        walk(lock.importers[target],target);continue;
+      }
       const key = `${name}@${version}`, id = key.split('(')[0];
       if (visited.has(key)) continue;
       if (!lock.snapshots[key] || !lock.packages[id]) throw new Error(`Missing locked package: ${key}`);
       visited.add(key); ids.add(id); walk(lock.snapshots[key]);
     }
   }
-  walk(lock.importers['.']);
+  visited.add('workspace:.');walk(lock.importers['.'],'.');
   const metadata = new Map();
   for (const [license, packages] of Object.entries(installed)) for (const pkg of packages) {
     for (const version of pkg.versions) metadata.set(`${pkg.name}@${version}`, { ...pkg, versions: [version], license });

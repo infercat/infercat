@@ -80,7 +80,8 @@ node hack/notices-spdx.mjs "$tmp/web.json" "$ALLOWED" "$tmp/web-texts.md" web/pn
 [ -d console/node_modules ] || (cd console && pnpm install --frozen-lockfile >/dev/null 2>&1)
 (cd console && pnpm licenses list --json --prod 2>/dev/null) >"$tmp/console.json"
 node hack/notices-spdx.mjs "$tmp/console.json" "$ALLOWED" "$tmp/console-texts.md" console/pnpm-lock.yaml >"$tmp/console.tsv"
-cat "$tmp/console.tsv" >>"$tmp/web.tsv"
+cat "$tmp/web.tsv" "$tmp/console.tsv" | LC_ALL=C sort -u >"$tmp/npm.tsv"
+mv "$tmp/npm.tsv" "$tmp/web.tsv"
 cat "$tmp/console-texts.md" >>"$tmp/web-texts.md"
 
 # --- the bundled fonts -------------------------------------------------------------------------

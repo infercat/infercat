@@ -122,15 +122,15 @@ micromark-util-normalize-identifier@2.0.1, micromark-util-resolve-all@2.0.1,
 micromark-util-sanitize-uri@2.0.1, micromark-util-subtokenize@2.1.0,
 micromark-util-symbol@2.0.1, micromark-util-types@2.0.2, ms@2.1.3, pako@1.0.11,
 parse-entities@4.0.2, path-is-absolute@1.0.1, process-nextick-args@2.0.1,
-property-information@7.2.0, react@19.2.8, react-dom@19.2.8, react-markdown@10.1.0,
-readable-stream@2.3.8, rehype-highlight@7.0.2, remark-gfm@4.0.1, remark-parse@11.0.0,
-remark-rehype@11.1.2, remark-stringify@11.0.0, safe-buffer@5.1.2, scheduler@0.27.0,
-setimmediate@1.0.5, space-separated-tokens@2.0.2, string_decoder@1.1.1,
+property-information@7.2.0, qrcode-generator@2.0.4, react@19.2.8, react-dom@19.2.8,
+react-markdown@10.1.0, readable-stream@2.3.8, rehype-highlight@7.0.2, remark-gfm@4.0.1,
+remark-parse@11.0.0, remark-rehype@11.1.2, remark-stringify@11.0.0, safe-buffer@5.1.2,
+scheduler@0.27.0, setimmediate@1.0.5, space-separated-tokens@2.0.2, string_decoder@1.1.1,
 stringify-entities@4.0.4, style-to-js@1.1.21, style-to-object@1.0.14, trim-lines@3.0.1,
 trough@2.2.0, underscore@1.13.8, unified@11.0.5, unist-util-find-after@5.0.0,
 unist-util-is@6.0.1, unist-util-position@5.0.0, unist-util-stringify-position@4.0.0,
 unist-util-visit@5.1.0, unist-util-visit-parents@6.0.2, util-deprecate@1.0.2, vfile@6.0.3,
-vfile-message@4.0.3, xmlbuilder@10.1.1, zwitch@2.0.4, qrcode-generator@2.0.4
+vfile-message@4.0.3, xmlbuilder@10.1.1, zwitch@2.0.4
 
 **Zlib** (1 package):
 
