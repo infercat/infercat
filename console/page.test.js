@@ -128,3 +128,25 @@ test('host model pin is visible and constrains the model open-to count', () => {
  expect(rows[0].textContent).toContain('0 of 4 keys');
  expect(rows[1].textContent).toContain('3 of 4 keys');
 });
+
+for(const lang of ['en','zh'])test('connected facts and devices agree in table, drawer and remote '+lang,()=>{
+ const d=data();d.status.keys.forEach((k,i)=>Object.assign(k,{connected:i!==3,sessions:i===0?2:1}));
+ for(const k of d.keys){
+  const root=mount(d,lang,k.id),row=root.querySelector(`[data-key="${k.id}"] .c-now`),drawer=root.querySelector('.drawer .nowline');
+  expect(drawer.textContent).toContain(row.textContent);
+  expect(root.querySelector('.overview .facts .fact:nth-child(3)').textContent).toContain(lang==='en'?'5 connected':'5 把密钥已连接');
+  expect(row.textContent).toContain(k.id==='k_e004f2'?'○':'●');
+  if(k.id==='k_7f3a2b'){expect(row.textContent).toContain(lang==='en'?'connected · 1 in flight · 2 devices':'已连接 · 1 条进行中 · 2 台设备');}
+  else expect(row.textContent).not.toContain(lang==='en'?'devices':'台设备');
+  const remote=document.createElement('div');remote.innerHTML=render(d,lang,k.id,null,now,true,2,undefined,false,undefined,{path:'tunnel',leave(){}});
+  expect(remote.querySelector(`[data-key="${k.id}"] .c-now`).textContent).toBe(row.textContent);
+ }
+});
+test('disconnected busy preserves work, optional fields keep legacy text',()=>{
+ const d=data(),k=d.status.keys[0];Object.assign(k,{connected:false,sessions:0});
+ expect(mount(d).querySelector('.c-now').textContent).toContain('○ 1 in flight');
+ delete k.connected;delete k.sessions;const root=mount(d);expect(root.querySelector('.c-now').textContent).toBe('1 in flight · 7/20 this minute');
+ expect(root.querySelector('[data-key="k_a91b7d"] .c-now').textContent).toBe('paused');
+ expect(root.querySelector('.overview .facts .fact:nth-child(3)').textContent).not.toContain('connected');
+ const remote=document.createElement('div');remote.innerHTML=render(d,'en',null,null,now,true,2,undefined,false,undefined,{path:'tunnel',leave(){}});expect(remote.querySelector('.c-now').textContent).toBe(root.querySelector('.c-now').textContent);
+});

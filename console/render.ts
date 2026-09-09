@@ -1,5 +1,5 @@
 import { text, type CopyKey, type Lang } from './copy';
-import { emptyStats, type Snapshot, type Key, type Stats } from './types';
+import { emptyStats, type Snapshot, type Key, type Stats, type LiveKey } from './types';
 
 import { escape } from './html';
 import type { RemoteState } from './remote';
@@ -39,15 +39,20 @@ export function render(data: Snapshot | null, lang: Lang, selected: string | nul
  const e = { ...data.engine, models: data.engine.models || [] };
  const day = today.total, health = e.health.ok ? `${t('healthy')} ${duration(since(e.health.since))}` : t('down', duration(since(e.health.since)));
  const active = keys.filter(k => k.status === 'active'), current = keys.filter(k => k.status !== 'revoked'), revoked = keys.filter(k => k.status === 'revoked');
- const live = (k: Key) => s.keys.find(v => v.id === k.id) || { in_flight: 0, rpm_used: 0, tpm_used: 0, today_tokens: k.today_tokens };
+ const live = (k: Key): Partial<LiveKey> & Pick<LiveKey, 'in_flight'|'rpm_used'|'tpm_used'|'today_tokens'> => s.keys.find(v => v.id === k.id) || { in_flight: 0, rpm_used: 0, tpm_used: 0, today_tokens: k.today_tokens };
  const modelsLine = (k: Key) => !k.limits.models?.length ? t('all_models') : k.limits.models.length === 1 ? t('one_model', k.limits.models[0]) : t('n_models', k.limits.models.length, e.models.length);
  const limitsLine = (k: Key) => `${t('limits', limit(k.limits.rpm), limit(k.limits.tpm), limit(k.limits.max_concurrent), limit(k.limits.max_output_tokens))} · ${modelsLine(k)}`;
- const nowLine = (k: Key) => k.status === 'paused' ? t('s_paused') : `${live(k).in_flight ? t('in_flight', live(k).in_flight) : t('idle')} · ${t('minute', live(k).rpm_used, limit(k.limits.rpm))}`;
+ const reported = (k: Key) => typeof live(k).connected === 'boolean';
+ const nowLine = (k: Key) => {
+  const l=live(k),activity=l.in_flight?t('in_flight',l.in_flight):t('idle'),rpm=t('minute',l.rpm_used,limit(k.limits.rpm));
+  if(!reported(k))return k.status==='paused'?t('s_paused'):`${activity} · ${rpm}`;
+  return `<span class="connection-state"><span class="connection-mark ${l.connected?'live':''}" aria-hidden="true">${l.connected?'●':'○'}</span> ${l.connected?t('connected')+' · ':''}${activity}${l.sessions && l.sessions>1?' · '+t('devices',l.sessions):''}</span> · ${rpm}`;
+ };
  const keyTable = (list: Key[], isRevoked = false) => `<table class="tbl${isRevoked ? ' revoked' : ''}"><thead><tr>${(['th_friend','th_status','th_now','th_today','th_limits','th_seen'] as CopyKey[]).map(k => `<th>${label(k)}</th>`).join('')}<th></th></tr></thead><tbody>${list.map(k => {
   const l = live(k), status = t(`s_${k.status}`);
   return `<tr class="row ${k.status}" data-key="${escape(k.id)}" role="button" tabindex="0" aria-label="${escape(k.name)} · ${status}">
   <td class="c-name"><div><span class="name">${escape(k.name)}</span><span class="id">${escape(k.id)}</span></div><span class="st-word">${status}</span></td><td class="c-st st">${status}</td>
-  <td class="c-now mono"><span class="now ${k.status === 'paused' ? 'paused' : l.in_flight ? 'live' : ''}">${nowLine(k)}</span></td>
+  <td class="c-now mono"><span class="now ${reported(k)?'reported':k.status === 'paused' ? 'paused' : l.in_flight ? 'live' : ''}">${nowLine(k)}</span></td>
   <td class="c-today"><div class="meter"><span class="meter-label">${compact(l.today_tokens)} / ${limit(k.limits.daily_tokens)}</span>${meter(l.today_tokens, isRevoked ? 0 : k.limits.daily_tokens)}</div></td>
   <td class="c-lim lim">${limitsLine(k)}</td><td class="c-ago mono ago">${ago(k.last_seen)}</td><td class="chev">›</td></tr>`;
  }).join('')}</tbody></table>`;
@@ -82,7 +87,7 @@ export function render(data: Snapshot | null, lang: Lang, selected: string | nul
   const l = live(k), a = today.keys?.find(v => v.key_id === k.id) || emptyStats, b = week.keys?.find(v => v.key_id === k.id) || emptyStats;
   drawer = `<div class="scrim" data-close="true"></div><aside class="drawer" role="dialog" aria-modal="true" aria-labelledby="friend-title"><div class="drawer-head"><h3 id="friend-title">${escape(k.name)}</h3><button class="ghost tiny x" data-close="true">${t('close')}</button></div>
   <p class="meta">${escape(k.id)} · <b>${t(`s_${k.status}`)}</b> · ${t('created')} ${escape(k.created_at.slice(0, 10))}</p>
-  <div class="dsec"><span class="field-label">${label('d_now')}</span><p class="nowline">${l.in_flight ? '<span class="live" aria-hidden="true">■</span> ' : ''}${nowLine(k)} · ${t('tpm', compact(l.tpm_used), limit(k.limits.tpm))}<br>${t('tokens_today', compact(l.today_tokens), limit(k.limits.daily_tokens))} · ${t('u_lastcall')} ${ago(k.last_seen)}</p></div>
+  <div class="dsec"><span class="field-label">${label('d_now')}</span><p class="nowline">${!reported(k) && l.in_flight ? '<span class="live" aria-hidden="true">■</span> ' : ''}${nowLine(k)} · ${t('tpm', compact(l.tpm_used), limit(k.limits.tpm))}<br>${t('tokens_today', compact(l.today_tokens), limit(k.limits.daily_tokens))} · ${t('u_lastcall')} ${ago(k.last_seen)}</p></div>
   ${limitsForm(data, lang, ui, k, pending)}
   <div class="dsec"><span class="field-label">${label('d_usage')}</span>${usageTable(a,b,true,k.last_seen)}</div>${keyActions(lang, ui, k, pending)}<p class="dfoot">${t('hash_only')}</p></aside>`;
  }
@@ -93,7 +98,7 @@ export function render(data: Snapshot | null, lang: Lang, selected: string | nul
  ${terminal?`<p class="closed" role="alert">${terminal}</p>`:''}<main ${terminal?'inert':''}><section class="sec first overview"><div class="sec-in"><div class="facts">
  ${fact('f_engine',`${e.kind === 'unknown' ? t('unknown') : escape(e.kind)} · ${health}`,t('engine_sub',e.slots,e.model_context ? compact(e.model_context) : text(lang,'not_reported')),!e.health.ok)}
  ${fact('f_tunnel',`${t('relay')} ${escape(s.tunnel.region || '—')}`,t('tunnel_sub',s.tunnel.clients,bytes(s.tunnel.rx_bytes),bytes(s.tunnel.tx_bytes)))}
- ${fact('f_now',t('right_now',s.queue.in_flight,s.queue.waiting),t('throughput',compact(s.engine.tokens_per_s_1m)))}
+ ${fact('f_now',t('right_now',s.queue.in_flight,s.queue.waiting)+(s.keys.some(k=>typeof k.connected==='boolean')?' · '+t('connected_count',s.keys.filter(k=>k.connected===true).length):''),t('throughput',compact(s.engine.tokens_per_s_1m)))}
  ${fact('f_today',t('today_value',n(day.model_calls),compact(tokens(day))),t('today_sub',day.errors,ms(day.ttft_median_ms)))}
  </div></div></section>
  <section class="sec" id="friends"><div class="sec-in"><div class="sec-head"><h2>${label('friends')}</h2><span class="count">${t('friends_count',current.length,active.length,current.filter(k=>k.status==='paused').length)}</span><p class="lead">${t('friends_lead')}</p><div class="act"><button type="button" class="primary" data-action="new" ${pending ? 'disabled' : ''}>${label('mint')}</button></div></div>

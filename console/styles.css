@@ -357,3 +357,7 @@ input[readonly] { background: var(--surface); color: var(--muted); border-color:
 
 .path.via-tunnel,.who .rem { color:var(--accent-text); }
 .path.via-tunnel::before { background:var(--accent); }
+
+.tbl .now.reported { display:block; white-space:normal; }
+.tbl .now.reported::before { display:none; }
+.connection-mark.live { color:var(--accent-text); }

@@ -1,0 +1,8 @@
+{
+  "k_7f3a2b": {"connected": true, "sessions": 2, "in_flight": 1},
+  "k_2c9e10": {"connected": true, "sessions": 1, "in_flight": 0},
+  "k_a91b7d": {"connected": true, "sessions": 1, "in_flight": 0},
+  "k_e004f2": {"connected": false, "sessions": 0, "in_flight": 0},
+  "k_revoked1": {"connected": true, "sessions": 2, "in_flight": 0},
+  "k_revoked2": {"connected": false, "sessions": 0, "in_flight": 1}
+}

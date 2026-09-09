@@ -82,3 +82,13 @@ starts a fresh isolated host with a damaged admin record and an isolated engine.
 English/Chinese Settings diagnostic, CLI repair/rotation/off/status, restart persistence, listener-off
 refusals and secret-free host logs. Browser screenshots and the report go to ignored
 `console/test/evidence/recovery/`; all started host, engine and browser processes are stopped.
+
+## 094 connected state
+
+`CONNECTED_PROOF=1 pnpm --dir console screenshots` checks 1280/390 EN/ZH tables, drawers and
+revoked rows against `connected.json`: idle/busy, connected/disconnected and multiple devices.
+The original fixture keeps optional fields absent to guard legacy rendering.
+`connected-live.mjs` uses the 086 live-proof environment variables plus INFERCAT_PROOF_TUNNEL
+(the existing `console/test` adapter). It starts two new friend peers for one own isolated host
+and checks that local/remote tables and the drawer show two devices. CAPTURE_CONSOLE_FIXTURE=1
+refreshes the dev API fixture, omitting peer identity rows. All proof processes stop afterwards.

@@ -3,6 +3,7 @@ import { chromium } from 'playwright';
 import { readFile, mkdir, writeFile } from 'node:fs/promises';
 import { resolve } from 'node:path';
 
+const connected = JSON.parse(await readFile(new URL('./connected.json', import.meta.url), 'utf8'));
 const fixture = JSON.parse(await readFile(new URL('./fixture.json', import.meta.url), 'utf8'));
 const evidence = resolve('test/evidence');
 await mkdir(evidence, { recursive: true });
@@ -13,7 +14,7 @@ console.log(`CONSOLE_PREVIEW=${base}`);
 const browser = await chromium.launch();
 const results = [];
 try {
- for (const width of [1280,390]) for (const lang of ['en','zh']) for (const state of ['main','drawer','revoked','empty','offline','engine-down','pinned','mint-form','mint','confirm']) {
+ for (const width of [1280,390]) for (const lang of ['en','zh']) for (const state of (process.env.CONNECTED_PROOF?['connected','connected-drawer','connected-revoked']:['main','drawer','revoked','empty','offline','engine-down','pinned','mint-form','mint','confirm'])) {
   const context = await browser.newContext({ viewport: { width, height: width===1280?900:844 }, deviceScaleFactor: 1 });
   const page = await context.newPage();
   const errors=[]; let offline=false;
@@ -21,6 +22,7 @@ try {
   page.on('console',m=>{if(m.type()==='error' && !offline) errors.push(m.text());});
   await page.addInitScript(() => { Date.now = () => Date.parse('2026-09-06T12:00:00Z'); });
   const data=structuredClone(fixture);
+  if(state.startsWith('connected'))for(const key of data.status.keys)Object.assign(key,connected[key.id]);
   if(state==='empty') {
    data.keys=[]; data.status.keys=[];
    const zero=Object.fromEntries(Object.keys(data.today.total).map(k=>[k,typeof data.today.total[k]==='number'?0:{}]));
@@ -46,19 +48,24 @@ try {
    await page.locator('[data-action="new"]').click();await page.locator('#invite-name').fill('erin');
    if(state==='mint') { await page.locator('form button[type="submit"]').click();await page.locator('.once').waitFor();await page.locator('[data-action="new"]:not(:disabled)').waitFor({state:'attached'}); }
   }
-  if(state==='drawer'||state==='confirm') {
+  if(state==='drawer'||state==='confirm'||state==='connected-drawer') {
    await page.locator('[data-key="k_7f3a2b"]').click();
    if(state==='confirm') await page.locator('[data-action="confirm"]').click();
    const h=await page.locator('.drawer').evaluate(el=>el.scrollHeight);
    await page.setViewportSize({width,height:Math.max(width===1280?900:844,h)});
   }
   if(['mint','mint-form'].includes(state)) { const h=await page.locator('.drawer').evaluate(el=>el.scrollHeight);await page.setViewportSize({width,height:Math.max(width===1280?900:844,h)}); }
-  if(state==='revoked') await page.locator('details summary').click();
+  if(state==='revoked'||state==='connected-revoked') await page.locator('details summary').click();
   if(state==='offline') { offline=true; await page.locator('.stale').waitFor(); }
+  if(state.startsWith('connected')) {
+   const line=await page.locator('[data-key="k_7f3a2b"] .c-now').innerText();
+   if(!line.includes(lang==='en'?'connected · 1 in flight · 2 devices':'已连接 · 1 条进行中 · 2 台设备'))throw new Error(line);
+   if(state==='connected-drawer' && !(await page.locator('.drawer .nowline').innerText()).includes(line))throw new Error('drawer differs');
+  }
   const measurements=await page.evaluate(()=>({overflow:document.documentElement.scrollWidth-innerWidth,hash:location.hash,local:localStorage.length,session:sessionStorage.length}));
   if(measurements.overflow>0 || measurements.hash || measurements.local || measurements.session || errors.length) throw new Error(JSON.stringify({state,width,lang,measurements,errors}));
   const name=`${state}-${width}-${lang}`;
-  await page.screenshot({path:`${evidence}/${name}.png`,fullPage:!['drawer','confirm','mint','mint-form'].includes(state)});
+  await page.screenshot({path:`${evidence}/${name}.png`,fullPage:!['drawer','connected-drawer','confirm','mint','mint-form'].includes(state)});
   results.push(`${name}: PASS (no overflow, no token storage, no unexpected browser errors)`);
   await context.close();
  }

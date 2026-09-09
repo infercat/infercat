@@ -1,6 +1,6 @@
 export interface Limits { rpm: number; tpm: number; max_concurrent: number; max_output_tokens: number; max_context: number; daily_tokens: number; models?: string[]; daily_audio_seconds?: number; daily_speech_chars?: number }
 export interface Key { id: string; name: string; status: 'active' | 'paused' | 'revoked'; limits: Limits; created_at: string; last_seen: string; today_tokens: number }
-export interface LiveKey { id: string; in_flight: number; rpm_used: number; tpm_used: number; today_tokens: number; last_seen: string }
+export interface LiveKey { connected?: boolean; sessions?: number; id: string; in_flight: number; rpm_used: number; tpm_used: number; today_tokens: number; last_seen: string }
 export interface Stats {
  key_id?: string; requests: number; model_calls: number; app_polls: number; errors: number;
  errors_by_code?: Record<string, number>; model_calls_by_model?: Record<string, number>;
