@@ -145,21 +145,21 @@ export async function landingEvidence(browser, base, shots, inspect = async () =
     assert(!layout.length, `053 layout: ${layout.join(', ')}`);
     const tryLayout = await page.locator('.landing-try').evaluate((row) => {
       const issues = [], box = row.getBoundingClientRect(), frame = document.querySelector('.landing-demo').getBoundingClientRect();
-      const style = getComputedStyle(row), qr = row.querySelector('.try-qr'), svg = qr.querySelector('svg').getBoundingClientRect();
+      const style = window.getComputedStyle(row), qr = row.querySelector('.try-qr'), svg = qr.querySelector('svg').getBoundingClientRect();
       const link = row.querySelector('.try-go');
       if (link.getAttribute('href') !== '/try' || link.hasAttribute('target')) issues.push('same-tab try link');
       if (Math.abs(box.left - frame.left) > 1 || Math.abs(box.right - frame.right) > 1) issues.push('try/frame measure');
       if (style.borderTopWidth !== '1px' || style.borderTopColor !== 'rgb(10, 10, 10)' || style.paddingTop !== '16px') issues.push('try rule');
       if (row.scrollWidth > row.clientWidth + 1) issues.push('try overflow');
       if (window.innerWidth < 900) {
-        if (getComputedStyle(qr).display !== 'none' || style.marginTop !== '24px') issues.push('phone QR/spacing');
+        if (window.getComputedStyle(qr).display !== 'none' || style.marginTop !== '24px') issues.push('phone QR/spacing');
       } else if (svg.width !== 100 || svg.height !== 100 || Math.abs(svg.right - box.right) > 1 || style.marginTop !== '28px') issues.push('desktop QR/spacing');
       return issues;
     });
     assert(!tryLayout.length, `068 layout: ${tryLayout.join(', ')}`);
     if (width >= 900) {
       const matrix = await page.locator('.try-qr path').evaluate((path) => Array.from({ length:25 }, (_, y) =>
-        Array.from({ length:25 }, (_, x) => path.isPointInFill(new DOMPoint(x + .5, y + .5)) ? '1' : '0').join('')).join('/'));
+        Array.from({ length:25 }, (_, x) => path.isPointInFill(new window.DOMPoint(x + .5, y + .5)) ? '1' : '0').join('')).join('/'));
       assert(matrix === TRY_MATRIX, '068 rendered QR matrix');
     }
 
