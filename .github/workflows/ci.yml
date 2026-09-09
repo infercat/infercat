@@ -95,6 +95,8 @@ jobs:
           path: |
             dist/*.tar.gz
             dist/*.zip
+            dist/*.deb
+            dist/*.rpm
             dist/*_checksums.txt
             dist/homebrew/**
           retention-days: 7

@@ -1,0 +1,10 @@
+[Unit]
+Description=Infercat model sharing
+
+[Service]
+ExecStart=/usr/bin/infercat serve
+Restart=on-failure
+RestartSec=5
+
+[Install]
+WantedBy=default.target
