@@ -25,6 +25,9 @@ vet:
 	go vet ./...
 
 check: console-check vet test client-check web-lint host-compat
+	# host-compat built web/dist; run every no-invite launch assertion against that exact build.
+	@set -eu; launch_shots=$$(mktemp -d); trap 'rm -rf "$$launch_shots"' EXIT; \
+		cd web && env -u INVITE -u APP LAUNCH_SHOTS="$$launch_shots" pnpm launch-check
 	sh hack/install_test.sh
 	@if command -v shellcheck >/dev/null 2>&1; then shellcheck -s sh hack/install.sh; else echo "shellcheck: skipped (not installed)"; fi
 	@echo "CHECK OK"
