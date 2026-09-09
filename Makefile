@@ -110,7 +110,7 @@ console-build:
 # Shipped /me shapes must render Connect → Chat; install the pinned browser on clean machines.
 .PHONY: host-compat
 host-compat: web-lint wasm
-	cd web && pnpm typecheck && pnpm exec vitest run src/host-compat.test.ts src/console-compat.test.ts src/admin-route.test.ts
+	cd web && pnpm typecheck && pnpm exec vitest run src/host-compat.test.ts src/console-compat.test.ts src/admin-route.test.ts src/voice.test.ts src/voice-ui.test.ts
 	cd web && pnpm exec playwright install chromium
 	cd web && pnpm exec node dev/host-compat.mjs
 	cd web && pnpm build && pnpm exec node dev/console-chunk-check.mjs

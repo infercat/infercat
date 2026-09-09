@@ -3,7 +3,8 @@ import { AttachedImages, ImageShots } from './Images';
 import { imageCopy, type ImageData } from '../images';
 import { tr } from '../i18n/text';
 import { useEffect, useRef, useState } from 'react';
-import { modelLabel } from '../api';
+import { modelLabel, GatewayError } from '../api';
+import { spokenText, voiceTime, type SpeechState } from '../voice';
 import { compact } from '../session';
 import { isAnswer, type Message } from '../storage';
 import { replyEnding, speed, speedLine } from '../stream';
@@ -12,6 +13,7 @@ import Markdown from './Markdown';
 
 interface Props {
   message: Message;
+  speech?: { state: SpeechState; onListen: (id: string, text: string) => void; onStop: () => void };
   /** The host's display name: waiting and failure copy name the machine, never "the endpoint". */
   host: string;
   /** True while this message is the one being streamed by this tab. */
@@ -47,6 +49,7 @@ interface Props {
 
 export default function MessageView({
   message: m,
+  speech,
   host,
   live,
   busy,
@@ -66,6 +69,8 @@ export default function MessageView({
   imagesLoaded,
   onEditing,
 }: Props) {
+  const spoken = useRef<HTMLDivElement>(null);
+  const activeSpeech = speech && speech.state.kind !== 'idle' && speech.state.id === m.id ? speech.state : null;
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(m.content);
   const [editAttachments, setEditAttachments] = useState(() => turnAttachments(m));
@@ -140,7 +145,7 @@ export default function MessageView({
           note={inThinking ? m.note : undefined}
         />
       )}
-      <Markdown text={live ? closeFences(m.content) : m.content} />
+      <div ref={spoken}><Markdown text={live ? closeFences(m.content) : m.content} /></div>
       {/* Three silences, three sentences (018): in line behind other people's requests, a host
           that has gone quiet, and the ordinary pause before the first token. */}
       {live && m.content === '' && !m.reasoning && (
@@ -193,6 +198,7 @@ export default function MessageView({
       )}
       {/* The host's raw sentence is evidence, never what a stranger has to read first. */}
       {ended && m.details !== undefined && m.details !== '' && <Details text={m.details} />}
+      {activeSpeech && <SpeechLine state={activeSpeech} host={host} />}
       <div className="meta">
         <span className="meta-text">
           {m.model ? modelLabel(m.model) : ''}
@@ -209,6 +215,13 @@ export default function MessageView({
           {!isAnswer(m) && m.content.trim() !== '' ? tr('app_not_part_of_the_next_question') : ''}
         </span>
         <span className="actions">
+          {speech && !live && m.status === 'complete' && m.content.trim() !== '' && (
+            <button className="ghost tiny listen" disabled={sendBlocked} onClick={() => {
+              if (sendBlocked) return;
+              if (activeSpeech && activeSpeech.kind !== 'error') speech.onStop();
+              else if (spoken.current) { const text = spokenText(spoken.current); if (text) speech.onListen(m.id, text); }
+            }}>{tr(activeSpeech && activeSpeech.kind !== 'error' ? 'app_stop' : 'app_listen')}</button>
+          )}
           {!live && m.content !== '' && <CopyButton text={m.content} />}
           {last && !busy && action && (
             <button className="ghost tiny" onClick={action.run} disabled={action.disabled === true}>
@@ -219,6 +232,18 @@ export default function MessageView({
       </div>
     </div>
   );
+}
+
+function SpeechLine({ state, host }: { state: Exclude<SpeechState, { kind: 'idle' }>; host: string }) {
+  const who = host || tr('app_the_host_lowercase');
+  if (state.kind === 'error') {
+    const refused = state.error instanceof GatewayError && state.error.status >= 400 && state.error.status < 500;
+    const details = state.error instanceof GatewayError ? state.error.rawBody || state.error.message : state.error instanceof Error ? state.error.message : String(state.error);
+    return <><p className="ended interrupted" role="status">{tr(refused ? 'app_speech_refused' : 'app_speech_failed', { host: who })}</p><Details text={details} /></>;
+  }
+  return <p className="spoken" role="status"><i className="live" aria-hidden="true" /><span>{state.kind === 'making'
+    ? tr('app_speech_making', { host: who })
+    : tr('app_speech_playing', { host: who, position: voiceTime(state.position), duration: voiceTime(state.duration), count: state.characters.toLocaleString('en-US') })}</span></p>;
 }
 
 /** A raw transport string helps exactly one reader in a hundred; it waits until it is asked for. */

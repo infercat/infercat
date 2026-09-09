@@ -148,10 +148,12 @@ export class FakeConn implements Conn {
       this.host.asleep = true; // it answered on the way in; it fell asleep as the friend pressed Send
       return;
     }
+    if (req.path.startsWith('/v1/audio/') && this.opts.audioDelayMs) await new Promise((resolve) => setTimeout(resolve, this.opts.audioDelayMs));
+    if (this.closed) return;
     const res = handleFake(req, this.opts);
     const lines = [`HTTP/1.1 ${res.status} ${STATUS_TEXT[res.status] ?? 'Status'}`];
     for (const [name, value] of Object.entries(res.headers)) lines.push(`${name}: ${value}`);
-    const body = res.sse ? undefined : encode(res.body ?? '');
+    const body = res.sse ? undefined : res.bytes ?? encode(res.body ?? '');
     lines.push(res.sse ? 'transfer-encoding: chunked' : `content-length: ${body?.length ?? 0}`);
     lines.push('connection: close');
     this.emit(encode(`${lines.join('\r\n')}\r\n\r\n`));

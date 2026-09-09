@@ -13,7 +13,7 @@ const PORT = Number(
 );
 const HOST = process.env.FAKE_GATEWAY_HOST ?? '127.0.0.1';
 
-const options: FakeOptions = {};
+const options: FakeOptions = { transcriptions: process.env.FAKE_TRANSCRIPTIONS === '1', speech: process.env.FAKE_SPEECH === '1' };
 if (process.env.FAKE_TOKEN_DELAY_MS) options.tokenDelayMs = Number(process.env.FAKE_TOKEN_DELAY_MS);
 // The gateway does not emit host.log_prompts until ticket 006 lands; this is how the web client's
 // disclosure (007 promise 12) is exercised meanwhile. FAKE_MODELS= (empty) fakes "nothing loaded".
@@ -54,7 +54,7 @@ async function serve(req: IncomingMessage, res: ServerResponse, body: string): P
   const started = Date.now();
   if (!out.sse) {
     res.writeHead(out.status, { ...CORS, ...out.headers });
-    res.end(out.body ?? '');
+    res.end(out.bytes ?? out.body ?? '');
     log(req, out.status, Date.now() - started);
     return;
   }

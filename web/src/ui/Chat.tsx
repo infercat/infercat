@@ -1,3 +1,4 @@
+import { VoiceRecorder, VoicePlayer, transcribe, requestSpeech, voiceTime, voiceWords, type RecordingState, type SpeechState } from '../voice';
 import { useInstall, noteCompletedReply, acceptInstall, dismissInstall } from '../install';
 import { encodeInvite } from '../invite';
 import { ACCEPT, admit, attachmentFields, retainedFileBytes, rejectionNotice, type AttachmentNotice, type Attachment, type DisplayAttachment, type ClipboardData } from '../attachments';
@@ -13,6 +14,8 @@ import {
   getMe,
   getModels,
   hostName,
+  hostAudio,
+  GatewayError,
   logsPrompts,
   ME_TIMEOUT_MS,
   modelLabel,
@@ -130,7 +133,7 @@ export default function Chat({ state, live, dispatch, onRedial, reconnecting = f
   const [missingChats, setMissingChats] = useState<Set<string>>(() => new Set());
   const [imageNotice, setImageNotice] = useState<AttachmentNotice | null>(null);
   const [editingTurnId, setEditingTurnId] = useState<string | null>(null);
-  const [banner, setBanner] = useState<FriendlyError | null>(null);
+  const [banner, setBanner] = useState<(FriendlyError & { voice?: true }) | null>(null);
   const [retryUntil, setRetryUntil] = useState(0);
   const [now, setNow] = useState(() => Date.now());
   const [drawer, setDrawer] = useState(false);
@@ -163,6 +166,19 @@ export default function Chat({ state, live, dispatch, onRedial, reconnecting = f
   const sendBlocked = reconnecting || live.offline === true;
   const currentLive = useRef(live); currentLive.current = live;
   const readOnly = leader !== true;
+  const speechModel = hostAudio(me, 'speech');
+  const [speechState, setSpeechState] = useState<SpeechState>({ kind: 'idle' });
+  const voiceFault = useRef<(error: unknown) => void>(() => {});
+  const [player] = useState(() => new VoicePlayer((next) => { setSpeechState(next); if (next.kind === 'error') voiceFault.current(next.error); }));
+  useEffect(() => {
+    const leave = () => player.stop();
+    window.addEventListener('pagehide', leave);
+    return () => { window.removeEventListener('pagehide', leave); player.stop(); };
+  }, [player, scope, conv.id, speechModel]);
+  useEffect(() => {
+    if ((sendBlocked || locked || readOnly || streaming || !speechModel) && (player.state.kind === 'making' || player.state.kind === 'playing')) player.stop();
+  }, [sendBlocked, locked, readOnly, streaming, speechModel, player]);
+
 
   const patch = useCallback((id: string, fn: (c: Conversation) => Conversation) => {
     setConvs((prev) => prev.map((c) => (c.id === id ? fn(c) : c)));
@@ -197,6 +213,24 @@ export default function Chat({ state, live, dispatch, onRedial, reconnecting = f
         return false;
       });
   }, [live.transport, live.secret, dispatch, host, keys.me]);
+  voiceFault.current = (error) => {
+    const friendly = describeError(error, host);
+    if (error instanceof GatewayError) dispatch({ t: 'streamError', code: error.code, error: friendly });
+    if (friendly.retryAfterS !== undefined) {
+      setBanner({ ...friendly, voice: true }); setRetryUntil(Date.now() + friendly.retryAfterS * 1000); setNow(Date.now());
+    }
+    void refreshMe();
+  };
+  function listenTo(id: string, text: string): void {
+    if (sendBlocked || locked || readOnly || streaming || !speechModel || !text) return;
+    void player.play(id, scope, speechModel, text, (signal) => requestSpeech(live.transport, live.secret, text, signal)).then(() => { void refreshMe(); });
+  }
+  async function recordVoice(clip: Blob, signal: AbortSignal): Promise<string> {
+    try { return await transcribe(live.transport, live.secret, clip, appLanguage(), signal); }
+    catch (error) { if (!signal.aborted) voiceFault.current(error); throw error; }
+    finally { if (!signal.aborted) void refreshMe(); }
+  }
+
 
   // One tab writes (020 promise 6). The election is the same Web Lock the tunnel identity uses;
   // the leader takes what is on disk as the truth — including a reply nobody is writing any more,
@@ -501,7 +535,7 @@ export default function Chat({ state, live, dispatch, onRedial, reconnecting = f
   const lost = undelivered(conv.messages);
   const softened = carriedAfter(conv.messages);
   // One countdown for both Try agains (024 promise 3): the banner's and the thread's.
-  const cooling = waiting > 0;
+  const cooling = waiting > 0 && !banner?.voice;
   // One action on the last exchange, named for what it will actually do. Reconnect is offered
   // exactly while this session has not reached the host since it last tried (a request that got
   // no answer, a /me that timed out): retrying over a session we have not proved alive is the
@@ -628,6 +662,7 @@ export default function Chat({ state, live, dispatch, onRedial, reconnecting = f
                 <MessageView
                   key={m.id}
                   message={m}
+                  speech={speechModel ? { state: speechState, onListen: listenTo, onStop: () => player.stop() } : undefined}
                   imageData={imageData}
                   onEditing={setEditingTurnId}
                   imagesLoaded={loadedImageRefs === imageRefs}
@@ -682,7 +717,8 @@ export default function Chat({ state, live, dispatch, onRedial, reconnecting = f
               <strong>{banner.title}</strong> <span className="dim">{banner.detail}</span>
             </div>
             <div className="banner-actions">
-              {banner.retryAfterS !== undefined && (
+              {banner.voice && waiting > 0 && <span className="dim tiny">{tr('app_try_again_in', { duration: waitText(waiting) })}</span>}
+              {!banner.voice && banner.retryAfterS !== undefined && (
                 <button className="ghost tiny" disabled={waiting > 0} onClick={regenerate}>
                   {waiting > 0 ? tr('app_try_again_in', { duration: waitText(waiting) }) : tr('app_try_again')}
                 </button>
@@ -703,6 +739,7 @@ export default function Chat({ state, live, dispatch, onRedial, reconnecting = f
         {missingChats.has(conv.id) && <p className="image-notice" role="status">{tr('app_image_missing')}</p>}
         <Composer
           key={conv.id}
+          voice={hostAudio(me, 'transcriptions') ? { host, upload: recordVoice } : undefined}
           attachments={attached}
           onAttachments={setAttached}
           modelContext={me.host.upstream.model_context}
@@ -804,6 +841,7 @@ function LimitsSheet({ live, messages, onClose }: { live: Live; messages: readon
         )}
         <p>{tr('app_limits_images')}</p>
         {ACCEPT(false) && <p>{tr('app_limits_files')}</p>}
+        {(hostAudio(me, 'transcriptions') || hostAudio(me, 'speech')) && <p>{tr('app_limits_voice', { host: hostName(me) || tr('app_the_host_lowercase') })}</p>}
         {/* Speed, from where the reader sits (032): this chat's medians and what is inside them. The
             relay round trip is quoted only when there is one: direct mode has no hop. */}
         {pace.n > 0 && (
@@ -869,6 +907,7 @@ function Empty({
 
 function Composer({
   ref,
+  voice,
   attachments, onAttachments, vision, model, modelContext, storedBytes, notice, onNotice, accepts,
   text,
   onText,
@@ -882,6 +921,7 @@ function Composer({
   onStop,
 }: {
   ref: React.RefObject<HTMLTextAreaElement | null>;
+  voice?: { host: string; upload: (clip: Blob, signal: AbortSignal) => Promise<string> };
   attachments: Attachment[];
   onAttachments: (attachments: Attachment[]) => void;
   modelContext: number;
@@ -904,6 +944,38 @@ function Composer({
   onSend: (t: string) => void;
   onStop: () => void;
 }) {
+
+  const [recording, setRecording] = useState<RecordingState>({ kind: 'idle' });
+  const latestVoice = useRef({ voice, text, onText, touch, disabled, sendBlocked, streaming });
+  latestVoice.current = { voice, text, onText, touch, disabled, sendBlocked, streaming };
+  const [recorder] = useState(() => new VoiceRecorder((clip, signal) => {
+    const current = latestVoice.current;
+    if (!current.voice || current.disabled || current.sendBlocked || current.streaming) return Promise.reject(new DOMException('Stopped', 'AbortError'));
+    return current.voice.upload(clip, signal);
+  }, (next) => {
+    const current = latestVoice.current;
+    if (next.kind === 'done' && (current.disabled || current.sendBlocked || current.streaming || !current.voice)) { setRecording({ kind: 'idle' }); return; }
+    setRecording(next);
+    if (next.kind === 'done') {
+      current.onText(current.text + (current.text && next.text && !/\s$/.test(current.text) ? ' ' : '') + next.text);
+      requestAnimationFrame(() => {
+        const field = ref.current; if (!field) return;
+        if (!current.touch) field.focus();
+        field.setSelectionRange(field.value.length, field.value.length); field.scrollTop = field.scrollHeight;
+      });
+    }
+  }));
+  const hasVoice = Boolean(voice);
+  useEffect(() => {
+    const leave = () => recorder.cancel(); window.addEventListener('pagehide', leave);
+    return () => { window.removeEventListener('pagehide', leave); recorder.cancel(); };
+  }, [recorder]);
+  useEffect(() => {
+    if ((disabled || sendBlocked || streaming || !hasVoice) && ['requesting', 'recording', 'transcribing'].includes(recorder.state.kind)) recorder.cancel();
+  }, [disabled, sendBlocked, streaming, hasVoice, recorder]);
+  const editText = (value: string) => { recorder.clear(); onText(value); };
+  const sendText = () => { recorder.cancel(); onSend(text); };
+  const voiceHint = voice && (recording.kind === 'blocked' ? tr('app_mic_blocked') : recording.kind === 'missing' ? tr('app_no_microphone') : null);
   const picker = useRef<HTMLInputElement>(null);
   const mounted = useRef(true);
   const queue = useRef(Promise.resolve());
@@ -966,13 +1038,14 @@ function Composer({
         if (!files.length && pasted.length < 4000) return;
         e.preventDefault();
         const input = { files: clipboard.files, getData: () => pasted };
-        attach(input, () => { onText(text.slice(0, start) + pasted + text.slice(end)); });
+        attach(input, () => { editText(text.slice(0, start) + pasted + text.slice(end)); });
       }}
       onDragOver={(e) => { if (e.dataTransfer.types.includes('Files')) { e.preventDefault(); setOver(true); } }}
       onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setOver(false); }}
       onDrop={(e) => { e.preventDefault(); setOver(false); const files = Array.from(e.dataTransfer.files); if (files.length) void attach(files); }}>
       <AttachedImages attachments={attachments} data={data} reading={reading} onCancel={(id) => { jobs.current.get(id)?.abort(); setReading((prev) => prev.filter((r) => r.id !== id)); }} onRemove={(id) => { update(current.current.filter((a) => a.id !== id)); onNotice(null); }} />
       {danger && <p className="attached-line bad image-notice" role="status">{notice?.message}</p>}
+      {voice && <RecordingLine state={recording} host={voice.host} onCancel={() => recorder.cancel()} />}
       <div className={`composer-box ${over ? 'over' : ''}`}>
         <input ref={picker} type="file" accept={accept} multiple hidden onChange={(e) => { void attach(Array.from(e.target.files ?? [])); e.target.value = ''; }} />
         {accept !== '' && <button className="attach" aria-label={tr(ACCEPT(false) ? (vision ? 'app_attach' : 'app_attach_file') : 'app_attach_an_image')} onClick={() => { if (!disabled && !streaming) picker.current?.click(); }}>+</button>}
@@ -981,18 +1054,23 @@ function Composer({
           value={text}
           rows={1}
           aria-label={tr('app_message')}
-          placeholder={tr('app_message_the_host_s_model')}
+          placeholder={tr(voice ? 'app_type_or_speak' : 'app_message_the_host_s_model')}
           disabled={disabled}
-          onChange={(e) => { onText(e.target.value); onNotice(null); }}
+          onChange={(e) => { editText(e.target.value); onNotice(null); }}
           onKeyDown={(e) => {
             // On a touch keyboard Return is the only way to make a new line, so Send is the only
             // way to send (014 promise 6). Enter mid-composition commits an IME candidate and must
             // not send either (007 promise 9).
             if (touch || e.key !== 'Enter' || e.shiftKey || composing(e)) return;
             e.preventDefault();
-            if (!streaming && reading.length === 0 && !disabled && !sendBlocked && (text.trim() !== '' || attachments.length > 0)) onSend(text);
+            if (!streaming && reading.length === 0 && !disabled && !sendBlocked && (text.trim() !== '' || attachments.length > 0)) sendText();
           }}
         />
+        {voice && <button className={`attach mic ${recording.kind === 'recording' ? 'on' : ''}`} aria-pressed={recording.kind === 'recording'} aria-label={tr(recording.kind === 'recording' ? 'app_mic_stop' : 'app_mic')}
+          disabled={disabled || sendBlocked || streaming || recording.kind === 'transcribing' || recording.kind === 'requesting'} onClick={() => {
+            if (disabled || sendBlocked || streaming) return;
+            if (recording.kind === 'recording') recorder.stop(); else void recorder.start();
+          }}><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="square" aria-hidden="true"><rect x="7" y="2" width="6" height="10" rx="3" /><path d="M4 9.5a6 6 0 0 0 12 0M10 15.5V18M7 18h6" /></svg></button>}
         {streaming ? (
           <button className="primary small" onClick={onStop}>
             {tr('app_stop')}
@@ -1002,7 +1080,7 @@ function Composer({
             className="primary small"
             disabled={disabled || sendBlocked || reading.length > 0 || (text.trim() === '' && attachments.length === 0)}
             onClick={() => {
-              onSend(text);
+              sendText();
               ref.current?.focus();
             }}
           >
@@ -1010,9 +1088,27 @@ function Composer({
           </button>
         )}
       </div>
-      {(status || over || (!danger && notice?.message) || hint) && <p className={`hint ${notice && !danger ? 'image-notice' : ''}`} role={status || notice ? 'status' : undefined}>{status || (over ? tr('app_drop_to_attach') : (!danger && notice?.message) || hint)}</p>}
+      {(voiceHint || status || over || (!danger && notice?.message) || hint) && <p className={`hint ${notice && !danger ? 'image-notice' : ''}`} role={status || notice ? 'status' : undefined}>{voiceHint || status || (over ? tr('app_drop_to_attach') : (!danger && notice?.message) || hint)}</p>}
     </div>
   );
+}
+
+function RecordingLine({ state, host, onCancel }: { state: RecordingState; host: string; onCancel: () => void }) {
+  if (state.kind === 'idle' || state.kind === 'blocked' || state.kind === 'missing') return null;
+  const who = host || tr('app_the_host_lowercase');
+  if (state.kind === 'error') return <p className="spoken bad" role="status">{tr('app_voice_failed', { host: who, seconds: Math.round(state.seconds), title: describeError(state.error, host).title })}</p>;
+  if (state.kind === 'done') {
+    const count = voiceWords(state.text);
+    return <p className="spoken" role="status">{tr(count === 1 ? 'app_voice_transcribed_one' : 'app_voice_transcribed', { host: who, seconds: Math.round(state.seconds), count: count.toLocaleString('en-US') })}</p>;
+  }
+  return <div className="spoken" role="status"><i className="live" aria-hidden="true" />
+    {state.kind === 'transcribing' ? <span>{tr('app_voice_transcribing', { host: who, seconds: Math.round(state.seconds) })}</span> : <>
+      <span className="t">{voiceTime(state.kind === 'recording' ? state.seconds : 0)}</span>
+      <svg className="waveform" viewBox="0 0 96 16" role="img" aria-label={tr('app_voice_waveform')}>
+        <path d="M0 8H96" opacity=".3" />
+        <path d={(state.kind === 'recording' ? state.waveform : []).map((level, i) => `M${i * 1.6 + .8} ${8 - level * 7}v${level * 14}`).join(' ')} />
+      </svg></>}
+    <button className="ghost tiny" onClick={onCancel}>{tr('app_voice_cancel')}</button></div>;
 }
 
 function SettingsSheet({
@@ -1093,6 +1189,8 @@ function SettingsSheet({
           {me.host.upstream.model_context > 0 ? tr('app_settings_context', { context: compact(me.host.upstream.model_context) }) : ''}
           {live.meOk && modelVision(me, chosen) === true ? tr('app_settings_vision') : ''}
           {live.meOk && !me.host.upstream.healthy ? tr('app_not_answering_right_now') : ''}.{' '}
+          {hostAudio(me, 'transcriptions') && <>{tr('app_settings_hears', { model: hostAudio(me, 'transcriptions')! })}{' '}</>}
+          {hostAudio(me, 'speech') && <>{tr('app_settings_speaks', { model: hostAudio(me, 'speech')! })}{' '}</>}
           <Text name="app_settings_model_id" values={{ model: <code>{chosen || tr('app_none')}</code> }} />
           {live.ephemeral
             ? tr('app_another_tab_of_this_browser_holds_the_saved_tunnel')
