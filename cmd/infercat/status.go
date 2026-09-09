@@ -170,6 +170,9 @@ func bytesWord(n int64) string {
 }
 
 func writeStatus(w io.Writer, st admin.Status) {
+	if st.Console != "" {
+		fmt.Fprintf(w, "console   http://%s/ (infercat console opens it)\n", st.Console)
+	}
 	if st.Mode == "bridge" {
 		writeBridge(w, st)
 		return

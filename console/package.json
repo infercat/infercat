@@ -1,0 +1,19 @@
+{
+  "name": "infercat-console",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "build": "vite build",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "vite": "7.1.7",
+    "vitest": "3.2.4",
+    "typescript": "5.9.3",
+    "eslint": "9.36.0",
+    "typescript-eslint": "8.45.0",
+    "jsdom": "26.1.0"
+  }
+}

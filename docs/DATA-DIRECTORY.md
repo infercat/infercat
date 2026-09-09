@@ -14,3 +14,8 @@ English · [简体中文](DATA-DIRECTORY.zh-CN.md)
 | `tunnel.log` | The tunnel engine's log (`serve --verbose` prints it instead). |
 
 `infercat serve -h` also lists these files. See the [host quickstart](../README.md#quickstart-host).
+
+The console reuses `admin.token` on every platform: a fresh random bearer per run, mode 0600,
+removed when that admin server shuts down. The console address is remembered in the existing
+`config.json` (`console`); the actual listening address is in authenticated `/status`, so port 0
+also works with `infercat console --print`. No additional state file is introduced.

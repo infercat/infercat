@@ -3,8 +3,10 @@
 package admin
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/base64"
+	"errors"
 	"net"
 	"net/http"
 	"os"
@@ -18,6 +20,9 @@ import (
 // admin.token, both 0600; without the token the endpoint answers 401. Loopback only, never the
 // tunnel (docs/PRINCIPLES.md, Protection 1).
 func listen(dataDir string) (net.Listener, string, func(), error) {
+	if _, err := Fetch(context.Background(), dataDir); err == nil {
+		return nil, "", nil, errors.New("another host is already serving this data dir")
+	}
 	if err := os.MkdirAll(dataDir, 0o700); err != nil {
 		return nil, "", nil, err
 	}
@@ -35,6 +40,11 @@ func listen(dataDir string) (net.Listener, string, func(), error) {
 	_, port, _ := net.SplitHostPort(l.Addr().String())
 	if err := os.WriteFile(portPath, []byte(port+"\n"), 0o600); err != nil {
 		l.Close()
+		return nil, "", nil, err
+	}
+	if err := os.Remove(tokenPath); err != nil && !os.IsNotExist(err) {
+		l.Close()
+		os.Remove(portPath)
 		return nil, "", nil, err
 	}
 	if err := os.WriteFile(tokenPath, []byte(token+"\n"), 0o600); err != nil {

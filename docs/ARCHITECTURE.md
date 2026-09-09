@@ -50,7 +50,7 @@ Module: `github.com/infercat/infercat`, Go 1.27 (auto toolchain), tailcat pinned
 | `host.key.json` | 001/009 | tailcat `PrivateKey` JSON: the host identity, created once (exclusive link; a racing second `serve` adopts the winner). `Addr() == SavedAddr(dir)` always. `--ephemeral` never writes it. |
 | `keys.json` | 003 | see Key store below; gateway re-reads on mtime change (≤1/s, plus on any lookup miss); the CLI pokes `POST /reload` on the admin socket after every write so changes are live at once |
 | `usage.jsonl` | 003 | one `usage.Event` per line, append-only |
-| `admin.sock` | 003/009 | unix socket, HTTP: `GET /status`, `POST /reload` (Windows: loopback port in `admin.port` + token in `admin.token`) |
+| `admin.sock` | 003/009 | unix socket, HTTP: `GET /status`, `POST /reload` (Windows: loopback port in `admin.port`); every platform authenticates with per-run `admin.token` |
 | `config.json` | 003 | persisted `serve` settings: `upstream`, `upstream_key` (0600), `slots`, `dev_listen`, `derpmap_url`, `region`, `name`, `web_url`. `--log-prompts`, `--ephemeral`, `--verbose` are per-run and never persisted (Protection 3). Retired keys (`queue_timeout`, `request_timeout`, `max_body`) are ignored on load. |
 | `tunnel.log` | 005 | the tailcat/wgengine log (truncated at start); `serve --verbose` prints it instead |
 
@@ -199,6 +199,21 @@ These are constants; the `--queue-timeout`, `--request-timeout`, `--max-body` fl
 ## Admin API (003), unix socket `admin.sock`, HTTP
 
 `GET /status` → `{product, version, uptime_s, tunnel:{addr, region, clients}, upstream:{kind, url, healthy, since, model_context, slots}, queue:{in_flight, waiting}, keys:[{id,name,status,in_flight,rpm_used,today_tokens,last_seen}]}` — `queue` numbers are exact; `clients` = open port-80 connections. `POST /reload` re-reads `keys.json` now.
+
+The host console (`069`, Protection 1) listens only on a literal loopback IP, by default
+`127.0.0.1:9101`; remembered `serve --console off` disables it. `/api/*` shares the admin
+handler, while `/` serves the embedded console bundle. Every admin route on either listener
+requires the per-run bearer in `admin.token` (0600, removed at shutdown on every platform);
+Unix CLI clients read it too. The startup banner prints only the console address and the command
+to open it; only `infercat console` (including `--print`) emits a URL with the token in its fragment.
+The page consumes it into memory and clears the fragment, never using browser storage. Responses forbid caching; there is no CORS grant, and the listener
+rejects alternate Host headers. The console is never attached to the tunnel. The JSON API adds
+key list/detail, mint, pause/resume/revoke/rotate, partial limits updates, aggregate usage
+(`today` or trailing seven UTC days, with explicit daily counts), engine info including probe
+error, and settings. Key reads exclude hashes; usage exposes counts only. `log_requests` in
+settings is the runtime value and `log_requests_remembered` is false. Writes use the CLI's
+store operations and shared mint/rotation helpers, then reload the running store; a notification
+failure after a committed write is logged without reporting the write as a refusal.
 
 ## Measurement (`docs/MEASURE.md`, PM)
 

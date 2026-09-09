@@ -15,9 +15,13 @@ import (
 type Filter struct {
 	KeyID string    // empty = every key
 	Since time.Time // zero = from the beginning
+	Until time.Time // exclusive; zero = no upper bound
 }
 
 func (f Filter) match(e *Event) bool {
+	if !f.Until.IsZero() && !e.TS.Before(f.Until) {
+		return false
+	}
 	if f.KeyID != "" && e.KeyID != f.KeyID {
 		return false
 	}

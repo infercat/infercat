@@ -214,7 +214,7 @@ func TestServeLogRequestsPrintsTheLine(t *testing.T) {
 			rec <- r
 			return gw, nil
 		}
-		args := []string{"serve", "--data-dir", dir, "--upstream", engine}
+		args := []string{"serve", "--console", "127.0.0.1:0", "--data-dir", dir, "--upstream", engine}
 		if on {
 			args = append(args, "--log-requests")
 		}

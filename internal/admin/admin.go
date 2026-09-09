@@ -1,10 +1,11 @@
-// Package admin is the host's own read-only window on a running daemon: a tiny HTTP server on a
+// Package admin is the host's authenticated management surface: a tiny HTTP server on a
 // unix socket in the data dir (a loopback port on Windows), and the client the `status`
 // subcommand uses. It is never exposed through the tunnel (docs/PRINCIPLES.md, Protection 1).
 package admin
 
 import (
 	"context"
+	"crypto/subtle"
 	"encoding/json"
 	"errors"
 	"io"
@@ -21,7 +22,7 @@ import (
 const (
 	SockName  = "admin.sock"  // unix
 	PortName  = "admin.port"  // windows fallback
-	TokenName = "admin.token" // windows fallback
+	TokenName = "admin.token" // every platform, per run
 )
 
 // ErrNoDaemon means nothing is listening: `serve` is not running for this data dir.
@@ -31,6 +32,7 @@ var ErrNoDaemon = errors.New("no running host found for this data dir")
 // for `serve` and "bridge" for a `connect` given a data dir (ticket 029 promise 5): a bridge has
 // one session, its local endpoint under Upstream, and no keys.
 type Status struct {
+	Console  string   `json:"console,omitempty"`
 	Product  string   `json:"product"`
 	Version  string   `json:"version"`
 	UptimeS  int64    `json:"uptime_s"`
@@ -135,13 +137,15 @@ type Server struct {
 // promise 9); events, when non-nil, feeds GET /events (029), one JSON event per line for as long
 // as the client reads. All the host's own, over the unix socket only — never the tunnel
 // (Protection 1).
-func Serve(dataDir string, status func() Status, reload func() error, events *Events) (*Server, error) {
+func Serve(dataDir string, status func() Status, reload func() error, events *Events, api ...http.Handler) (*Server, error) {
 	l, token, clean, err := listen(dataDir)
 	if err != nil {
 		return nil, err
 	}
 	done := make(chan struct{})
-	authed := func(r *http.Request) bool { return token == "" || r.Header.Get("Authorization") == "Bearer "+token }
+	authed := func(r *http.Request) bool {
+		return token != "" && subtle.ConstantTimeCompare([]byte(r.Header.Get("Authorization")), []byte("Bearer "+token)) == 1
+	}
 	mux := http.NewServeMux()
 	mux.HandleFunc("GET /events", func(w http.ResponseWriter, r *http.Request) {
 		if !authed(r) {
@@ -198,7 +202,18 @@ func Serve(dataDir string, status func() Status, reload func() error, events *Ev
 		enc.SetIndent("", "  ")
 		enc.Encode(s)
 	})
-	srv := &http.Server{Handler: mux, ReadHeaderTimeout: 5 * time.Second, IdleTimeout: 30 * time.Second}
+	if len(api) > 0 {
+		mux.Handle("/", api[0])
+	}
+	handler := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Cache-Control", "no-store")
+		if !authed(r) {
+			http.Error(w, "unauthorized", http.StatusUnauthorized)
+			return
+		}
+		mux.ServeHTTP(w, r)
+	})
+	srv := &http.Server{Handler: handler, ReadHeaderTimeout: 5 * time.Second, IdleTimeout: 30 * time.Second}
 	s := &Server{l: l, srv: srv, clean: clean, done: done}
 	go srv.Serve(l)
 	return s, nil
@@ -209,13 +224,16 @@ func (s *Server) Addr() string { return s.l.Addr().String() }
 
 // Close stops serving and removes the socket / port files.
 func (s *Server) Close() error {
-	s.once.Do(func() { close(s.done) })
-	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
-	defer cancel()
-	err := s.srv.Shutdown(ctx)
-	if s.clean != nil {
-		s.clean()
-	}
+	var err error
+	s.once.Do(func() {
+		close(s.done)
+		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
+		defer cancel()
+		err = s.srv.Shutdown(ctx)
+		if s.clean != nil {
+			s.clean()
+		}
+	})
 	return err
 }
 

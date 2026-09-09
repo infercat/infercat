@@ -24,7 +24,7 @@ test:
 vet:
 	go vet ./...
 
-check: vet test client-check
+check: console-check vet test client-check
 	sh hack/install_test.sh
 	@if command -v shellcheck >/dev/null 2>&1; then shellcheck -s sh hack/install.sh; else echo "shellcheck: skipped (not installed)"; fi
 	@echo "CHECK OK"
@@ -33,7 +33,7 @@ check: vet test client-check
 wasm:
 	sh web/wasm/build.sh
 
-web: wasm
+web: console-check wasm
 	cd web && pnpm install --frozen-lockfile && pnpm typecheck && pnpm build
 
 web-test:
@@ -92,3 +92,7 @@ demo:
 client-check:
 	cd web && pnpm install --frozen-lockfile
 	cd web && pnpm --filter @infercat/client build && pnpm --filter @infercat/client typecheck && pnpm --filter @infercat/client lint && pnpm --filter @infercat/client test
+
+.PHONY: console-check
+console-check:
+	cd console && pnpm install --frozen-lockfile && pnpm typecheck && pnpm lint && pnpm test && pnpm build

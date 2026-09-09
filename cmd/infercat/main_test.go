@@ -527,7 +527,7 @@ func TestServeRoutesTunnelLogAndFollowsSlots(t *testing.T) {
 			engineSeen.Store(&up)
 			return gw, nil
 		}
-		args := []string{"serve", "--data-dir", dir, "--upstream", engine.URL}
+		args := []string{"serve", "--console", "127.0.0.1:0", "--data-dir", dir, "--upstream", engine.URL}
 		if verbose {
 			args = append(args, "--verbose")
 		}
@@ -612,7 +612,7 @@ func serveOnce(t *testing.T, dir string, args ...string) result {
 	var out, errw lockedBuffer
 	code := make(chan int, 1)
 	go func() {
-		code <- run(ctx, append([]string{"serve", "--data-dir", dir}, args...), &out, &errw, nil, false, plat)
+		code <- run(ctx, append([]string{"serve", "--console", "127.0.0.1:0", "--data-dir", dir}, args...), &out, &errw, nil, false, plat)
 	}()
 	select {
 	case <-gw.serving:

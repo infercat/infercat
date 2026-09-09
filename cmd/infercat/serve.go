@@ -16,6 +16,7 @@ import (
 	"sync/atomic"
 	"time"
 
+	consolebundle "github.com/infercat/infercat/console"
 	"github.com/infercat/infercat/internal/admin"
 	"github.com/infercat/infercat/internal/keys"
 	"github.com/infercat/infercat/internal/product"
@@ -48,6 +49,11 @@ func (e *env) cmdServe(ctx context.Context, pre string, args []string) error {
 	}
 
 	fs := flag.NewFlagSet("serve", flag.ContinueOnError)
+	consoleDefault := cfg.Console
+	if consoleDefault == "" {
+		consoleDefault = "127.0.0.1:9101"
+	}
+	consoleAddr := fs.String("console", consoleDefault, "console loopback IP:port; off disables")
 	fs.String("data-dir", dataDir, dataDirUsage)
 	upURL := fs.String("upstream", cfg.Upstream, "inference server URL; detected when empty")
 	upKey := fs.String("upstream-key", cfg.UpstreamKey, "bearer token for the inference server")
@@ -65,11 +71,20 @@ func (e *env) cmdServe(ctx context.Context, pre string, args []string) error {
 		return err
 	}
 
+	consoleListener, err := admin.ListenConsole(*consoleAddr)
+	if err != nil {
+		return err
+	}
+	consoleAddress := ""
+	if consoleListener != nil {
+		defer consoleListener.Close()
+		consoleAddress = consoleListener.Addr().String()
+	}
 	*upURL = forgetIfAuto(*upURL)
 	if err := saveConfig(dataDir, config{
 		Upstream: *upURL, UpstreamKey: *upKey, Slots: *slots,
 		DevListen: *devListen, DERPMapURL: *derpMapURL,
-		Region: *region, Name: *name, WebURL: *webURLFlag,
+		Region: *region, Name: *name, WebURL: *webURLFlag, Console: *consoleAddr,
 	}); err != nil {
 		return err
 	}
@@ -140,15 +155,24 @@ func (e *env) cmdServe(ctx context.Context, pre string, args []string) error {
 	}
 	started := time.Now()
 	adm, err := admin.Serve(dataDir, func() admin.Status {
-		return buildStatus(ctx, started, tun, up, gw, store, tele)
-	}, store.Reload, events)
+		st := buildStatus(ctx, started, tun, up, gw, store, tele)
+		st.Console = consoleAddress
+		return st
+	}, store.Reload, events, e.consoleAPI(store, tun.Addr(), up, consoleSettings{
+		Name: hostName, WebURL: webURL(config{WebURL: *webURLFlag}), Slots: *slots,
+		LogRequests: *logRequests, DataDir: dataDir,
+	}))
 	if err != nil {
 		return fmt.Errorf("admin API: %w", err)
 	}
 	defer adm.Close()
+	if consoleListener != nil {
+		server := adm.ServeConsole(consoleListener, consolebundle.Files())
+		defer server.Close()
+	}
 
 	e.printStartup(ctx, startup{
-		tun: tun, up: up, store: store, dataDir: dataDir,
+		tun: tun, up: up, store: store, dataDir: dataDir, consoleAddr: consoleAddress,
 		hostName: hostName, webURL: webURL(config{WebURL: *webURLFlag}), newIdentity: newIdentity,
 	})
 
@@ -284,6 +308,7 @@ func refreshLoop(ctx context.Context, up upstream.Upstream, logf func(string, ..
 // startup is everything the banner names. It is a struct because the banner grew the four lines
 // the strangers asked for (web, name, access, data) and a positional list of seven was worse.
 type startup struct {
+	consoleAddr string
 	tun         tunnelServer
 	up          upstream.Upstream
 	store       keys.Store
@@ -316,6 +341,9 @@ func (e *env) printStartup(ctx context.Context, s startup) {
 	fmt.Fprintf(e.out, "access    friends reach only %s on %s\n", friendRoutes, info.URL)
 	fmt.Fprintf(e.out, "          nothing else on this machine — no other port, no files\n")
 	fmt.Fprintf(e.out, "data      %s\n", s.dataDir)
+	if s.consoleAddr != "" {
+		fmt.Fprintf(e.out, "console   http://%s  (open it with: infercat console)\n", s.consoleAddr)
+	}
 	if s.newIdentity {
 		fmt.Fprintf(e.out, "          wrote %s — this is your host identity. Back it up; don't sync it to\n", tunnel.KeyFile)
 		fmt.Fprintf(e.out, "          Dropbox or a dotfiles repo; deleting it invalidates every invite you send.\n")
@@ -542,6 +570,7 @@ Flags:
   --ephemeral             never write the host key; a new address every run (not remembered)
   --verbose               print the tunnel engine's log on the terminal instead of
                           <data-dir>/tunnel.log (not remembered)
+  --console IP:PORT      loopback console (default 127.0.0.1:9101); off disables; remembered
   --log-requests          print one line per completed request: who, what, tokens, timings,
                           how it ended — never the prompt (not remembered)
   --data-dir DIR          where this host's files live:

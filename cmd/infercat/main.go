@@ -119,6 +119,8 @@ func run(ctx context.Context, args []string, out, errw io.Writer, in io.Reader, 
 	}
 	cmd, cargs := rest[0], rest[1:]
 	switch cmd {
+	case "console":
+		err = e.cmdConsole(ctx, dataDir, cargs)
 	case "serve":
 		err = e.cmdServe(ctx, dataDir, cargs)
 	case "keys":
@@ -290,6 +292,7 @@ Commands:
 Start here:
   infercat serve                  # finds llama.cpp, Ollama, LM Studio, or vLLM
   infercat keys add alice         # prints Alice's invite, once
+  infercat console --print             # open the host console URL
   infercat status
   infercat connect ic1.tc….…      # a friend's side: any app, base URL http://127.0.0.1:11435/v1
 

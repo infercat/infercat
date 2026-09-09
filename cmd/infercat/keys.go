@@ -141,12 +141,11 @@ func (e *env) keysAdd(ctx context.Context, pre string, args []string) error {
 	if err != nil {
 		return err
 	}
-	k, secret, err := store.Add(ctx, pos[0], apply(keys.Limits{}))
+	k, inv, err := e.mintKey(ctx, store, addr, pos[0], apply(keys.Limits{}))
 	if err != nil {
 		return err
 	}
 	e.reloadHost(ctx, dataDir)
-	inv := e.plat.encodeInvite(addr, secret)
 	if *asJSON {
 		return e.printInviteJSON(dataDir, k, inv)
 	}
@@ -351,12 +350,11 @@ func (e *env) keysRotate(ctx context.Context, pre string, args []string) error {
 	if err != nil {
 		return err
 	}
-	secret, err := store.Rotate(ctx, k.ID)
+	inv, err := e.rotateKey(ctx, store, addr, k.ID)
 	if err != nil {
 		return err
 	}
 	e.reloadHost(ctx, dataDir)
-	inv := e.plat.encodeInvite(addr, secret)
 	if *asJSON {
 		return e.printInviteJSON(dataDir, k, inv)
 	}
@@ -490,3 +488,19 @@ Changes limits on an existing key. Only the flags you pass change; 0 means "no l
 
 Limit flags: --rpm --tpm --max-concurrent --max-output-tokens --max-context --daily-tokens --models
 `
+
+// Mint and rotation share the exact secret-to-invite path with the admin API.
+func (e *env) mintKey(ctx context.Context, store *keys.FileStore, addr, name string, limits keys.Limits) (*keys.Key, string, error) {
+	k, secret, err := store.Add(ctx, name, limits)
+	if err != nil {
+		return nil, "", err
+	}
+	return k, e.plat.encodeInvite(addr, secret), nil
+}
+func (e *env) rotateKey(ctx context.Context, store *keys.FileStore, addr, id string) (string, error) {
+	secret, err := store.Rotate(ctx, id)
+	if err != nil {
+		return "", err
+	}
+	return e.plat.encodeInvite(addr, secret), nil
+}

@@ -83,6 +83,10 @@ func TestSocketIsPrivate(t *testing.T) {
 		t.Log("file modes are not checked on windows: os reports 0666/0444 only")
 		return
 	}
+	tokenInfo, err := os.Stat(filepath.Join(dir, TokenName))
+	if err != nil || tokenInfo.Mode().Perm() != 0o600 {
+		t.Fatalf("admin token must be 0600: %v %v", tokenInfo, err)
+	}
 	fi, err := os.Stat(filepath.Join(dir, SockName))
 	if err != nil {
 		t.Fatalf("admin.sock: %v", err)
@@ -176,9 +180,6 @@ func TestStaleSocketIsReplaced(t *testing.T) {
 
 // Two hosts on one data dir would fight over keys.json and the tunnel; the second must refuse.
 func TestSecondHost(t *testing.T) {
-	if runtime.GOOS == "windows" {
-		t.Skip("the windows fallback has no socket to collide on")
-	}
 	dir := shortDir(t)
 	s, err := Serve(dir, sample, nil, nil)
 	if err != nil {
