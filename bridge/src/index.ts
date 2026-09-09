@@ -7,6 +7,7 @@ type Frame = {
   status?: number;
   headers?: Record<string, string>;
   data?: string;
+  hashes?: string[];
 };
 type Job = {
   id: string;
@@ -23,11 +24,12 @@ const CHUNK = 512 * 1024,
   MAX_BODY = 4 * 1024 * 1024,
   MAX_FRAME = 1024 * 1024;
 const hostID = /^[a-zA-Z0-9_-]{1,64}$/;
-const reply = (status: number, code: string) =>
-  Response.json(
-    { error: { message: code, type: "bridge_error", code } },
-    { status },
-  );
+const reply = (
+  status: number,
+  code: string,
+  type = "bridge_error",
+  message = code,
+) => Response.json({ error: { message, type, code } }, { status });
 const subset = (headers: Headers, keys: string[]) =>
   Object.fromEntries(
     keys.filter((k) => headers.has(k)).map((k) => [k, headers.get(k)!]),
@@ -43,6 +45,9 @@ const token = () =>
   Array.from(crypto.getRandomValues(new Uint8Array(32)), (b) =>
     b.toString(16).padStart(2, "0"),
   ).join("");
+type TimingSafeSubtle = SubtleCrypto & {
+  timingSafeEqual(a: ArrayBufferView, b: ArrayBufferView): boolean;
+};
 function encode(b: Uint8Array): string {
   let s = "";
   for (let i = 0; i < b.length; i += 8192)
@@ -117,6 +122,7 @@ export default {
 
 export class Host extends DurableObject<Env> {
   private socket?: WebSocket;
+  private keyHashes: Uint8Array[] = [];
   private active?: Job;
   private queue: Job[] = [];
   private reading = 0;
@@ -124,8 +130,52 @@ export class Host extends DurableObject<Env> {
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
     this.socket = ctx.getWebSockets()[0];
+    ctx.storage.sql.exec(
+      "CREATE TABLE IF NOT EXISTS friend_keys (hash TEXT PRIMARY KEY)",
+    );
+    this.keyHashes = [
+      ...ctx.storage.sql.exec<{ hash: string }>("SELECT hash FROM friend_keys"),
+    ].map((row) => new TextEncoder().encode(row.hash));
     ctx.setWebSocketAutoResponse(
       new WebSocketRequestResponsePair('{"type":"ping"}', '{"type":"pong"}'),
+    );
+  }
+  private replaceKeys(hashes: string[]) {
+    this.ctx.storage.transactionSync(() => {
+      this.ctx.storage.sql.exec("DELETE FROM friend_keys");
+      for (const h of new Set(hashes))
+        this.ctx.storage.sql.exec(
+          "INSERT INTO friend_keys(hash) VALUES (?)",
+          h,
+        );
+    });
+    this.keyHashes = [...new Set(hashes)].map((h) =>
+      new TextEncoder().encode(h),
+    );
+  }
+  private async admits(req: Request) {
+    const match = /^Bearer (\S+)$/.exec(req.headers.get("authorization") || "");
+    if (!match) return false;
+    const digest = new TextEncoder().encode(await hash(match[1]));
+    let allowed = 0;
+    for (const known of this.keyHashes)
+      allowed |= Number(
+        (crypto.subtle as TimingSafeSubtle).timingSafeEqual(digest, known),
+      );
+    return allowed !== 0;
+  }
+  private invalidKey(req: Request) {
+    void req.body?.cancel().catch(() => {});
+    const malformed = !/^Bearer (\S+)$/.test(
+      req.headers.get("authorization") || "",
+    );
+    return reply(
+      401,
+      "invalid_key",
+      "authentication_error",
+      malformed
+        ? "missing or malformed Authorization header; expected: Bearer <invite secret>"
+        : "unknown key; check the invite",
     );
   }
   private send(f: object) {
@@ -150,6 +200,7 @@ export class Host extends DurableObject<Env> {
         return true;
       });
       if (!accepted) return reply(409, "registration_used");
+      this.replaceKeys([]);
       this.disconnect();
       return Response.json(
         { host, token: secret },
@@ -174,12 +225,14 @@ export class Host extends DurableObject<Env> {
       )
         return reply(401, "unauthorized");
       this.disconnect();
+      this.replaceKeys([]);
       const pair = new WebSocketPair();
       this.socket = pair[1];
       this.ctx.acceptWebSocket(pair[1]);
       pair[1].serializeAttachment({ host });
       return new Response(null, { status: 101, webSocket: pair[0] });
     }
+    if (!(await this.admits(req))) return this.invalidKey(req);
     // Persistent per-host fixed window: hibernation and reconnect cannot reset admission.
     const allowed = await this.ctx.storage.transaction(async (tx) => {
       const minute = Math.floor(Date.now() / 60000),
@@ -265,6 +318,17 @@ export class Host extends DurableObject<Env> {
       )
         throw new Error();
       const f = JSON.parse(message) as Frame;
+      if (f.type === "keys") {
+        const hashes = f.hashes ?? [];
+        if (
+          !Array.isArray(hashes) ||
+          hashes.some((h) => typeof h !== "string" || !/^[a-f0-9]{64}$/.test(h))
+        )
+          throw new Error();
+        this.replaceKeys(hashes);
+        this.send({ type: "keys_ready" });
+        return;
+      }
       if (!job || f.id !== job.id) throw new Error();
       // Drain in-flight response frames until the host confirms the cancelled handler stopped.
       if (job.cancelled) {

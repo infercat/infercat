@@ -13,6 +13,7 @@ import (
 	"regexp"
 	"sync"
 
+	"github.com/infercat/infercat/internal/keys"
 	"github.com/infercat/infercat/internal/usage"
 )
 
@@ -86,10 +87,12 @@ func (r Recorder) Record(ctx context.Context, e usage.Event) {
 
 // Manager serializes reloads. A cancelled client is joined before its replacement starts.
 type Manager struct {
-	mu     sync.Mutex
-	cfg    Config
-	cancel context.CancelFunc
-	done   chan struct{}
+	Keys    *keys.FileStore
+	updates chan struct{}
+	mu      sync.Mutex
+	cfg     Config
+	cancel  context.CancelFunc
+	done    chan struct{}
 }
 
 func (m *Manager) Close() {
@@ -113,6 +116,12 @@ func (m *Manager) Reload(ctx context.Context, dir string, h http.Handler, logf f
 		return err
 	}
 	if c == m.cfg {
+		if m.updates != nil {
+			select {
+			case m.updates <- struct{}{}:
+			default:
+			}
+		}
 		return nil
 	}
 	m.stop()
@@ -121,8 +130,13 @@ func (m *Manager) Reload(ctx context.Context, dir string, h http.Handler, logf f
 	}
 	child, cancel := context.WithCancel(ctx)
 	m.cfg, m.cancel, m.done = c, cancel, make(chan struct{})
+	m.updates = make(chan struct{}, 1)
+	syncKeys := keySync{store: m.Keys, reload: m.updates}
+	if m.Keys != nil {
+		syncKeys.changed = m.Keys.Changes()
+	}
 	logf("public endpoint: %s\n%s", c.URL(), TrustLine)
-	go func() { defer close(m.done); Run(child, c, h, logf) }()
+	go func() { defer close(m.done); Run(child, c, h, logf, syncKeys) }()
 	return nil
 }
 func refusal(status int) error {

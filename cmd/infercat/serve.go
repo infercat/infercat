@@ -191,7 +191,7 @@ func (e *env) cmdServe(ctx context.Context, pre string, args []string) error {
 		return fmt.Errorf("gateway: %w", err)
 	}
 
-	var public bridge.Manager
+	public := bridge.Manager{Keys: store}
 	defer public.Close()
 	reload := func() error {
 		if err := store.Reload(); err != nil {

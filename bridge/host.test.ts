@@ -1,15 +1,45 @@
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { timingSafeEqual, randomUUID, createHash } from "node:crypto";
 import { Host } from "./src/index";
 
-let host: Host, sent: any[], ws: any;
+let host: Host, sent: any[], ws: any, storage: any, hashes: Set<string>;
+let timingChecks: ReturnType<typeof vi.fn>;
 const drain = () => vi.advanceTimersByTimeAsync(0);
 beforeEach(() => {
   vi.useFakeTimers();
+  timingChecks = vi.fn(timingSafeEqual);
+  vi.stubGlobal("crypto", {
+    subtle: {
+      digest: async (_algorithm: string, value: ArrayBufferView) => {
+        const bytes = new Uint8Array(
+          value.buffer,
+          value.byteOffset,
+          value.byteLength,
+        );
+        return Uint8Array.from(createHash("sha256").update(bytes).digest())
+          .buffer;
+      },
+      timingSafeEqual: timingChecks,
+    },
+    randomUUID,
+  });
   vi.stubGlobal("WebSocketRequestResponsePair", class {});
   sent = [];
   ws = { send: (s: string) => sent.push(JSON.parse(s)), close: vi.fn() };
   const values = new Map();
-  const storage = {
+  hashes = new Set([createHash("sha256").update("friend").digest("hex")]);
+  storage = {
+    __values: values,
+    sql: {
+      exec: (query: string, ...args: string[]) => {
+        if (query.startsWith("DELETE")) hashes.clear();
+        if (query.startsWith("INSERT")) hashes.add(args[0]);
+        return query.startsWith("SELECT")
+          ? [...hashes].map((hash) => ({ hash }))
+          : [];
+      },
+    },
+    transactionSync: (f: () => unknown) => f(),
     transaction: async (fn: any) =>
       fn({
         get: async (key: string) => values.get(key),
@@ -34,13 +64,15 @@ afterEach(() => {
 const req = (body: any = "{}", signal?: AbortSignal) =>
   new Request("https://fixture/v1/chat/completions", {
     method: "POST",
-    headers: { "x-bridge-host": "fixture" },
+    headers: { "x-bridge-host": "fixture", authorization: "Bearer friend" },
     body,
     duplex: "half",
     signal,
   } as RequestInit);
 const frame = (f: object) => host.webSocketMessage(ws, JSON.stringify(f));
 const requestFrames = () => sent.filter((f) => f.type === "request");
+const keyHash = (secret: string) =>
+  createHash("sha256").update(secret).digest("hex");
 async function beginResponse(id: string, pending: Promise<Response>) {
   await frame({
     type: "response",
@@ -187,7 +219,7 @@ it("reserves four readers/16 MiB, refuses the next upload immediately, and relea
   // No body means no upload buffer: a models request can still use the host slot.
   const models = host.fetch(
     new Request("https://fixture/v1/models", {
-      headers: { "x-bridge-host": "fixture" },
+      headers: { "x-bridge-host": "fixture", authorization: "Bearer friend" },
     }),
   );
   await drain();
@@ -218,4 +250,73 @@ it("releases the full reservation after oversize refusal and after a successful 
   expect((host as any).reading).toBe(0);
   expect((host as any).readBytes).toBe(0);
   await finishNext(next);
+});
+
+it("refuses missing and unknown keys before rate, body, or queue admission", async () => {
+  let cancelled = false;
+  const noKey = new Request("https://fixture/v1/chat/completions", {
+    method: "POST",
+    headers: { "x-bridge-host": "fixture" },
+    body: new ReadableStream({
+      cancel() {
+        cancelled = true;
+      },
+    }),
+    duplex: "half",
+  } as RequestInit);
+  const wrong = req("{}");
+  wrong.headers.set("authorization", "Bearer wrong");
+  for (const request of [noKey, wrong]) {
+    const response = await host.fetch(request);
+    expect(response.status).toBe(401);
+    expect((await response.json()).error.code).toBe("invalid_key");
+  }
+  expect(requestFrames()).toHaveLength(0);
+  expect((host as any).reading).toBe(0);
+  expect((host as any).queue).toHaveLength(0);
+  expect((storage as any).__values.get("rate")).toBeUndefined();
+  expect(cancelled).toBe(true);
+});
+
+it("replaces the complete key set and compares every stored hash", async () => {
+  hashes.add(keyHash("second"));
+  host = new Host(
+    {
+      getWebSockets: () => [ws],
+      setWebSocketAutoResponse() {},
+      storage,
+    } as any,
+    { REGISTRY: { get: async () => null } } as any,
+  );
+  const admitted = host.fetch(req());
+  await drain();
+  expect(timingChecks).toHaveBeenCalledTimes(2);
+  await finishNext(admitted);
+
+  await frame({ type: "keys", hashes: [keyHash("replacement")] });
+  expect(sent).toContainEqual({ type: "keys_ready" });
+  expect(hashes).toEqual(new Set([keyHash("replacement")]));
+  expect((await host.fetch(req())).status).toBe(401);
+  const replacement = req();
+  replacement.headers.set("authorization", "Bearer replacement");
+  const next = host.fetch(replacement);
+  await drain();
+  await finishNext(next);
+});
+
+it("loads the persisted key set when the object wakes without a new socket", async () => {
+  await frame({ type: "keys", hashes: [keyHash("persisted")] });
+  host = new Host(
+    {
+      getWebSockets: () => [ws],
+      setWebSocketAutoResponse() {},
+      storage,
+    } as any,
+    { REGISTRY: { get: async () => null } } as any,
+  );
+  const request = req();
+  request.headers.set("authorization", "Bearer persisted");
+  const pending = host.fetch(request);
+  await drain();
+  await finishNext(pending);
 });

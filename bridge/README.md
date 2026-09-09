@@ -78,11 +78,20 @@ The host coalesces token flushes at approximately 100 ms or a full chunk, with o
 chunk at a time and a 30-second acknowledgment deadline. An interrupted public client must retry
 deliberately.
 
-**Accepted slice-1 admission limitation:** friend keys are validated only at the host. Unauthenticated
-requests reach the per-host rate window, upload-reader budget, and four-deep queue; someone with the public URL can
-consume that capacity and starve friends. Per-job cancellation and pre-queue body reads do not
-solve that separate limitation. An edge key-hash check is deferred to a later slice, as recorded
-in ticket 072's review ruling.
+The host publishes a complete set of its active friend-key SHA-256 hashes on every bridge
+connection and key reload. The object replaces its prior set transactionally and stores it in its
+SQLite-backed state, so hibernation does not require waking the host. The edge hashes an incoming
+bearer and compares it with every stored hash using Cloudflare's constant-time comparison. Missing,
+malformed, unknown, paused, and revoked keys receive the gateway's 401 `invalid_key` shape before
+the per-host rate window, upload-reader budget, or queue. The gateway still validates every key;
+the edge set controls admission and never becomes the authentication authority.
+
+Only hashes already stored in `keys.json` leave the host; plaintext friend secrets do not. A new
+socket starts fail-closed with an empty set until its first snapshot arrives. In-process key writes
+coalesce a nonblocking notification and publish the latest complete snapshot. CLI key writes use
+the existing admin `/reload`, which also publishes when `bridge.json` itself is unchanged. Paused
+or revoked keys can pass edge admission only during the short interval between the committed key
+change and snapshot replacement; the host gateway rejects them throughout that interval.
 
 ## PM deployment and registration
 

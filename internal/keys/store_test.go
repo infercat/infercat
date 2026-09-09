@@ -291,6 +291,55 @@ func TestRefusedWriteDoesNotMutate(t *testing.T) {
 	}
 }
 
+func TestChangesCoalescesOnlySuccessfulCommits(t *testing.T) {
+	ctx := context.Background()
+	s, dir := newStore(t)
+	changes := s.Changes()
+	k, _, err := s.Add(ctx, "alice", Limits{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-changes:
+	default:
+		t.Fatal("successful Add did not notify")
+	}
+
+	// Several commits may coalesce because consumers always re-read a complete snapshot.
+	if err := s.SetStatus(ctx, k.ID, Paused); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.SetStatus(ctx, k.ID, Active); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case <-changes:
+	default:
+		t.Fatal("successful mutations did not notify")
+	}
+	select {
+	case <-changes:
+		t.Fatal("coalesced notifier queued duplicate state")
+	default:
+	}
+
+	if os.Geteuid() == 0 {
+		return
+	}
+	if err := os.Chmod(dir, 0o500); err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { _ = os.Chmod(dir, 0o700) })
+	if err := s.SetStatus(ctx, k.ID, Paused); err == nil {
+		t.Fatal("mutation unexpectedly succeeded")
+	}
+	select {
+	case <-changes:
+		t.Fatal("refused mutation notified a state that never committed")
+	default:
+	}
+}
+
 func TestUnknownFileVersionIsRefused(t *testing.T) {
 	dir := t.TempDir()
 	if err := os.WriteFile(filepath.Join(dir, FileName), []byte(`{"version":99,"keys":[]}`), 0o600); err != nil {

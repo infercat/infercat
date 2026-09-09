@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/coder/websocket"
+	"github.com/infercat/infercat/internal/keys"
 )
 
 const ChunkSize = 512 << 10 // Base64 + metadata remains below the 1 MiB message cap.
@@ -26,6 +27,7 @@ type frame struct {
 	Path    string            `json:"path,omitempty"`
 	Headers map[string]string `json:"headers,omitempty"`
 	Status  int               `json:"status,omitempty"`
+	Hashes  []string          `json:"hashes,omitempty"`
 	Data    []byte            `json:"data,omitempty"`
 }
 
@@ -61,11 +63,38 @@ func Register(ctx context.Context, endpoint, code string) (Config, error) {
 	c.Endpoint = endpoint
 	return c, c.Validate()
 }
-func Run(ctx context.Context, c Config, h http.Handler, logf func(string, ...any)) {
+
+type keySync struct {
+	store           *keys.FileStore
+	reload, changed <-chan struct{}
+}
+
+func (k keySync) publish(ctx context.Context, send func(frame) error) error {
+	hashes := []string{}
+	if k.store != nil {
+		list, err := k.store.List(ctx)
+		if err != nil {
+			_ = send(frame{Type: "keys"})
+			return err
+		}
+		for _, key := range list {
+			if key.Status == keys.Active {
+				h := strings.TrimPrefix(key.SecretHash, "sha256:")
+				if !strings.HasPrefix(key.SecretHash, "sha256:") || !tokenPattern.MatchString(h) {
+					_ = send(frame{Type: "keys"})
+					return errors.New("invalid stored key hash")
+				}
+				hashes = append(hashes, h)
+			}
+		}
+	}
+	return send(frame{Type: "keys", Hashes: hashes})
+}
+func Run(ctx context.Context, c Config, h http.Handler, logf func(string, ...any), syncKeys ...keySync) {
 	backoff := time.Second
 	for ctx.Err() == nil {
 		started := time.Now()
-		err := session(ctx, c, h)
+		err := session(ctx, c, h, syncKeys...)
 		if ctx.Err() != nil {
 			return
 		}
@@ -82,7 +111,7 @@ func Run(ctx context.Context, c Config, h http.Handler, logf func(string, ...any
 		}
 	}
 }
-func session(ctx context.Context, c Config, h http.Handler) error {
+func session(ctx context.Context, c Config, h http.Handler, syncKeys ...keySync) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	conn, _, err := websocket.Dial(ctx, "wss"+strings.TrimPrefix(c.Endpoint, "https")+"/h/"+c.Host+"/socket", &websocket.DialOptions{HTTPHeader: http.Header{"Authorization": {"Bearer " + c.Token}}})
@@ -96,9 +125,19 @@ func session(ctx context.Context, c Config, h http.Handler) error {
 		if err != nil {
 			return err
 		}
+		if len(b) > MaxFrame {
+			return errors.New("bridge frame exceeds cap")
+		}
 		wctx, stop := context.WithTimeout(ctx, 30*time.Second)
 		defer stop()
 		return conn.Write(wctx, websocket.MessageText, b)
+	}
+	sync := keySync{}
+	if len(syncKeys) > 0 {
+		sync = syncKeys[0]
+	}
+	if err := sync.publish(ctx, send); err != nil {
+		return err
 	}
 	go func() {
 		ticker := time.NewTicker(25 * time.Second)
@@ -107,6 +146,16 @@ func session(ctx context.Context, c Config, h http.Handler) error {
 			select {
 			case <-ctx.Done():
 				return
+			case <-sync.reload:
+				if sync.publish(ctx, send) != nil {
+					cancel()
+					return
+				}
+			case <-sync.changed:
+				if sync.publish(ctx, send) != nil {
+					cancel()
+					return
+				}
 			case <-ticker.C:
 				if send(frame{Type: "ping"}) != nil {
 					cancel()
@@ -137,7 +186,7 @@ func session(ctx context.Context, c Config, h http.Handler) error {
 		if len(b) > MaxFrame || json.Unmarshal(b, &f) != nil {
 			return errors.New("invalid bridge frame")
 		}
-		if f.Type == "pong" {
+		if f.Type == "pong" || f.Type == "keys_ready" {
 			continue
 		}
 		if f.Type == "ack" && meta != nil && f.ID == meta.ID && ack != nil {

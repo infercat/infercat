@@ -1,4 +1,5 @@
 import { beforeAll, afterAll, describe, it, expect } from "vitest";
+import { createHash } from "node:crypto";
 import { Miniflare, convertV4MiniflareOptions } from "miniflare";
 
 let mf, kv;
@@ -33,7 +34,8 @@ async function register(host = `fixture-${++serial}`) {
   expect(result.status).toBe(200);
   return { ...(await result.json()), code };
 }
-async function socket(c) {
+const digest = (key) => createHash("sha256").update(key).digest("hex");
+async function socket(c, hashes = [digest("friend")]) {
   const result = await mf.dispatchFetch(`https://test/h/${c.host}/socket`, {
     headers: { upgrade: "websocket", authorization: `Bearer ${c.token}` },
   });
@@ -49,7 +51,7 @@ async function socket(c) {
     if (waiter) waiter(f);
     else messages.push(f);
   });
-  return {
+  const peer = {
     ws,
     send: (f) => ws.send(JSON.stringify(f)),
     next: () =>
@@ -57,6 +59,9 @@ async function socket(c) {
         ? Promise.resolve(messages.shift())
         : new Promise((resolve) => waiters.push(resolve)),
   };
+  peer.send({ type: "keys", hashes });
+  expect(await peer.next()).toEqual({ type: "keys_ready" });
+  return peer;
 }
 const post = (c, body = "{}", headers = {}) =>
   mf.dispatchFetch(`https://test/h/${c.host}/v1/chat/completions?x=1`, {
@@ -148,6 +153,70 @@ describe("Worker and hibernating Durable Object", () => {
     });
     expect(res.status).toBe(401);
   });
+  it("refuses missing and unknown friend keys before admission", async () => {
+    const c = await register(),
+      s = await socket(c, [digest("allowed")]);
+    for (const authorization of [undefined, "Bearer wrong"]) {
+      const headers = { "content-type": "application/json" };
+      if (authorization) headers.authorization = authorization;
+      const response = await mf.dispatchFetch(
+        `https://test/h/${c.host}/v1/chat/completions`,
+        { method: "POST", body: "{}", headers },
+      );
+      expect(response.status).toBe(401);
+      const error = (await response.json()).error;
+      expect(error.code).toBe("invalid_key");
+      expect(error.type).toBe("authentication_error");
+      expect(error.message).toBe(
+        authorization
+          ? "unknown key; check the invite"
+          : "missing or malformed Authorization header; expected: Bearer <invite secret>",
+      );
+    }
+    const allowed = mf.dispatchFetch(
+      `https://test/h/${c.host}/v1/chat/completions`,
+      {
+        method: "POST",
+        body: "{}",
+        headers: { authorization: "Bearer allowed" },
+      },
+    );
+    await respond(s, await incoming(s), allowed);
+  });
+  it("replaces the persisted key set across socket loss", async () => {
+    const c = await register(),
+      first = await socket(c, [digest("old")]);
+    first.ws.close();
+    await new Promise((resolve) => setTimeout(resolve, 30));
+    // No live host socket: admission still reads the durable set, then reports host_offline.
+    expect(
+      (
+        await mf.dispatchFetch(`https://test/h/${c.host}/v1/models`, {
+          headers: { authorization: "Bearer old" },
+        })
+      ).status,
+    ).toBe(503);
+    expect(
+      (
+        await mf.dispatchFetch(`https://test/h/${c.host}/v1/models`, {
+          headers: { authorization: "Bearer wrong" },
+        })
+      ).status,
+    ).toBe(401);
+
+    const second = await socket(c, [digest("new")]);
+    expect(
+      (
+        await mf.dispatchFetch(`https://test/h/${c.host}/v1/models`, {
+          headers: { authorization: "Bearer old" },
+        })
+      ).status,
+    ).toBe(401);
+    const admitted = mf.dispatchFetch(`https://test/h/${c.host}/v1/models`, {
+      headers: { authorization: "Bearer new" },
+    });
+    await respond(second, await incoming(second), admitted);
+  });
   it("frames requests at the cap, limits headers, and streams response bytes", async () => {
     const c = await register(),
       s = await socket(c);
@@ -209,6 +278,8 @@ describe("Worker and hibernating Durable Object", () => {
   });
   it("keeps the rate counter across reconnects", async () => {
     const c = await register();
+    (await socket(c)).ws.close();
+    await new Promise((resolve) => setTimeout(resolve, 30));
     for (let i = 0; i < 60; i++) expect((await post(c)).status).toBe(503);
     await socket(c);
     expect((await post(c)).status).toBe(429);
