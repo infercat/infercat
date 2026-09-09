@@ -86,7 +86,7 @@ func (s *consoleState) remoteAction(action, addr string) (any, error) {
 		if err := s.remote.Disable(); err != nil {
 			return nil, err
 		}
-		return map[string]bool{"ok": true}, nil
+		return admin.RemoteResult{OK: true}, nil
 	}
 	v := s.snapshot()
 	if v.ConsoleAddress == "" {
@@ -101,6 +101,6 @@ func (s *consoleState) remoteAction(action, addr string) (any, error) {
 	if v.WebURL != "" {
 		link = v.WebURL + "#" + code
 	}
-	return map[string]string{"key_id": "admin", "name": v.Name, "invite": code, "link": link}, nil
+	return admin.RemoteResult{KeyID: "admin", Name: v.Name, Invite: code, Link: link}, nil
 }
 func consoleRemote(r *http.Request) bool { return r.Header.Get("X-Infercat-Remote") == "true" }

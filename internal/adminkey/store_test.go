@@ -78,10 +78,65 @@ func TestConcurrentReadersAndRotation(t *testing.T) {
 	s.Mint(true)
 	wg.Wait()
 }
-func TestCorruptRecordRefuses(t *testing.T) {
+func TestDamagedRecordStartsDisabledAndRepairsExplicitly(t *testing.T) {
+	for _, raw := range []string{`{"hash":"invalid"}`, `{"hash":`, `null`} {
+		t.Run(raw, func(t *testing.T) {
+			dir := t.TempDir()
+			path := filepath.Join(dir, "admin.json")
+			os.WriteFile(path, []byte(raw), 0600)
+			s, e := Open(dir)
+			if e != nil || s.State().Enabled || s.State().WarningFile != path || s.Warning() == "" {
+				t.Fatal(s, e)
+			}
+			kept, _ := os.ReadFile(path)
+			if string(kept) != raw {
+				t.Fatal("opening overwrote damaged file")
+			}
+			code, e := s.Mint(false)
+			if e != nil || !s.Authenticate(code) || s.Warning() != "" {
+				t.Fatal("repair", e)
+			}
+			again, e := Open(dir)
+			if e != nil || !again.Authenticate(code) || again.Warning() != "" {
+				t.Fatal("restart", e)
+			}
+		})
+	}
+}
+func TestUnreadableRecordAndFailedRepair(t *testing.T) {
 	dir := t.TempDir()
-	os.WriteFile(filepath.Join(dir, "admin.json"), []byte(`{"hash":"invalid"}`), 0600)
-	if _, e := Open(dir); e == nil {
-		t.Fatal("corrupt accepted")
+	path := filepath.Join(dir, "admin.json")
+	os.Mkdir(path, 0700)
+	os.WriteFile(filepath.Join(path, "keep"), []byte("keep"), 0600)
+	s, e := Open(dir)
+	if e != nil || s.State().Enabled || s.Warning() == "" {
+		t.Fatal(s, e)
+	}
+	if _, e = s.Mint(false); e == nil || s.State().Enabled || s.Warning() == "" {
+		t.Fatal("failed repair was hidden")
+	}
+	if e = s.Disable(); e == nil || s.Warning() == "" {
+		t.Fatal("failed off cleared diagnostic")
+	}
+	if _, e = os.Stat(filepath.Join(path, "keep")); e != nil {
+		t.Fatal("damaged artifact removed")
+	}
+}
+
+func TestUnreadableAdminFile(t *testing.T) {
+	dir := t.TempDir()
+	path := filepath.Join(dir, "admin.json")
+	os.WriteFile(path, []byte(`{"hash":"invalid"}`), 0000)
+	defer os.Chmod(path, 0600)
+	if _, err := os.ReadFile(path); err == nil {
+		t.Skip("this platform/user can read mode-000 files")
+	}
+	s, err := Open(dir)
+	if err != nil || s.State().Enabled || s.State().WarningFile != path {
+		t.Fatal(s, err)
+	}
+	code, err := s.Mint(false)
+	if err != nil || !s.Authenticate(code) || s.Warning() != "" {
+		t.Fatal("repair", err)
 	}
 }

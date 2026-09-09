@@ -42,3 +42,8 @@ test('off confirms inline, Keep sends nothing, then off commits',async()=>{
 test('closed pending admin card cannot resurrect a late code',async()=>{
  const s=await setup('pending');click('remote-enable');await tick();document.querySelector('button[data-close]').click();s.finish();await tick();expect(document.body.textContent).not.toContain('ia1.host.secret');expect(document.querySelector('.once')).toBeNull();expect(s.writes).toHaveLength(1);
 });
+for(const lang of ['en','zh'])test('damaged admin file diagnostic '+lang,async()=>{
+ const s=await setup();s.data.settings.remote.warning_file='/private/host/<admin>/admin.json';await app.refresh();document.querySelector(`[data-lang="${lang}"]`).click();
+ const line=document.querySelector('.remote [role="status"]');expect(line.textContent).toContain(s.data.settings.remote.warning_file);expect(line.textContent).toContain(lang==='en'?'Turn remote access on again':'请重新开启远程访问');expect(line.querySelector('admin')).toBeNull();
+ delete s.data.settings.remote.warning_file;await app.refresh();expect(document.querySelector('.remote [role="status"]')).toBeNull();
+});

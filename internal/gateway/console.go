@@ -2,6 +2,7 @@ package gateway
 
 import (
 	"io"
+	"net"
 	"net/http"
 	"net/netip"
 	"strings"
@@ -16,7 +17,17 @@ type consoleBudget struct {
 	starts []time.Time
 	active int
 }
+type consoleFailure struct {
+	started time.Time
+	failed  []time.Time
+	active  int
+}
 type consoleGateway struct {
+	failures      map[netip.Addr]*consoleFailure
+	now           func() time.Time
+	auth          func(string) bool
+	logf          func(string, ...any)
+	lastLog       time.Time
 	store         *adminkey.Store
 	address       string
 	token         func() string
@@ -28,11 +39,15 @@ type consoleGateway struct {
 
 // Console forwards only the explicit console API to the already-bound loopback listener.
 // It never forwards caller headers or exposes the per-run local token to the tunnel.
-func Console(store *adminkey.Store, address string, token func() string, rec usage.Recorder) http.Handler {
+func Console(store *adminkey.Store, address string, token func() string, rec usage.Recorder, logs ...func(string, ...any)) http.Handler {
 	if a, err := netip.ParseAddrPort(address); err != nil || !a.Addr().IsLoopback() {
 		address = ""
 	}
-	return &consoleGateway{store: store, address: address, token: token, rec: rec, client: &http.Client{Timeout: 10 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}}
+	logf := func(string, ...any) {}
+	if len(logs) > 0 && logs[0] != nil {
+		logf = logs[0]
+	}
+	return &consoleGateway{now: time.Now, auth: store.Authenticate, logf: logf, failures: make(map[netip.Addr]*consoleFailure), store: store, address: address, token: token, rec: rec, client: &http.Client{Timeout: 10 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}}
 }
 func consolePath(method, path string) bool {
 	if method == "GET" {
@@ -106,8 +121,16 @@ func (h *consoleGateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		fail(404)
 		return
 	}
+	finish := h.reserveAuthentication(r)
+	if finish == nil {
+		w.Header().Set("Retry-After", "60")
+		fail(429)
+		return
+	}
 	secret, ok := bearer(r.Header.Get("Authorization"))
-	if !ok || !h.store.Authenticate(secret) {
+	valid := ok && h.auth(secret)
+	finish(valid)
+	if !valid {
 		fail(401)
 		return
 	}
@@ -170,4 +193,57 @@ func (h *consoleGateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(status)
 	_, _ = w.Write(result)
+}
+
+// Reserve before hashing. Success refunds the reservation; failures remain until expiry.
+// The trusted tunnel peer survives reconnects; neither ports nor headers define a peer.
+func (h *consoleGateway) reserveAuthentication(r *http.Request) func(bool) {
+	peer, ok := r.Context().Value(sessionContextKey{}).(netip.Addr)
+	if !ok || !peer.IsValid() {
+		host, _, err := net.SplitHostPort(r.RemoteAddr)
+		if err != nil {
+			host = r.RemoteAddr
+		}
+		peer, _ = netip.ParseAddr(host)
+	}
+	peer = peer.Unmap()
+	h.mu.Lock()
+	now := h.now()
+	for key, b := range h.failures {
+		if b.active == 0 && now.Sub(b.started) >= time.Minute {
+			delete(h.failures, key)
+		}
+	}
+	b := h.failures[peer]
+	if b != nil {
+		for len(b.failed) > 0 && now.Sub(b.failed[0]) >= time.Minute {
+			b.failed = b.failed[1:]
+		}
+	}
+	if b == nil && len(h.failures) < 4096 {
+		b = &consoleFailure{started: now}
+		h.failures[peer] = b
+	}
+	if b == nil || len(b.failed)+b.active >= 30 {
+		log := h.lastLog.IsZero() || now.Sub(h.lastLog) >= time.Minute
+		if log {
+			h.lastLog = now
+		}
+		h.mu.Unlock()
+		if log {
+			h.logf("console: authentication failure budget exhausted; requests refused")
+		}
+		return nil
+	}
+	b.active++
+	h.mu.Unlock()
+	return func(valid bool) {
+		h.mu.Lock()
+		defer h.mu.Unlock()
+		b.active--
+		if !valid {
+			b.failed = append(b.failed, h.now())
+			b.started = h.now()
+		}
+	}
 }

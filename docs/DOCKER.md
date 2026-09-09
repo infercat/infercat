@@ -51,9 +51,11 @@ The local console listens on loopback **inside the container**, so it is unreach
 outside this container's bridge network. Publishing port 9101 does not change that. Use
 `docker exec` for keys and status as above.
 
-A host whose mounted data already has remote access enabled can use its admin code in the web
-app for the console page. Remote access must first be enabled in the local console, and the
-admin code retained. A terminal command to enable remote access is coming in the next release.
+Enable remote access on the running container with `docker exec infercat infercat --data-dir /data remote on`.
+Open the returned link or paste the admin code into the web app to reach `/console`.
+Use `remote status`, `remote rotate`, or `remote off` through the same `docker exec` command;
+`--json` supports scripts. The internal loopback console must remain enabled. These commands
+use the host's local admin API and need no shell or published console port.
 An admin code can manage keys and settings: keep it separate from friends' invites.
 
 ## Build without publishing

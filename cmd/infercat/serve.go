@@ -174,7 +174,7 @@ func (e *env) cmdServe(ctx context.Context, pre string, args []string) error {
 	remoteHandler := gateway.Console(remoteStore, consoleAddress, func() string {
 		b, _ := os.ReadFile(filepath.Join(dataDir, admin.TokenName))
 		return strings.TrimSpace(string(b))
-	}, events)
+	}, events, e.logf)
 
 	gw, err := e.plat.newGateway(gatewayOptions{
 		RemoteConsole: remoteHandler, LiveHostName: state.name,
@@ -224,7 +224,7 @@ func (e *env) cmdServe(ctx context.Context, pre string, args []string) error {
 	}
 
 	e.printStartup(ctx, startup{
-		transcribe: transcribe, speech: speech,
+		transcribe: transcribe, speech: speech, remoteWarning: remoteStore.Warning(),
 		tun: tun, up: up, store: store, dataDir: dataDir, consoleAddr: consoleAddress, pinned: pinned,
 		hostName: hostName, webURL: webURL(config{WebURL: *webURLFlag}), newIdentity: newIdentity,
 	})
@@ -364,6 +364,7 @@ type startup struct {
 	transcribe, speech upstream.AudioEngine
 	pinned             []string
 	consoleAddr        string
+	remoteWarning      string
 	tun                tunnelServer
 	up                 upstream.Upstream
 	store              keys.Store
@@ -419,6 +420,9 @@ func (e *env) printStartup(ctx context.Context, s startup) {
 	}
 	fmt.Fprintf(e.out, "          nothing else on this machine — no other port, no files\n")
 	fmt.Fprintf(e.out, "data      %s\n", s.dataDir)
+	if s.remoteWarning != "" {
+		fmt.Fprintln(e.out, s.remoteWarning)
+	}
 	if s.consoleAddr != "" {
 		fmt.Fprintf(e.out, "console   http://%s  (open it with: infercat console)\n", s.consoleAddr)
 	}

@@ -24,4 +24,14 @@ also works with `infercat console --print`. No additional state file is introduc
 Remote access is off until enabled locally. `admin.json` preserves that choice across restarts;
 `admin.token` remains an independent per-run loopback credential. Rotation atomically replaces
 the persisted hash. The in-use marker is memory-only and expires after ten minutes. An unreadable
-or malformed admin record refuses startup rather than silently replacing access state.
+or malformed admin record starts the host with remote access off. The banner and Settings name
+the file and the repair: enable remote access again to mint a new code. The damaged file stays
+intact until that explicit action replaces it atomically; a failed repair is reported.
+
+For a running headless host, use `infercat remote on --data-dir DIR` to enable access and receive
+its one-time admin link/code and terminal QR. Paste it into the web app or open its link to reach
+`/console`. `remote rotate` replaces the code, `remote off` disables access, and `remote status`
+reports state without returning a code. All commands require the loopback console listener on
+and use the authenticated local admin API. `--json` returns the result for scripts; `--no-qr`
+omits the QR. Protect on/rotate output as a secret. Commands never replay an uncertain action;
+if its result is lost, check status and rotate to obtain a fresh code.
