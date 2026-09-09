@@ -2,7 +2,9 @@ package admin
 
 import (
 	"context"
+	"errors"
 	"io"
+	"net"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -114,4 +116,45 @@ func TestOldCloseCannotRemoveSuccessorToken(t *testing.T) {
 	if _, err := Fetch(context.Background(), dir); err != nil {
 		t.Fatal(err)
 	}
+}
+
+// Hold the old Serve goroutine before entry, without scheduler timing or sleeps. Shutdown
+// only closes registered HTTP listeners; a delayed Serve must not unlink its successor.
+func TestCloseBeforeHTTPServeCannotRemoveSuccessorSocket(t *testing.T) {
+	dir := shortDir(t)
+	listener, _, clean, err := listen(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	observed := &closeObservedListener{Listener: listener}
+	old := &Server{l: observed, srv: &http.Server{}, clean: clean, done: make(chan struct{})}
+	defer old.Close()
+	if err := old.Close(); err != nil {
+		t.Fatal(err)
+	}
+	if !observed.closed {
+		t.Error("Close returned before closing its unregistered listener")
+	}
+	next, err := Serve(dir, sample, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer next.Close()
+	// This is the old goroutine's first opportunity to execute, after replacement is bound.
+	if err := old.srv.Serve(observed); !errors.Is(err, http.ErrServerClosed) {
+		t.Fatal(err)
+	}
+	if _, err := Fetch(context.Background(), dir); err != nil {
+		t.Fatalf("late old Serve removed the successor socket: %v", err)
+	}
+}
+
+type closeObservedListener struct {
+	net.Listener
+	closed bool
+}
+
+func (l *closeObservedListener) Close() error {
+	l.closed = true
+	return l.Listener.Close()
 }

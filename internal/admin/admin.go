@@ -232,6 +232,10 @@ func (s *Server) Close() error {
 		ctx, cancel := context.WithTimeout(context.Background(), 2*time.Second)
 		defer cancel()
 		err = s.srv.Shutdown(ctx)
+		// Shutdown cannot close a listener whose Serve goroutine has not registered yet.
+		// Close it before releasing the path: a late UnixListener.Close would otherwise
+		// unlink a successor's socket. Repeated listener closes are safe.
+		_ = s.l.Close()
 		if s.clean != nil {
 			s.clean()
 		}

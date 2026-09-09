@@ -184,7 +184,7 @@ func (e *env) cmdServe(ctx context.Context, pre string, args []string) error {
 		hostName: hostName, webURL: webURL(config{WebURL: *webURLFlag}), newIdentity: newIdentity,
 	})
 
-	go refreshLoop(ctx, up, e.logf)
+	go refreshLoop(ctx, up, e.logf, refreshEvery)
 
 	errc := make(chan error, 2)
 	go func() { errc <- gw.Serve(tun.Listener()) }()
@@ -285,8 +285,8 @@ func tunnelLogf(dataDir string, verbose bool, terminal func(string, ...any)) (fu
 // refreshLoop re-probes the engine; when it comes or goes, or reports a different slot count,
 // that is logged once. Nothing is pushed anywhere: the gateway's queue reads the engine's slot
 // count at every decision (ticket 010, DESIGN §1.5), so an engine down at startup cannot pin it.
-func refreshLoop(ctx context.Context, up upstream.Upstream, logf func(string, ...any)) {
-	t := time.NewTicker(refreshEvery)
+func refreshLoop(ctx context.Context, up upstream.Upstream, logf func(string, ...any), every time.Duration) {
+	t := time.NewTicker(every)
 	defer t.Stop()
 	was := up.Info().Health.OK
 	slots := up.Info().Slots
