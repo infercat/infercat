@@ -2,6 +2,7 @@ package admin
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"os"
 	"path/filepath"
@@ -10,6 +11,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/infercat/infercat/internal/bridge"
 	"github.com/infercat/infercat/internal/product"
 )
 
@@ -59,6 +61,30 @@ func TestServeAndFetchRoundTrip(t *testing.T) {
 	}
 	if !got.Keys[0].LastSeen.Equal(want.Keys[0].LastSeen) {
 		t.Errorf("last seen = %v", got.Keys[0].LastSeen)
+	}
+}
+
+func TestPublicBridgeStatusIsAdditiveAndHasNoCredential(t *testing.T) {
+	b, err := json.Marshal(sample())
+	if err != nil || strings.Contains(string(b), `"bridge"`) {
+		t.Fatal("older host must omit bridge")
+	}
+	st := sample()
+	st.Bridge = &bridge.Status{Enabled: true, URL: "https://edge.test/h/test/v1", Since: time.Now().UTC(), LastError: "bridge connection failed; reconnecting", RequestsToday: 4}
+	dir := shortDir(t)
+	s, err := Serve(dir, func() Status { return st }, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer s.Close()
+	got, err := Fetch(context.Background(), dir)
+	if err != nil || got.Bridge == nil || *got.Bridge != *st.Bridge {
+		t.Fatalf("bridge round trip: %+v, %v", got.Bridge, err)
+	}
+	b, _ = json.Marshal(got.Bridge)
+	var fields map[string]any
+	if err := json.Unmarshal(b, &fields); err != nil || len(fields) != 6 || fields["token"] != nil {
+		t.Fatalf("unexpected bridge status fields: %s", b)
 	}
 }
 

@@ -5,8 +5,6 @@ import (
 	"errors"
 	"flag"
 	"fmt"
-	"os"
-	"path/filepath"
 	"time"
 
 	"github.com/infercat/infercat/internal/admin"
@@ -22,21 +20,22 @@ func (e *env) cmdExpose(ctx context.Context, dataDir string, args []string) erro
 	fs.StringVar(&dataDir, "data-dir", dataDir, "host data directory")
 	code := fs.String("register", "", "one-time registration code from Infercat")
 	off := fs.Bool("off", false, "disable this host's public endpoint")
+	on := fs.Bool("on", false, "enable this host's public endpoint with its stored token")
 	if err := fs.Parse(args); err != nil {
 		if errors.Is(err, flag.ErrHelp) {
 			return errDone
 		}
 		return errUsage
 	}
-	if fs.NArg() != 0 || (*off && *code != "") {
-		return errors.New("use expose [--register CODE | --off]")
+	if fs.NArg() != 0 || (*off && *on) || ((*off || *on) && *code != "") {
+		return errors.New("use expose [--register CODE | --on | --off]")
 	}
 	dir, err := resolveDataDir(dataDir)
 	if err != nil {
 		return err
 	}
 	if *off {
-		if err = os.Remove(filepath.Join(dir, bridge.FileName)); err != nil && !errors.Is(err, os.ErrNotExist) {
+		if err = bridge.SetEnabled(dir, false); err != nil {
 			return err
 		}
 	} else {
@@ -63,7 +62,16 @@ func (e *env) cmdExpose(ctx context.Context, dataDir string, args []string) erro
 		if c == (bridge.Config{}) {
 			return errors.New("not registered; use expose --register CODE")
 		}
+		if *on {
+			if err = bridge.SetEnabled(dir, true); err != nil {
+				return err
+			}
+			c.Disabled = false
+		}
 		fmt.Fprintf(e.out, "%s\n%s\n", c.URL(), bridge.TrustLine)
+		if c.Disabled {
+			fmt.Fprintln(e.out, "public endpoint disabled; use expose --on to enable it")
+		}
 	}
 	reloadCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
 	defer cancel()

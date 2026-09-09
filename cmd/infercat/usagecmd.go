@@ -81,6 +81,11 @@ func (e *env) writeUsage(rep *usage.Report, since, keyID string, names map[strin
 	fmt.Fprintf(e.out, "ttft      median %s  p95 %s\n", ms(t.TTFTMedianMS), ms(t.TTFTP95MS))
 	fmt.Fprintf(e.out, "total     median %s  p95 %s   (successful model calls only)\n", ms(t.TotalMedianMS), ms(t.TotalP95MS))
 	fmt.Fprintf(e.out, "counts    %s\n", countsLine)
+	for _, via := range sortedVias(rep.ByVia) {
+		s := rep.ByVia[via]
+		fmt.Fprintf(e.out, "via %-6s %s%s%s · %s prompt  %s completion\n", via,
+			calls(s.ModelCalls), polls(s.AppPolls), errs(s.Errors, s.ErrorsByCode), comma(s.PromptTokens), comma(s.CompletionTokens))
+	}
 	if rep.Malformed > 0 {
 		fmt.Fprintf(e.out, "\n%d unreadable line(s) in the log were skipped\n", rep.Malformed)
 	}
@@ -89,14 +94,26 @@ func (e *env) writeUsage(rep *usage.Report, since, keyID string, names map[strin
 	}
 	fmt.Fprintln(e.out)
 	tw := tabwriter.NewWriter(e.out, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(tw, "ID\tNAME\tCALLS\tPOLLS\tERR\tPROMPT\tCOMPLETION\tTTFT p50\tTOTAL p50\tLAST SEEN")
+	fmt.Fprintln(tw, "ID\tNAME\tVIA\tCALLS\tPOLLS\tERR\tPROMPT\tCOMPLETION\tTTFT p50\tTOTAL p50\tLAST SEEN")
 	for _, k := range rep.Keys {
-		fmt.Fprintf(tw, "%s\t%s\t%d\t%d\t%d\t%s\t%s\t%s\t%s\t%s\n",
-			orDash(k.KeyID), orDash(names[k.KeyID]), k.ModelCalls, k.AppPolls, k.Errors,
-			comma(k.PromptTokens), comma(k.CompletionTokens),
-			ms(k.TTFTMedianMS), ms(k.TotalMedianMS), ago(k.LastSeen))
+		for _, via := range sortedVias(k.ByVia) {
+			s := k.ByVia[via]
+			fmt.Fprintf(tw, "%s\t%s\t%s\t%d\t%d\t%d\t%s\t%s\t%s\t%s\t%s\n",
+				orDash(k.KeyID), orDash(names[k.KeyID]), via, s.ModelCalls, s.AppPolls, s.Errors,
+				comma(s.PromptTokens), comma(s.CompletionTokens),
+				ms(s.TTFTMedianMS), ms(s.TotalMedianMS), ago(s.LastSeen))
+		}
 	}
 	tw.Flush()
+}
+
+func sortedVias(by map[string]*usage.Stats) []string {
+	vias := make([]string, 0, len(by))
+	for via := range by {
+		vias = append(vias, via)
+	}
+	sort.Strings(vias)
+	return vias
 }
 
 // calls, polls and errs write the headline the way a host reads it: what the friend did, then what
@@ -194,7 +211,7 @@ func comma(n int) string {
 const usageHelp = `Usage: infercat usage [--key ID] [--since 24h] [--data-dir DIR]
 
 Reads usage.jsonl and totals it: model calls (what your friends asked the engine for) and app
-polls (what their browser did on its own), errors by code, tokens, and the median and p95 of
+polls (what their browser did on its own), errors by code, tokens, totals by via (direct or bridge), and the median and p95 of
 time-to-first-token and total time over successful model calls. Works whether or not the host is
 running.
 

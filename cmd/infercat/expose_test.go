@@ -40,10 +40,22 @@ func TestExposeDispatchReloadAndOff(t *testing.T) {
 	if code := run(context.Background(), []string{"expose", "--data-dir", dir, "--off"}, &out, &errw, nil, false, testPlatform("", nil)); code != 0 {
 		t.Fatalf("%d: %s", code, errw.String())
 	}
-	if _, err = os.Stat(filepath.Join(dir, bridge.FileName)); !os.IsNotExist(err) {
-		t.Fatal("off retained token")
+	disabled := c
+	disabled.Disabled = true
+	if got, err := bridge.Load(dir); err != nil || got != disabled {
+		t.Fatal("off did not preserve the disabled identity")
 	}
-	if reloads.Load() != 2 {
+	if code := run(context.Background(), []string{"expose", "--data-dir", dir, "--on"}, &out, &errw, nil, false, testPlatform("", nil)); code != 0 {
+		t.Fatalf("%d: %s", code, errw.String())
+	}
+	if got, err := bridge.Load(dir); err != nil || got != c {
+		t.Fatal("on changed the registered identity")
+	}
+	st, err := os.Stat(filepath.Join(dir, bridge.FileName))
+	if err != nil || st.Mode().Perm() != 0600 {
+		t.Fatal("credential permissions changed")
+	}
+	if reloads.Load() != 3 {
 		t.Fatal("reload count")
 	}
 }
@@ -54,7 +66,7 @@ func TestExposeFlagsRefuseBeforeMutation(t *testing.T) {
 		t.Fatal(err)
 	}
 	e := &env{out: &bytes.Buffer{}, errw: &bytes.Buffer{}}
-	for _, args := range [][]string{{"--off", "--register", "code"}, {"unexpected"}, {"--register", "code"}} {
+	for _, args := range [][]string{{"--off", "--register", "code"}, {"--on", "--register", "code"}, {"--on", "--off"}, {"unexpected"}, {"--register", "code"}} {
 		if e.cmdExpose(context.Background(), dir, args) == nil {
 			t.Fatal("accepted invalid invocation")
 		}

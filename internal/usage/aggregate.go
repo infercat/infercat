@@ -46,10 +46,11 @@ func ModelCall(e *Event) bool {
 
 // Stats are the numbers `usage` prints, for one key or for the whole file.
 type Stats struct {
-	KeyID      string         `json:"key_id,omitempty"`
-	Models     map[string]int `json:"model_calls_by_model,omitempty"`
-	Seconds    float64        `json:"seconds"`
-	Characters int            `json:"characters"`
+	ByVia      map[string]*Stats `json:"by_via,omitempty"`
+	KeyID      string            `json:"key_id,omitempty"`
+	Models     map[string]int    `json:"model_calls_by_model,omitempty"`
+	Seconds    float64           `json:"seconds"`
+	Characters int               `json:"characters"`
 	// Requests is every recorded call; ModelCalls and AppPolls split it into what the friend did
 	// and what their app did. Requests == ModelCalls + AppPolls.
 	Requests         int            `json:"requests"`
@@ -148,16 +149,18 @@ func percentile(v []int64, p int) int64 {
 
 // Report is the whole-file answer: one Stats for everything plus one per key.
 type Report struct {
-	Daily     []Day    `json:"daily,omitempty"`
-	Total     Stats    `json:"total"`
-	Keys      []*Stats `json:"keys"`
-	Malformed int      `json:"malformed_lines"`
+	ByVia     map[string]*Stats `json:"by_via,omitempty"`
+	Daily     []Day             `json:"daily,omitempty"`
+	Total     Stats             `json:"total"`
+	Keys      []*Stats          `json:"keys"`
+	Malformed int               `json:"malformed_lines"`
 }
 
 type Day struct {
-	Date  string   `json:"date"`
-	Total Stats    `json:"total"`
-	Keys  []*Stats `json:"keys"`
+	ByVia map[string]*Stats `json:"by_via,omitempty"`
+	Date  string            `json:"date"`
+	Total Stats             `json:"total"`
+	Keys  []*Stats          `json:"keys"`
 }
 
 func emptyReport(f Filter) *Report {
@@ -166,6 +169,27 @@ func emptyReport(f Filter) *Report {
 		r.Daily = append(r.Daily, Day{Date: f.Since.UTC().AddDate(0, 0, i).Format("2006-01-02"), Keys: []*Stats{}})
 	}
 	return r
+}
+
+// Missing provenance in older events means the request reached the gateway directly.
+func addVia(by *map[string]*Stats, e *Event) {
+	via := e.Via
+	if via == "" {
+		via = "direct"
+	}
+	if *by == nil {
+		*by = map[string]*Stats{}
+	}
+	if (*by)[via] == nil {
+		(*by)[via] = &Stats{}
+	}
+	(*by)[via].add(e)
+}
+
+func finishVia(by map[string]*Stats) {
+	for _, s := range by {
+		s.finish()
+	}
 }
 
 // Aggregate reads JSONL events and summarises the ones the filter admits. Lines that do not
@@ -200,21 +224,25 @@ func Aggregate(r io.Reader, f Filter) (*Report, error) {
 		}
 		if f.match(&e) {
 			rep.Total.add(&e)
+			addVia(&rep.ByVia, &e)
 			s := byKey[e.KeyID]
 			if s == nil {
 				s = &Stats{KeyID: e.KeyID}
 				byKey[e.KeyID] = s
 			}
 			s.add(&e)
+			addVia(&s.ByVia, &e)
 			day := int(e.TS.UTC().Truncate(24*time.Hour).Sub(f.Since.UTC().Truncate(24*time.Hour)) / (24 * time.Hour))
 			if day >= 0 && day < len(rep.Daily) {
 				rep.Daily[day].Total.add(&e)
+				addVia(&rep.Daily[day].ByVia, &e)
 				ds := byDay[day][e.KeyID]
 				if ds == nil {
 					ds = &Stats{KeyID: e.KeyID}
 					byDay[day][e.KeyID] = ds
 				}
 				ds.add(&e)
+				addVia(&ds.ByVia, &e)
 			}
 		}
 		if errors.Is(err, io.EOF) {
@@ -224,15 +252,19 @@ func Aggregate(r io.Reader, f Filter) (*Report, error) {
 	for i := range rep.Daily {
 		d := &rep.Daily[i]
 		d.Total.finish()
+		finishVia(d.ByVia)
 		for _, s := range byDay[i] {
 			s.finish()
+			finishVia(s.ByVia)
 			d.Keys = append(d.Keys, s)
 		}
 		sort.Slice(d.Keys, func(a, b int) bool { return d.Keys[a].KeyID < d.Keys[b].KeyID })
 	}
 	rep.Total.finish()
+	finishVia(rep.ByVia)
 	for _, s := range byKey {
 		s.finish()
+		finishVia(s.ByVia)
 		rep.Keys = append(rep.Keys, s)
 	}
 	sort.Slice(rep.Keys, func(i, j int) bool { return rep.Keys[i].KeyID < rep.Keys[j].KeyID })

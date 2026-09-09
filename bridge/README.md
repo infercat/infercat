@@ -15,15 +15,20 @@ Start your host with its own data directory. With a PM-issued registration code:
 infercat --data-dir /path/to/host expose --register CODE
 infercat --data-dir /path/to/host expose
 infercat --data-dir /path/to/host expose --off
+infercat --data-dir /path/to/host expose --on
 ```
 
 Registration requires a running host. The command stores the bridge credential in `bridge.json`
 with mode 0600, then POSTs the existing local admin `/reload`. Startup and reload read the same
 file; unchanged configuration preserves the socket, a changed configuration cancels and joins
 the old client before starting another, and a missing file stops the client. An unreadable or
-invalid file refuses reload without replacing the previous bridge state. `--off` removes the
-file and reloads; if reload fails the command reports the failure and must not be treated as
-confirmation that the running connection stopped. Enabling again after `--off` needs a fresh code.
+invalid file refuses reload without replacing the previous bridge state. `--off` atomically saves
+`disabled: true` while preserving the token at mode 0600, then reloads; `--on` reuses that token.
+An absent disabled field means enabled. If reload fails, the command reports the failure and
+must not be treated as confirmation that the running connection changed. Deleting bridge.json
+forgets the registration and requires a fresh code. `status` (including `--watch`) shows the URL,
+enabled/connected state, sanitized connection error, and today's recorded requests in UTC.
+`usage` splits gateway counts and refusals by via; edge-only refusals have no host usage event.
 
 The printed base URL is `https://gateway.infercat.ai/h/HOST/v1`. Use the existing friend key as
 its bearer token. The bridge credential is a separate secret and never authorizes inference.

@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/infercat/infercat/internal/admin"
+	"github.com/infercat/infercat/internal/bridge"
 	"github.com/infercat/infercat/internal/keys"
 	"github.com/infercat/infercat/internal/upstream"
 	"github.com/infercat/infercat/internal/usage"
@@ -140,7 +141,8 @@ func TestStatusWatchStreamsRequests(t *testing.T) {
 	hub := admin.NewEvents(nil)
 	st := admin.Status{Mode: "host", Upstream: admin.Upstream{Kind: "llama.cpp", URL: "http://e", Healthy: true, Slots: 2},
 		Keys: []admin.Key{{ID: "k_1", Name: "alice", Status: "active"}}}
-	adm, err := admin.Serve(dir, func() admin.Status { return st }, nil, hub)
+	var statusMu sync.Mutex
+	adm, err := admin.Serve(dir, func() admin.Status { statusMu.Lock(); defer statusMu.Unlock(); return st }, nil, hub)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -163,6 +165,18 @@ func TestStatusWatchStreamsRequests(t *testing.T) {
 		}
 	}
 	waitFor("upstream  llama.cpp  http://e  healthy")
+	if strings.Contains(out.String(), "bridge    ") {
+		t.Fatal("never-registered host showed a public bridge")
+	}
+	statusMu.Lock()
+	st.Bridge = &bridge.Status{Enabled: true, Connected: true, URL: "https://edge.test/h/host/v1", Since: time.Now(), RequestsToday: 3}
+	statusMu.Unlock()
+	waitFor("bridge    https://edge.test/h/host/v1  on, connected")
+	waitFor("3 requests today (UTC)")
+	statusMu.Lock()
+	st.Bridge = &bridge.Status{URL: "https://edge.test/h/host/v1", Since: time.Now(), RequestsToday: 3}
+	statusMu.Unlock()
+	waitFor("bridge    https://edge.test/h/host/v1  off")
 	// Events are live-only: publish until the watcher demonstrably receives one.
 	waitUntil(t, "watch receives a request line", func() bool {
 		hub.Record(ctx, usage.Event{TS: time.Now(), KeyID: "k_1", Endpoint: "/v1/chat/completions", Model: "m", Status: 200, PromptTokens: 5, CompletionTokens: 7, TTFTMS: 9, TotalMS: 1200, Prompt: "hidden"})

@@ -24,6 +24,7 @@ var hostPattern = regexp.MustCompile(`^[a-zA-Z0-9_-]{1,64}$`)
 var tokenPattern = regexp.MustCompile(`^[a-f0-9]{64}$`)
 
 type Config struct {
+	Disabled bool   `json:"disabled,omitempty"` // Old registrations remain enabled.
 	Endpoint string `json:"endpoint"`
 	Host     string `json:"host"`
 	Token    string `json:"token"`
@@ -52,11 +53,28 @@ func Load(dir string) (Config, error) {
 	return c, c.Validate()
 }
 func Save(dir string, c Config) error {
+	return save(dir, c, false)
+}
+
+// SetEnabled preserves the registered identity; changing the switch publishes one complete file.
+func SetEnabled(dir string, enabled bool) error {
+	c, err := Load(dir)
+	if err != nil {
+		return err
+	}
+	if c == (Config{}) {
+		return errors.New("not registered; use expose --register CODE")
+	}
+	c.Disabled = !enabled
+	return save(dir, c, true)
+}
+
+func save(dir string, c Config, replace bool) error {
 	if err := c.Validate(); err != nil {
 		return err
 	}
 	b, _ := json.Marshal(c)
-	// Publish a complete, synced file without replacing an existing identity.
+	// Temp files are 0600. Registration may never replace an existing identity.
 	f, err := os.CreateTemp(dir, ".bridge-*")
 	if err != nil {
 		return err
@@ -71,6 +89,9 @@ func Save(dir string, c Config) error {
 	}
 	if closeErr != nil {
 		return closeErr
+	}
+	if replace {
+		return os.Rename(f.Name(), filepath.Join(dir, FileName))
 	}
 	return os.Link(f.Name(), filepath.Join(dir, FileName))
 }
@@ -87,6 +108,7 @@ func (r Recorder) Record(ctx context.Context, e usage.Event) {
 
 // Manager serializes reloads. A cancelled client is joined before its replacement starts.
 type Manager struct {
+	state   connectionState
 	Keys    *keys.FileStore
 	updates chan struct{}
 	mu      sync.Mutex
@@ -106,7 +128,9 @@ func (m *Manager) stop() {
 		<-m.done
 		m.cancel = nil
 	}
+	m.state.connection(false, "")
 	m.cfg = Config{}
+	m.updates = nil
 }
 func (m *Manager) Reload(ctx context.Context, dir string, h http.Handler, logf func(string, ...any)) error {
 	m.mu.Lock()
@@ -125,13 +149,15 @@ func (m *Manager) Reload(ctx context.Context, dir string, h http.Handler, logf f
 		return nil
 	}
 	m.stop()
-	if c == (Config{}) {
+	m.cfg = c
+	m.state.configure(c)
+	if c == (Config{}) || c.Disabled {
 		return nil
 	}
 	child, cancel := context.WithCancel(ctx)
 	m.cfg, m.cancel, m.done = c, cancel, make(chan struct{})
 	m.updates = make(chan struct{}, 1)
-	syncKeys := keySync{store: m.Keys, reload: m.updates}
+	syncKeys := keySync{store: m.Keys, reload: m.updates, state: &m.state}
 	if m.Keys != nil {
 		syncKeys.changed = m.Keys.Changes()
 	}

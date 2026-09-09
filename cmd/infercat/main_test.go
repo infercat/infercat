@@ -349,7 +349,7 @@ func TestUsageAggregatesFromTheLog(t *testing.T) {
 	now := time.Now().UTC()
 	chat := "/v1/chat/completions"
 	rec.Record(context.Background(), usage.Event{TS: now, KeyID: id, Endpoint: chat, Status: 200, PromptTokens: 100, CompletionTokens: 20, TTFTMS: 120, TotalMS: 3100})
-	rec.Record(context.Background(), usage.Event{TS: now, KeyID: id, Endpoint: chat, Status: 429, Code: "rate_limited"})
+	rec.Record(context.Background(), usage.Event{TS: now, KeyID: id, Via: "bridge", Endpoint: chat, Status: 429, Code: "rate_limited"})
 	rec.Record(context.Background(), usage.Event{TS: now, KeyID: id, Endpoint: "/me", Status: 200, TTFTMS: 2, TotalMS: 2})
 	rec.Record(context.Background(), usage.Event{TS: now.Add(-72 * time.Hour), KeyID: id, Endpoint: chat, Status: 200, PromptTokens: 999})
 	rec.Close()
@@ -361,6 +361,11 @@ func TestUsageAggregatesFromTheLog(t *testing.T) {
 	for _, want := range []string{"requests  2 model calls (+1 app polls)", "rate_limited 1", "100 prompt", "120 ms", "3.1 s", "alice"} {
 		if !strings.Contains(r.out, want) {
 			t.Errorf("usage output missing %q:\n%s", want, r.out)
+		}
+	}
+	for _, want := range []string{"ID NAME VIA CALLS", "alice bridge 1 0 1", "alice direct 1 1 0", "via bridge 1 model call — 1 error: rate_limited 1", "via direct 1 model call (+1 app polls)"} {
+		if !strings.Contains(strings.Join(strings.Fields(r.out), " "), want) {
+			t.Errorf("usage missing via column or total %q:\n%s", want, r.out)
 		}
 	}
 	// The 72-hour-old event is outside the default window but inside --since all.

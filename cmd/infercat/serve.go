@@ -210,6 +210,7 @@ func (e *env) cmdServe(ctx context.Context, pre string, args []string) error {
 	started := time.Now()
 	adm, err := admin.Serve(dataDir, func() admin.Status {
 		st := buildStatus(ctx, started, tun, up, gw, store, tele)
+		st.Bridge = public.Status(dataDir)
 		st.Console = consoleAddress
 		st.Name = state.name()
 		remoteState := remoteStore.State()

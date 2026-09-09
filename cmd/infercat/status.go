@@ -193,6 +193,20 @@ func writeStatus(w io.Writer, st admin.Status) {
 		fmt.Fprintf(w, "models    %s (pinned)\n", modelList(st.ModelsPinned))
 	}
 	fmt.Fprintf(w, "tunnel    %s  relay %s  %s\n", orDash(st.Tunnel.Addr), orDash(st.Tunnel.Region), plural(st.Tunnel.Clients, "client"))
+	if b := st.Bridge; b != nil {
+		state := "off"
+		if b.Enabled {
+			state = "on, connecting"
+			if b.Connected {
+				state = "on, connected"
+			}
+		}
+		fmt.Fprintf(w, "bridge    %s  %s  since %s  %d requests today (UTC)", b.URL, state, b.Since.Local().Format(time.RFC3339), b.RequestsToday)
+		if b.LastError != "" {
+			fmt.Fprintf(w, "  %s", b.LastError)
+		}
+		fmt.Fprintln(w)
+	}
 	writeSessions(w, st.Tunnel)
 	fmt.Fprintf(w, "queue     %d in flight, %d waiting  (peak %d in flight, sampled)\n", st.Queue.InFlight, st.Queue.Waiting, st.Engine.SlotsPeak)
 	fmt.Fprintf(w, "engine    %s\n", engineWords(st.Engine))

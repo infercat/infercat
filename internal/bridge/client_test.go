@@ -293,6 +293,19 @@ func TestReloadReconnectAndOff(t *testing.T) {
 	}
 	manager := Manager{Keys: store}
 	t.Cleanup(manager.Close)
+	waitStatus := func(check func(*Status) bool) *Status {
+		t.Helper()
+		for deadline := time.Now().Add(5 * time.Second); ; {
+			s := manager.Status(dir)
+			if check(s) {
+				return s
+			}
+			if time.Now().After(deadline) {
+				t.Fatalf("status did not settle: %+v", s)
+			}
+			time.Sleep(time.Millisecond)
+		}
+	}
 	reload := func() {
 		t.Helper()
 		if err := manager.Reload(context.Background(), dir, http.NotFoundHandler(), t.Logf); err != nil {
@@ -301,12 +314,16 @@ func TestReloadReconnectAndOff(t *testing.T) {
 	}
 	reload()
 	conn := connectRaw(t, ch)
+	if s := manager.Status(dir); s == nil || !s.Enabled || s.Connected || s.URL != c.URL() || s.Since.IsZero() {
+		t.Fatalf("connected before key acknowledgment: %+v", s)
+	}
 	initial := receiveFrame(t, conn)
 	want := strings.TrimPrefix(keys.HashSecret(secret), "sha256:")
 	if initial.Type != "keys" || len(initial.Hashes) != 1 || initial.Hashes[0] != want {
 		t.Fatalf("initial hashes = %v", initial.Hashes)
 	}
 	transmit(t, conn, frame{Type: "keys_ready"})
+	connected := waitStatus(func(s *Status) bool { return s.Connected })
 
 	// Model the CLI's separate FileStore followed by the running host's /reload callback.
 	writer, err := keys.NewFileStore(dir)
@@ -329,16 +346,37 @@ func TestReloadReconnectAndOff(t *testing.T) {
 		t.Fatal("unchanged reload opened another socket")
 	case <-time.After(30 * time.Millisecond):
 	}
+	if s := manager.Status(dir); !s.Connected || s.Since != connected.Since {
+		t.Fatal("unchanged reload reset connection status")
+	}
 	conn.CloseNow()
+	waitStatus(func(s *Status) bool { return !s.Connected && s.LastError != "" })
 	conn = connect(t, ch)
-	if err := os.Remove(filepath.Join(dir, FileName)); err != nil {
+	waitStatus(func(s *Status) bool { return s.Connected && s.LastError == "" })
+	if err := SetEnabled(dir, false); err != nil {
 		t.Fatal(err)
 	}
 	reload()
+	if s := manager.Status(dir); s.Enabled || s.Connected || s.URL != c.URL() {
+		t.Fatalf("off lost identity or left connection enabled: %+v", s)
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
 	defer cancel()
 	if _, _, err := conn.Read(ctx); err == nil {
 		t.Fatal("off left socket open")
+	}
+	if err := SetEnabled(dir, true); err != nil {
+		t.Fatal(err)
+	}
+	reload()
+	conn = connect(t, ch)
+	waitStatus(func(s *Status) bool { return s.Connected && s.Enabled })
+	if err := os.Remove(filepath.Join(dir, FileName)); err != nil {
+		t.Fatal(err)
+	}
+	reload()
+	if s := manager.Status(dir); s != nil {
+		t.Fatalf("missing registration should omit status: %+v", s)
 	}
 }
 func TestConfigRefusalPreservesState(t *testing.T) {

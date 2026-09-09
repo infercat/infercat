@@ -65,6 +65,7 @@ func Register(ctx context.Context, endpoint, code string) (Config, error) {
 }
 
 type keySync struct {
+	state           *connectionState
 	store           *keys.FileStore
 	reload, changed <-chan struct{}
 }
@@ -97,6 +98,16 @@ func Run(ctx context.Context, c Config, h http.Handler, logf func(string, ...any
 		err := session(ctx, c, h, syncKeys...)
 		if ctx.Err() != nil {
 			return
+		}
+		if len(syncKeys) > 0 {
+			message := "bridge connection failed; reconnecting"
+			if errors.Is(err, context.DeadlineExceeded) {
+				message = "bridge connection timed out; reconnecting"
+			} else if code := websocket.CloseStatus(err); code != -1 {
+				message = fmt.Sprintf("bridge connection closed (%d); reconnecting", code)
+			}
+			// Peer close reasons and transport errors may contain arbitrary text; expose only facts.
+			syncKeys[0].state.connection(false, message)
 		}
 		logf("bridge connection ended (%T); reconnecting in %s", err, backoff)
 		select {
@@ -186,7 +197,11 @@ func session(ctx context.Context, c Config, h http.Handler, syncKeys ...keySync)
 		if len(b) > MaxFrame || json.Unmarshal(b, &f) != nil {
 			return errors.New("invalid bridge frame")
 		}
-		if f.Type == "pong" || f.Type == "keys_ready" {
+		if f.Type == "keys_ready" {
+			sync.state.connection(true, "")
+			continue
+		}
+		if f.Type == "pong" {
 			continue
 		}
 		if f.Type == "ack" && meta != nil && f.ID == meta.ID && ack != nil {

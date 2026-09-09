@@ -166,6 +166,14 @@ content unless `--log-prompts`:
 `code` may be the usage-only status `client_closed` (never on the wire). `usage` and `status` count model
 calls as requests and show app polls (`/me`, `/v1/models`) separately.
 
+Public-bridge gateway events add `via: "bridge"` from local request context. Missing historical
+`via` means `direct` (including the tunnel/dev listener). Read aggregates add `by_via` maps of
+the existing Stats at report, day, key, and daily-key levels; original totals are unchanged.
+Each bucket computes its own percentiles from successful model-call samples. `usage` prints
+per-via totals and a VIA column per key. Gateway refusal codes remain in `errors_by_code`.
+Edge-only refusals such as `host_busy`/`host_offline` have no host event and are excluded;
+durable edge refusal accounting is a later slice.
+
 ## Engine (`internal/upstream`; state per `docs/DESIGN.md` §3, landed by 011)
 
 The engine is a state, not a value: `Kind` is `Unknown` until a signature probe answers (`Generic` only when
@@ -218,6 +226,24 @@ These are constants; the `--queue-timeout`, `--request-timeout`, `--max-body` fl
 ## Admin API (003), unix socket `admin.sock`, HTTP
 
 `GET /status` → `{product, version, uptime_s, tunnel:{addr, region, clients}, upstream:{kind, url, healthy, since, model_context, slots}, queue:{in_flight, waiting}, keys:[{id,name,status,in_flight,rpm_used,today_tokens,last_seen,connected,sessions}]}` — `queue` numbers are exact; `clients` = open port-80 connections. `POST /reload` re-reads `keys.json` now.
+
+079 adds optional `bridge: {enabled,url,connected,since,last_error,requests_today}`, also shown
+as one line by `status` and refreshed by `status --watch`. It is absent without a registration.
+Connected means the live socket has acknowledged its first friend-key snapshot; `since` marks
+the current enabled/connection state, and `last_error` exposes a sanitized connection failure,
+cleared on reconnection. `requests_today` reads completed gateway events with `via: "bridge"`
+from usage.jsonl, by request start date in UTC (model calls, polls, and gateway refusals).
+The count survives restart and off/on; a usage read failure is reported in `last_error`.
+The optional status contains no bridge token, key hash, or peer-supplied error text.
+
+`expose --off` now atomically persists `disabled: true` in the existing mode-0600 bridge.json;
+`expose --on` preserves the token and enables it again. An absent disabled field means enabled,
+so older registrations still work. Both commands invoke the existing `/reload`; a failed reload
+is reported after the saved change, never as confirmation of the running state. On startup/reload,
+disabled configuration stops the client and remains visible with its URL; deleting bridge.json
+forgets the registration and requires a fresh one-time code. No extra state file or admin route.
+
+a public URL decrypts TLS at the edge and in our object; the tunnel mode's "nobody in the middle" does not carry over.
 
 Per-key `connected` means a matching credential was seen through a tunnel session in the last
 60 seconds; `sessions` counts distinct node-derived peer addresses in that window, not open TCP
