@@ -1,1 +1,1 @@
-{"version": 1, "include": ["/", "/infercat.wasm.gz", "/signup"], "exclude": []}
+{"version": 1, "include": ["/", "/infercat.wasm.gz", "/signup", "/try"], "exclude": []}
