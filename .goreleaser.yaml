@@ -65,6 +65,29 @@ archives:
       - LICENSE
       - THIRD_PARTY_NOTICES.md
 
+nfpms:
+  - id: linux
+    ids: [cli]
+    package_name: "{{ .Env.CLI_NAME }}"
+    file_name_template: "{{ .Env.CLI_NAME }}_{{ .Version }}_{{ .Os }}_{{ .Arch }}"
+    formats: [deb, rpm]
+    bindir: /usr/bin
+    maintainer: "2185 Lab <max@2185lab.com>"
+    homepage: https://infercat.ai
+    description: "Share the model on your machine with friends: one binary, one invite code, a browser"
+    license: MIT
+    contents:
+      - src: packaging/infercat.service
+        dst: /usr/lib/systemd/user/infercat.service
+      - src: docs/LINUX*.md
+        dst: /usr/share/doc/infercat/
+      - src: LICENSE
+        dst: /usr/share/doc/infercat/LICENSE
+      - src: THIRD_PARTY_NOTICES.md
+        dst: /usr/share/doc/infercat/THIRD_PARTY_NOTICES.md
+    scripts:
+      postinstall: packaging/postinstall.sh
+
 checksum:
   name_template: "{{ .Env.CLI_NAME }}_{{ .Version }}_checksums.txt"
   algorithm: sha256

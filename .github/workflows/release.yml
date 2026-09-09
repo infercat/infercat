@@ -68,6 +68,13 @@ jobs:
         if: github.event_name == 'workflow_dispatch'
         run: make release-dry
 
+      - name: Verify snapshot Linux packages and user service
+        if: github.event_name == 'workflow_dispatch'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y rpm
+          python3 packaging/verify-snapshot.py
+
       - name: Verify snapshot image metadata
         if: github.event_name == 'workflow_dispatch'
         run: |
@@ -114,6 +121,8 @@ jobs:
           path: |
             dist/*.tar.gz
             dist/*.zip
+            dist/*.deb
+            dist/*.rpm
             dist/*_checksums.txt
             dist/homebrew/**
           retention-days: 7
