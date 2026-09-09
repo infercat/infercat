@@ -20,23 +20,24 @@ let booting: Promise<InfercatTunnel> | null = null;
 export function loadInfercatTunnel(
   onProgress?: (p: WasmProgress) => void,
   base = '/',
+  wasmURL?: string,
 ): Promise<InfercatTunnel> {
   const ready = tunnelGlobal();
   if (ready) return Promise.resolve(ready);
-  booting ??= boot(base, onProgress).catch((err: unknown) => {
+  booting ??= boot(base, onProgress, wasmURL).catch((err: unknown) => {
     booting = null;
     throw err;
   });
   return booting;
 }
 
-async function boot(base: string, onProgress?: (p: WasmProgress) => void): Promise<InfercatTunnel> {
+async function boot(base: string, onProgress?: (p: WasmProgress) => void, wasmURL?: string): Promise<InfercatTunnel> {
   const scope = globalThis as { Go?: new () => GoRuntime };
   if (!scope.Go) await loadScript(`${base}wasm_exec.js`);
   if (!scope.Go) throw new Error('wasm_exec.js loaded but did not define Go');
 
   const go = new scope.Go();
-  const { instance } = await WebAssembly.instantiateStreaming(fetchWasm(base, onProgress), go.importObject);
+  const { instance } = await WebAssembly.instantiateStreaming(fetchWasm(base, onProgress, wasmURL), go.importObject);
   // go.run resolves only when the Go program exits; the bridge blocks forever on purpose.
   void go.run(instance);
   return waitForTunnel();
@@ -55,9 +56,10 @@ async function waitForTunnel(timeoutMs = 15_000): Promise<InfercatTunnel> {
 // Static hosts cannot negotiate Content-Encoding for .wasm, so ticket 001 also emits infercat.wasm.gz.
 // Prefer it and decompress in the page — unless the host labelled it `Content-Encoding: gzip`, in
 // which case the browser has already decoded it and decompressing again destroys the module.
-async function fetchWasm(base: string, onProgress?: (p: WasmProgress) => void): Promise<Response> {
+async function fetchWasm(base: string, onProgress?: (p: WasmProgress) => void, wasmURL?: string): Promise<Response> {
   const headers = { 'content-type': 'application/wasm' };
-  const gz = await fetch(`${base}infercat.wasm.gz`, { signal: assetTimeout() }).catch(() => null);
+  const gzip = !wasmURL || new URL(wasmURL).pathname.endsWith('.gz');
+  const gz = gzip ? await fetch(wasmURL ?? `${base}infercat.wasm.gz`, { signal: assetTimeout() }).catch(() => null) : null;
   if (gz?.ok && gz.body && !isHTML(gz)) {
     // Header values are case-insensitive: a host that says `GZIP` has decoded it just the same.
     const decoded = (gz.headers.get('content-encoding') ?? '').toLowerCase().includes('gzip');
@@ -72,7 +74,9 @@ async function fetchWasm(base: string, onProgress?: (p: WasmProgress) => void): 
       { headers },
     );
   }
-  const raw = await fetch(`${base}infercat.wasm`, { signal: assetTimeout() });
+  // Explicit artifact URLs fail as-is: never silently substitute a different version.
+  if (wasmURL && gzip) throw new Error('could not download the requested tunnel module');
+  const raw = await fetch(wasmURL ?? `${base}infercat.wasm`, { signal: assetTimeout() });
   if (!raw.ok || !raw.body) throw new Error(`could not download the tunnel module (${raw.status})`);
   const size = Number(raw.headers.get('content-length')) || 0;
   return new Response(counted(raw.body, size, onProgress), { headers });
