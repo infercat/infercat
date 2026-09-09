@@ -112,6 +112,9 @@ func (e *env) watchStatus(ctx context.Context, dataDir string, st admin.Status, 
 func requestLine(e usage.Event, who string) string {
 	at := e.TS.Add(time.Duration(e.TotalMS) * time.Millisecond).Local().Format("15:04:05")
 	parts := []string{at, who, endpointWord(e.Endpoint)}
+	if e.Via == "bridge" {
+		parts = append(parts, "via bridge")
+	}
 	if e.Model != "" {
 		parts = append(parts, e.Model)
 	}

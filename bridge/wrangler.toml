@@ -1,0 +1,17 @@
+name = "infercat-bridge"
+main = "src/index.ts"
+compatibility_date = "2026-06-11"
+workers_dev = true
+
+[[durable_objects.bindings]]
+name = "HOSTS"
+class_name = "Host"
+
+[[migrations]]
+tag = "v1"
+new_sqlite_classes = ["Host"]
+
+# The PM supplies the namespace ID from the infercat Cloudflare account for preview/production.
+[[kv_namespaces]]
+binding = "REGISTRY"
+id = "00000000000000000000000000000000"

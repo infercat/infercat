@@ -20,6 +20,7 @@ import (
 	consolebundle "github.com/infercat/infercat/console"
 	"github.com/infercat/infercat/internal/admin"
 	"github.com/infercat/infercat/internal/adminkey"
+	"github.com/infercat/infercat/internal/bridge"
 	"github.com/infercat/infercat/internal/gateway"
 	"github.com/infercat/infercat/internal/keys"
 	"github.com/infercat/infercat/internal/product"
@@ -185,11 +186,22 @@ func (e *env) cmdServe(ctx context.Context, pre string, args []string) error {
 		HostName:    hostName,
 		RelayRegion: func() string { return tun.Status().Region },
 		DataDir:     dataDir, // today's counters are seeded from usage.jsonl there
-	}, up, store, events, e.logf)
+	}, up, store, bridge.Recorder{Next: events}, e.logf)
 	if err != nil {
 		return fmt.Errorf("gateway: %w", err)
 	}
 
+	var public bridge.Manager
+	defer public.Close()
+	reload := func() error {
+		if err := store.Reload(); err != nil {
+			return err
+		}
+		return public.Reload(ctx, dataDir, gw.Handler(), e.logf)
+	}
+	if err := reload(); err != nil {
+		return fmt.Errorf("bridge: %w", err)
+	}
 	tele := &telemetry{events: events, name: hostName}
 	go tele.sample(ctx, gw, tun)
 	if requestLines != nil {
@@ -206,7 +218,7 @@ func (e *env) cmdServe(ctx context.Context, pre string, args []string) error {
 		st.Audio = audioStatus(transcribe, speech)
 		return st
 	}, func() error {
-		err := store.Reload()
+		err := reload()
 		for _, a := range []upstream.AudioEngine{transcribe, speech} {
 			if a != nil {
 				err = errors.Join(err, a.Refresh(ctx))

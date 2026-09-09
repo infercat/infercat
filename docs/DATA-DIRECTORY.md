@@ -11,6 +11,7 @@ English · [简体中文](DATA-DIRECTORY.zh-CN.md)
 | `keys.json` | Friends' keys as hashes (never the secret), their status and limits. |
 | `usage.jsonl` | One line per request: key, endpoint, status, token counts, timings. No prompt content unless you run `serve --log-prompts`. |
 | `admin.json` | Optional remote-console switch: SHA-256 admin-code hash and enabled-since time, mode 0600; never plaintext or a friend key. Removed when turned off. |
+| `bridge.json` | Public bridge endpoint, host id, and secret bridge token (0600). Created by `expose --register`; read by `serve` at startup/reload; removed by `expose --off`. Keep private. |
 | `config.json` | Remembered `serve` flags. |
 | `tunnel.log` | The tunnel engine's log (`serve --verbose` prints it instead). |
 

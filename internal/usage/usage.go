@@ -16,6 +16,7 @@ type Event struct {
 	OverrunSeconds   float64   `json:"overrun_seconds,omitempty"`
 	SecondsEstimated bool      `json:"seconds_estimated,omitempty"`
 	Characters       int       `json:"characters,omitempty"`
+	Via              string    `json:"via,omitempty"`
 	TS               time.Time `json:"ts"`
 	KeyID            string    `json:"key_id"`
 	Endpoint         string    `json:"endpoint"` // "/v1/chat/completions", "/v1/embeddings", "/v1/models", "/me"

@@ -468,6 +468,8 @@ func newFakeGateway() *fakeGateway {
 	return &fakeGateway{serving: make(chan struct{}), done: make(chan struct{})}
 }
 
+func (g *fakeGateway) Handler() http.Handler { return http.NotFoundHandler() }
+
 func (g *fakeGateway) Serve(net.Listener) error {
 	g.once.Do(func() { close(g.serving) })
 	<-g.done

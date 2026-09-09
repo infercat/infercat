@@ -53,6 +53,7 @@ type tunnelOptions struct {
 
 type gatewayServer interface {
 	Sessions() map[string]int
+	Handler() http.Handler
 	usage.Snapshot
 	Serve(l net.Listener) error
 	ServeDev(addr string) error
@@ -140,6 +141,8 @@ func run(ctx context.Context, args []string, out, errw io.Writer, in io.Reader, 
 		err = e.cmdStatus(ctx, dataDir, cargs)
 	case "usage":
 		err = e.cmdUsage(ctx, dataDir, cargs)
+	case "expose":
+		err = e.cmdExpose(ctx, dataDir, cargs)
 	case "connect":
 		err = e.cmdConnect(ctx, dataDir, cargs)
 	case "version":
@@ -298,6 +301,7 @@ Commands:
   status     what the running host is doing right now
   usage      what your friends have used, from the usage log
   connect    use an invite from this machine: an OpenAI-compatible API on localhost for any app
+  expose     enable or disable a public endpoint for this host
   version    print the version
 
 Start here:
