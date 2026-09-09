@@ -14,7 +14,7 @@
 
 ---
 
-把你电脑上的模型分享给朋友。在你现有的推理服务（llama.cpp、vLLM、Ollama 或 LM Studio）前面跑一个二进制程序，给每个朋友发一个邀请码。他们把邀请码粘贴到网页版就能和你的模型聊天：免账号、免 VPN、什么都不用装。连接全程端到端加密，中间的中继只能看到密文。你可以给每个朋友单独设置限额，只看得到数字，看不到他们聊了什么。
+把你电脑上的模型分享给朋友。在你现有的推理服务（llama.cpp、llama-swap、vLLM、Ollama 或 LM Studio）前面跑一个二进制程序，给每个朋友发一个邀请码。他们把邀请码粘贴到网页版就能和你的模型聊天：免账号、免 VPN、什么都不用装。连接全程端到端加密，中间的中继只能看到密文。你可以给每个朋友单独设置限额，只看得到数字，看不到他们聊了什么。
 
 ![Share a local model with a friend in a browser or terminal](docs/media/demo.zh.gif)
 
@@ -30,7 +30,7 @@
 
 ## 快速上手（主机端）
 
-你需要先启动一个推理服务（llama.cpp、vLLM、Ollama 或 LM Studio 均可；任何兼容 OpenAI `/v1/chat/completions` 的服务都能用）。朋友那边只要有个浏览器就行。
+你需要先启动一个推理服务（llama.cpp、llama-swap、vLLM、Ollama 或 LM Studio 均可；任何兼容 OpenAI `/v1/chat/completions` 的服务都能用）。朋友那边只要有个浏览器就行。
 
 **可选——还没有推理引擎？** [安装 Ollama](https://ollama.com/download)，然后：
 
@@ -96,7 +96,7 @@ brew install infercat/tap/infercat                # 或用 Homebrew
 接着：
 
 ```
-infercat serve --name "Max's laptop"     # finds llama.cpp, Ollama, LM Studio or vLLM
+infercat serve --name "Max's laptop"     # finds llama.cpp, llama-swap, Ollama, LM Studio or vLLM
 infercat keys add alice                  # prints alice's invite once (and a QR code)
 ```
 

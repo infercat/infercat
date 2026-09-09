@@ -14,7 +14,7 @@ English · [简体中文](README.zh-CN.md)
 
 ---
 
-Share the model on your machine with friends. You run one binary in front of the inference server you already have — llama.cpp, vLLM, Ollama or LM Studio — and give each friend one invite code. They paste it into a web page and chat with your model: no account, no VPN, nothing to install. The connection is encrypted end to end; the relay in between sees ciphertext. You set limits per friend and see counts, never their conversations.
+Share the model on your machine with friends. You run one binary in front of the inference server you already have — llama.cpp, llama-swap, vLLM, Ollama or LM Studio — and give each friend one invite code. They paste it into a web page and chat with your model: no account, no VPN, nothing to install. The connection is encrypted end to end; the relay in between sees ciphertext. You set limits per friend and see counts, never their conversations.
 
 ![Share a local model with a friend in a browser or terminal](docs/media/demo.gif)
 
@@ -30,7 +30,7 @@ Share the model on your machine with friends. You run one binary in front of the
 
 ## Quickstart (host)
 
-You need an inference server running (llama.cpp, vLLM, Ollama or LM Studio; any OpenAI-compatible `/v1/chat/completions` works). Your friends need a browser.
+You need an inference server running (llama.cpp, llama-swap, vLLM, Ollama or LM Studio; any OpenAI-compatible `/v1/chat/completions` works). Your friends need a browser.
 
 **Optional — no engine yet?** [Install Ollama](https://ollama.com/download), then:
 
@@ -96,7 +96,7 @@ If latest cannot be resolved (rate limit, no published release, or network), dow
 Then:
 
 ```
-infercat serve --name "Max's laptop"     # finds llama.cpp, Ollama, LM Studio or vLLM
+infercat serve --name "Max's laptop"     # finds llama.cpp, llama-swap, Ollama, LM Studio or vLLM
 infercat keys add alice                  # prints alice's invite once (and a QR code)
 ```
 

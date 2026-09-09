@@ -1017,7 +1017,7 @@ func TestNoEnginePointsToEngineQuickstart(t *testing.T) {
 	if !errors.Is(err, upstream.ErrNoUpstream) {
 		t.Fatalf("error = %v, want no engine", err)
 	}
-	want := "Start llama.cpp, Ollama, LM Studio or vLLM: https://github.com/infercat/infercat#no-engine-yet\n"
+	want := "Start llama.cpp, llama-swap, Ollama, LM Studio or vLLM: https://github.com/infercat/infercat#no-engine-yet\n"
 	if output.String() != want {
 		t.Fatalf("hint = %q, want %q", output.String(), want)
 	}

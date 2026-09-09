@@ -3,6 +3,7 @@ package upstream
 import (
 	"context"
 	"encoding/json"
+	"net/url"
 	"slices"
 	"strings"
 	"time"
@@ -12,6 +13,10 @@ import (
 // max_model_len, LM Studio carries publisher/quantization and loaded_context_length.
 type modelsResponse struct {
 	Data []struct {
+		ContextLength int `json:"context_length"`
+		Status        struct {
+			Value string `json:"value"`
+		} `json:"status"`
 		ID                  string `json:"id"`
 		OwnedBy             string `json:"owned_by"`
 		MaxModelLen         int    `json:"max_model_len"`
@@ -40,11 +45,18 @@ type tagsResponse struct {
 	} `json:"models"`
 }
 
-// sniff decides which engine answers at c.base. Order matters: llama.cpp is the only one with
-// /props, vLLM is the only one of the four with /version, Ollama is the only one with /api/tags,
-// and anything else that speaks /v1/models is LM Studio (by shape) or Generic. Nothing answering
-// is Unknown with the last probe's error.
+// Check the swap signature before probing /props: swap routes it to a model, and discovery
+// must never load one. Other engines keep their signature precedence, independent of port.
 func sniff(ctx context.Context, c *client) (Kind, error) {
+	var models modelsResponse
+	modelsErr := c.getJSON(ctx, "/v1/models", &models)
+	if modelsErr == nil {
+		for _, m := range models.Data {
+			if m.OwnedBy == "llama-swap" {
+				return LlamaSwap, nil
+			}
+		}
+	}
 	var props propsResponse
 	if err := c.getJSON(ctx, "/props", &props); err == nil && (props.TotalSlots > 0 || props.ModelPath != "" || props.DefaultGenerationSettings.NCtx > 0) {
 		return LlamaCPP, nil
@@ -59,9 +71,8 @@ func sniff(ctx context.Context, c *client) (Kind, error) {
 	if err := c.getJSON(ctx, "/api/tags", &tags); err == nil && tags.Models != nil {
 		return Ollama, nil
 	}
-	var models modelsResponse
-	if err := c.getJSON(ctx, "/v1/models", &models); err != nil {
-		return Unknown, err
+	if modelsErr != nil {
+		return Unknown, modelsErr
 	}
 	for _, m := range models.Data {
 		switch {
@@ -81,8 +92,7 @@ func sniff(ctx context.Context, c *client) (Kind, error) {
 // engine answers a signature → identified, OK, fields filled; Unknown and nothing answers → still
 // Unknown, not OK (Err updated, Since kept); identified and the refresh succeeds → fields replaced;
 // identified and it fails → fields kept, not OK — /me keeps telling the truth about what it knew.
-// Slots are the engine's own where it reports them (llama.cpp), else the host's --slots, else
-// vLLM's documented 2, else 1.
+// An explicit --slots wins; otherwise use engine capacities, vLLM's documented 2, or 1.
 func (c *client) Refresh(ctx context.Context) error {
 	c.mu.RLock()
 	kind, override := c.info.Kind, c.setSlots
@@ -98,6 +108,8 @@ func (c *client) Refresh(ctx context.Context) error {
 			err = c.refreshLlamaCPP(ctx, &next)
 		case Ollama:
 			err = c.refreshOllama(ctx, &next)
+		case LlamaSwap:
+			err = c.refreshLlamaSwap(ctx, &next)
 		default: // vLLM, LM Studio, Generic all answer /v1/models
 			err = c.refreshOpenAI(ctx, &next)
 		}
@@ -148,6 +160,41 @@ func (c *client) refreshLlamaCPP(ctx context.Context, in *Info) error {
 	}
 	for _, id := range in.Models {
 		in.Vision[id] = props.Modalities.Vision
+	}
+	return nil
+}
+
+// llama-swap v255 publishes these fields in internal/server/api.go (commit 7761aa1).
+func (c *client) refreshLlamaSwap(ctx context.Context, in *Info) error {
+	var models modelsResponse
+	if err := c.getJSON(ctx, "/v1/models", &models); err != nil {
+		return err
+	}
+	previous := c.Info()
+	in.ModelDetails = make(map[string]ModelInfo, len(models.Data))
+	for _, m := range models.Data {
+		detail := ModelInfo{Context: max(0, m.ContextLength), State: m.Status.Value, Slots: 1}
+		if old := previous.ModelDetails[m.ID]; old.Slots > 0 {
+			detail.Slots = old.Slots
+		}
+		in.Vision[m.ID] = previous.Vision[m.ID]
+		if m.Status.Value == "loaded" {
+			var props propsResponse
+			if err := c.getJSON(ctx, "/props?model="+url.QueryEscape(m.ID), &props); err == nil {
+				if props.TotalSlots > 0 {
+					detail.Slots = props.TotalSlots
+				}
+				in.Vision[m.ID] = props.Modalities.Vision
+			}
+		}
+		if detail.Context > 0 && (in.ModelContext == 0 || detail.Context < in.ModelContext) {
+			in.ModelContext = detail.Context
+		}
+		if len(in.Models) == 0 || detail.Slots < in.Slots {
+			in.Slots = detail.Slots
+		}
+		in.Models = append(in.Models, m.ID)
+		in.ModelDetails[m.ID] = detail
 	}
 	return nil
 }

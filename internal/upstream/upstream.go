@@ -12,12 +12,13 @@ import (
 type Kind string
 
 const (
-	Unknown  Kind = "unknown" // no engine has answered a signature probe yet
-	LlamaCPP Kind = "llama.cpp"
-	VLLM     Kind = "vllm"
-	Ollama   Kind = "ollama"
-	LMStudio Kind = "lmstudio"
-	Generic  Kind = "openai-compatible" // answered /v1/models without any engine's signature
+	Unknown   Kind = "unknown" // no engine has answered a signature probe yet
+	LlamaCPP  Kind = "llama.cpp"
+	LlamaSwap Kind = "llama-swap"
+	VLLM      Kind = "vllm"
+	Ollama    Kind = "ollama"
+	LMStudio  Kind = "lmstudio"
+	Generic   Kind = "openai-compatible" // answered /v1/models without any engine's signature
 )
 
 // Health is whether the engine answered its last probe, since when, and why not.
@@ -27,10 +28,20 @@ type Health struct {
 	Err   string    `json:"err"`   // last probe error while !OK; "" while OK
 }
 
+// ModelInfo retains a swap model's reported context/state and last known slot capacity.
+// An unloaded model must not be started merely to discover its capacity.
+type ModelInfo struct {
+	Context int    `json:"context"`
+	State   string `json:"state"`
+	Slots   int    `json:"slots"`
+}
+
 // Info is the engine state as last probed. Unknown until an engine answered a signature probe;
 // while Unknown there is one slot, no context and no models (E1). A failed refresh keeps every
 // field and only flips Health (E2), so /me keeps telling the truth about what it knew.
 type Info struct {
+	ModelDetails map[string]ModelInfo `json:"model_details,omitempty"`
+
 	URL          string           `json:"url"`
 	Kind         Kind             `json:"kind"`
 	Health       Health           `json:"health"`

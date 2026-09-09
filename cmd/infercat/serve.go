@@ -227,7 +227,7 @@ func (e *env) openUpstream(ctx context.Context, dataDir, url, key string, slots 
 	}
 	if err != nil {
 		if errors.Is(err, upstream.ErrNoUpstream) {
-			e.logf("Start llama.cpp, Ollama, LM Studio or vLLM: https://github.com/infercat/infercat#no-engine-yet")
+			e.logf("Start llama.cpp, llama-swap, Ollama, LM Studio or vLLM: https://github.com/infercat/infercat#no-engine-yet")
 		}
 		// Detection found nothing: end with the command that fixes it, and say where the flag
 		// goes, because `--upstream` reads like a subcommand to a first-time host (promise 5).
@@ -578,7 +578,7 @@ Ctrl-C drains in-flight requests for up to 10s, then stops.
 
 Flags:
   --upstream URL          inference server; detected when absent, in the order
-                          llama.cpp :8080, Ollama :11434, LM Studio :1234, vLLM :8000.
+                          llama.cpp/llama-swap :8080, Ollama :11434, LM Studio :1234, vLLM :8000.
                           --upstream auto forgets a remembered URL and detects again
   --upstream-key TOKEN    bearer token for the inference server
   --models a,b            pin models for every key; all forgets the pin

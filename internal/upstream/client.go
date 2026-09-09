@@ -7,6 +7,7 @@ import (
 	"errors"
 	"fmt"
 	"io"
+	"maps"
 	"net/http"
 	"net/url"
 	"strings"
@@ -23,7 +24,7 @@ const (
 )
 
 // Slotted is implemented by upstreams whose parallel-slot count the host can override
-// (`serve --slots N`). Engines that report their own slot count ignore the override.
+// (`serve --slots N`). The override takes precedence over reported or estimated slots.
 type Slotted interface {
 	SetSlots(n int)
 }
@@ -79,6 +80,7 @@ func (c *client) Info() Info {
 	c.mu.RLock()
 	defer c.mu.RUnlock()
 	i := c.info
+	i.ModelDetails = maps.Clone(c.info.ModelDetails)
 	i.Models = append([]string(nil), c.info.Models...)
 	if c.info.Vision != nil {
 		i.Vision = make(map[string]*bool, len(c.info.Vision))
@@ -171,7 +173,7 @@ var candidates = []struct {
 }
 
 // ErrNoUpstream is returned when nothing answers on any known port.
-var ErrNoUpstream = errors.New("no local inference server found on 127.0.0.1 ports 8080 (llama.cpp), 11434 (Ollama), 1234 (LM Studio), 8000 (vLLM); pass --upstream URL")
+var ErrNoUpstream = errors.New("no local inference server found on 127.0.0.1 ports 8080 (llama.cpp/llama-swap), 11434 (Ollama), 1234 (LM Studio), 8000 (vLLM); pass --upstream URL")
 
 // Detect probes the known local engines in the contract's order and returns the first that
 // reaches OK. apiKey, when set, rides on every probe so an engine behind a bearer token is found

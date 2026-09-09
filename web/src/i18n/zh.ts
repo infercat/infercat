@@ -65,7 +65,7 @@ export const zh = {
   pop_r:
     '两台机器在这里会合。它只转发已经加密的数据包。它没有密钥，所以读不到内容。（WireGuard，经 DERP 中继。）目前浏览器都得走中继。用 <code>serve --derpmap-url</code> 可以换成你自己的。',
   pop_h:
-    '<code>infercat serve</code> 会找到你的引擎（llama.cpp、vLLM、Ollama 或 LM Studio），把它放进隧道里对外提供服务。别的都碰不到：没有别的端口，没有文件。每个请求记一行：密钥、接口、状态、token 数、耗时。不记文字，除非你加了 <code>--log-prompts</code>；真加了，应用会告诉你的朋友。',
+    '<code>infercat serve</code> 会找到你的引擎（llama.cpp、llama-swap、vLLM、Ollama 或 LM Studio），把它放进隧道里对外提供服务。别的都碰不到：没有别的端口，没有文件。每个请求记一行：密钥、接口、状态、token 数、耗时。不记文字，除非你加了 <code>--log-prompts</code>；真加了，应用会告诉你的朋友。',
   close: '关闭',
   path_r: '走中继',
   path_d: '直连',

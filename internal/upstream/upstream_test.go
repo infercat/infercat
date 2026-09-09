@@ -583,3 +583,106 @@ func TestVLLMSlotsDefaultToTwoOnceIdentified(t *testing.T) {
 		t.Fatalf("override 5 must survive a refresh: %v %d", err, up.Info().Slots)
 	}
 }
+
+func TestLlamaSwapModelMetadataAndSlots(t *testing.T) {
+	// v255's exact response fields; the escaped id also pins the /props query boundary.
+	const first = "model /a&b"
+	var stage, firstProbes, secondProbes atomic.Int32
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		n := stage.Load()
+		switch r.URL.Path {
+		case "/v1/models":
+			if n == 5 {
+				http.Error(w, "unavailable", 503)
+				return
+			}
+			a, b := "unloaded", "unloaded"
+			if n == 1 || n == 4 {
+				a = "loaded"
+			}
+			if n == 2 {
+				b = "loaded"
+			}
+			json.NewEncoder(w).Encode(map[string]any{"data": []any{
+				map[string]any{"id": first, "owned_by": "llama-swap", "context_length": 4096, "status": map[string]string{"value": a}},
+				map[string]any{"id": "second", "owned_by": "llama-swap", "context_length": 8192, "status": map[string]string{"value": b}},
+			}})
+		case "/props":
+			switch r.URL.Query().Get("model") {
+			case first:
+				firstProbes.Add(1)
+				if n != 1 && n != 4 {
+					t.Error("probed unloaded first model")
+				}
+				if n == 4 {
+					http.Error(w, "loading changed", 503)
+					return
+				}
+				io.WriteString(w, `{"total_slots":4,"modalities":{"vision":false}}`)
+			case "second":
+				secondProbes.Add(1)
+				if n != 2 {
+					t.Error("probed unloaded second model")
+				}
+				io.WriteString(w, `{"total_slots":2}`)
+			default:
+				t.Errorf("unqualified or incorrectly escaped props query: %s", r.URL)
+				http.Error(w, "missing model", 400)
+			}
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer server.Close()
+	up, err := Open(context.Background(), server.URL, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info := up.Info(); info.Kind != LlamaSwap || !info.Health.OK || info.ModelContext != 4096 || info.Slots != 1 || info.ModelDetails[first] != (ModelInfo{Context: 4096, State: "unloaded", Slots: 1}) {
+		t.Fatalf("initial metadata: %+v", info)
+	}
+	if firstProbes.Load() != 0 || secondProbes.Load() != 0 {
+		t.Fatal("discovery probed unloaded models")
+	}
+	for _, tc := range []struct{ stage, global, first, second int }{{1, 1, 4, 1}, {2, 2, 4, 2}, {3, 2, 4, 2}, {4, 2, 4, 2}} {
+		stage.Store(int32(tc.stage))
+		if err := up.Refresh(context.Background()); err != nil {
+			t.Fatal(err)
+		}
+		info := up.Info()
+		if info.Slots != tc.global || info.ModelDetails[first].Slots != tc.first || info.ModelDetails["second"].Slots != tc.second || info.ModelDetails["second"].Context != 8192 {
+			t.Fatalf("stage %d: %+v", tc.stage, info)
+		}
+	}
+	if firstProbes.Load() != 2 || secondProbes.Load() != 1 {
+		t.Fatalf("unexpected probes: %d/%d", firstProbes.Load(), secondProbes.Load())
+	}
+	copy := up.Info()
+	copy.ModelDetails[first] = ModelInfo{}
+	if up.Info().ModelDetails[first].Slots != 4 {
+		t.Fatal("Info exposes mutable metadata")
+	}
+	up.(Slotted).SetSlots(7)
+	stage.Store(3)
+	if err := up.Refresh(context.Background()); err != nil || up.Info().Slots != 7 || up.Info().ModelDetails[first].Slots != 4 {
+		t.Fatalf("slot override: %+v %v", up.Info(), err)
+	}
+	stage.Store(5)
+	if err := up.Refresh(context.Background()); err == nil || up.Info().Health.OK || up.Info().ModelDetails[first].State != "unloaded" || up.Info().Slots != 7 {
+		t.Fatalf("failed refresh did not retain metadata: %+v %v", up.Info(), err)
+	}
+}
+
+func TestSwapFieldsWithoutSignatureStayGeneric(t *testing.T) {
+	mux := http.NewServeMux()
+	mux.HandleFunc("/v1/models", jsonOK(`{"data":[{"id":"m","owned_by":"other","context_length":8192,"status":{"value":"loaded"}}]}`))
+	server := httptest.NewServer(mux)
+	defer server.Close()
+	up, err := Open(context.Background(), server.URL, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if info := up.Info(); info.Kind != Generic || info.ModelContext != 0 || info.Slots != 1 || info.ModelDetails != nil {
+		t.Fatalf("non-signature changed generic behavior: %+v", info)
+	}
+}

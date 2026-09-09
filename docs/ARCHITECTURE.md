@@ -15,7 +15,7 @@ friend's browser                                     host machine
 └──────────────────────┘                            │             ├─ auth: key store       │
                                                     │             ├─ limits / queue        │
                                                     │             ├─ usage recorder        │
-                                                    │             └─ reverse proxy ──▶ upstream (llama.cpp / vLLM / Ollama / LM Studio)
+                                                    │             └─ reverse proxy ──▶ upstream (llama.cpp / llama-swap / vLLM / Ollama / LM Studio)
                                                     │   admin API on unix socket (status)  │
                                                     └─────────────────────────────────────┘
 ```
@@ -173,10 +173,16 @@ type Engine interface { Info() Info; CountTokens(ctx, text, messages) (n int, ex
 ```
 `Do` owns the bearer, refuses redirects, applies the first-byte deadline (120 s) and the probe bound (3 s)
 on GETs; the engine's URL never crosses the seam (compile-time: the gateway names only `Engine`).
-Detection order when `--upstream` is absent: llama.cpp `127.0.0.1:8080` · Ollama `11434` · LM Studio
+Detection order when `--upstream` is absent: llama.cpp / llama-swap `127.0.0.1:8080` · Ollama `11434` · LM Studio
 `1234` · vLLM `8000`; probes carry `--upstream-key`; the first candidate that reaches OK wins. Exact token
-counts via `/tokenize` for llama.cpp and vLLM; others estimate ceil(chars/4). `--upstream auto` forgets a
-remembered URL and detects again.
+counts via `/tokenize` for llama.cpp and vLLM; others estimate ceil(chars/4).
+llama-swap is identified by `/v1/models` `owned_by: "llama-swap"` before any `/props` probe
+(v255, 7761aa1). Per-model `context_length`, `status.value` and last-known slots live in
+`Info.ModelDetails`, alongside `Vision`; loaded models alone get `/props?model=<id>` probes.
+The global context is the minimum positive reported context; slots are the minimum per-model
+estimate (loaded probe, else that model's last known, else 1), with `--slots` overriding.
+Unloaded models are never started by discovery; their ordinary first request loads them.
+`--upstream auto` forgets a remembered URL and detects again.
 
 ## Request pipeline, limits, and deadlines (006 + 010; `docs/DESIGN.md` §1)
 

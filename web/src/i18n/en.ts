@@ -67,7 +67,7 @@ export const en = {
   pop_r:
     '<p>The two machines meet here. It passes on packets that are already encrypted. It holds no key, so it cannot read them. (WireGuard, over a DERP relay.)</p><p>Browsers always use it today. Run your own with <code>serve --derpmap-url</code>.</p>',
   pop_h:
-    '<p><code>infercat serve</code> finds your engine (llama.cpp, vLLM, Ollama or LM Studio) and serves it inside the tunnel. Nothing else is reachable: no other port, no files.</p><p>It records one line per request: key, endpoint, status, token counts, timings. Never the text, unless you run <code>--log-prompts</code>. The app tells your friend if you do.</p>',
+    '<p><code>infercat serve</code> finds your engine (llama.cpp, llama-swap, vLLM, Ollama or LM Studio) and serves it inside the tunnel. Nothing else is reachable: no other port, no files.</p><p>It records one line per request: key, endpoint, status, token counts, timings. Never the text, unless you run <code>--log-prompts</code>. The app tells your friend if you do.</p>',
   close: 'close',
   path_r: 'relayed',
   path_d: 'direct',
