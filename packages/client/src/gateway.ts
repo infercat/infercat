@@ -16,6 +16,7 @@ export interface Me {
     name: string;
     upstream: { kind: string; healthy: boolean; model_context: number };
     models: string[];
+    vision: Record<string, boolean | null>;
     relay: { region: string };
     /** The host runs with --log-prompts. Absent on a gateway older than ticket 006: absent = false. */
     log_prompts?: boolean;

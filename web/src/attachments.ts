@@ -1,3 +1,4 @@
+import { FILE_ACCEPT, extractFile, pastedFile, fileBlocks, fileLine, FileError, fileErrorMessage } from './files';
 import { IMAGE_ACCEPT, ImageError, imageLine, prepareImage, MAX_IMAGES, type ImageData, type ImageMeta, type PreparedImage } from './images';
 import type { ChatMessage } from './api';
 import { tr } from './i18n/text';
@@ -10,13 +11,24 @@ export type ClipboardData = Pick<DataTransfer, 'files' | 'getData'>;
 export interface AdmissionOptions { vision?: boolean; model?: string; modelContext?: number; attachments?: readonly Attachment[]; draft?: string; storedBytes?: number }
 export interface AttachmentTurn { content: string; images?: readonly ImageMeta[]; files?: readonly AttachedFile[] }
 
-export function ACCEPT(vision: boolean): string { return [vision ? IMAGE_ACCEPT : '', /* L3: FILE_ACCEPT */ ''].filter(Boolean).join(','); }
+export function ACCEPT(vision: boolean): string { return [vision ? IMAGE_ACCEPT : '', FILE_ACCEPT].filter(Boolean).join(','); }
 /** Returns only ready attachments; callers own cancellable reading rows, in input order. */
 export async function admit(input: File[] | DataTransfer | ClipboardData, signal?: AbortSignal, options: AdmissionOptions = {}): Promise<Attachment[]> {
   const files = Array.isArray(input) ? input : Array.from(input.files);
   const attachments = [...(options.attachments ?? [])];
   const result: Attachment[] = [];
-  // L3: the text-only clipboard arm calls pastedFile(input.getData('text/plain'), fileOptions).
+  const fileOptions = () => ({ signal, modelContext: options.modelContext, draft: options.draft,
+    storedBytes: options.storedBytes, files: attachments.flatMap((a) => a.kind === 'file' ? [a.file] : []) });
+  const addFile = async (read: () => AttachedFile | null | Promise<AttachedFile>) => {
+    try {
+      const file = await read();
+      if (file) { const next: Attachment = { kind: 'file', id: crypto.randomUUID(), file }; attachments.push(next); result.push(next); }
+    } catch (error) {
+      if (error instanceof FileError) error.message = fileErrorMessage(error, options);
+      throw error;
+    }
+  };
+  if (!files.length && !Array.isArray(input)) await addFile(() => pastedFile(input.getData('text/plain'), fileOptions()));
   for (const file of files) {
     signal?.throwIfAborted();
     if (file.type.startsWith('image/')) {
@@ -31,19 +43,18 @@ export async function admit(input: File[] | DataTransfer | ClipboardData, signal
         throw new ImageError('cant_read', tr('app_could_not_read_that_image'), { cause: error });
       }
     } else {
-      // L3: acceptsFile/extractFile, passing signal, modelContext, draft, storedBytes,
-      // and attachments.filter(kind=file).map(a=>a.file); translate FileError here.
+      await addFile(() => extractFile(file, fileOptions()));
     }
   }
   return result;
 }
-export function sentText(m: AttachmentTurn): string { return m.content; /* L3: fileBlocks(m.files) + typed words */ }
+export function sentText(m: AttachmentTurn): string { return [fileBlocks(m.files), m.content].filter(Boolean).join('\n\n'); }
 export function sentContent(m: AttachmentTurn, images: ImageData = {}, text = sentText(m)): ChatMessage['content'] {
   const ready = (m.images ?? []).filter((i) => images[i.id]);
   return ready.length ? [...ready.map((i) => ({ type: 'image_url' as const, image_url: { url: images[i.id]! } })), { type: 'text', text }] : text;
 }
 export function attachedLine(m: Pick<AttachmentTurn, 'images' | 'files'>): string {
-  return [m.images?.length ? imageLine(m.images) : '', /* L3: fileLine(m.files) */ ''].filter(Boolean).join(' · ');
+  return [m.images?.length ? imageLine(m.images) : '', fileLine(m.files)].filter(Boolean).join(' · ');
 }
 export type DisplayAttachment = { kind: 'image'; id: string; image: ImageMeta } | { kind: 'file'; id: string; file: AttachedFile };
 export function turnAttachments(m: AttachmentTurn & { attachmentOrder?: readonly AttachmentRef[] }): DisplayAttachment[] {
