@@ -100,3 +100,34 @@ brews:
       bin.install "{{ .Env.CLI_NAME }}"
     test: |
       system "#{bin}/{{ .Env.CLI_NAME }}", "version"
+
+# v2.18's legacy pipeline builds images even with --skip=publish; dockers_v2 does not.
+dockers:
+  - id: linux-amd64
+    ids: [cli]
+    goos: linux
+    goarch: amd64
+    use: buildx
+    dockerfile: Dockerfile
+    image_templates: ["ghcr.io/infercat/infercat:{{ .Version }}-amd64"]
+    build_flag_templates: ["--platform=linux/amd64"]
+    extra_files: [LICENSE, THIRD_PARTY_NOTICES.md]
+  - id: linux-arm64
+    ids: [cli]
+    goos: linux
+    goarch: arm64
+    use: buildx
+    dockerfile: Dockerfile
+    image_templates: ["ghcr.io/infercat/infercat:{{ .Version }}-arm64"]
+    build_flag_templates: ["--platform=linux/arm64"]
+    extra_files: [LICENSE, THIRD_PARTY_NOTICES.md]
+
+docker_manifests:
+  - name_template: "ghcr.io/infercat/infercat:{{ .Version }}"
+    image_templates:
+      - "ghcr.io/infercat/infercat:{{ .Version }}-amd64"
+      - "ghcr.io/infercat/infercat:{{ .Version }}-arm64"
+  - name_template: "ghcr.io/infercat/infercat:latest"
+    image_templates:
+      - "ghcr.io/infercat/infercat:{{ .Version }}-amd64"
+      - "ghcr.io/infercat/infercat:{{ .Version }}-arm64"
