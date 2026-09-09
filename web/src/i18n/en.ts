@@ -206,6 +206,7 @@ export const en = {
   app_what_can_you_help_me_with: "What can you help me with?",
   // ui/Chat.tsx:768 — ConditionalExpression
   app_waiting_for_a_model: "Waiting for a model.",
+  app_waiting_for_model_load: "Waiting for {host} to load {model}…",
   // ui/Chat.tsx:830 — aria-label
   app_message: "Message",
   // ui/Chat.tsx:831 — placeholder

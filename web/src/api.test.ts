@@ -1,8 +1,11 @@
 import { describe, expect, it, vi } from 'vitest';
+import { readFileSync } from 'node:fs';
 import { NEW_REPLY, reduceReply } from './stream';
 import { tr } from './i18n/text';
 import {
   chatEvents,
+  DEFAULT_DEADLINES,
+  FIRST_BYTE_TIMEOUT_MS,
   describeError,
   GatewayError,
   getMe,
@@ -377,7 +380,7 @@ describe('a host that does not answer', () => {
     };
   }
   const req = { model: 'm', messages: [{ role: 'user' as const, content: 'hi' }] };
-  const fast = { noticeMs: 20, answerMs: 60, idleMs: 30 };
+  const fast = { noticeMs: 20, firstByteMs: 60, idleMs: 30 };
 
   it('says it is still waiting before it gives up', async () => {
     const kinds: StreamEvent['kind'][] = [];
@@ -403,7 +406,7 @@ describe('a host that does not answer', () => {
   // is demonstrably awake, and a GPU thinking for two minutes must never be called offline.
   it('never touches a host that answered, however slow the tokens are', async () => {
     const ac = new AbortController();
-    setTimeout(() => ac.abort(), 200); // long past answerMs
+    setTimeout(() => ac.abort(), 200); // long past firstByteMs
     const seen: StreamEvent[] = [];
     for await (const ev of chatEvents(slow(), 's', req, ac.signal, fast, 'desk')) seen.push(ev);
     expect(seen.map((e) => e.kind)).toEqual(['waiting', 'aborted']);
@@ -487,7 +490,7 @@ describe('a host that stops answering mid-reply', () => {
     };
   }
   const req = { model: 'm', messages: [{ role: 'user' as const, content: 'hi' }] };
-  const fast = { noticeMs: 20, answerMs: 60, idleMs: 30 };
+  const fast = { noticeMs: 20, firstByteMs: 60, idleMs: 30 };
 
   it('ends the reply as host_stalled, in the host’s name, when /me says the host is gone', async () => {
     let probes = 0;
@@ -650,4 +653,73 @@ it('uses the shared invite cap in HTTP/SSE notices, preserving one-seat copy and
       }
     }
   } finally { vi.unstubAllGlobals(); }
+});
+
+describe('cold-load first-byte patience', () => {
+  const req = { model: 'cold-model', messages: [{ role: 'user' as const, content: 'hi' }] };
+  it('matches the gateway first-byte budget without changing notice or idle deadlines', () => {
+    const go = readFileSync(new URL('../../internal/upstream/client.go', import.meta.url), 'utf8');
+    const seconds = /FirstByteTimeout\s*=\s*(\d+)\s*\*\s*time.Second/.exec(go)?.[1];
+    expect(seconds).toBeDefined();
+    expect(FIRST_BYTE_TIMEOUT_MS).toBe(Number(seconds) * 1000);
+    expect(DEFAULT_DEADLINES).toEqual({ noticeMs: 5000, firstByteMs: FIRST_BYTE_TIMEOUT_MS, idleMs: 15000 });
+    expect(tr('app_waiting_for_model_load', { host: 'Max', model: 'cold-model' }, 'en')).toBe('Waiting for Max to load cold-model…');
+    expect(tr('app_waiting_for_model_load', { host: 'Max', model: 'cold-model' }, 'zh')).toBe('正在等待 Max 加载 cold-model…');
+  });
+
+  it.each(['headers', 'stop'] as const)('notifies at five seconds and clears on %s, surviving the old deadline', async (finish) => {
+    vi.useFakeTimers();
+    const ac = new AbortController();
+    try {
+      let respond!: (response: Response) => void;
+      let requestSignal: AbortSignal | null | undefined;
+      const transport: Transport = {
+        kind: 'tunnel',
+        fetch: (_path, init) => new Promise<Response>((resolve, reject) => {
+          respond = resolve; requestSignal = init?.signal;
+          requestSignal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')));
+        }),
+        ping: () => Promise.resolve(null), close: () => {},
+      };
+      const waiting = vi.fn(); const seen: StreamEvent[] = [];
+      const done = (async () => { for await (const ev of chatEvents(transport, 's', req, ac.signal, undefined, 'Max', undefined, waiting)) seen.push(ev); })();
+      await vi.advanceTimersByTimeAsync(4999);
+      expect(waiting).not.toHaveBeenCalled();
+      await vi.advanceTimersByTimeAsync(1);
+      expect(waiting).toHaveBeenLastCalledWith(true);
+      await vi.advanceTimersByTimeAsync(15001);
+      expect(requestSignal?.aborted).toBe(false);
+      if (finish === 'headers') {
+        let body!: ReadableStreamDefaultController<Uint8Array>;
+        respond(new Response(new ReadableStream<Uint8Array>({ start(c) { body = c; } }), { status: 200 }));
+        await vi.advanceTimersByTimeAsync(0);
+        expect(waiting).toHaveBeenLastCalledWith(false);
+        expect(seen.some((e) => e.kind === 'content')).toBe(false);
+        body.enqueue(new TextEncoder().encode('data: [DONE]\n\n')); body.close();
+      } else ac.abort();
+      await done;
+      expect(waiting).toHaveBeenLastCalledWith(false);
+      expect(seen.at(-1)?.kind).toBe(finish === 'headers' ? 'done' : 'aborted');
+    } finally { ac.abort(); vi.useRealTimers(); }
+  });
+
+  it('still ends an unanswered request at the gateway deadline', async () => {
+    vi.useFakeTimers();
+    try {
+      let signal: AbortSignal | null | undefined;
+      const transport: Transport = {
+        kind: 'tunnel', fetch: (_path, init) => new Promise<Response>((_resolve, reject) => {
+          signal = init?.signal;
+          signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')));
+        }), ping: () => Promise.resolve(null), close: () => {},
+      };
+      const seen: StreamEvent[] = [];
+      const done = (async () => { for await (const ev of chatEvents(transport, 's', req)) seen.push(ev); })();
+      await vi.advanceTimersByTimeAsync(FIRST_BYTE_TIMEOUT_MS - 1);
+      expect(signal?.aborted).toBe(false);
+      await vi.advanceTimersByTimeAsync(1); await done;
+      expect(signal?.aborted).toBe(true);
+      expect(seen.at(-1)).toMatchObject({ kind: 'error', code: 'host_asleep' });
+    } finally { vi.useRealTimers(); }
+  });
 });
