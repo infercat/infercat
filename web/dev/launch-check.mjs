@@ -10,7 +10,7 @@
 // asks no third party for anything, fonts included (038 promise 3, Protection 3); every control in
 // the accessibility tree has a name; text contrast is 4.5:1 or better (3:1 for large text) in light
 // scheme; Tab lands on the invite field first; no horizontal overflow at 390 px. Screenshots go to
-// dev/screenshots/30-*.png; with INVITE, the recording goes to ../docs/media/friend-chat.gif (+ .png)
+// dev/screenshots/30-*.png (or LAUNCH_SHOTS); with INVITE, the recording goes to ../docs/media/friend-chat.gif (+ .png)
 // and must stay under 2 MB. The GIF needs a full ffmpeg (`brew install ffmpeg`, or FFMPEG=path to
 // one — Playwright's own ffmpeg records WebM and cannot write GIF).
 import { spawn, spawnSync } from 'node:child_process';
@@ -23,7 +23,7 @@ import { landingEvidence } from '../src/ui/landing/verify.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const web = join(here, '..');
-const shots = join(here, 'screenshots');
+const shots = process.env.LAUNCH_SHOTS || join(here, 'screenshots');
 // Recording-only framing; the normal launch gate remains unchanged.
 const demoAt = process.argv.indexOf('--demo-dir');
 const demoDir = demoAt < 0 ? '' : process.argv[demoAt + 1];
@@ -32,6 +32,7 @@ const media = demoDir || join(web, '..', 'docs', 'media');
 const PORT = Number(process.env.CHECK_PORT ?? 6833);
 const APP = (process.env.APP ?? `http://127.0.0.1:${PORT}`).replace(/\/+$/, '');
 const INVITE = process.env.INVITE ?? '';
+const PUBLIC_ORIGIN = new URL(process.env.VITE_WEB_URL || /WebURL\s*=\s*"([^"]+)"/.exec(readFileSync(join(web, '../internal/product/product.go'), 'utf8'))?.[1] || APP).origin;
 const NAME = /PRODUCT_NAME = '([^']+)'/.exec(readFileSync(join(web, 'src/product.ts'), 'utf8'))?.[1] ?? 'app';
 const QUESTION = demoDir ? 'Why is the sky blue? Answer in one sentence.' : 'Why is the sky blue? Answer in three sentences.';
 
@@ -99,8 +100,39 @@ function shot(file) {
   if (file.endsWith('.gif') && kb > 2048) problems.push(`${file} is ${kb} KB, over the 2 MB budget`);
 }
 
+/** Resolve the authored link; local preview checks its built copy, including absolute OG URLs. */
+async function linkedAsset(href, base, expected, request = fetch) {
+  if (!href?.trim()) throw new Error(`missing ${expected || 'image'} asset link`);
+  let url = new URL(href, base);
+  if (!process.env.APP && url.origin === PUBLIC_ORIGIN) url = new URL(url.pathname + url.search, APP);
+  const response = await request(url.href);
+  const type = (response.headers.get('content-type') ?? '').split(';')[0].trim().toLowerCase();
+  const body = await response.arrayBuffer();
+  const correct = expected === 'manifest' ? ['application/manifest+json', 'application/json'].includes(type) : expected ? type === expected.toLowerCase() : type.startsWith('image/');
+  if (!response.ok || !correct || body.byteLength === 0) throw new Error(`${url.href} → ${response.status}, ${type || 'no content type'}, ${body.byteLength} bytes (expected ${expected || 'image/*'})`);
+  return { url: response.url || url.href, body };
+}
+
+/** Regression fixtures: hashes/relative links work, a 200 HTML fallback or empty asset does not. */
+async function assetFixtures() {
+  let requested;
+  const response = async (url) => { requested = url; return new globalThis.Response('<svg/>', { headers: { 'content-type': 'image/svg+xml' } }); };
+  for (const href of ['/static/abc/favicon.svg', '../assets/renamed.svg', `${APP}/absolute.svg`]) {
+    await linkedAsset(href, `${APP}/nested/index.html`, 'image/svg+xml', response);
+    if (requested !== new URL(href, `${APP}/nested/index.html`).href) throw new Error('asset URL resolution fixture failed');
+  }
+  await linkedAsset(`${PUBLIC_ORIGIN}/static/og-hash.png`, APP, 'image/svg+xml', response);
+  if (requested !== `${process.env.APP ? PUBLIC_ORIGIN : APP}/static/og-hash.png`) throw new Error('public asset preview fixture failed');
+  for (const [status, type, body] of [[200, 'text/html', '<html/>'], [200, 'image/png', ''], [404, 'image/png', 'missing']]) {
+    let refused = false;
+    try { await linkedAsset('/broken.png', APP, '', async () => new globalThis.Response(body, { status, headers: { 'content-type': type } })); } catch { refused = true; }
+    if (!refused) throw new Error('broken asset fixture was accepted');
+  }
+  say('asset fixtures: 7 passed / 0 failed / 0 skipped');
+}
+
 /** The page's head, as served: what a crawler, a social card and a phone's Add to Home Screen read. */
-async function metas(label) {
+async function metas(page, label) {
   const html = await (await fetch(`${APP}/`)).text();
   for (const [needle, what] of [
     [`<title>${NAME}</title>`, 'the title'],
@@ -110,9 +142,6 @@ async function metas(label) {
     ['property="og:image"', 'og:image'],
     ['name="twitter:card"', 'twitter:card'],
     ['name="theme-color"', 'theme-color'],
-    ['rel="manifest"', 'the manifest link'],
-    ['rel="apple-touch-icon"', 'the apple-touch-icon link'],
-    ['rel="icon" href="/favicon.svg"', 'the SVG favicon'],
   ]) {
     if (!html.includes(needle)) problems.push(`${label}: index.html lacks ${what}`);
   }
@@ -120,20 +149,26 @@ async function metas(label) {
   const themes = html.match(/<meta name="theme-color"[^>]*>/g) ?? [];
   if (themes.length !== 1 || !themes[0].includes('content="#ffffff"') || themes[0].includes('media=')) problems.push(`${label}: expected one unconditional white theme-color`);
   if (html.includes('%PRODUCT') || html.includes('%WEB_URL%')) problems.push(`${label}: an unfilled placeholder is in index.html`);
-  const res = await fetch(`${APP}/manifest.webmanifest`);
-  if (!res.ok) {
-    problems.push(`${label}: /manifest.webmanifest → ${res.status}`);
-    return;
-  }
-  const manifest = await res.json();
+  const links = await page.evaluate(() => ({
+    base: document.baseURI,
+    icons: [...document.querySelectorAll('link[rel~="icon"]')].map((el) => ({ href: el.getAttribute('href'), type: el.type })),
+    manifest: document.querySelector('link[rel~="manifest"]')?.getAttribute('href'),
+    apple: document.querySelector('link[rel~="apple-touch-icon"]')?.getAttribute('href'),
+    og: document.querySelector('meta[property="og:image"]')?.getAttribute('content'),
+  }));
+  if (!links.icons.length) throw new Error(`${label}: no favicon links`);
+  const fetched = await linkedAsset(links.manifest, links.base, 'manifest');
+  const manifest = JSON.parse(new TextDecoder().decode(fetched.body));
   if (manifest.name !== NAME) problems.push(`${label}: the manifest names "${manifest.name}", not "${NAME}"`);
   if (manifest.display !== 'standalone') problems.push(`${label}: manifest display is ${manifest.display}`);
-  const files = new Set(['favicon.svg', 'favicon.png', 'apple-touch-icon.png', 'og.png', ...manifest.icons.map((i) => i.src.replace(/^\//, ''))]);
-  for (const f of files) {
-    const r = await fetch(`${APP}/${f}`);
-    if (!r.ok) problems.push(`${label}: /${f} → ${r.status}`);
-  }
-  say(`${label}: title, description, OG/Twitter metas, theme-color, manifest "${manifest.name}" (${manifest.icons.length} icons), ${files.size} assets served`);
+  if (!Array.isArray(manifest.icons) || !manifest.icons.length) throw new Error(`${label}: no manifest icons`);
+  for (const icon of links.icons) await linkedAsset(icon.href, links.base, icon.type);
+  for (const icon of manifest.icons) await linkedAsset(icon.src, fetched.url, icon.type);
+  const apple = await linkedAsset(links.apple, links.base, '');
+  const og = await linkedAsset(links.og, links.base, '');
+  say(`${label}: head links resolved; manifest "${manifest.name}" (${manifest.icons.length} icons); ${links.icons.length + manifest.icons.length + 3} assets have valid content types and non-empty bodies`);
+  return { apple: apple.url, og: og.url };
+
 }
 
 /** Every control the accessibility tree lists has a name — what a screen reader would say. */
@@ -245,7 +280,7 @@ async function noOverflow(page, label) {
 }
 
 /** How the link looks pasted into a timeline: the served og.png under the served title and description. */
-async function ogPreview(browser) {
+async function ogPreview(browser, assets) {
   const html = await (await fetch(`${APP}/`)).text();
   const title = /<title>([^<]*)<\/title>/.exec(html)?.[1] ?? '';
   const desc = /property="og:description" content="([^"]*)"/.exec(html)?.[1] ?? '';
@@ -260,7 +295,7 @@ async function ogPreview(browser) {
     .title { font-weight: 600; font-size: 15px; margin: 2px 0; color: #111; }
     .desc { color: #495057; font-size: 14px; line-height: 1.35; }
   </style>
-  <div class="card"><img src="${APP}/og.png" alt=""><div class="meta">
+  <div class="card"><img src="${assets.og}" alt=""><div class="meta">
     <div class="domain">TODO(F3) web app URL</div><div class="title">${title}</div><div class="desc">${desc}</div>
   </div></div>`);
   await page.waitForFunction(() => document.images[0]?.complete);
@@ -271,7 +306,7 @@ async function ogPreview(browser) {
 }
 
 /** A mock of a phone home screen with the app's icon on it: the tile a phone makes from apple-touch-icon.png. */
-async function homeScreen(browser) {
+async function homeScreen(browser, assets) {
   const ctx = await browser.newContext({ viewport: { width: 390, height: 300 }, deviceScaleFactor: 2 });
   const page = await ctx.newPage();
   const tile = (src, label) => `<div class="tile"><img src="${src}"><span>${label}</span></div>`;
@@ -283,7 +318,7 @@ async function homeScreen(browser) {
     .tile span { color: #fff; font-size: 11px; text-align: center; text-shadow: 0 1px 2px rgba(0,0,0,.6); white-space: nowrap; }
     .blank img { background: #6b7280; }
   </style>
-  ${tile(`${APP}/apple-touch-icon.png`, NAME)}
+  ${tile(assets.apple, NAME)}
   <div class="tile blank"><img src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"><span>Photos</span></div>
   <div class="tile blank"><img src="data:image/gif;base64,R0lGODlhAQABAIAAAAAAAP///yH5BAEAAAAALAAAAAABAAEAAAIBRAA7"><span>Notes</span></div>`);
   await page.waitForFunction(() => [...document.images].every((i) => i.complete));
@@ -294,7 +329,7 @@ async function homeScreen(browser) {
 }
 
 async function connectScreen(browser) {
-  await metas('connect');
+  let assets;
   for (const [name, viewport, scheme] of [
     ['30-connect-desktop', { width: 1280, height: 800 }, 'light'],
     ['30-connect-phone', { width: 390, height: 844 }, 'light'],
@@ -305,6 +340,7 @@ async function connectScreen(browser) {
     const asked = netWatch(page);
     await page.goto(`${APP}/`);
     await page.waitForSelector('.connect-card');
+    if (!assets) assets = await metas(page, 'connect');
     await page.waitForTimeout(300);
     // After the fonts have settled, so a font that was fetched from a CDN would be in the log.
     await page.evaluate(() => document.fonts.ready);
@@ -335,8 +371,8 @@ async function connectScreen(browser) {
     shot(file);
     await ctx.close();
   }
-  await ogPreview(browser);
-  await homeScreen(browser);
+  await ogPreview(browser, assets);
+  await homeScreen(browser, assets);
 }
 
 function ffmpeg() {
@@ -480,6 +516,7 @@ async function chat(browser) {
 }
 
 async function main() {
+  await assetFixtures();
   if (demoDir && (!INVITE || !process.env.APP)) throw new Error('demo needs INVITE and APP');
   if (!demoDir) mkdirSync(shots, { recursive: true });
   let preview = null;
