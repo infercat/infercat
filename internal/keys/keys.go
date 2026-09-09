@@ -18,18 +18,20 @@ const (
 // Limits are per-key. Zero means "use the default" at creation time and "unlimited / upstream's"
 // once stored (MaxContext 0 = upstream context; Models empty = all models).
 type Limits struct {
-	RPM             int      `json:"rpm"`
-	TPM             int      `json:"tpm"`
-	MaxConcurrent   int      `json:"max_concurrent"`
-	MaxOutputTokens int      `json:"max_output_tokens"`
-	MaxContext      int      `json:"max_context"`
-	DailyTokens     int      `json:"daily_tokens"`
-	Models          []string `json:"models,omitempty"`
+	DailyAudioSeconds int      `json:"daily_audio_seconds"`
+	DailySpeechChars  int      `json:"daily_speech_chars"`
+	RPM               int      `json:"rpm"`
+	TPM               int      `json:"tpm"`
+	MaxConcurrent     int      `json:"max_concurrent"`
+	MaxOutputTokens   int      `json:"max_output_tokens"`
+	MaxContext        int      `json:"max_context"`
+	DailyTokens       int      `json:"daily_tokens"`
+	Models            []string `json:"models,omitempty"`
 }
 
 // DefaultLimits are applied at `keys add` when a field is zero.
 func DefaultLimits() Limits {
-	return Limits{RPM: 20, TPM: 20000, MaxConcurrent: 1, MaxOutputTokens: 4096, MaxContext: 0, DailyTokens: 200000}
+	return Limits{DailyAudioSeconds: 3600, DailySpeechChars: 200000, RPM: 20, TPM: 20000, MaxConcurrent: 1, MaxOutputTokens: 4096, MaxContext: 0, DailyTokens: 200000}
 }
 
 // Key is one friend. SecretHash is "sha256:<hex>" of the invite secret; the secret itself is never stored.
@@ -77,3 +79,14 @@ type Admin interface {
 
 // HashSecret returns the canonical "sha256:<hex>" form used in keys.json.
 // Implemented in hash.go (PM-owned) so 002 and 003 share one definition.
+
+// AudioDefaults applies new fields to legacy keys in memory without rewriting the key file.
+func AudioDefaults(l Limits) Limits {
+	if l.DailyAudioSeconds == 0 {
+		l.DailyAudioSeconds = 3600
+	}
+	if l.DailySpeechChars == 0 {
+		l.DailySpeechChars = 200000
+	}
+	return l
+}

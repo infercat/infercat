@@ -181,6 +181,11 @@ func writeStatus(w io.Writer, st admin.Status) {
 	fmt.Fprintf(w, "upstream  %s  %s  %s  context %s  slots %d\n",
 		kindWord(st.Upstream.Kind), st.Upstream.URL, healthWord(st.Upstream.Healthy, st.Upstream.Since),
 		contextStr(st.Upstream.ModelContext), st.Upstream.Slots)
+	for _, route := range []string{"transcriptions", "speech"} {
+		if a, ok := st.Audio[route]; ok {
+			fmt.Fprintf(w, "audio     /v1/audio/%s  %s  %s\n", route, a.URL, healthWord(a.Healthy, a.Since))
+		}
+	}
 	if len(st.ModelsPinned) > 0 {
 		fmt.Fprintf(w, "models    %s (pinned)\n", modelList(st.ModelsPinned))
 	}

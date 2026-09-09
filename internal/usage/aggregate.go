@@ -38,7 +38,7 @@ func (f Filter) match(e *Event) bool {
 // one conversation and put a 3 ms poll in the latency percentiles (ticket 009 promise 6).
 func ModelCall(e *Event) bool {
 	switch e.Endpoint {
-	case "/v1/chat/completions", "/v1/embeddings":
+	case "/v1/chat/completions", "/v1/embeddings", "/v1/audio/transcriptions", "/v1/audio/speech":
 		return true
 	}
 	return false
@@ -46,8 +46,10 @@ func ModelCall(e *Event) bool {
 
 // Stats are the numbers `usage` prints, for one key or for the whole file.
 type Stats struct {
-	KeyID  string         `json:"key_id,omitempty"`
-	Models map[string]int `json:"model_calls_by_model,omitempty"`
+	KeyID      string         `json:"key_id,omitempty"`
+	Models     map[string]int `json:"model_calls_by_model,omitempty"`
+	Seconds    float64        `json:"seconds"`
+	Characters int            `json:"characters"`
 	// Requests is every recorded call; ModelCalls and AppPolls split it into what the friend did
 	// and what their app did. Requests == ModelCalls + AppPolls.
 	Requests         int            `json:"requests"`
@@ -96,6 +98,8 @@ func (s *Stats) add(e *Event) {
 		}
 		s.ErrorsByCode[code]++
 	}
+	s.Seconds += e.Seconds
+	s.Characters += e.Characters
 	s.PromptTokens += e.PromptTokens
 	s.CompletionTokens += e.CompletionTokens
 	// Percentiles are over successful model calls only: a rejected request and a 3 ms /me poll

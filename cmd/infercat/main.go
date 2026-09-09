@@ -58,7 +58,10 @@ type gatewayServer interface {
 }
 
 type gatewayOptions struct {
-	ModelsPinned []string
+	Transcribe, Speech           upstream.AudioEngine
+	TranscribeModel, SpeechModel string
+	MaxTranscriptionSeconds      float64
+	ModelsPinned                 []string
 
 	LogPrompts  bool
 	HostName    string

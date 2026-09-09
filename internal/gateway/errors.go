@@ -15,22 +15,24 @@ import (
 type Code string
 
 const (
-	CodeInvalidKey         Code = "invalid_key"
-	CodeKeyPaused          Code = "key_paused"
-	CodeKeyRevoked         Code = "key_revoked"
-	CodeModelNotAllowed    Code = "model_not_allowed"
-	CodeBodyTooLarge       Code = "body_too_large"
-	CodeContextTooLong     Code = "context_too_long"
-	CodeRateLimited        Code = "rate_limited"
-	CodeConcurrencyLimited Code = "concurrency_limited"
-	CodeBudgetExhausted    Code = "budget_exhausted"
-	CodeQueueTimeout       Code = "queue_timeout"
-	CodeUpstreamDown       Code = "upstream_down"
-	CodeUpstreamError      Code = "upstream_error"
-	CodeImagesNotSupported Code = "images_not_supported"
-	CodeInvalidRequest     Code = "invalid_request"
-	CodeNotFound           Code = "not_found"
-	CodeClientClosed       Code = "client_closed"
+	CodeInvalidKey            Code = "invalid_key"
+	CodeKeyPaused             Code = "key_paused"
+	CodeKeyRevoked            Code = "key_revoked"
+	CodeModelNotAllowed       Code = "model_not_allowed"
+	CodeBodyTooLarge          Code = "body_too_large"
+	CodeContextTooLong        Code = "context_too_long"
+	CodeRateLimited           Code = "rate_limited"
+	CodeConcurrencyLimited    Code = "concurrency_limited"
+	CodeBudgetExhausted       Code = "budget_exhausted"
+	CodeQueueTimeout          Code = "queue_timeout"
+	CodeUpstreamDown          Code = "upstream_down"
+	CodeUpstreamError         Code = "upstream_error"
+	CodeAudioBudgetExhausted  Code = "audio_budget_exhausted"
+	CodeSpeechBudgetExhausted Code = "speech_budget_exhausted"
+	CodeImagesNotSupported    Code = "images_not_supported"
+	CodeInvalidRequest        Code = "invalid_request"
+	CodeNotFound              Code = "not_found"
+	CodeClientClosed          Code = "client_closed"
 )
 
 type codeRow struct {
@@ -39,21 +41,23 @@ type codeRow struct {
 }
 
 var codeTable = map[Code]codeRow{
-	CodeInvalidKey:         {http.StatusUnauthorized, "authentication_error"},
-	CodeKeyPaused:          {http.StatusForbidden, "permission_error"},
-	CodeKeyRevoked:         {http.StatusForbidden, "permission_error"},
-	CodeModelNotAllowed:    {http.StatusForbidden, "permission_error"},
-	CodeBodyTooLarge:       {http.StatusRequestEntityTooLarge, "invalid_request_error"},
-	CodeContextTooLong:     {http.StatusUnprocessableEntity, "invalid_request_error"},
-	CodeRateLimited:        {http.StatusTooManyRequests, "rate_limit_error"},
-	CodeConcurrencyLimited: {http.StatusTooManyRequests, "rate_limit_error"},
-	CodeBudgetExhausted:    {http.StatusTooManyRequests, "rate_limit_error"},
-	CodeQueueTimeout:       {http.StatusServiceUnavailable, "upstream_error"},
-	CodeUpstreamDown:       {http.StatusServiceUnavailable, "upstream_error"},
-	CodeUpstreamError:      {http.StatusBadGateway, "upstream_error"},
-	CodeImagesNotSupported: {http.StatusBadRequest, "invalid_request_error"},
-	CodeInvalidRequest:     {http.StatusBadRequest, "invalid_request_error"},
-	CodeNotFound:           {http.StatusNotFound, "invalid_request_error"},
+	CodeInvalidKey:            {http.StatusUnauthorized, "authentication_error"},
+	CodeKeyPaused:             {http.StatusForbidden, "permission_error"},
+	CodeKeyRevoked:            {http.StatusForbidden, "permission_error"},
+	CodeModelNotAllowed:       {http.StatusForbidden, "permission_error"},
+	CodeBodyTooLarge:          {http.StatusRequestEntityTooLarge, "invalid_request_error"},
+	CodeContextTooLong:        {http.StatusUnprocessableEntity, "invalid_request_error"},
+	CodeRateLimited:           {http.StatusTooManyRequests, "rate_limit_error"},
+	CodeConcurrencyLimited:    {http.StatusTooManyRequests, "rate_limit_error"},
+	CodeBudgetExhausted:       {http.StatusTooManyRequests, "rate_limit_error"},
+	CodeQueueTimeout:          {http.StatusServiceUnavailable, "upstream_error"},
+	CodeUpstreamDown:          {http.StatusServiceUnavailable, "upstream_error"},
+	CodeUpstreamError:         {http.StatusBadGateway, "upstream_error"},
+	CodeAudioBudgetExhausted:  {http.StatusTooManyRequests, "rate_limit_error"},
+	CodeSpeechBudgetExhausted: {http.StatusTooManyRequests, "rate_limit_error"},
+	CodeImagesNotSupported:    {http.StatusBadRequest, "invalid_request_error"},
+	CodeInvalidRequest:        {http.StatusBadRequest, "invalid_request_error"},
+	CodeNotFound:              {http.StatusNotFound, "invalid_request_error"},
 }
 
 // gwError is a gateway-originated failure: a code, a human sentence, and (for 429/503) the number of

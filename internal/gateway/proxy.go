@@ -359,7 +359,11 @@ type meResponse struct {
 		} `json:"upstream"`
 		Models []string         `json:"models"`
 		Vision map[string]*bool `json:"vision"`
-		Relay  struct {
+		Audio  struct {
+			Transcriptions *string `json:"transcriptions"`
+			Speech         *string `json:"speech"`
+		} `json:"audio"`
+		Relay struct {
 			Region string `json:"region"`
 		} `json:"relay"`
 		LogPrompts bool `json:"log_prompts"` // the host records prompt text (Protection 3 disclosure; 006 promise 11)
@@ -374,6 +378,13 @@ func (q *request) me() {
 	m.Usage.RPMUsed, m.Usage.TPMUsed, m.Usage.TodayTokens, m.Usage.InFlight = cnt.RPMUsed, cnt.TPMUsed, cnt.TodayTokens, cnt.InFlight
 	info := q.g.up.Info()
 	m.Host.Name = q.g.cfg.HostName
+	m.Host.Audio.Transcriptions = audioModel(q.g.cfg.Transcribe, q.g.cfg.TranscribeModel)
+	m.Host.Audio.Speech = audioModel(q.g.cfg.Speech, q.g.cfg.SpeechModel)
+	for _, model := range []**string{&m.Host.Audio.Transcriptions, &m.Host.Audio.Speech} {
+		if *model != nil && !allowsModel(q.key, q.g.cfg.ModelsPinned, **model) {
+			*model = nil
+		}
+	}
 	m.Host.LogPrompts = q.g.cfg.LogPrompts
 	m.Host.Upstream.Kind, m.Host.Upstream.Healthy, m.Host.Upstream.ModelContext = info.Kind, info.Health.OK, info.ModelContext
 	m.Host.Models = []string{}

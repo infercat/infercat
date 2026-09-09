@@ -120,7 +120,7 @@ Auth: `Authorization: Bearer <secret>` on every route except `/healthz`.
 | Route | Behaviour |
 |---|---|
 | `GET /healthz` | `{"ok":true}` always; no auth; no other info |
-| `GET /me` | `{key:{id,name,status}, limits:Limits, usage:{rpm_used, tpm_used, today_tokens, in_flight}, host:{name, upstream:{kind,healthy,model_context}, models:[ids], vision:{id:true|false|null}, relay:{region}, log_prompts:bool}}`. `kind` is `"unknown"` until an engine answered a signature probe; `healthy` reflects the last probe; the client discloses `log_prompts`. `vision` contains only invite-visible model ids and is refreshed with every probe (null = unknown); the app reads the selected model’s entry. llama.cpp reports `/props` modalities.vision, Ollama `/api/show` capabilities, LM Studio `/api/v0/models` type (`vlm`); vLLM assumes true on a successful model probe. Failed engine refreshes preserve prior state. Image-bearing requests refused by a 4xx naming images/multimodal input return `images_not_supported` (400, no retry) with the engine’s message, except context overflow retains its existing mapping. |
+| `GET /me` | `{key:{id,name,status}, limits:Limits, usage:{rpm_used, tpm_used, today_tokens, in_flight}, host:{name, upstream:{kind,healthy,model_context}, models:[ids], vision:{id:true|false|null}, audio:{transcriptions:model-id|null,speech:model-id|null}, relay:{region}, log_prompts:bool}}`. `kind` is `"unknown"` until an engine answered a signature probe; `healthy` reflects the last probe; the client discloses `log_prompts`. `vision` contains only invite-visible model ids and is refreshed with every probe (null = unknown); the app reads the selected model’s entry. llama.cpp reports `/props` modalities.vision, Ollama `/api/show` capabilities, LM Studio `/api/v0/models` type (`vlm`); vLLM assumes true on a successful model probe. Failed engine refreshes preserve prior state. Image-bearing requests refused by a 4xx naming images/multimodal input return `images_not_supported` (400, no retry) with the engine’s message, except context overflow retains its existing mapping. |
 | `GET /v1/models` | engine list filtered by the intersection of the host pin and the key's allowed models; per-key concurrency applies; **not counted against RPM** (ruled 2026-09-02, ticket 014: the friend's meter counts messages) |
 | `POST /v1/chat/completions` | stream and non-stream. Gateway MUST: flush every SSE chunk immediately; inject `stream_options.include_usage=true` when streaming; normalize the body once (strip engine-override aliases such as `n_predict`/`n`/`best_of`/`priority`, fill `model`, clamp `max_tokens` to the key's cap and shrink it to fit the context and the TPM/daily windows, floor 16); pass `reasoning_content` through untouched. An engine 400/422 caused by the request maps to 400 `invalid_request` with the engine's message — except a context overflow (llama.cpp `exceed_context_size_error`, vLLM "maximum context length"), which maps to 422 `context_too_long` so clients never retry it (036); 5xx → 502 |
 | `POST /v1/embeddings` | pass-through with auth + limits |
@@ -244,3 +244,40 @@ whitelisted display fields, including the runtime prompt-logging truth and confi
 web URL. Missing model context and historical uptime are not inferred. `make console-build`
 updates the embedded bundle; `make check` builds separately and refuses stale committed
 `console/dist` bytes without rewriting them.
+
+### Explicit audio engines
+
+`serve --upstream-transcribe URL --upstream-speech URL` adds the configured
+`POST /v1/audio/transcriptions` and `POST /v1/audio/speech` routes. Each base URL
+has a corresponding `-key` flag; both may point at the same OpenAI-compatible
+server. Flags and `--max-transcription-seconds` are remembered in the existing
+0600 config file. URL/key changes require the next `serve`; admin reload reloads
+keys and re-probes both audio engines. A successful `/v1/models` probe (or `/health`
+fallback) plus explicit configuration makes a route available when a model is known.
+`--upstream-transcribe-model` / `--upstream-speech-model` optionally select the
+host's default id; otherwise the first `/v1/models` id is used. A missing request
+model, or one not in that engine's list, becomes this default before allowlist
+checks. `/me.host.audio` contains `transcriptions` and `speech` model ids, or null
+when unavailable or not shared with this invite. A health-only engine needs an
+explicit model flag. Model flags are remembered and take effect on next serve.
+This states configured reachability, not inferred model capability. Native
+whisper.cpp `/inference` translation is not implemented.
+
+Audio uses the existing key authentication, key and host model allowlists,
+per-key RPM/concurrency, bounded global queue, body/read/first-byte/idle/write
+deadlines, and one final settlement path. It does not consume token budgets.
+Transcription file bytes and other fields are preserved while model and
+response_format are normalized (duplicate file/model/response_format fields are
+refused). Default/json requests ask the engine for verbose_json to obtain duration,
+then return only {"text"}; explicit verbose_json/text/srt/vtt retain their formats.
+Speech JSON values other than normalized model pass through and audio bytes
+are flushed as received, with no SSE framing. The transcription request cap is
+25 MiB; speech retains the ordinary 4 MiB cap.
+
+Usage JSONL adds `kind` (`transcription` or `speech`), `seconds`,
+`reserved_seconds`, `overrun_seconds`, `seconds_estimated`, and `characters` as
+applicable. Characters count Unicode code points. Neither audio nor transcription
+or speech text is written by the gateway, even with `--log-prompts`. Aggregate
+seconds/characters restore daily budgets on restart; unreadable or malformed
+usage history refuses audio rather than silently resetting its budget.
+`status` and the startup banner name both configured audio routes and engines.

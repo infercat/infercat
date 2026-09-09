@@ -44,23 +44,27 @@ type logEntry struct {
 }
 
 type keyState struct {
-	mu       sync.Mutex
-	log      []logEntry
-	seq      uint64 // the last admission seq handed out
-	inFlight int
-	reserved int       // prompt + max_tokens of requests in flight, counted by TPM and daily until settled
-	day      time.Time // UTC midnight of the day `today` counts
-	today    int
-	lastSeen time.Time
+	audioSeconds, audioReserved float64
+	speechChars, speechReserved int
+	mu                          sync.Mutex
+	log                         []logEntry
+	seq                         uint64 // the last admission seq handed out
+	inFlight                    int
+	reserved                    int       // prompt + max_tokens of requests in flight, counted by TPM and daily until settled
+	day                         time.Time // UTC midnight of the day `today` counts
+	today                       int
+	lastSeen                    time.Time
 }
 
 // admission is what admit hands out and settle takes back: the key, the RPM entry this admission
 // wrote (by seq), and the tokens reserve later put on it. The request record holds it; nothing
 // else ends it.
 type admission struct {
-	key      string
-	seq      uint64
-	reserved int
+	audioSeconds float64
+	speechChars  int
+	key          string
+	seq          uint64
+	reserved     int
 }
 
 // limiter owns all keyState. now is injectable for tests.
@@ -87,6 +91,7 @@ func (l *limiter) seedToday(rep *usage.Report, day time.Time) {
 		st := l.state(s.KeyID)
 		st.mu.Lock()
 		st.day, st.today, st.lastSeen = day, s.PromptTokens+s.CompletionTokens, s.LastSeen
+		st.audioSeconds, st.speechChars = s.Seconds, s.Characters
 		st.mu.Unlock()
 	}
 }
@@ -115,6 +120,7 @@ func (st *keyState) prune(now time.Time) {
 	day := now.UTC().Truncate(24 * time.Hour)
 	if !day.Equal(st.day) {
 		st.day, st.today = day, 0
+		st.audioSeconds, st.speechChars = 0, 0
 	}
 }
 
@@ -296,7 +302,7 @@ func (l *limiter) counters(id string) usage.KeyCounters {
 	defer st.mu.Unlock()
 	st.prune(l.now())
 	reqs, tokens := st.used()
-	return usage.KeyCounters{InFlight: st.inFlight, RPMUsed: reqs, TPMUsed: tokens + st.reserved, TodayTokens: st.today + st.reserved, LastSeen: st.lastSeen}
+	return usage.KeyCounters{TodayAudioSeconds: st.audioSeconds + st.audioReserved, TodaySpeechChars: st.speechChars + st.speechReserved, InFlight: st.inFlight, RPMUsed: reqs, TPMUsed: tokens + st.reserved, TodayTokens: st.today + st.reserved, LastSeen: st.lastSeen}
 }
 
 func (l *limiter) allCounters() map[string]usage.KeyCounters {

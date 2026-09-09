@@ -10,6 +10,12 @@ import (
 // Event is one request. No prompt or completion content lives here unless the host opted in,
 // in which case Prompt/Completion are set (Protection 3 in docs/PRINCIPLES.md).
 type Event struct {
+	Kind             string    `json:"kind,omitempty"`
+	Seconds          float64   `json:"seconds,omitempty"`
+	ReservedSeconds  float64   `json:"reserved_seconds,omitempty"`
+	OverrunSeconds   float64   `json:"overrun_seconds,omitempty"`
+	SecondsEstimated bool      `json:"seconds_estimated,omitempty"`
+	Characters       int       `json:"characters,omitempty"`
 	TS               time.Time `json:"ts"`
 	KeyID            string    `json:"key_id"`
 	Endpoint         string    `json:"endpoint"` // "/v1/chat/completions", "/v1/embeddings", "/v1/models", "/me"
@@ -35,11 +41,13 @@ type Recorder interface {
 // Counters are the live per-key numbers the gateway keeps in memory for limits and for /me.
 // Implemented by the gateway (002); exposed to admin status via the Snapshot interface.
 type KeyCounters struct {
-	InFlight    int       `json:"in_flight"`
-	RPMUsed     int       `json:"rpm_used"`
-	TPMUsed     int       `json:"tpm_used"`
-	TodayTokens int       `json:"today_tokens"`
-	LastSeen    time.Time `json:"last_seen"`
+	TodayAudioSeconds float64   `json:"today_audio_seconds"`
+	TodaySpeechChars  int       `json:"today_speech_chars"`
+	InFlight          int       `json:"in_flight"`
+	RPMUsed           int       `json:"rpm_used"`
+	TPMUsed           int       `json:"tpm_used"`
+	TodayTokens       int       `json:"today_tokens"`
+	LastSeen          time.Time `json:"last_seen"`
 }
 
 // Snapshot is what the admin API reads from the running gateway.
