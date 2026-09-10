@@ -24,7 +24,7 @@ test:
 vet:
 	go vet ./...
 
-check: console-check vet test client-check web-lint host-compat
+check: console-check vet test client-check bridge-check web-lint host-compat
 	# host-compat built web/dist; run every no-invite launch assertion against that exact build.
 	@set -eu; launch_shots=$$(mktemp -d); trap 'rm -rf "$$launch_shots"' EXIT; \
 		cd web && env -u INVITE -u APP LAUNCH_SHOTS="$$launch_shots" pnpm launch-check
@@ -93,6 +93,10 @@ deploy-web: web
 .PHONY: demo
 demo:
 	node docs/media/tapes/render.mjs
+
+.PHONY: bridge-check
+bridge-check:
+	cd bridge && npm ci --legacy-peer-deps && npm run typecheck && npm test
 
 .PHONY: client-check
 client-check:
