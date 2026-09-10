@@ -1,0 +1,25 @@
+{
+  "host": "127.0.0.1",
+  "port": 18084,
+  "backend": "metal",
+  "threads": 4,
+  "lazy_load": false,
+  "idle_unload_ms": 0,
+  "ui": false,
+  "ui_management": false,
+  "models": [
+    {
+      "id": "FunAudioLLM/Fun-ASR-Nano-2512-GGUF-Q8_0",
+      "family": "fun_asr_nano",
+      "path": "fun-asr-nano-2512-q8_0.gguf",
+      "task": "asr",
+      "mode": "offline",
+      "default_request_options": {
+        "enable_itn": "true",
+        "max_tokens": "512",
+        "audio_chunk_mode": "auto",
+        "audio_chunk_seconds": "30"
+      }
+    }
+  ]
+}
