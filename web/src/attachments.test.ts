@@ -6,7 +6,8 @@ const image = { id: 'image', w: 1024, h: 512, bytes: 1024 };
 afterEach(() => vi.unstubAllGlobals());
 it('admits readable files without vision and keeps only the image accept term conditional', async () => {
   expect(ACCEPT(false)).toContain('.pdf'); expect(ACCEPT(false)).not.toContain('image/*');
-  expect(ACCEPT(true)).toContain('image/*');
+  expect(ACCEPT(true)).toContain('image/svg+xml');
+  expect(ACCEPT(true)).not.toContain('image/*');
   const files = await admit([new File(['A readable document with enough text.'], 'note.txt', { type: 'text/plain' })]);
   expect(files).toHaveLength(1); expect(files[0]?.kind).toBe('file');
   expect(await admit({ files: [] as unknown as FileList, getData: () => 'short paste' })).toEqual([]);
@@ -86,4 +87,44 @@ it('no-text hints distinguish models with and without vision', async () => {
   const scan = new File(['short'], 'scan.txt');
   await expect(admit([scan], undefined, { vision: true })).rejects.toMatchObject({ message: expect.stringContaining('Attach it as an image instead.') });
   await expect(admit([scan], undefined, { vision: false, model: 'Gemma' })).rejects.toMatchObject({ message: expect.stringContaining('Gemma can’t see images.') });
+});
+
+it('uses the same image kind declarations for picker, drop and clipboard files', async () => {
+  const { IMAGE_KINDS, IMAGE_ACCEPT, imageKind } = await import('./images');
+  const terms = IMAGE_ACCEPT.split(',');
+  expect(imageKind({ name: 'png', type: '' })).toBeUndefined();
+  for (const term of terms) {
+    expect(imageKind(term.startsWith('.') ? { name: `file${term}`, type: '' } : { name: 'clipboard', type: term })).toBeDefined();
+  }
+  for (const kind of IMAGE_KINDS) {
+    expect(terms).toContain(kind.mime);
+    expect(imageKind({ name: 'clipboard', type: kind.mime })?.name).toBe(kind.name);
+    for (const ext of kind.extensions) {
+      expect(terms).toContain(`.${ext}`);
+      expect(imageKind({ name: `PICTURE.${ext.toUpperCase()}`, type: '' })?.name).toBe(kind.name);
+    }
+  }
+  for (const type of ['image/heic', 'image/tiff', 'image/unknown']) {
+    expect(terms).not.toContain(type);
+    const file = new File(['bad'], 'picture', { type });
+    for (const input of [[file], { files: [file] as unknown as FileList, getData: () => '' }]) {
+      await expect(admit(input, undefined, { vision: true })).rejects.toMatchObject({ reason: 'cant_read', message: expect.stringContaining(type.slice(6).toUpperCase()) });
+    }
+  }
+});
+it('routes extension-only images to the image arm and names a corrupt kind', async () => {
+  vi.stubGlobal('createImageBitmap', vi.fn().mockRejectedValue(new Error('bad data')));
+  await expect(admit([new File(['bad'], 'PHOTO.PNG')], undefined, { vision: true })).rejects.toMatchObject({ reason: 'cant_read', message: 'Couldn’t read this PNG image.' });
+  await expect(admit([new File(['bad'], 'drawing.svg')], undefined, { vision: false, model: 'Text' })).rejects.toMatchObject({ reason: 'no_vision' });
+});
+it('advertises and admits text/plain with or without a filename extension', async () => {
+  const { FILE_ACCEPT, acceptsFile } = await import('./files');
+  expect(ACCEPT(false).split(',')).toContain('text/plain');
+  for (const term of FILE_ACCEPT.split(',')) {
+    expect(acceptsFile(term.startsWith('.') ? { name: `file${term}`, type: '' } : { name: 'clipboard', type: term })).toBe(true);
+  }
+  for (const name of ['clipboard', 'notes.unknown']) {
+    const input = new File(['A readable document with enough text.'], name, { type: 'text/plain' });
+    expect((await admit([input]))[0]).toMatchObject({ kind: 'file', file: { kind: 'TXT' } });
+  }
 });

@@ -41,7 +41,9 @@ describe('real extraction fixtures', () => {
 it('uses extension plus byte sniffing, never accepting unsupported containers or renamed binaries', async () => {
   expect(acceptsFile({ name: 'main.TSX', type: '' })).toBe(true);
   expect(acceptsFile({ name: 'README', type: 'text/plain' })).toBe(true);
-  expect(acceptsFile({ name: 'sheet.xlsx', type: 'text/plain' })).toBe(false);
+  expect(acceptsFile({ name: 'sheet.xlsx', type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' })).toBe(false);
+  // text/plain is advertised; byte validation still refuses a mislabeled binary container.
+  await expect(extractFile(new File(['PK\u0003\u0004binary data that is not plain text'], 'sheet.xlsx', { type: 'text/plain' }))).rejects.toMatchObject({ reason: 'no_text' });
   await expect(extractFile(new File(['not a zip'], 'archive.zip'))).rejects.toMatchObject({ reason: 'cant_read' });
 });
 it('requires at least twenty non-whitespace characters', () => {

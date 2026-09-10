@@ -47,6 +47,7 @@ export const zh = {
   app_hint_enter_sends_images: "按 Enter 发送 · Shift+Enter 换行 · 可粘贴或拖入图片",
   app_drop_to_attach: "松开即可添加",
   app_model_cant_see_images: "{model} 看不了图片，只能发文字。",
+  app_could_not_read_image_kind: "读不了这张 {kind} 图片。",
   app_could_not_read_that_image: "读不了这张图片。",
   app_over_message_size: "超出单条消息 {size} 的上限，请移除一张图片。",
   app_meter_context_images: "{used}/{limit} 上下文 + {count} 张图片",

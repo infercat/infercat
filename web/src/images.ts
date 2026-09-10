@@ -1,6 +1,26 @@
 import { appLanguage, tr } from './i18n/text';
 
-export const IMAGE_ACCEPT = 'image/*';
+/** One declaration table for the picker and every admission path; decoding is still required. */
+export const IMAGE_KINDS = [
+  { name: 'JPEG', mime: 'image/jpeg', extensions: ['jpg', 'jpeg', 'jpe'] },
+  { name: 'PNG', mime: 'image/png', extensions: ['png'] },
+  { name: 'WebP', mime: 'image/webp', extensions: ['webp'] },
+  { name: 'GIF', mime: 'image/gif', extensions: ['gif'] },
+  { name: 'AVIF', mime: 'image/avif', extensions: ['avif'] },
+  { name: 'BMP', mime: 'image/bmp', extensions: ['bmp'] },
+  { name: 'ICO', mime: 'image/x-icon', extensions: ['ico'], aliases: ['image/vnd.microsoft.icon'] },
+  { name: 'SVG', mime: 'image/svg+xml', extensions: ['svg'] },
+] as const;
+export const IMAGE_ACCEPT = IMAGE_KINDS.flatMap((kind) => [kind.mime, ...('aliases' in kind ? kind.aliases : []), ...kind.extensions.map((ext) => `.${ext}`)]).join(',');
+export function imageKind(file: { name?: string; type: string }) {
+  const ext = file.name?.includes('.') ? file.name.split('.').at(-1)?.toLowerCase() : undefined;
+  return IMAGE_KINDS.find((kind) => kind.extensions.some((value) => value === ext))
+    ?? IMAGE_KINDS.find((kind) => kind.mime === file.type || ('aliases' in kind && kind.aliases.some((value) => value === file.type)));
+}
+export function imageKindLabel(file: { name?: string; type: string }): string {
+  return imageKind(file)?.name ?? file.type.replace(/^image\//, '').toUpperCase();
+}
+export const MAX_SVG_BYTES = 4 * 1024 * 1024;
 export class ImageError extends Error {
   constructor(readonly reason: 'no_vision' | 'count' | 'cant_read', message: string, options?: ErrorOptions) { super(message, options); this.name = 'ImageError'; }
 }
@@ -25,7 +45,10 @@ export function dataURL(blob: Blob): Promise<string> {
 /** Browser decoding applies EXIF exactly once; canvas flattens alpha before JPEG encoding. */
 export async function prepareImage(file: Blob, signal?: AbortSignal): Promise<PreparedImage> {
   signal?.throwIfAborted();
-  const bitmap = await createImageBitmap(file, { imageOrientation: 'from-image' });
+  const kind = imageKind(file);
+  if (kind && kind.name !== 'SVG') await checkRasterHeader(file, kind.name);
+  signal?.throwIfAborted();
+  const bitmap = kind?.name === 'SVG' ? await svgImage(file, signal) : await createImageBitmap(file, { imageOrientation: 'from-image' });
   try {
     signal?.throwIfAborted();
     const { w, h } = imageSize(bitmap.width, bitmap.height);
@@ -39,6 +62,52 @@ export async function prepareImage(file: Blob, signal?: AbortSignal): Promise<Pr
     signal?.throwIfAborted();
     return { id: crypto.randomUUID(), w, h, bytes: blob.size, blob, data: await dataURL(blob) };
   } finally { bitmap.close(); }
+}
+/** Do not let browser sniffing admit an unadvertised format under a supported filename. */
+async function checkRasterHeader(file: Blob, kind: string): Promise<void> {
+  const bytes = new Uint8Array(await file.slice(0, 32).arrayBuffer());
+  const starts = (...values: number[]) => values.every((n, i) => bytes[i] === n);
+  const ascii = String.fromCharCode(...bytes);
+  const valid = kind === 'JPEG' ? starts(255, 216, 255)
+    : kind === 'PNG' ? starts(137, 80, 78, 71, 13, 10, 26, 10)
+    : kind === 'GIF' ? /^GIF8[79]a/.test(ascii)
+    : kind === 'WebP' ? ascii.startsWith('RIFF') && ascii.slice(8, 12) === 'WEBP'
+    : kind === 'BMP' ? ascii.startsWith('BM')
+    : kind === 'ICO' ? starts(0, 0, 1, 0)
+    : kind === 'AVIF' && ascii.slice(4, 8) === 'ftyp' && /avif|avis/.test(ascii.slice(8));
+  if (!valid) throw new Error('Image bytes do not match the declared kind');
+}
+/** SVG stays in image mode: no document insertion, scripts or external resource loads.
+ * Animation is flattened at load into one static JPEG; no animation is retained. */
+async function svgImage(file: Blob, signal?: AbortSignal): Promise<HTMLImageElement & { close(): void }> {
+  if (file.size > MAX_SVG_BYTES) throw new Error('SVG exceeds 4 MiB');
+  const doc = new DOMParser().parseFromString(await file.text(), 'image/svg+xml');
+  signal?.throwIfAborted();
+  const root = doc.documentElement;
+  if (doc.querySelector('parsererror') || root.localName !== 'svg' || root.namespaceURI !== 'http://www.w3.org/2000/svg') throw new Error('Invalid SVG');
+  const box = (root.getAttribute('viewBox') ?? '').trim().split(/[\s,]+/).map(Number);
+  const hasBox = box.length === 4 && box.every(Number.isFinite) && box[2]! > 0 && box[3]! > 0;
+  // Give dimensionless SVGs an intrinsic viewport; viewBox preserves their aspect ratio.
+  if (!root.hasAttribute('width') && !root.hasAttribute('height')) {
+    root.setAttribute('width', String(hasBox ? box[2] : 300));
+    root.setAttribute('height', String(hasBox ? box[3] : 150));
+  }
+  const url = URL.createObjectURL(new Blob([new XMLSerializer().serializeToString(root)], { type: 'image/svg+xml' }));
+  const img = new Image();
+  const close = () => { img.src = ''; URL.revokeObjectURL(url); };
+  try {
+    await new Promise<void>((resolve, reject) => {
+      const stop = () => { cleanup(); reject(signal?.reason); };
+      const cleanup = () => { img.onload = null; img.onerror = null; signal?.removeEventListener('abort', stop); };
+      img.onload = () => { cleanup(); resolve(); };
+      img.onerror = () => { cleanup(); reject(new Error('SVG decoding failed')); };
+      signal?.addEventListener('abort', stop, { once: true });
+      img.src = url;
+    });
+    signal?.throwIfAborted();
+    if (!img.naturalWidth || !img.naturalHeight) throw new Error('SVG has no drawable size');
+    return Object.assign(img, { close });
+  } catch (error) { close(); throw error; }
 }
 export function imageMeta({ id, w, h, bytes }: ImageMeta): ImageMeta { return { id, w, h, bytes }; }
 export function bytesLabel(bytes: number): string { return `${Math.max(1, Math.round(bytes / 1024))} KB`; }
