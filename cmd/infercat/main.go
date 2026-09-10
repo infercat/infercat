@@ -149,6 +149,8 @@ func run(ctx context.Context, args []string, out, errw io.Writer, in io.Reader, 
 		err = e.cmdConsole(ctx, dataDir, cargs)
 	case "agent":
 		err = e.cmdAgent(ctx, dataDir, cargs)
+	case "setup":
+		err = e.cmdSetup(ctx, dataDir, cargs)
 	case "serve":
 		err = e.cmdServe(ctx, dataDir, cargs)
 	case "keys":
@@ -313,6 +315,7 @@ Usage:
 
 Commands:
   agent      install the optional, pinned agent runtime
+  setup      check a loadout against local models and running engines
   serve      run the host: the tunnel and the gateway in front of your inference server
   keys       mint and manage per-friend keys: add, list, pause, resume, revoke, rotate, limits
   status     what the running host is doing right now

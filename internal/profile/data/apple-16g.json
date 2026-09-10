@@ -1,0 +1,320 @@
+{
+  "version": 1,
+  "id": "apple-16g",
+  "hardware": {
+    "os": "darwin",
+    "arch": "arm64",
+    "gpu": "metal",
+    "ram_bytes": 17179869184,
+    "vram_bytes": 0,
+    "measured_on": "Not measured on 16 GiB hardware; candidate rows were measured on 64 GiB."
+  },
+  "members": [
+    {
+      "id": "anchor",
+      "class": "text",
+      "engine": "llama.cpp",
+      "engine_pin": "5266f24da (0.4.0 build 10809)",
+      "model": {},
+      "candidates": [
+        {
+          "name": "gemma4-e4b",
+          "quantization": "E4B UD-Q4_K_XL + F16 vision",
+          "assets": [
+            {
+              "id": "anchor-model",
+              "file": "gemma-4-E4B-it-qat-UD-Q4_K_XL.gguf",
+              "bytes": 4215695776,
+              "sha256": "df0fd4ee07072c607c29a0a1cb4f98918426cca12f45a2776bdd6ee6d09a4de3",
+              "url": "https://huggingface.co/unsloth/gemma-4-E4B-it-qat-GGUF/resolve/8c5a9e4fd5482e2be20fe0bf013b4c262a8f4265/gemma-4-E4B-it-qat-UD-Q4_K_XL.gguf",
+              "license": "Apache-2.0",
+              "revision": "8c5a9e4fd5482e2be20fe0bf013b4c262a8f4265"
+            },
+            {
+              "id": "anchor-projector",
+              "file": "mmproj-F16.gguf",
+              "bytes": 990372672,
+              "sha256": "6a255159ee4b01b304f633a57f017dd7d5a69d30fff52abb2614bf0813cef034",
+              "url": "https://huggingface.co/unsloth/gemma-4-E4B-it-qat-GGUF/resolve/8c5a9e4fd5482e2be20fe0bf013b4c262a8f4265/mmproj-F16.gguf",
+              "license": "Apache-2.0",
+              "revision": "8c5a9e4fd5482e2be20fe0bf013b4c262a8f4265"
+            }
+          ],
+          "extra_args": [],
+          "measurement": {
+            "status": "measured",
+            "date": "2026-09-12",
+            "source": "docs/spikes/153-floor-loadout.md (153b)",
+            "rss_bytes": 6325501952,
+            "tokens_per_second": 114.7,
+            "mixed_tokens_per_second": 40,
+            "ttft_ms": 74,
+            "note": "Two filled 16K slots, f16 KV. Mixed rate is with derived Q4 image, not this profile's Q8 image. Intended Apple-64 anchor class 27-32B is unmeasured; E4B is this slice's measured substitute."
+          }
+        },
+        {
+          "name": "gemma4-e4b-mobile",
+          "quantization": "E4B MOBILE UD-Q2_K_XL + F16 vision; --lazy-mode on",
+          "assets": [
+            {
+              "id": "anchor-mobile-model",
+              "file": "gemma-4-E4B-it-qat-UD-Q2_K_XL.gguf",
+              "bytes": 3219532192,
+              "sha256": "79dde517866cfbb5c00230b530de17910fc7fc78f8827554d0e14281ce5faf03",
+              "url": "https://huggingface.co/unsloth/gemma-4-E4B-it-qat-mobile-GGUF/resolve/6a6e7121b977cefd85daa8fbc538fa485e7e8b1b/gemma-4-E4B-it-qat-UD-Q2_K_XL.gguf",
+              "license": "Apache-2.0",
+              "revision": "6a6e7121b977cefd85daa8fbc538fa485e7e8b1b"
+            },
+            {
+              "id": "anchor-projector",
+              "file": "mmproj-F16.gguf",
+              "bytes": 990372672,
+              "sha256": "6a255159ee4b01b304f633a57f017dd7d5a69d30fff52abb2614bf0813cef034",
+              "url": "https://huggingface.co/unsloth/gemma-4-E4B-it-qat-GGUF/resolve/8c5a9e4fd5482e2be20fe0bf013b4c262a8f4265/mmproj-F16.gguf",
+              "license": "Apache-2.0",
+              "revision": "8c5a9e4fd5482e2be20fe0bf013b4c262a8f4265"
+            }
+          ],
+          "extra_args": [
+            "--lazy-mode",
+            "on"
+          ],
+          "measurement": {
+            "status": "measured",
+            "date": "2026-09-12",
+            "source": "docs/spikes/153-floor-loadout.md (153c)",
+            "rss_bytes": 4602724352,
+            "tokens_per_second": 107.9,
+            "mixed_tokens_per_second": 46.5,
+            "ttft_ms": 91,
+            "note": "4.29 GiB with lazy PLE, measured on 64 GiB Mac only; 129 agent task 0/3. Mixed rate uses derived Q4 image."
+          }
+        }
+      ],
+      "pending": "pending founder decision",
+      "command": [
+        "llama-server",
+        "-m",
+        "{model}",
+        "--mmproj",
+        "{asset:anchor-projector}",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "{port}",
+        "-c",
+        "32768",
+        "--parallel",
+        "2",
+        "--alias",
+        "{model_name}",
+        "-ngl",
+        "999",
+        "--jinja",
+        "--cache-type-k",
+        "f16",
+        "--cache-type-v",
+        "f16"
+      ],
+      "env": {},
+      "port": 8080,
+      "context": 16384,
+      "concurrency": 2,
+      "policy": {
+        "kind": "resident",
+        "idle_seconds": 0
+      },
+      "unavailable": ""
+    },
+    {
+      "id": "asr",
+      "class": "transcribe",
+      "engine": "audio.cpp",
+      "engine_pin": "fa5aaac9266a98c68f8a5c9fcd1ba6ff65875416",
+      "model": {
+        "name": "fun-asr-nano",
+        "quantization": "Q8_0",
+        "assets": [
+          {
+            "id": "asr-model",
+            "file": "fun-asr-nano-2512-q8_0.gguf",
+            "bytes": 1045334432,
+            "sha256": "4d727357574b079b7f43336b2930f39da086ca02f5d8d50872090b4c1c3d5e0a",
+            "url": "https://huggingface.co/FunAudioLLM/Fun-ASR-Nano-2512-GGUF/resolve/ce72677f84900f0dc57f498ace253bfb3c9155b6/fun-asr-nano-2512-q8_0.gguf",
+            "license": "FunASR Model Open Source License v1.1",
+            "revision": "ce72677f84900f0dc57f498ace253bfb3c9155b6"
+          }
+        ],
+        "extra_args": [],
+        "measurement": {
+          "status": "measured",
+          "date": "2026-09-12",
+          "source": "docs/spikes/153-floor-loadout.md (153)",
+          "rss_bytes": 2645213184,
+          "tokens_per_second": 0,
+          "mixed_tokens_per_second": 0,
+          "ttft_ms": 0,
+          "note": "Metal, four threads; 5.616-second Mandarin clip."
+        }
+      },
+      "candidates": [],
+      "pending": "",
+      "command": [
+        "audiocpp_server",
+        "--config",
+        "{config}"
+      ],
+      "env": {},
+      "port": 8081,
+      "context": 0,
+      "concurrency": 1,
+      "policy": {
+        "kind": "on-demand",
+        "idle_seconds": 600
+      },
+      "unavailable": ""
+    },
+    {
+      "id": "speech",
+      "class": "speech",
+      "engine": "sherpa-onnx",
+      "engine_pin": "1.13.7 / 917bed95c8e5c7c18aa4d69fea42e9ef8ef0a60e",
+      "model": {
+        "name": "kokoro",
+        "quantization": "ONNX v1.1-zh",
+        "assets": [
+          {
+            "id": "speech-model",
+            "file": "model.onnx",
+            "bytes": 325631784,
+            "sha256": "acc4adc175b9d9986106cd20060329673ad5a2e12ef3c557d2d3745b694f8b38",
+            "url": "https://huggingface.co/csukuangfj/kokoro-multi-lang-v1_1/resolve/914313412b607d95400bcd12446233fbd1248801/model.onnx",
+            "license": "Apache-2.0",
+            "revision": "914313412b607d95400bcd12446233fbd1248801"
+          },
+          {
+            "id": "speech-voices",
+            "file": "voices.bin",
+            "bytes": 53790720,
+            "sha256": "e64a5a581d8c2a350d848f51c3121657cd83aa07ed6109172177345874a7244c",
+            "url": "https://huggingface.co/csukuangfj/kokoro-multi-lang-v1_1/resolve/914313412b607d95400bcd12446233fbd1248801/voices.bin",
+            "license": "Apache-2.0",
+            "revision": "914313412b607d95400bcd12446233fbd1248801"
+          },
+          {
+            "id": "speech-support",
+            "file": "kokoro-multi-lang-v1_1.tar.bz2",
+            "bytes": 364816464,
+            "sha256": "a3f4c73d043860e3fd2e5b06f36795eb81de0fc8e8de6df703245edddd87dbad",
+            "url": "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/kokoro-multi-lang-v1_1.tar.bz2",
+            "license": "Apache-2.0 model; espeak-ng dependency GPLv3",
+            "revision": "tts-models asset SHA-256 pinned"
+          }
+        ],
+        "extra_args": [],
+        "measurement": {
+          "status": "measured",
+          "date": "2026-09-12",
+          "source": "docs/spikes/153-floor-loadout.md (153c)",
+          "rss_bytes": 842694656,
+          "tokens_per_second": 0,
+          "mixed_tokens_per_second": 0,
+          "ttft_ms": 861,
+          "note": "Native CPU, two threads; warm EN first audio 0.861s/complete 2.240s, ZH 1.330s/8.495s. PCM callback proof only. English frontend skipped U+025A; espeak-ng GPLv3 dependency."
+        }
+      },
+      "candidates": [],
+      "pending": "",
+      "command": [
+        "sherpa-onnx-offline-tts",
+        "--kokoro-model={model}",
+        "--kokoro-voices={asset:speech-voices}",
+        "--kokoro-data-dir={model_dir}/espeak-ng-data",
+        "--kokoro-lexicon={model_dir}/lexicon-us-en.txt,{model_dir}/lexicon-zh.txt",
+        "--num-threads=2",
+        "--sid=0",
+        "--text={input}",
+        "--output-filename={output}"
+      ],
+      "env": {},
+      "port": 8082,
+      "context": 0,
+      "concurrency": 1,
+      "policy": {
+        "kind": "cpu",
+        "idle_seconds": 0
+      },
+      "unavailable": "HTTP adapter pending"
+    },
+    {
+      "id": "embed",
+      "class": "embed",
+      "engine": "llama.cpp",
+      "engine_pin": "5266f24da (0.4.0 build 10809)",
+      "model": {
+        "name": "bge-m3",
+        "quantization": "Q8_0",
+        "assets": [
+          {
+            "id": "embed-model",
+            "file": "bge-m3-Q8_0.gguf",
+            "bytes": 634553760,
+            "sha256": "950f4a8e5e19477a6d3c26d2f162233c20002c601f75e4b002e3239997821167",
+            "url": "https://huggingface.co/gpustack/bge-m3-GGUF/resolve/2d48f1737679ad900d5c26c5aad5410e9c70fdca/bge-m3-Q8_0.gguf",
+            "license": "MIT",
+            "revision": "2d48f1737679ad900d5c26c5aad5410e9c70fdca"
+          }
+        ],
+        "extra_args": [],
+        "measurement": {
+          "status": "unmeasured",
+          "date": "",
+          "source": "",
+          "rss_bytes": 0,
+          "tokens_per_second": 0,
+          "mixed_tokens_per_second": 0,
+          "ttft_ms": 0,
+          "note": "Multilingual shipping class; not measured. BGE-small stand-in RSS is not substituted."
+        }
+      },
+      "candidates": [],
+      "pending": "",
+      "command": [
+        "llama-server",
+        "-m",
+        "{model}",
+        "--embedding",
+        "--pooling",
+        "cls",
+        "-c",
+        "8192",
+        "--parallel",
+        "1",
+        "--host",
+        "127.0.0.1",
+        "--port",
+        "{port}",
+        "--alias",
+        "{model_name}",
+        "-ngl",
+        "999"
+      ],
+      "env": {},
+      "port": 8083,
+      "context": 8192,
+      "concurrency": 1,
+      "policy": {
+        "kind": "on-demand",
+        "idle_seconds": 600
+      },
+      "unavailable": "separate embedding route pending"
+    }
+  ],
+  "headroom": {
+    "os_bytes": 6442450944,
+    "kv_bytes_per_slot": 536870912,
+    "friends": 2,
+    "draft": true
+  },
+  "promise": "Pending founder anchor decision: Q4 vision 5.89 GiB or MOBILE 4.29 GiB with --lazy-mode on (agent task 0/3). No image member. On-demand policy is draft, 600s idle; actual 16 GiB pressure and multilingual embedding RSS unmeasured. Setup cannot write config for this pending profile."
+}

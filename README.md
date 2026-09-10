@@ -147,6 +147,8 @@ xattr -d com.apple.quarantine ./infercat
 `infercat serve -h` says the same, with the data directory's files.
 </details>
 
+`infercat setup` checks a hardware profile against cached model pins and engines you have already started, then saves compatible upstream settings for `serve`. It never downloads or launches a member. Use `--profile apple-64g`, a repeatable `--model-path anchor=/path/to/model.gguf` (asset ids also work), or `--custom profile.json` for compatibility checking without a performance promise. Missing assets include their publisher URLs. The 16 GB anchor choice is pending, NVIDIA is unmeasured, and native speech and separate embeddings still need their HTTP/routing integration. See the [profile schema](docs/ARCHITECTURE.md#loadout-profiles-and-setup).
+
 ## Quickstart (friend)
 
 Open **[infercat.ai](https://infercat.ai)**, paste the invite, press Connect. That is the whole thing. Your host's `keys add` prints the invite as a link (and a QR code) that opens the app with the code already in the field, so usually you just tap it.

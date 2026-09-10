@@ -598,3 +598,54 @@ artifact reads release the store mutex before reading bytes. Clients coalesce
 refreshes and respect 429. The 256 MiB image budget counts retained, servable bytes;
 unlinkable stale files are logged and retried, never marking a key broken. Status
 reports `image_cleanup_pending` and prints a pending-cleanup line when nonzero.
+
+### Loadout profiles and setup
+
+`internal/profile/data/*.json` embeds one independent version-1 JSON file per tier.
+There is no online refresh. `apple-64g` uses the measured E4B Q4 substitute; the
+intended 27–32B anchor remains unmeasured. `apple-16g` carries both E4B candidates
+under `pending founder decision` and cannot write config. `nvidia-12g` is wholly
+unmeasured. BGE-M3 never inherits the measured BGE-small working set. Policy and
+headroom reservations are explicitly draft, not measured performance guarantees.
+
+| Object | Fields and units |
+| --- | --- |
+| Profile | `version`, `id`, `hardware`, `members`, `headroom`, `promise` |
+| Hardware | `os`, `arch`, `gpu` (metal/nvidia/cpu), `ram_bytes`, `vram_bytes`, `measured_on`; RAM/VRAM are compatibility minima |
+| Member | `id`, `class` (text/transcribe/speech/embed/image), `engine`, `engine_pin`, `model`, `command`, `env`, `port`, `context` tokens, `concurrency`, `policy`, `unavailable`; only a pending text anchor has `pending` and two `candidates` instead of a selected model |
+| Model/candidate | `name` is the advertised API model id; `quantization`, `assets`, `extra_args`, `measurement` |
+| Asset | `id`, basename `file`, `bytes`, lowercase `sha256`, HTTPS publisher `url`, `license`, `revision`; support bundles are pinned assets too |
+| Measurement | `status` (measured/unmeasured), `date`, `source`, `rss_bytes`, `tokens_per_second`, `mixed_tokens_per_second`, `ttft_ms`, `note`; notes identify the measured workload/pair, and unmeasured numeric fields stay zero |
+| Policy/headroom | `policy.kind` is resident/on-demand/cpu; only on-demand has positive `idle_seconds`. Headroom has `os_bytes`, `kv_bytes_per_slot`, `friends`, `draft`. The shipped draft reserves 6 GiB OS/app and 512 MiB per 16K text slot, two friends, 600-second pool idle |
+
+Parsing refuses unknown fields, duplicate keys, nulls, control characters, invalid
+pins/limits and unsupported versions. Files are capped at 256 KiB. Command/env
+strings are inert documentation: setup never expands or executes them. Their
+`{port}`, `{model}`, `{model_name}`, `{asset:ID}`, `{config}`, `{model_dir}` and CLI
+`{input}`/`{output}` placeholders describe later engine configuration and extracted
+support files. The native sherpa command is a CLI recipe, not an HTTP service.
+
+Setup reads RAM/GPU/VRAM/OS/architecture and free disk using bounded-time OS queries;
+unknown fields remain unknown, and NVIDIA VRAM is the largest single device rather
+than a sum. Profile selection is fixed tier matching, not a loadout optimizer.
+`--custom FILE` validates compatibility only. Cache search covers HF snapshots
+(symlink or copy) and blobs, Ollama's content-addressed blobs used by manifests,
+and modern/legacy LM Studio model directories. `HF_HUB_CACHE`, `HF_HOME`,
+`XDG_CACHE_HOME` and `OLLAMA_MODELS` override defaults. Repeatable `--model-path
+MEMBER=PATH` or `ASSET=PATH` supplies an explicit file. Matching sizes are SHA-256
+checked; neither filenames nor a running server attest loaded weight bytes.
+
+Only fixed loopback ports are probed, with no redirects/proxy credentials, a
+1 MiB response cap and a 15-second request timeout. `/v1/models` establishes health
+and advertised model identity; the text anchor must also generate content for one
+small prompt. Pending/absent anchors, failed checks, wrong explicit pins and
+conflicting existing upstream URLs/keys refuse without rewriting config. Missing
+optional members are reported with exact filenames/URLs and remain unstarted.
+Successful setup merges verified supported endpoints into the existing atomic
+0600 `config.json`, preserving unrelated settings. Embeddings still route through
+the text upstream; the separate BGE member is inventoried/probed but not wired.
+Native sherpa is marked `HTTP adapter pending`. No credentials are inferred.
+
+The next slice adds verified fetching/extraction and supervision through the
+existing guardian; engine policy remains responsible for loading/eviction. This
+slice neither enforces the draft idle policy nor creates a second scheduler.
