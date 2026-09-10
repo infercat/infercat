@@ -382,11 +382,23 @@ Speech JSON values other than normalized model pass through and audio bytes
 are flushed as received, with no SSE framing. The transcription request cap is
 25 MiB; speech retains the ordinary 4 MiB cap.
 
+Speech reserves characters at admission. Served responses and client cuts after the
+first audio byte charge the reservation; upstream failures and pre-audio client cuts
+do not. Every dispatched speech request retains its measured characters separately
+from the settled charge.
+Transcription retains its existing reservation charge on a cut. After response
+headers, an audio failure aborts the downstream stream rather than completing a
+truncated 200 response; the existing settlement path still runs.
+Audio-engine 429s become 503 `upstream_down`, preserving Retry-After (HTTP dates are
+converted to seconds), and these busy refusals release the RPM entry. The speech
+caller retries at most twice: after 3 seconds, then the returned hint, with abortable
+waits and a 120-second maximum automatic delay.
+
 Usage JSONL adds `kind` (`transcription` or `speech`), `seconds`,
 `reserved_seconds`, `overrun_seconds`, `seconds_estimated`, and `characters` as
 applicable. Characters count Unicode code points. Neither audio nor transcription
 or speech text is written by the gateway, even with `--log-prompts`. Aggregate
-seconds/characters restore daily budgets on restart; unreadable or malformed
+settled meters restore daily budgets on restart; unreadable or malformed
 usage history refuses audio rather than silently resetting its budget.
 `status` and the startup banner name both configured audio routes and engines.
 
@@ -649,3 +661,26 @@ Native sherpa is marked `HTTP adapter pending`. No credentials are inferred.
 The next slice adds verified fetching/extraction and supervision through the
 existing guardian; engine policy remains responsible for loading/eviction. This
 slice neither enforces the draft idle policy nor creates a second scheduler.
+
+### Native speech helper and helper artifacts
+
+`infercat-speech` is a separate, tagged CGO build, dynamically linked to sherpa-onnx
+v1.13.7's C API. The host remains CGO-free. Kokoro v1.1-zh loads once; a single
+synthesis slot refuses concurrent requests with 429. The HTTP adapter bounds input,
+output and duration, flushes each native batch as PCM16 (optionally in a streaming
+WAV envelope), and cancels at callback boundaries. A failed partial generation aborts
+the HTTP response. Admission uses script weights and a conservative nonlinear
+speed curve calibrated to 90 seconds, below the 120-second safety cap. The full
+voice set comes from the pinned bundle. Go normalizes dates, decimals and phone
+digits only in Han-containing input; no global Chinese FST rewrites English digits. The browser requests the server's default format and its existing
+player respects the returned MIME; WAV playback waits for the completed Blob.
+
+The helper release workflow builds Darwin arm64 and Linux amd64 artifacts from pinned
+audio.cpp and sherpa inputs. It verifies sherpa's published archive digest before
+compilation, builds the Fun-ASR-Nano audio server, checks dynamic dependencies and
+runs both relocated binaries. Our archives exclude sherpa/espeak-ng and model data;
+the separately fetched sherpa libraries occupy `sherpa/lib` beside `bin`. Manifests
+record source revisions, binary hashes and the voice-list hash, with archive checksums
+alongside them.
+This extraction does not yet change setup, host supervision, or the profile's pending
+speech marker. Publication follows the founder's release decision.

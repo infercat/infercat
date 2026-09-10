@@ -1,4 +1,4 @@
-import { postAudio } from './api';
+import { GatewayError, postAudio } from './api';
 import type { Transport } from './transport';
 
 export const RECORDING_LIMIT_SECONDS = 300;
@@ -23,8 +23,21 @@ export async function transcribe(t: Transport, secret: string, clip: Blob, langu
   if (typeof result.text !== 'string') throw new Error('The host returned no transcription text.');
   return result.text;
 }
-export function requestSpeech(t: Transport, secret: string, text: string, signal: AbortSignal): Promise<Response> {
-  return postAudio(t, secret, 'speech', JSON.stringify({ input: text, response_format: 'mp3' }), 'application/json', signal);
+export async function requestSpeech(t: Transport, secret: string, text: string, signal: AbortSignal): Promise<Response> {
+  const send = () => { signal.throwIfAborted(); return postAudio(t, secret, 'speech', JSON.stringify({ input: text }), 'application/json', signal); };
+  for (let retry = 0; ; retry++) {
+    try { return await send(); }
+    catch (error) {
+      if (retry === 2 || !(error instanceof GatewayError) || error.status !== 503 || error.code !== 'upstream_down' || !error.retryAfterS || error.retryAfterS > 120) throw error;
+      const wait = retry === 0 ? 3 : error.retryAfterS;
+      await new Promise<void>((resolve, reject) => {
+        const abort = () => { clearTimeout(timer); signal.removeEventListener('abort', abort); reject(signal.reason); };
+        const timer = setTimeout(() => { signal.removeEventListener('abort', abort); resolve(); }, wait * 1000);
+        signal.addEventListener('abort', abort, { once: true });
+        if (signal.aborted) abort();
+      });
+    }
+  }
 }
 
 export type RecordingState =

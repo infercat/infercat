@@ -27,6 +27,10 @@ type audioRequest struct {
 	contentType    string
 	dispatched     atomic.Bool
 	measured       bool
+	busy           bool
+	delivered      bool
+	clientCut      bool
+	speechCharged  int
 	duration       *float64
 	chars          int
 	responseFormat string
@@ -292,6 +296,15 @@ func (q *request) relayAudio() *gwError {
 		if q.resp.StatusCode/100 != 2 {
 			q.outcome = outcomeEngineErr
 			msg, _ := upstreamMessage(bytes.NewReader(raw))
+			if q.resp.StatusCode == http.StatusTooManyRequests {
+				q.audio.busy = true
+				header := q.resp.Header.Get("Retry-After")
+				retry, _ := strconv.Atoi(header)
+				if at, err := http.ParseTime(header); err == nil {
+					retry = max(1, int(math.Ceil(time.Until(at).Seconds())))
+				}
+				return errf(CodeUpstreamDown, max(0, retry), "the host's audio engine is busy: %s", msg)
+			}
 			if q.resp.StatusCode == 400 || q.resp.StatusCode == 422 {
 				return errf(CodeInvalidRequest, 0, "the host's audio engine rejected this request (HTTP %d): %s", q.resp.StatusCode, msg)
 			}
@@ -324,11 +337,15 @@ func (q *request) relayAudio() *gwError {
 		if n > 0 {
 			q.markTTFT()
 			q.armWrite()
-			if _, werr := q.w.Write(buf[:n]); werr != nil {
+			written, werr := q.w.Write(buf[:n])
+			q.audio.delivered = q.audio.delivered || written > 0
+			if werr != nil {
+				q.audio.clientCut = true
 				q.outcome = outcomeCut
 				return errf(CodeClientClosed, 0, "client went away")
 			}
 			if ferr := q.rc.Flush(); ferr != nil {
+				q.audio.clientCut = true
 				q.outcome = outcomeCut
 				return errf(CodeClientClosed, 0, "client went away")
 			}
@@ -338,6 +355,7 @@ func (q *request) relayAudio() *gwError {
 		}
 		if err != nil {
 			q.outcome = outcomeCut
+			q.audio.clientCut = q.r.Context().Err() != nil && !q.engineIdle.Load()
 			return q.upstreamErr(err)
 		}
 	}
@@ -366,7 +384,10 @@ func (q *request) settleAudio() {
 	}
 	if q.kind == speechEndpoint {
 		q.ev.Characters = q.adm.speechChars
-		st.meter("speech").today += float64(q.ev.Characters)
+		if q.outcome == outcomeServed || (q.audio.clientCut && q.audio.delivered) {
+			q.audio.speechCharged = q.ev.Characters
+			st.meter("speech").today += float64(q.audio.speechCharged)
+		}
 		return
 	}
 	q.ev.Seconds = q.adm.audioSeconds

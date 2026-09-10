@@ -55,3 +55,29 @@ environment does the same thing; goreleaser refuses unless HEAD is the tag and t
 Tag from a branch, ship notices that `make notices-check` rejects, or publish a version the web
 bundle does not carry (the Makefile stamps both from the same constant — a bare `goreleaser` run
 fails on purpose).
+
+## Native helper releases
+
+Helpers have their own `helpers-v<version>` tags and archives; they do not trigger the
+host/web release. `.github/workflows/helpers.yml` builds snapshots on relevant branches
+and manual dispatches, with Darwin arm64 and Linux amd64 jobs. Each job uses the pins in
+`packaging/helpers/pins.json`, builds the native speech helper and audio.cpp server,
+checks their dependencies, and runs them after relocation. Snapshot artifacts contain
+archive checksums and per-binary manifests; they are retained for seven days and are
+not published. The local equivalent is in `packaging/helpers/README.md`.
+
+Gate the snapshots first. **Only on the founder's release instruction**, tag the gated
+main commit `helpers-v<version>` and push that tag. Both platform builds must pass before
+the workflow verifies archive checksums, re-hashes both extracted binaries and `voices.txt` against
+each manifest, requires a clean source tree matching the resolved tag commit, and
+creates a **draft** GitHub Release. This checks artifact consistency and source
+association; it is not an independent reproducible-build attestation.
+Review the manifests, licences, and artifacts; publish the draft only on the founder's
+word. Release names are never reused or assets replaced. Record the published archive
+URLs, exact sizes and SHA-256 values in the consuming profile before enabling fetching;
+no placeholder hashes or unpublished URLs go into a shipping profile.
+
+The helper archives contain our binaries and audio.cpp's notices. Sherpa's pinned shared
+library artifact and Kokoro model bundle are fetched separately and retain their own
+licences, including sherpa's espeak-ng GPLv3 dependency. No model or sherpa library is
+uploaded as part of our helper archive.

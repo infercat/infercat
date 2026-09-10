@@ -1,0 +1,14 @@
+{
+  "audio": "fa5aaac9266a98c68f8a5c9fcd1ba6ff65875416",
+  "sherpa": "v1.13.7",
+  "darwin-arm64": {
+    "file": "sherpa-onnx-v1.13.7-osx-arm64-shared.tar.bz2",
+    "bytes": 20262139,
+    "sha256": "c4789fc9d1d06c0c8095aaadba040f524db869c0f90ac40db93aa71bb4375996"
+  },
+  "linux-amd64": {
+    "file": "sherpa-onnx-v1.13.7-linux-x64-shared.tar.bz2",
+    "bytes": 27884774,
+    "sha256": "95b9f4358e2d5522a0bd987c3ee91128e31f8abf4340927cab32e438300f3c24"
+  }
+}

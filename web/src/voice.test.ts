@@ -219,14 +219,41 @@ describe('voice requests and measurements', () => {
     });
     expect(await transcribe(t, 'test-key', new Blob(['audio'], { type: 'audio/mp4' }), 'zh', new AbortController().signal)).toBe('你好');
   });
-  it('posts MP3 speech without model and retains the raw refusal for Details', async () => {
+  it('requests the server default without model and retains the raw refusal for Details', async () => {
     const raw = '{"error":{"code":"speech_budget_exhausted","message":"budget spent"}}';
     const t = transport(async (_path, init) => {
-      expect(_path).toBe('/v1/audio/speech'); expect(JSON.parse(init?.body as string)).toEqual({ input: '你好🦊', response_format: 'mp3' });
+      expect(_path).toBe('/v1/audio/speech'); expect(JSON.parse(init?.body as string)).toEqual({ input: '你好🦊' });
       return new Response(raw, { status: 429, headers: { 'retry-after': '10' } });
     });
     try { await requestSpeech(t, 'test-key', '你好🦊', new AbortController().signal); throw new Error('missing rejection'); }
     catch (error) { expect(error).toBeInstanceOf(GatewayError); expect(error).toMatchObject({ rawBody: raw, retryAfterS: 10 }); }
+  });
+  it('retries a busy speech request up to twice: 3 seconds then the next Retry-After', async () => {
+    vi.useFakeTimers();
+    try {
+      const fetch = vi.fn(async () => new Response('{"error":{"code":"upstream_down","message":"busy"}}', {status:503,headers:{'retry-after':'30'}}));
+      const pending = requestSpeech(transport(fetch), 'key', 'hello', new AbortController().signal);
+      const rejected = expect(pending).rejects.toBeInstanceOf(GatewayError);
+      await vi.advanceTimersByTimeAsync(2999); expect(fetch).toHaveBeenCalledTimes(1);
+      await vi.advanceTimersByTimeAsync(1); expect(fetch).toHaveBeenCalledTimes(2);
+      await vi.advanceTimersByTimeAsync(29999); expect(fetch).toHaveBeenCalledTimes(2);
+      await vi.advanceTimersByTimeAsync(1); await rejected; expect(fetch).toHaveBeenCalledTimes(3);
+    } finally { vi.useRealTimers(); }
+  });
+  it('Stop cancels the retry wait and a successful retry returns audio', async () => {
+    vi.useFakeTimers();
+    try {
+      for (const cancel of [true,false]) {
+        const fetch = vi.fn().mockResolvedValueOnce(new Response('{"error":{"code":"upstream_down"}}', {status:503,headers:{'retry-after':'30'}})).mockResolvedValueOnce(new Response('wav'));
+        const controller = new AbortController(); const pending = requestSpeech(transport(fetch), 'key', 'hello', controller.signal);
+        const outcome = pending.catch(error => error);
+        await vi.advanceTimersByTimeAsync(1);
+        if (cancel) controller.abort();
+        await vi.advanceTimersByTimeAsync(30000);
+        expect(fetch).toHaveBeenCalledTimes(cancel ? 1 : 2);
+        expect(await outcome).toBeInstanceOf(cancel ? DOMException : Response);
+      }
+    } finally { vi.useRealTimers(); }
   });
   it('counts CJK characters as words, Unicode code points as characters, and formats time', () => {
     expect(voiceWords('Hello world, 你好。')).toBe(4); expect(voiceCharacters('你好🦊')).toBe(3);

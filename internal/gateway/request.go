@@ -491,7 +491,11 @@ func (q *request) finish() {
 			}
 		case "tokens":
 			m.Charged = float64(charged)
-		case "audio", "speech":
+		case "speech":
+			if q.audio != nil {
+				m.Charged = float64(q.audio.speechCharged)
+			}
+		case "audio":
 			if q.audio != nil && q.audio.dispatched.Load() {
 				m.Charged = m.Measured
 			}
@@ -529,7 +533,7 @@ func (q *request) finish() {
 // The event keeps what was observed; only the non-stream Cut charge differs from its token sum.
 func (q *request) settleRow() (counted bool, charged int) {
 	if q.audio != nil {
-		return q.audio.dispatched.Load() || (q.outcome == outcomeQueueLost && q.ev.Code == string(CodeQueueTimeout)), 0
+		return !q.audio.busy && (q.audio.dispatched.Load() || (q.outcome == outcomeQueueLost && q.ev.Code == string(CodeQueueTimeout))), 0
 	}
 	if !q.kind.countsAgainstRPM() {
 		return false, 0
@@ -556,7 +560,7 @@ func (q *request) fail(e *gwError) {
 	if q.wroteHeader {
 		q.ev.Code = string(e.Code)
 		if q.audio != nil {
-			return
+			panic(http.ErrAbortHandler)
 		}
 		if q.r.URL.Path == string(responsesEndpoint) {
 			q.failResponses(e)
