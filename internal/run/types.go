@@ -21,10 +21,11 @@ const (
 )
 
 var (
-	ErrNotFound = errors.New("run not found")
-	ErrLimit    = errors.New("run limit reached")
-	ErrInvalid  = errors.New("invalid run request")
-	ErrConflict = errors.New("run state changed")
+	ErrQueueLimit = errors.New("image queue limit reached")
+	ErrNotFound   = errors.New("run not found")
+	ErrLimit      = errors.New("run limit reached")
+	ErrInvalid    = errors.New("invalid run request")
+	ErrConflict   = errors.New("run state changed")
 )
 
 type State string
@@ -49,6 +50,8 @@ type Attempt struct {
 	Output              json.RawMessage `json:"output,omitempty"`
 }
 type Run struct {
+	Started         *time.Time      `json:"started,omitempty"`
+	Batch           *Batch          `json:"batch,omitempty"`
 	ID              string          `json:"id"`
 	KeyID           string          `json:"key_id"`
 	Kind            string          `json:"kind"`
@@ -87,6 +90,7 @@ type Event struct {
 	Runs      []Summary `json:"runs,omitempty"`
 }
 type Step struct {
+	RunID string
 	Route string
 	Input json.RawMessage
 }
@@ -104,5 +108,5 @@ type Decision struct {
 	Output json.RawMessage
 }
 
-// Kind is host-registered code, not a client-supplied program. Production registers none yet.
+// Kind is host-registered code, not a client-supplied program. Production registers image when configured.
 type Kind func(context.Context, Run) (Decision, error)

@@ -46,3 +46,14 @@ func TestLegacyAudioDefaultsAreReadOnly(t *testing.T) {
 		t.Fatal("read rewrote keys")
 	}
 }
+
+func TestLegacyImageDefaults(t *testing.T) {
+	l := ImageDefaults(Limits{})
+	if l.DailyImages != 20 || l.MaxQueuedImages != 8 {
+		t.Fatal(l)
+	}
+	l = ImageDefaults(Limits{DailyImages: 3, MaxQueuedImages: 2})
+	if l.DailyImages != 3 || l.MaxQueuedImages != 2 {
+		t.Fatal(l)
+	}
+}

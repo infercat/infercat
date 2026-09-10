@@ -16,6 +16,7 @@ type Destination struct {
 	Up     interface{ Info() upstream.Info }
 	Text   upstream.Engine
 	Audio  upstream.AudioEngine
+	Images upstream.ImageEngine
 	Queue  slotQueue
 	model  string
 }
@@ -30,6 +31,9 @@ type Offers struct {
 func (d *Destination) Offers() Offers {
 	i := d.Up.Info()
 	o := Offers{Models: append([]string{}, i.Models...), Vision: i.Vision}
+	if d.Images != nil && d.model != "" && !slices.Contains(o.Models, d.model) {
+		o.Models = append(o.Models, d.model)
+	}
 	if d.Audio != nil {
 		o.Audio = []string{d.ID}
 		if d.model != "" && !slices.Contains(o.Models, d.model) {
@@ -78,6 +82,12 @@ func newRouter(text upstream.Engine, cfg Config) *Router {
 		d := &Destination{ID: audio.id, Kind: "engine", Origin: "local", Up: audio.up, Audio: audio.up, model: audio.model}
 		d.Queue.cap = func() int { return d.Up.Info().Slots }
 		r.routes[string(audio.route)] = d
+		r.destinations = append(r.destinations, d)
+	}
+	if cfg.Images != nil {
+		d := &Destination{ID: "images", Kind: "engine", Origin: "local", Up: cfg.Images, Images: cfg.Images, model: cfg.ImageModel}
+		d.Queue.cap = func() int { return 1 }
+		r.routes[string(imagesEndpoint)] = d
 		r.destinations = append(r.destinations, d)
 	}
 	return r

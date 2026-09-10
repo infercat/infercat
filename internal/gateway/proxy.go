@@ -349,13 +349,15 @@ type meResponse struct {
 	} `json:"key"`
 	Limits keys.Limits `json:"limits"`
 	Usage  struct {
+		TodayImages int `json:"today_images,omitempty"`
 		RPMUsed     int `json:"rpm_used"`
 		TPMUsed     int `json:"tpm_used"`
 		TodayTokens int `json:"today_tokens"`
 		InFlight    int `json:"in_flight"`
 	} `json:"usage"`
 	Host struct {
-		Name     string `json:"name"`
+		Images   *imageOffer `json:"images,omitempty"`
+		Name     string      `json:"name"`
 		Upstream struct {
 			Kind         upstream.Kind `json:"kind"`
 			Healthy      bool          `json:"healthy"`
@@ -377,8 +379,10 @@ type meResponse struct {
 func (q *request) me() {
 	var m meResponse
 	m.Key.ID, m.Key.Name, m.Key.Status = q.key.ID, q.key.Name, q.key.Status
-	m.Limits = q.key.Limits
+	m.Limits = keys.ImageDefaults(q.key.Limits)
+	m.Host.Images = q.g.imageOffer(q.key)
 	cnt := q.g.lim.counters(q.key.ID)
+	m.Usage.TodayImages = cnt.TodayImages
 	m.Usage.RPMUsed, m.Usage.TPMUsed, m.Usage.TodayTokens, m.Usage.InFlight = cnt.RPMUsed, cnt.TPMUsed, cnt.TodayTokens, cnt.InFlight
 	info := q.g.router.text.Up.Info()
 	m.Host.Name = q.g.cfg.HostName

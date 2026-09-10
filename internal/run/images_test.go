@@ -1,0 +1,251 @@
+package run
+
+import (
+	"context"
+	"encoding/json"
+	"errors"
+	"os"
+	"sync"
+	"testing"
+	"time"
+)
+
+func imageIn(prompt string) json.RawMessage {
+	b, _ := json.Marshal(ImageInput{Prompt: prompt})
+	return b
+}
+func untilImage(t *testing.T, s *Store, key, rid string, state State) Run {
+	t.Helper()
+	until := time.Now().Add(3 * time.Second)
+	for time.Now().Before(until) {
+		r, e := s.Get(key, rid)
+		if e == nil && r.State == state {
+			return r
+		}
+		time.Sleep(time.Millisecond)
+	}
+	r, _ := s.Get(key, rid)
+	t.Fatalf("wanted %s: %+v", state, r)
+	return r
+}
+func TestImageWorkerPriorityAndDeferredCancel(t *testing.T) {
+	s, _ := NewStore(t.TempDir())
+	started := make(chan string, 4)
+	release := make(chan struct{}, 4)
+	var mu sync.Mutex
+	active, peak := 0, 0
+	exec := func(ctx context.Context, _ string, step Step, acquired func() error) (StepResult, error) {
+		if err := acquired(); err != nil {
+			return StepResult{}, err
+		}
+		mu.Lock()
+		active++
+		if active > peak {
+			peak = active
+		}
+		mu.Unlock()
+		started <- step.RunID
+		select {
+		case <-release:
+		case <-ctx.Done():
+			return StepResult{}, ctx.Err()
+		}
+		mu.Lock()
+		active--
+		mu.Unlock()
+		return StepResult{Output: json.RawMessage(`{"url":"image"}`), Dispatched: true, Settled: true}, nil
+	}
+	m, _ := New(s, exec, nil)
+	m.Register("image", ImageKind, Policy{Serial: true, DeferredCancel: true, Validate: ValidateImage})
+	defer m.Close()
+	first, _ := m.Submit("key", "image", "planted", imageIn("first"))
+	if <-started != first.ID {
+		t.Fatal("first")
+	}
+	planted, _ := m.Submit("key", "image", "planted", imageIn("planted"))
+	interactive, _ := m.Submit("key", "image", "interactive", imageIn("interactive"))
+	if m.Position("image", interactive.ID) != 1 {
+		t.Fatal("interactive not first")
+	}
+	r, e := m.Cancel("key", first.ID)
+	if e != nil || r.State != Running || !r.CancelRequested {
+		t.Fatal(r, e)
+	}
+	release <- struct{}{}
+	untilImage(t, s, "key", first.ID, Done)
+	if <-started != interactive.ID {
+		t.Fatal("priority")
+	}
+	if _, e = m.Cancel("key", planted.ID); e != nil {
+		t.Fatal(e)
+	}
+	untilImage(t, s, "key", planted.ID, Cancelled)
+	release <- struct{}{}
+	untilImage(t, s, "key", interactive.ID, Done)
+	if peak != 1 {
+		t.Fatal("parallel images", peak)
+	}
+}
+func TestImageBatchCapIsAtomic(t *testing.T) {
+	s, _ := NewStore(t.TempDir())
+	rows, e := s.CreateBatch("key", "image", "planted", []json.RawMessage{imageIn("a"), imageIn("b")}, 2)
+	if e != nil || len(rows) != 2 || rows[0].Batch.ID != rows[1].Batch.ID || rows[1].Batch.Index != 1 {
+		t.Fatal(rows, e)
+	}
+	if _, e = s.CreateBatch("key", "image", "planted", []json.RawMessage{imageIn("c"), imageIn("d")}, 2); !errors.Is(e, ErrQueueLimit) {
+		t.Fatal(e)
+	}
+	all, _ := s.List("key")
+	if len(all) != 2 {
+		t.Fatal("partial admission")
+	}
+	rows[0].Input[0] = 'x'
+	r, _ := s.Get("key", rows[0].ID)
+	if !json.Valid(r.Input) {
+		t.Fatal("aliased batch")
+	}
+}
+func TestImageArtifactsEvictDiscardExpireAndIsolate(t *testing.T) {
+	s, _ := NewStore(t.TempDir())
+	s.imageBudget = 8
+	makeImage := func(name string) Run {
+		r, e := s.Create("key", "image", "interactive", imageIn(name))
+		if e != nil {
+			t.Fatal(e)
+		}
+		if _, e = s.PutImage("key", r.ID, []byte("four"), "image/png", 1, 1); e != nil {
+			t.Fatal(e)
+		}
+		return r
+	}
+	a := makeImage("a")
+	b := makeImage("b")
+	c := makeImage("c")
+	if _, o, e := s.ReadImage("key", a.ID); !errors.Is(e, ErrNotFound) || !o.Gone {
+		t.Fatal("oldest not evicted", o, e)
+	}
+	if _, _, e := s.ReadImage("other", b.ID); !errors.Is(e, ErrNotFound) {
+		t.Fatal("cross key", e)
+	}
+	if e := s.DiscardImage("key", b.ID); e != nil {
+		t.Fatal(e)
+	}
+	if e := s.DiscardImage("key", b.ID); e != nil {
+		t.Fatal("discard not idempotent", e)
+	}
+	if _, _, e := s.ReadImage("key", c.ID); e != nil {
+		t.Fatal(e)
+	}
+	_ = os.Remove(s.artifactPath("key", c.ID))
+	_ = os.Symlink("/etc/hosts", s.artifactPath("key", c.ID))
+	if _, _, e := s.ReadImage("key", c.ID); !errors.Is(e, ErrNotFound) {
+		t.Fatal("symlink read", e)
+	}
+	s.now = func() time.Time { return time.Now().Add(Retention + time.Hour) }
+	if _, _, e := s.ReadImage("key", c.ID); !errors.Is(e, ErrNotFound) {
+		t.Fatal("expired read", e)
+	}
+	if _, e := s.PutImage("key", c.ID, make([]byte, MaxImage+1), "image/png", 1, 1); !errors.Is(e, ErrLimit) {
+		t.Fatal("artifact cap", e)
+	}
+}
+
+func TestImageExpiryRetainsGoneMetadataAndRestartDoesNotReplay(t *testing.T) {
+	dir := t.TempDir()
+	s, _ := NewStore(dir)
+	now := time.Now()
+	s.now = func() time.Time { return now }
+	r, _ := s.Create("key", "image", "interactive", imageIn("one"))
+	meta, e := s.PutImage("key", r.ID, []byte("png"), "image/png", 1, 1)
+	if e != nil {
+		t.Fatal(e)
+	}
+	now = now.Add(time.Hour)
+	_, e = s.change("key", r.ID, func(v *Run) error { v.State = Done; v.Output = meta; return nil })
+	if e != nil {
+		t.Fatal(e)
+	}
+	now = now.Add(Retention - time.Minute)
+	m, _ := New(s, nil, nil)
+	defer m.Close()
+	if e = m.Sweep(); e != nil {
+		t.Fatal(e)
+	}
+	kept, e := s.Get("key", r.ID)
+	o, ok := imageOutput(kept)
+	if e != nil || !ok || !o.Gone {
+		t.Fatal(kept, e)
+	}
+	if _, e = os.Stat(s.artifactPath("key", r.ID)); !errors.Is(e, os.ErrNotExist) {
+		t.Fatal(e)
+	}
+	live, _ := s.Create("key", "image", "planted", imageIn("never replay"))
+	s2, e := NewStore(dir)
+	if e != nil {
+		t.Fatal(e)
+	}
+	replayed := false
+	m2, e := New(s2, func(context.Context, string, Step, func() error) (StepResult, error) {
+		replayed = true
+		return StepResult{}, nil
+	}, map[string]Kind{"image": ImageKind})
+	if e != nil {
+		t.Fatal(e)
+	}
+	defer m2.Close()
+	got, _ := s2.Get("key", live.ID)
+	if got.State != Failed || replayed {
+		t.Fatal(got, replayed)
+	}
+}
+
+func TestDiscardBeforeStepFinishDoesNotResurrectMetadata(t *testing.T) {
+	s, _ := NewStore(t.TempDir())
+	r, _ := s.Create("key", "image", "interactive", imageIn("one"))
+	meta, e := s.PutImage("key", r.ID, []byte("png"), "image/png", 1, 1)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if e = s.DiscardImage("key", r.ID); e != nil {
+		t.Fatal(e)
+	}
+	m := &Manager{Store: s}
+	m.finish("key", r.ID, Done, "", meta)
+	r, _ = s.Get("key", r.ID)
+	o, ok := imageOutput(r)
+	if !ok || !o.Gone || r.State != Done {
+		t.Fatal(r)
+	}
+}
+
+func TestImageCancelAfterOutputBeforeFinalSnapshot(t *testing.T) {
+	s, _ := NewStore(t.TempDir())
+	ready, finish := make(chan struct{}), make(chan struct{})
+	m, _ := New(s, func(_ context.Context, key string, step Step, acquired func() error) (StepResult, error) {
+		if e := acquired(); e != nil {
+			return StepResult{}, e
+		}
+		output, e := s.PutImage(key, step.RunID, []byte("image"), "image/png", 1, 1)
+		return StepResult{Output: output, Dispatched: true, Settled: true}, e
+	}, nil)
+	m.Register("image", func(ctx context.Context, r Run) (Decision, error) {
+		if len(r.Attempts) > 0 {
+			close(ready)
+			<-finish
+		}
+		return ImageKind(ctx, r)
+	}, Policy{Serial: true, DeferredCancel: true})
+	defer m.Close()
+	defer close(finish)
+	r, e := m.Submit("key", "image", "interactive", imageIn("one"))
+	if e != nil {
+		t.Fatal(e)
+	}
+	<-ready
+	r, e = m.Cancel("key", r.ID)
+	if e != nil || r.State != Running || !r.CancelRequested {
+		t.Fatalf("completed image reverted: %+v %v", r, e)
+	}
+	finish <- struct{}{}
+	untilImage(t, s, "key", r.ID, Done)
+}

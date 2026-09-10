@@ -70,6 +70,9 @@ func (e *env) cmdServe(ctx context.Context, pre string, args []string) error {
 	transcribeURL := fs.String("upstream-transcribe", cfg.UpstreamTranscribe, "explicit OpenAI transcription engine URL")
 	transcribeKey := fs.String("upstream-transcribe-key", cfg.UpstreamTranscribeKey, "transcription engine bearer")
 	speechURL := fs.String("upstream-speech", cfg.UpstreamSpeech, "explicit OpenAI speech engine URL")
+	imageURL := fs.String("upstream-images", cfg.UpstreamImages, "explicit OpenAI images engine URL")
+	imageKey := fs.String("upstream-images-key", cfg.UpstreamImagesKey, "images engine bearer")
+	imageModel := fs.String("upstream-images-model", cfg.UpstreamImagesModel, "host image model (otherwise first probed id)")
 	speechKey := fs.String("upstream-speech-key", cfg.UpstreamSpeechKey, "speech engine bearer")
 	maxAudio := fs.Int("max-transcription-seconds", intOr(cfg.MaxTranscriptionSeconds, 300), "maximum measured duration and unknown-duration reservation")
 	models := fs.String("models", cfg.Models, "comma-separated host model pin; all forgets it")
@@ -108,6 +111,10 @@ func (e *env) cmdServe(ctx context.Context, pre string, args []string) error {
 	if err != nil {
 		return err
 	}
+	images, err := upstream.OpenImages(ctx, *imageURL, *imageKey)
+	if err != nil {
+		return err
+	}
 	consoleListener, err := admin.ListenConsole(*consoleAddr)
 	if err != nil {
 		return err
@@ -126,7 +133,8 @@ func (e *env) cmdServe(ctx context.Context, pre string, args []string) error {
 		Upstream: *upURL, UpstreamKey: *upKey, Slots: *slots, Models: strings.Join(pinned, ","),
 		UpstreamTranscribeModel: *transcribeModel, UpstreamSpeechModel: *speechModel,
 		UpstreamSpeechVoices: *speechVoices,
-		UpstreamTranscribe:   *transcribeURL, UpstreamTranscribeKey: *transcribeKey, UpstreamSpeech: *speechURL, UpstreamSpeechKey: *speechKey, MaxTranscriptionSeconds: *maxAudio,
+		UpstreamImages:       *imageURL, UpstreamImagesKey: *imageKey, UpstreamImagesModel: *imageModel,
+		UpstreamTranscribe: *transcribeURL, UpstreamTranscribeKey: *transcribeKey, UpstreamSpeech: *speechURL, UpstreamSpeechKey: *speechKey, MaxTranscriptionSeconds: *maxAudio,
 		DevListen: *devListen, DERPMapURL: *derpMapURL,
 		Region: *region, Name: *name, WebURL: *webURLFlag, Console: *consoleAddr,
 	}); err != nil {
@@ -199,7 +207,8 @@ func (e *env) cmdServe(ctx context.Context, pre string, args []string) error {
 		ModelsPinned:    pinned,
 		TranscribeModel: *transcribeModel, SpeechModel: *speechModel,
 		SpeechVoices: voices,
-		Transcribe:   transcribe, Speech: speech, MaxTranscriptionSeconds: float64(*maxAudio),
+		Images:       images, ImageModel: *imageModel,
+		Transcribe: transcribe, Speech: speech, MaxTranscriptionSeconds: float64(*maxAudio),
 		LogPrompts:  *logPrompts,
 		HostName:    hostName,
 		RelayRegion: func() string { return tun.Status().Region },
@@ -260,6 +269,9 @@ func (e *env) cmdServe(ctx context.Context, pre string, args []string) error {
 		return st
 	}, func() error {
 		err := reload()
+		if images != nil {
+			err = errors.Join(err, images.Refresh(ctx))
+		}
 		for _, a := range []upstream.AudioEngine{transcribe, speech} {
 			if a != nil {
 				err = errors.Join(err, a.Refresh(ctx))
@@ -713,6 +725,9 @@ Flags:
   --upstream-speech-model ID default model (otherwise first probed id)
   --upstream-speech-voices MAP zh=VOICE,en=VOICE,default=VOICE; fills only an absent voice
   --upstream-transcribe-key TOKEN  transcription engine bearer
+  --upstream-images URL     explicit OpenAI images engine base URL
+  --upstream-images-key TOKEN images engine bearer
+  --upstream-images-model ID default image model
   --upstream-speech URL      explicit OpenAI speech engine base URL
   --upstream-speech-key TOKEN speech engine bearer
   --max-transcription-seconds N  measured upload ceiling / unknown reservation (default 300)

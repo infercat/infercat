@@ -67,6 +67,8 @@ type gatewayServer interface {
 }
 
 type gatewayOptions struct {
+	Images                       upstream.ImageEngine
+	ImageModel                   string
 	RemoteConsole                http.Handler
 	LiveHostName                 func() string
 	SpeechVoices                 map[string]string

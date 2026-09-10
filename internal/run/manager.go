@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"sort"
 	"sync"
 	"time"
 )
@@ -24,6 +25,7 @@ type Manager struct {
 type execution struct {
 	cancel context.CancelFunc
 	answer chan struct{}
+	kind   string
 }
 
 func New(s *Store, exec Executor, kinds map[string]Kind) (*Manager, error) {
@@ -51,26 +53,100 @@ func New(s *Store, exec Executor, kinds map[string]Kind) (*Manager, error) {
 	return m, nil
 }
 func (m *Manager) Submit(key, kind, priority string, input json.RawMessage) (Run, error) {
+	rows, err := m.SubmitBatch(key, kind, priority, []json.RawMessage{input})
+	if err != nil {
+		return Run{}, err
+	}
+	return rows[0], nil
+}
+func (m *Manager) SubmitBatch(key, kind, priority string, inputs []json.RawMessage) ([]Run, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if m.ctx.Err() != nil {
-		return Run{}, ErrConflict
+		return nil, ErrConflict
 	}
 	if m.Kinds[kind] == nil {
-		return Run{}, ErrInvalid
+		return nil, ErrInvalid
 	}
 	if priority == "" {
 		priority = "interactive"
 	}
-	r, err := m.Store.Create(key, kind, priority, input)
-	if err == nil {
-		m.start(r)
+	p := m.Policies[kind]
+	cap := MaxLiveKey
+	if p.QueueLimit != nil {
+		var err error
+		cap, err = p.QueueLimit(key)
+		if err != nil {
+			return nil, err
+		}
 	}
-	return r, err
+	for _, in := range inputs {
+		if p.Validate != nil {
+			if err := p.Validate(in); err != nil {
+				return nil, err
+			}
+		}
+	}
+	rows, err := m.Store.CreateBatch(key, kind, priority, inputs, cap)
+	if err == nil {
+		if p.Serial {
+			m.schedule(kind)
+		} else {
+			for _, r := range rows {
+				m.start(r)
+			}
+		}
+	}
+	return rows, err
+}
+func (m *Manager) queued(kind string) []Run {
+	summaries, _ := m.Store.List("")
+	var rows []Run
+	for _, r := range summaries {
+		if r.Kind == kind && r.State == Queued {
+			if v, err := m.Store.Get(r.KeyID, r.ID); err == nil {
+				rows = append(rows, v)
+			}
+		}
+	}
+	sort.Slice(rows, func(i, j int) bool {
+		a, b := rows[i], rows[j]
+		if a.Priority != b.Priority {
+			return a.Priority == "interactive"
+		}
+		if a.Created.Equal(b.Created) {
+			return a.ID < b.ID
+		}
+		return a.Created.Before(b.Created)
+	})
+	return rows
+}
+func (m *Manager) schedule(kind string) {
+	if m.ctx.Err() != nil {
+		return
+	}
+	for _, a := range m.active {
+		if a.kind == kind {
+			return
+		}
+	}
+	if rows := m.queued(kind); len(rows) > 0 {
+		m.start(rows[0])
+	}
+}
+func (m *Manager) Position(kind, rid string) int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	for i, r := range m.queued(kind) {
+		if r.ID == rid {
+			return i + 1
+		}
+	}
+	return 0
 }
 func (m *Manager) start(r Run) {
 	ctx, cancel := context.WithCancel(m.ctx)
-	worker := &execution{cancel: cancel, answer: make(chan struct{}, 1)}
+	worker := &execution{cancel: cancel, kind: r.Kind, answer: make(chan struct{}, 1)}
 	m.active[r.ID] = worker
 	m.wg.Add(1)
 	go func() {
@@ -79,6 +155,9 @@ func (m *Manager) start(r Run) {
 			m.mu.Lock()
 			if m.active[r.ID] == worker {
 				delete(m.active, r.ID)
+				if m.Policies[r.Kind].Serial {
+					m.schedule(r.Kind)
+				}
 			}
 			m.mu.Unlock()
 			cancel()
@@ -123,7 +202,7 @@ func (m *Manager) Cancel(key, rid string) (Run, error) {
 		return nil
 	})
 	if err == nil {
-		if worker := m.active[rid]; worker != nil && !(old.State == Running && m.Policies[old.Kind].DeferredCancel) {
+		if worker := m.active[rid]; worker != nil && !(r.State == Running && m.Policies[r.Kind].DeferredCancel) {
 			worker.cancel()
 		}
 	}
@@ -145,7 +224,10 @@ func (m *Manager) finish(key, rid string, st State, reason string, output json.R
 		}
 		v.State = st
 		v.Reason = reason
-		v.Output = output
+		// Artifact metadata can change (Discard/eviction) between persistence and step finish.
+		if _, stored := imageOutput(*v); !stored {
+			v.Output = output
+		}
 		return nil
 	})
 }
@@ -207,6 +289,8 @@ func (m *Manager) attempt(ctx context.Context, r Run, step Step, live bool) (Run
 				return ErrConflict
 			}
 			v.State = Running
+			now := m.Store.now().UTC()
+			v.Started = &now
 			return nil
 		})
 		return e
@@ -230,6 +314,11 @@ func (m *Manager) attempt(ctx context.Context, r Run, step Step, live bool) (Run
 		} else if stepErr != nil || len(result.Output) > MaxOutput || !json.Valid(result.Output) {
 			v.State = Failed
 			v.Reason = "step failed"
+			if stepErr != nil {
+				v.Reason = stepErr.Error()
+			}
+		} else if _, stored := imageOutput(*v); stored && m.Policies[v.Kind].DeferredCancel {
+			v.State = Running // the completed image remains running until its terminal snapshot
 		} else {
 			v.State = Queued
 		}
@@ -271,6 +360,9 @@ func (m *Manager) Sweep() error {
 			if err = s.commit(key, next, nil); err != nil {
 				return err
 			}
+		}
+		if err = s.sweepImages(key, next); err != nil {
+			return err
 		}
 	}
 	return nil
