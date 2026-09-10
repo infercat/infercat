@@ -221,6 +221,8 @@ For OpenCode or DeepSeek Harness, run `infercat connect <invite> --configure ope
 It registers the models from `/me` at the actual local port and prints how to select them:
 OpenCode uses the printed `OPENCODE_CONFIG=… opencode --model …` line; Harness uses
 `INFERCAT_API_KEY=unused dsh`, then its `/model` picker. Your default selection stays yours.
+If `OPENCODE_CONFIG` already names another file, configuration refuses without writing; unset
+it for the run, or merge the provider into your own file. OpenCode uses one custom path.
 The OpenCode extra file is merged with your configuration; Harness inserts a marked provider
 in `$DSH_HOME/settings.yaml` (normally `~/.dsh/settings.yaml`). Clean exit removes unchanged
 managed blocks; `infercat connect --unconfigure` also removes them without an invite or stopping
@@ -229,9 +231,7 @@ even without a running bridge. Original backups and ownership receipts live in t
 config directory under `infercat/agents` (or `XDG_CONFIG_HOME` on Unix). YAML flow maps, aliases
 and custom Harness settings locations require manual configuration. Codex needs the Responses
 API and is explicitly refused. Windows paths use the native user config directory and
-`DSH_HOME`; the printed launch lines use POSIX shell syntax. Native Windows operation is not
-proved in this slice.
-
+`DSH_HOME`; the printed launch lines use POSIX shell syntax. Windows: compiles, untested.
 
 ```
 OPENAI_BASE_URL=http://127.0.0.1:11435/v1 OPENAI_API_KEY=x python3 -c '

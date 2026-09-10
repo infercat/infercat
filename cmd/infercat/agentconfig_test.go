@@ -111,3 +111,20 @@ func TestConfigurePartialFailureCleansOwnedWrite(t *testing.T) {
 		t.Fatal("partial OpenCode write left behind")
 	}
 }
+
+func TestExistingOpenCodePathRefusesBeforeAnyWrite(t *testing.T) {
+	cfg, original := agentFixture(t)
+	current := filepath.Join(filepath.Dir(cfg.Dir), "person.json")
+	t.Setenv("OPENCODE_CONFIG", current)
+	r := exec(t, testPlatform(fakeAddr, nil), "connect", "--configure", "dsh,opencode")
+	if r.code == 0 || !strings.Contains(r.err, "OPENCODE_CONFIG") || !strings.Contains(r.err, current) || !strings.Contains(r.err, "not written") {
+		t.Fatal(r)
+	}
+	if _, err := os.Stat(cfg.Dir); !os.IsNotExist(err) {
+		t.Fatal("refusal wrote receipt/lock/config")
+	}
+	b, _ := os.ReadFile(cfg.DSH)
+	if string(b) != original {
+		t.Fatal("partial DSH write")
+	}
+}
