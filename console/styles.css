@@ -361,3 +361,8 @@ input[readonly] { background: var(--surface); color: var(--muted); border-color:
 .tbl .now.reported { display:block; white-space:normal; }
 .tbl .now.reported::before { display:none; }
 .connection-mark.live { color:var(--accent-text); }
+
+.fact.wide { grid-column: 1 / -1; }
+.fact .s .bad { color: var(--danger); }
+.utbl tr.via-first td { border-top: 1px solid var(--rule); }
+.utbl tr.via-row td { white-space: normal; }

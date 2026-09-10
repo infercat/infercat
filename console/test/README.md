@@ -92,3 +92,13 @@ The original fixture keeps optional fields absent to guard legacy rendering.
 (the existing `console/test` adapter). It starts two new friend peers for one own isolated host
 and checks that local/remote tables and the drawer show two devices. CAPTURE_CONSOLE_FIXTURE=1
 refreshes the dev API fixture, omitting peer identity rows. All proof processes stop afterwards.
+
+## 110 public URL, via and audio
+
+`pnpm --dir console exec node test/bridge-audio-screens.mjs` exercises all frozen public-URL
+states plus the audio drawer at 1280/390 in EN/ZH. Fake-admin reads supply the current Report.by_via
+shape; both time columns preserve the host's model-call and token counts. The original fixture
+keeps new fields absent. Screenshots and the 24-state report are under ignored
+`console/test/evidence/bridge-audio/`; the browser and preview are closed afterwards.
+The existing audio limits editor and its full-form save are unchanged. Rendering tests cover
+conditional rows, per-key today units, local/remote facts, escaped diagnostics and zero buckets.

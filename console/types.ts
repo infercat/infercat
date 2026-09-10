@@ -1,15 +1,19 @@
 export interface Limits { rpm: number; tpm: number; max_concurrent: number; max_output_tokens: number; max_context: number; daily_tokens: number; models?: string[]; daily_audio_seconds?: number; daily_speech_chars?: number }
 export interface Key { id: string; name: string; status: 'active' | 'paused' | 'revoked'; limits: Limits; created_at: string; last_seen: string; today_tokens: number }
 export interface LiveKey { connected?: boolean; sessions?: number; id: string; in_flight: number; rpm_used: number; tpm_used: number; today_tokens: number; last_seen: string }
+export type ViaStats = Partial<Record<'direct' | 'bridge', Stats>>;
+export interface Bridge { enabled: boolean; url: string; connected: boolean; since: string; last_error: string; requests_today: number }
 export interface Stats {
+ seconds?: number; characters?: number; by_via?: ViaStats;
  key_id?: string; requests: number; model_calls: number; app_polls: number; errors: number;
  errors_by_code?: Record<string, number>; model_calls_by_model?: Record<string, number>;
  prompt_tokens: number; completion_tokens: number; ttft_median_ms: number; ttft_p95_ms: number;
  total_median_ms: number; total_p95_ms: number; last_call?: string;
 }
-export interface Report { total: Stats; keys: Stats[] | null; malformed_lines: number; daily?: { date: string; total: Stats; keys: Stats[] }[] }
+export interface Report { by_via?: ViaStats; total: Stats; keys: Stats[] | null; malformed_lines: number; daily?: { by_via?: ViaStats; date: string; total: Stats; keys: Stats[] }[] }
 export interface Engine { kind: string; url: string; health: { ok: boolean; since: string; err: string }; model_context: number; slots: number; models: string[] | null; probed_at: string }
 export interface Status {
+ bridge?: Bridge;
  name: string; version: string; uptime_s: number; models_pinned?: string[]; keys: LiveKey[];
  tunnel: { region: string; clients: number; rx_bytes: number; tx_bytes: number };
  queue: { in_flight: number; waiting: number };
