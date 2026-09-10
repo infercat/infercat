@@ -177,7 +177,7 @@ func (e *env) cmdServe(ctx context.Context, pre string, args []string) error {
 		return strings.TrimSpace(string(b))
 	}, events, e.logf)
 
-	public := bridge.Manager{Keys: store}
+	public := bridge.Manager{Keys: store, Slots: func() int { return up.Info().Slots }}
 	defer public.Close()
 	gw, err := e.plat.newGateway(gatewayOptions{
 		RemoteConsole: remoteHandler, LiveHostName: state.name,

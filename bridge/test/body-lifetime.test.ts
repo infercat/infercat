@@ -19,7 +19,7 @@ beforeEach(() => {
   values = new Map();
   disabled = false;
   sent = [];
-  ws = { send: (s: string) => sent.push(JSON.parse(s)), close: vi.fn() };
+  ws = { deserializeAttachment: () => ({}), serializeAttachment() {}, send: (s: string) => sent.push(JSON.parse(s)), close: vi.fn() };
   const storage = {
     sql: { exec: () => [{ hash: createHash("sha256").update("friend").digest("hex") }] },
     transaction: async (fn: any) => fn({

@@ -35,7 +35,7 @@ async function register(host = `fixture-${++serial}`) {
   return { ...(await result.json()), code };
 }
 const digest = (key) => createHash("sha256").update(key).digest("hex");
-async function socket(c, hashes = [digest("friend")]) {
+async function socket(c, hashes = [digest("friend")], slots) {
   const result = await mf.dispatchFetch(`https://test/h/${c.host}/socket`, {
     headers: { upgrade: "websocket", authorization: `Bearer ${c.token}` },
   });
@@ -59,8 +59,9 @@ async function socket(c, hashes = [digest("friend")]) {
         ? Promise.resolve(messages.shift())
         : new Promise((resolve) => waiters.push(resolve)),
   };
-  peer.send({ type: "keys", hashes });
-  expect(await peer.next()).toEqual({ type: "keys_ready" });
+  peer.send({ type: "keys", hashes, slots });
+  expect(await peer.next()).toEqual(slots === undefined
+    ? { type: "keys_ready" } : { type: "keys_ready", slots: Math.min(64, Math.max(1, slots)) });
   return peer;
 }
 const post = (c, body = "{}", headers = {}) =>
@@ -354,4 +355,27 @@ describe("Worker and hibernating Durable Object", () => {
       (await respond(s, await incoming(s), next, "still connected")).body,
     ).toBe("still connected");
   });
+});
+
+
+it("streams three interleaved jobs over one real Worker socket", async () => {
+  const c = await register(), s = await socket(c, [digest("friend")], 3);
+  const pending = [], jobs = [];
+  for (let i = 0; i < 3; i++) {
+    pending.push(post(c, `body-${i}`));
+    jobs.push(await incoming(s));
+  }
+  expect(jobs.map((j) => j.body.toString())).toEqual(["body-0", "body-1", "body-2"]);
+  for (const job of jobs) s.send({ type: "response", id: job.id, status: 200 });
+  const responses = await Promise.all(pending);
+  const texts = responses.map((r) => r.text());
+  for (const i of [2, 0, 1]) {
+    s.send({ type: "data", id: jobs[i].id, data: Buffer.from(`result-${i}`).toString("base64") });
+    expect(await s.next()).toEqual({ type: "ack", id: jobs[i].id });
+  }
+  for (const i of [1, 2, 0]) {
+    s.send({ type: "end", id: jobs[i].id });
+    expect(await s.next()).toEqual({ type: "ready", id: jobs[i].id });
+  }
+  expect(await Promise.all(texts)).toEqual(["result-0", "result-1", "result-2"]);
 });

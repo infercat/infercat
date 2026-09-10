@@ -34,6 +34,22 @@ The printed base URL is `https://gateway.infercat.ai/h/HOST/v1`. Use the existin
 its bearer token. The bridge credential is a separate secret and never authorizes inference.
 The launch host is not part of this slice's testing.
 
+## Concurrent host slots — ticket 120
+
+At each connection the host reads the effective text destination's slot count and includes
+`slots` in its existing `keys` snapshot. The Worker echoes the accepted count in `keys_ready`:
+integer counts are clamped to 1–64, absent/nonpositive counts use 1, and invalid wire values
+refuse the session. Either side running the older protocol retains one slot. The count stays
+fixed for that connection, including key reloads; a reconnect samples it again. The Worker
+stores the negotiated count in the socket attachment so hibernation preserves it, and a new
+socket negotiates afresh. No extra configuration is required; the workstation's 48 slots fit.
+
+There are up to N active jobs and **four waiting jobs total per host**, beyond those N, not
+four per slot. The four-reader/16 MiB upload reservation and 60/minute host window are unchanged.
+Each ID owns its body, response acknowledgements and cancellation settlement. Cancelling one
+handler holds only its slot until it stops and answers `ready`; other IDs continue. Disconnect
+cancels and joins all local handlers. The existing 30-second acknowledgement deadlines remain.
+
 ## Protocol and bounds
 
 The Worker routes only `GET|POST /h/HOST/v1/*` and the authenticated host socket `/h/HOST/socket`.
@@ -50,7 +66,7 @@ All messages are JSON text with `type` and a per-request `id`. The sequence is:
    Response headers are only `content-type`, `cache-control`, `retry-after`, and `x-request-id`;
    the Worker forces `cache-control: no-store`.
 3. Worker → host: `ack` after each response chunk reaches the response stream; `ready` after
-   the response ends. The next request follows `ready`. An unfinished request is never replayed.
+   the response ends. That slot is reusable after `ready`; other IDs may progress concurrently. An unfinished request is never replayed.
 4. On a client abort, response-writer error, or request deadline the Worker sends `cancel` for
    that request id. The host cancels that handler's context, joins it, and answers `ready` before
    another request starts. A host-side ack timeout cancels its request context and sends `cancel`;
@@ -68,7 +84,7 @@ to size the reservation. Every completion, timeout, oversize refusal, or read er
 reservation in `finally`. Bodyless requests need no upload reservation. Each reader uses one fixed
 buffer and a single cancellation deadline, with no growing chunk list, per-chunk timeout race,
 or final full-body copy. Completed bodies transfer to the separately bounded queue. The
-bridge permits one active request and four waiting requests per host; overflow is 429 `host_busy`.
+bridge permits up to the negotiated slot count of active requests and four waiting requests per host; overflow is 429 `host_busy`.
 The Durable Object's persistent fixed-minute counter permits 60 public requests per host/minute,
 also returning 429 `host_busy`. It counts admission attempts, including offline requests, and
 survives reconnect/hibernation. This is the ticket's per-host edge rate limit; no separate WAF rule.
@@ -80,7 +96,7 @@ key admission is released. A host that fails to acknowledge cancellation within 
 violated the protocol and is disconnected. Socket errors, invalid host frames, disable, and
 credential replacement still close the session and settle outstanding requests; none are replayed.
 The host coalesces token flushes at approximately 100 ms or a full chunk, with one unacknowledged
-chunk at a time and a 30-second acknowledgment deadline. An interrupted public client must retry
+chunk per job at a time and a 30-second acknowledgment deadline. An interrupted public client must retry
 deliberately.
 
 The host publishes a complete set of its active friend-key SHA-256 hashes on every bridge
