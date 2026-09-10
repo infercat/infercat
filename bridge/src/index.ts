@@ -11,7 +11,10 @@ type Frame = {
 };
 type Job = {
   id: string;
-  req: Request;
+  method: string;
+  path: string;
+  headers: Record<string, string>;
+  signal: AbortSignal;
   resolve: (r: Response) => void;
   writer?: WritableStreamDefaultWriter<Uint8Array>;
   abortResponse?: (reason: Error) => void;
@@ -60,9 +63,12 @@ async function bounded(req: Request, limit: number): Promise<Uint8Array> {
   const body = new Uint8Array(limit);
   let size = 0,
     timedOut = false;
+  // A second cancel() can resolve before the first cancellation finishes.
+  let cancellation: Promise<void> | undefined;
+  const cancel = () => (cancellation ??= reader.cancel().catch(() => {}));
   const timer = setTimeout(() => {
     timedOut = true;
-    void reader.cancel().catch(() => {});
+    void cancel();
   }, 30000);
   try {
     for (;;) {
@@ -75,9 +81,14 @@ async function bounded(req: Request, limit: number): Promise<Uint8Array> {
     }
   } finally {
     clearTimeout(timer);
-    await reader.cancel().catch(() => {});
+    await cancel();
+    reader.releaseLock();
   }
   return body.subarray(0, size);
+}
+async function discardUnread(req: Request) {
+  // Admission owns input until it is consumed or cancellation has settled.
+  if (!req.bodyUsed) await req.body?.cancel().catch(() => {});
 }
 export default {
   async fetch(req: Request, env: Env): Promise<Response> {
@@ -110,8 +121,10 @@ export default {
       !m ||
       !["GET", "POST"].includes(req.method) ||
       u.pathname.length + u.search.length > 2048
-    )
+    ) {
+      await discardUnread(req);
       return reply(404, "not_found");
+    }
     const internal = new URL(req.url);
     internal.pathname = m[2];
     const forwarded = new Request(internal, req);
@@ -165,7 +178,6 @@ export class Host extends DurableObject<Env> {
     return allowed !== 0;
   }
   private invalidKey(req: Request) {
-    void req.body?.cancel().catch(() => {});
     const malformed = !/^Bearer (\S+)$/.test(
       req.headers.get("authorization") || "",
     );
@@ -183,6 +195,14 @@ export class Host extends DurableObject<Env> {
     this.socket.send(JSON.stringify(f));
   }
   async fetch(req: Request): Promise<Response> {
+    try {
+      return await this.admitRequest(req);
+    } finally {
+      // Every refusal settles unused input before workerd commits the response.
+      await discardUnread(req);
+    }
+  }
+  private async admitRequest(req: Request): Promise<Response> {
     const u = new URL(req.url);
     if (u.pathname === "/register") {
       const { code, host } = (await req.json()) as {
@@ -269,7 +289,10 @@ export class Host extends DurableObject<Env> {
     return new Promise<Response>((resolve) => {
       const job: Job = {
         id: crypto.randomUUID(),
-        req,
+        method: req.method,
+        path: u.pathname + u.search,
+        headers: subset(req.headers, ["authorization", "content-type", "accept"]),
+        signal: req.signal,
         resolve,
         body,
         onAbort: () => this.fail(job, 499, "client_closed"),
@@ -283,18 +306,13 @@ export class Host extends DurableObject<Env> {
   private next() {
     if (this.active || !this.queue.length) return;
     const job = (this.active = this.queue.shift()!);
-    const url = new URL(job.req.url);
     try {
       this.send({
         type: "request",
         id: job.id,
-        method: job.req.method,
-        path: url.pathname + url.search,
-        headers: subset(job.req.headers, [
-          "authorization",
-          "content-type",
-          "accept",
-        ]),
+        method: job.method,
+        path: job.path,
+        headers: job.headers,
       });
       for (let i = 0; i < job.body.length; i += CHUNK)
         this.send({
@@ -404,7 +422,7 @@ export class Host extends DurableObject<Env> {
           return;
         }
         if (ws !== this.socket || this.active !== job || job.cancelled) return;
-        job.req.signal.removeEventListener("abort", job.onAbort);
+        job.signal.removeEventListener("abort", job.onAbort);
         clearTimeout(job.timer);
         this.active = undefined;
         this.send({ type: "ready", id: job.id });
@@ -418,7 +436,7 @@ export class Host extends DurableObject<Env> {
     if (job.cancelled) return;
     job.cancelled = true;
     clearTimeout(job.timer);
-    job.req.signal.removeEventListener("abort", job.onAbort);
+    job.signal.removeEventListener("abort", job.onAbort);
     job.resolve(reply(status, code));
     job.abortResponse?.(new Error(code));
     void job.writer?.abort(new Error(code)).catch(() => {});
@@ -443,11 +461,10 @@ export class Host extends DurableObject<Env> {
     for (const job of [...(this.active ? [this.active] : []), ...this.queue]) {
       job.cancelled = true;
       clearTimeout(job.timer);
-      job.req.signal.removeEventListener("abort", job.onAbort);
+      job.signal.removeEventListener("abort", job.onAbort);
       job.resolve(reply(502, "bridge_disconnected"));
       job.abortResponse?.(new Error("bridge disconnected"));
       void job.writer?.abort(new Error("bridge disconnected")).catch(() => {});
-      void job.req.body?.cancel().catch(() => {});
     }
     this.active = undefined;
     this.queue = [];
