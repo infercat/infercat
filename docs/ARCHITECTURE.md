@@ -387,8 +387,9 @@ usage history refuses audio rather than silently resetting its budget.
 ### Run core
 
 `internal/run` separates the lifetime of a run from an HTTP request and from engine
-capacity. This core is not wired into the host yet; ticket 122 adds the gateway
-adapter and routes. Production registers no run kind. A trusted kind chooses a
+capacity. The host constructs the store and manager before exposing the gateway, runs startup
+and periodic expiry sweeps, and cancels the manager before draining listeners.
+Production registers no run kind. A trusted kind chooses a
 step, a tool/approval wait, or a terminal output; clients cannot submit executable
 code as a kind. Each engine step has a distinct attempt ID, persisted before
 execution, and an injected executor returns only after releasing and settling its
@@ -407,5 +408,33 @@ A per-key atomic snapshot commits state and its event sequence together before
 notifying subscribers. The last 256 events support cursor replay; an old cursor
 gets an explicit reset inventory, while malformed, foreign-epoch and future
 cursors are refused. Each key has at most two subscribers. A slow subscriber is
-closed and must reconnect, so it cannot block an executor. This is the internal
-event log; the friend-facing SSE transport is added separately.
+closed and must reconnect, so it cannot block an executor. The friend-facing `GET /v1/events` sends this log as SSE with `Last-Event-ID` or
+a `cursor` query. It rechecks the key during streaming. An unknown/previous epoch
+is refused; reconnect without a cursor to receive the current reset inventory.
+
+### Run gateway adapter
+
+Authenticated `POST /v1/runs` accepts `{kind, input, priority?}` and returns 202 with
+an ID only after durable creation. No kind is registered in production yet, so
+submission currently refuses unknown kinds. `GET /v1/runs/{id}` reads the owner's
+run; `DELETE` requests idempotent cancellation, including a concurrent terminal
+transition. Foreign and absent IDs both return not-found. These control routes
+record zero-resource usage events; they do not charge the model step twice.
+Run submission bodies are capped and globally bounded before reading, without
+holding the new step's key/engine admission. SSE has two subscribers per key,
+write deadlines and keepalives; slow readers disconnect and replay on reconnect.
+Admin `GET /runs?key_id=` stays behind admin authentication and returns metadata
+only, at most 100 entries with `truncated` if an all-key list exceeds that bound.
+
+The injected gateway `ExecuteStep` adapter resolves the current key by ID, creates
+the existing request owner and uses its normal pipeline. It currently accepts JSON
+chat-completion and embedding steps; audio/image consumers require their own
+capability ticket. Its bounded sink retains at most 1 MiB; a streaming result is
+stored as a JSON string containing SSE, and also obeys the encoded output cap.
+The result is observed only after `q.finish` releases capacity and records the
+same `Meters` and `SettledAt` returned to the run. An HTTP 200 stream ending early
+is a failed step, not success. No self-HTTP request, stored bearer or second ledger
+is introduced. Run SSE never keeps a model slot and exits on manager shutdown.
+
+Run steps do not update the console’s last-seen or connected-session indicators;
+those still reflect ordinary gateway requests and tunnel sessions.

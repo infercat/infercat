@@ -274,3 +274,6 @@ func (m *Manager) Start() {
 	}()
 }
 func (m *Manager) Close() { m.mu.Lock(); m.cancel(); m.mu.Unlock(); m.wg.Wait() }
+
+// Done lets transports leave when host shutdown cancels the manager.
+func (m *Manager) Done() <-chan struct{} { return m.ctx.Done() }

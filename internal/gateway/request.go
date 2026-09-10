@@ -69,6 +69,8 @@ type normalized struct {
 // rejection, client abort, timeout, and panic all leave through it; no stage releases anything
 // itself (ticket 006 design ruling).
 type request struct {
+	onAcquired  func() error
+	dispatched  atomic.Bool
 	destination *Destination
 	audio       *audioRequest
 	g           *Gateway
@@ -120,6 +122,8 @@ func (q *request) serve() {
 	}
 	r := q.r
 	switch {
+	case isRunRoute(r.URL.Path):
+		q.runRoute()
 	case r.Method == http.MethodGet && r.URL.Path == "/me":
 		q.me()
 	case r.Method == http.MethodGet && r.URL.Path == "/v1/models":
@@ -323,6 +327,12 @@ func (q *request) acquireSlot() *gwError {
 		return err
 	}
 	q.slot = true
+	if q.onAcquired != nil {
+		if err := q.onAcquired(); err != nil {
+			q.outcome = outcomeQueueLost
+			return errf(CodeClientClosed, 0, "run stopped before dispatch")
+		}
+	}
 	return nil
 }
 
@@ -372,7 +382,7 @@ func (q *request) callUpstream() *gwError {
 	// Do returns reads as not-sent, which errs towards the friend.
 	var sent atomic.Bool
 	ctx = httptrace.WithClientTrace(ctx, &httptrace.ClientTrace{
-		WroteRequest: func(i httptrace.WroteRequestInfo) { sent.Store(i.Err == nil) },
+		WroteRequest: func(i httptrace.WroteRequestInfo) { sent.Store(i.Err == nil); q.dispatched.Store(i.Err == nil) },
 	})
 	resp, derr := q.destination.Text.Do(ctx, http.MethodPost, string(q.kind), payload, q.n.stream)
 	if derr != nil {

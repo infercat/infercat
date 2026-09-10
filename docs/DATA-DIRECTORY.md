@@ -46,7 +46,7 @@ measured-equals-charged interpretation; existing token/audio telemetry remains r
 migration occurs: `keys.json` keeps its existing limit fields, interpreted as resource budgets in
 memory, and reading it does not rewrite it.
 
-### Run state (core; host wiring follows separately)
+### Run state
 
 `runs/<key-id>/state.json` is an atomic per-key snapshot containing inputs, outputs,
 attempt trajectory, lifecycle metadata and the last 256 state events. Directories
@@ -61,5 +61,5 @@ runs per host. Additions refuse at a bound rather than trim existing work. Termi
 content expires seven days after completion or cancellation. A run's maximum live
 age is 24 hours; the sweep cancels abandoned waits. Startup recovery interrupts
 unfinished runs without replaying engine work; terminal snapshots remain readable
-until expiry. The host wiring adds startup and periodic expiry sweeps in ticket 122.
+until expiry. The host runs expiry sweeps at startup and once per minute.
 No CLI flags change these constants in this slice.

@@ -24,6 +24,7 @@ import (
 	"github.com/infercat/infercat/internal/gateway"
 	"github.com/infercat/infercat/internal/keys"
 	"github.com/infercat/infercat/internal/product"
+	runstate "github.com/infercat/infercat/internal/run"
 	// only for tunnel.KeyFile: the host identity's file name is the tunnel's to define, and a
 	// second copy of it here would be a lie waiting to happen.
 	"github.com/infercat/infercat/internal/tunnel"
@@ -193,6 +194,21 @@ func (e *env) cmdServe(ctx context.Context, pre string, args []string) error {
 		return fmt.Errorf("gateway: %w", err)
 	}
 
+	runStore, err := runstate.NewStore(dataDir)
+	if err != nil {
+		return fmt.Errorf("runs: %w", err)
+	}
+	runs, err := runstate.New(runStore, gw.ExecuteStep, nil)
+	if err != nil {
+		return fmt.Errorf("runs: %w", err)
+	}
+	defer runs.Close()
+	if err = runs.Sweep(); err != nil {
+		return fmt.Errorf("run expiry: %w", err)
+	}
+	gw.SetRuns(runs)
+	runs.Start()
+
 	reload := func() error {
 		if err := store.Reload(); err != nil {
 			return err
@@ -226,7 +242,7 @@ func (e *env) cmdServe(ctx context.Context, pre string, args []string) error {
 			}
 		}
 		return err
-	}, events, e.consoleAPI(store, tun.Addr(), up, state.value, state))
+	}, events, admin.WithRuns(e.consoleAPI(store, tun.Addr(), up, state.value, state), runStore.List))
 	if err != nil {
 		return fmt.Errorf("admin API: %w", err)
 	}
@@ -259,6 +275,7 @@ func (e *env) cmdServe(ctx context.Context, pre string, args []string) error {
 		}
 	}
 
+	runs.Close() // Cancel steps and let SSE readers leave before the gateway drain.
 	sctx, cancel := context.WithTimeout(context.Background(), drainTimeout)
 	defer cancel()
 	if err := gw.Shutdown(sctx); err != nil {
