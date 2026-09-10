@@ -174,6 +174,20 @@ per-via totals and a VIA column per key. Gateway refusal codes remain in `errors
 Edge-only refusals such as `host_busy`/`host_offline` have no host event and are excluded;
 durable edge refusal accounting is a later slice.
 
+Usage events and every admin aggregate bucket carry `meters: [{class, unit, measured, charged}]`:
+`tokens` / tokens, `audio` / seconds, and `speech` / characters. Measured values derive from
+unchanged telemetry (including the prompt/completion split and audio provenance); charged values
+come from settlement. A rejected text request records zero, a non-stream cut records its reservation,
+and a stream cut or served request records its settled usage. Restart restores each class's day
+from charged totals; minute windows and outstanding reservations start empty. `ts` remains request
+start for listings and telemetry; `settled_at` records the exact charge time. Meter filters and
+per-class daily buckets use `settled_at`, falling back to `ts` for older rows. Legacy rows without
+meters retain the old measured-equals-charged interpretation; an explicit zero charge never falls
+back to telemetry. The CLI prints charged totals beside observed token telemetry. Existing key
+files remain unchanged: the limiter derives `map[class][]Budget{Unit, Window, Amount}` in memory,
+with both minute and day token windows; RPM, concurrency, output/context ceilings and model policy
+stay beside those budgets. Reading a key file never rewrites it.
+
 ## Engine (`internal/upstream`; state per `docs/DESIGN.md` §3, landed by 011)
 
 The engine is a state, not a value: `Kind` is `Unknown` until a signature probe answers (`Generic` only when

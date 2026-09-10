@@ -427,12 +427,31 @@ func (q *request) finish() {
 	if q.slot {
 		q.destination.Queue.release()
 	}
+	charged := 0
 	if q.adm != nil {
-		counted, charged := q.settleRow()
+		var counted bool
+		counted, charged = q.settleRow()
 		if q.audio != nil {
 			q.settleAudio()
 		}
-		q.g.lim.settle(q.adm, counted, charged)
+		settledAt := q.g.lim.settle(q.adm, counted, charged)
+		if q.audio == nil {
+			q.ev.SettledAt = settledAt
+		} // the same UTC day for live charge and replay
+	}
+	// Keep measured provenance intact; only settlement knows the charge.
+	q.ev.Meters = q.ev.ResourceMeters()
+	for i := range q.ev.Meters {
+		m := &q.ev.Meters[i]
+		m.Charged = 0
+		switch m.Class {
+		case "tokens":
+			m.Charged = float64(charged)
+		case "audio", "speech":
+			if q.audio != nil && q.audio.dispatched.Load() {
+				m.Charged = m.Measured
+			}
+		}
 	}
 	if q.buffered {
 		q.g.bodies.Add(-1)

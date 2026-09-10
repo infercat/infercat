@@ -36,3 +36,12 @@ reports state without returning a code. All commands require the loopback consol
 and use the authenticated local admin API. `--json` returns the result for scripts; `--no-qr`
 omits the QR. Protect on/rotate output as a secret. Commands never replay an uncertain action;
 if its result is lost, check status and rotate to obtain a fresh code.
+
+New `usage.jsonl` rows include per-class `meters` with unit, measured amount and charged amount.
+`ts` remains request start; `settled_at` locates charges in their UTC settlement day.
+The host restores daily budgets from recorded charges, including zero-charge refusals and the
+reservation charged for a cut non-streaming request. Older rows without `settled_at` use `ts` for
+accounting; rows without meters keep the historical
+measured-equals-charged interpretation; existing token/audio telemetry remains readable. No file
+migration occurs: `keys.json` keeps its existing limit fields, interpreted as resource budgets in
+memory, and reading it does not rewrite it.

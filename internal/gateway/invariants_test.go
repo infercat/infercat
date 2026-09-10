@@ -43,8 +43,13 @@ func (h *harness) leaks() string {
 	h.gw.lim.mu.Unlock()
 	for id, st := range states {
 		st.mu.Lock()
-		if st.inFlight != 0 || st.reserved != 0 {
-			fmt.Fprintf(&sb, "%s: inFlight=%d reserved=%d ", id, st.inFlight, st.reserved)
+		if st.inFlight != 0 {
+			fmt.Fprintf(&sb, "%s: inFlight=%d ", id, st.inFlight)
+		}
+		for class, meter := range st.meters {
+			if meter.reserved != 0 {
+				fmt.Fprintf(&sb, "%s: %s reserved=%g ", id, class, meter.reserved)
+			}
 		}
 		st.mu.Unlock()
 	}
@@ -451,14 +456,14 @@ func TestI5CeilingRandomized(t *testing.T) {
 		defer st.mu.Unlock()
 		st.prune(now)
 		_, charged := st.used()
-		if charged+st.reserved > lim.TPM {
-			t.Fatalf("step %d: window %d charged + %d reserved > TPM %d", step, charged, st.reserved, lim.TPM)
+		if charged+st.tokensReserved() > lim.TPM {
+			t.Fatalf("step %d: window %d charged + %d reserved > TPM %d", step, charged, st.tokensReserved(), lim.TPM)
 		}
-		if st.today+st.reserved > lim.DailyTokens {
-			t.Fatalf("step %d: today %d + %d reserved > daily %d", step, st.today, st.reserved, lim.DailyTokens)
+		if st.tokensToday()+st.tokensReserved() > lim.DailyTokens {
+			t.Fatalf("step %d: today %d + %d reserved > daily %d", step, st.tokensToday(), st.tokensReserved(), lim.DailyTokens)
 		}
-		if st.reserved < 0 || st.inFlight < 0 || st.inFlight != len(inFlight) {
-			t.Fatalf("step %d: reserved %d, inFlight %d (live %d)", step, st.reserved, st.inFlight, len(inFlight))
+		if st.tokensReserved() < 0 || st.inFlight < 0 || st.inFlight != len(inFlight) {
+			t.Fatalf("step %d: reserved %d, inFlight %d (live %d)", step, st.tokensReserved(), st.inFlight, len(inFlight))
 		}
 	}
 	admitted, refused := 0, 0
@@ -522,8 +527,8 @@ func TestI5CeilingThroughThePipeline(t *testing.T) {
 			st.mu.Lock()
 			st.prune(time.Now())
 			_, charged := st.used()
-			if charged+st.reserved > tpm {
-				violation.Store(fmt.Sprintf("window %d charged + %d reserved > TPM %d", charged, st.reserved, tpm))
+			if charged+st.tokensReserved() > tpm {
+				violation.Store(fmt.Sprintf("window %d charged + %d reserved > TPM %d", charged, st.tokensReserved(), tpm))
 			}
 			st.mu.Unlock()
 			time.Sleep(200 * time.Microsecond)

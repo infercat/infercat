@@ -19,14 +19,14 @@ type Filter struct {
 	Days  int       // optional daily buckets starting at Since (UTC), for console reads
 }
 
-func (f Filter) match(e *Event) bool {
-	if !f.Until.IsZero() && !e.TS.Before(f.Until) {
+func (f Filter) match(e *Event, at time.Time) bool {
+	if !f.Until.IsZero() && !at.Before(f.Until) {
 		return false
 	}
 	if f.KeyID != "" && e.KeyID != f.KeyID {
 		return false
 	}
-	if !f.Since.IsZero() && e.TS.Before(f.Since) {
+	if !f.Since.IsZero() && at.Before(f.Since) {
 		return false
 	}
 	return true
@@ -46,6 +46,7 @@ func ModelCall(e *Event) bool {
 
 // Stats are the numbers `usage` prints, for one key or for the whole file.
 type Stats struct {
+	Meters     []Meter           `json:"meters,omitempty"`
 	ByVia      map[string]*Stats `json:"by_via,omitempty"`
 	KeyID      string            `json:"key_id,omitempty"`
 	Models     map[string]int    `json:"model_calls_by_model,omitempty"`
@@ -74,7 +75,11 @@ type Stats struct {
 	totals []int64
 }
 
-func (s *Stats) add(e *Event) {
+func (s *Stats) add(e *Event, meters bool) {
+	if meters {
+		s.addMeters(e)
+		return
+	}
 	s.Requests++
 	call := ModelCall(e)
 	if call {
@@ -125,6 +130,7 @@ func (s *Stats) add(e *Event) {
 }
 
 func (s *Stats) finish() {
+	s.sortMeters()
 	s.TTFTMedianMS, s.TTFTP95MS = percentile(s.ttfts, 50), percentile(s.ttfts, 95)
 	s.TotalMedianMS, s.TotalP95MS = percentile(s.totals, 50), percentile(s.totals, 95)
 	s.ttfts, s.totals = nil, nil
@@ -172,7 +178,7 @@ func emptyReport(f Filter) *Report {
 }
 
 // Missing provenance in older events means the request reached the gateway directly.
-func addVia(by *map[string]*Stats, e *Event) {
+func addVia(by *map[string]*Stats, e *Event, meters bool) {
 	via := e.Via
 	if via == "" {
 		via = "direct"
@@ -183,7 +189,7 @@ func addVia(by *map[string]*Stats, e *Event) {
 	if (*by)[via] == nil {
 		(*by)[via] = &Stats{}
 	}
-	(*by)[via].add(e)
+	(*by)[via].add(e, meters)
 }
 
 func finishVia(by map[string]*Stats) {
@@ -222,27 +228,38 @@ func Aggregate(r io.Reader, f Filter) (*Report, error) {
 			}
 			continue
 		}
-		if f.match(&e) {
-			rep.Total.add(&e)
-			addVia(&rep.ByVia, &e)
+		// Request telemetry and settlement totals can belong to different days.
+		for _, meters := range []bool{false, true} {
+			at := e.TS
+			if meters {
+				if len(e.ResourceMeters()) == 0 {
+					continue
+				}
+				at = e.AccountingTime()
+			}
+			if !f.match(&e, at) {
+				continue
+			}
+			rep.Total.add(&e, meters)
+			addVia(&rep.ByVia, &e, meters)
 			s := byKey[e.KeyID]
 			if s == nil {
 				s = &Stats{KeyID: e.KeyID}
 				byKey[e.KeyID] = s
 			}
-			s.add(&e)
-			addVia(&s.ByVia, &e)
-			day := int(e.TS.UTC().Truncate(24*time.Hour).Sub(f.Since.UTC().Truncate(24*time.Hour)) / (24 * time.Hour))
+			s.add(&e, meters)
+			addVia(&s.ByVia, &e, meters)
+			day := int(at.UTC().Truncate(24*time.Hour).Sub(f.Since.UTC().Truncate(24*time.Hour)) / (24 * time.Hour))
 			if day >= 0 && day < len(rep.Daily) {
-				rep.Daily[day].Total.add(&e)
-				addVia(&rep.Daily[day].ByVia, &e)
+				rep.Daily[day].Total.add(&e, meters)
+				addVia(&rep.Daily[day].ByVia, &e, meters)
 				ds := byDay[day][e.KeyID]
 				if ds == nil {
 					ds = &Stats{KeyID: e.KeyID}
 					byDay[day][e.KeyID] = ds
 				}
-				ds.add(&e)
-				addVia(&ds.ByVia, &e)
+				ds.add(&e, meters)
+				addVia(&ds.ByVia, &e, meters)
 			}
 		}
 		if errors.Is(err, io.EOF) {

@@ -10,6 +10,8 @@ import (
 // Event is one request. No prompt or completion content lives here unless the host opted in,
 // in which case Prompt/Completion are set (Protection 3 in docs/PRINCIPLES.md).
 type Event struct {
+	SettledAt        time.Time `json:"settled_at,omitzero"`
+	Meters           []Meter   `json:"meters,omitempty"`
 	Destination      string    `json:"destination,omitempty"` // empty in old rows means text
 	Kind             string    `json:"kind,omitempty"`
 	Seconds          float64   `json:"seconds,omitempty"`
