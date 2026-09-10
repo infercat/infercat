@@ -21,6 +21,7 @@ import (
 	"github.com/infercat/infercat/internal/admin"
 	"github.com/infercat/infercat/internal/adminkey"
 	"github.com/infercat/infercat/internal/bridge"
+	"github.com/infercat/infercat/internal/dirlock"
 	"github.com/infercat/infercat/internal/gateway"
 	"github.com/infercat/infercat/internal/keys"
 	"github.com/infercat/infercat/internal/product"
@@ -92,6 +93,11 @@ func (e *env) cmdServe(ctx context.Context, pre string, args []string) error {
 	if *maxAudio <= 0 {
 		return errors.New("--max-transcription-seconds must be positive")
 	}
+	guard, err := dirlock.Acquire(dataDir)
+	if err != nil {
+		return err
+	}
+	defer guard.Close()
 	transcribe, err := upstream.OpenAudio(ctx, *transcribeURL, *transcribeKey)
 	if err != nil {
 		return err
@@ -421,6 +427,9 @@ func (e *env) printStartup(ctx context.Context, s startup) {
 		health = "  " + healthWord(false, info.Health.Since)
 	}
 	fmt.Fprintf(e.out, "%s %s\n", product.Name, product.Version)
+	if identity, err := tunnel.ReadIdentity(filepath.Join(s.dataDir, tunnel.KeyFile)); err == nil && identity.Format == 0 {
+		fmt.Fprintln(e.out, "identity  legacy ic1; stop serve and run infercat identity upgrade to enable ic2")
+	}
 	fmt.Fprintf(e.out, "upstream  %s  %s%s\n", kindWord(string(info.Kind)), info.URL, health)
 	models := modelList(info.Models)
 	if len(s.pinned) > 0 {

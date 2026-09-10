@@ -30,6 +30,8 @@ Share the model on your machine with friends. You run one binary in front of the
 
 ## Quickstart (host)
 
+**Existing host?** Stop `serve`, run `infercat identity upgrade` once, then start `serve` and rotate or add keys to send every friend a fresh `ic2` invite. The old identity is backed up as `host.key.json.pre-ic2`; existing invites stop working after the upgrade. Legacy identities keep serving unchanged until you explicitly upgrade. The temporary upgrade command is scheduled for removal after 2026-09-25.
+
 You need an inference server running (llama.cpp, llama-swap, vLLM, Ollama or LM Studio; any OpenAI-compatible `/v1/chat/completions` works). Your friends need a browser.
 
 **Optional — no engine yet?** [Install Ollama](https://ollama.com/download), then:

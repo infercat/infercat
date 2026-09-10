@@ -36,6 +36,14 @@ const (
 // ErrUnpinned: the saved key has no relay region pinned, so SavedAddr cannot derive an address.
 var ErrUnpinned = errors.New("tunnel: saved host key has no relay region pinned")
 
+// Identity keeps the transport mode explicit: release-one files may already contain a PSK.
+type Identity struct {
+	tailcat.PrivateKey
+	Format int `json:"infercat_format,omitempty"`
+}
+
+func NewIdentity() *Identity { return &Identity{PrivateKey: *tailcat.NewPrivateKey(), Format: 2} }
+
 type Options struct {
 	DataDir   string // holds KeyFile; required unless Ephemeral
 	Ephemeral bool   // never touch disk: a new identity, and so a new address, every Start
@@ -115,7 +123,7 @@ func Start(ctx context.Context, o Options) (*Server, error) {
 // (the stranger's `serve` plus a second one that only failed later, at the admin socket) left the
 // survivor advertising an address whose key no longer existed. The identity file is now created
 // once: a loser adopts the winner's key rather than inventing its own.
-func identity(ctx context.Context, o Options) (*tailcat.PrivateKey, *tailcfg.DERPRegion, error) {
+func identity(ctx context.Context, o Options) (*Identity, *tailcfg.DERPRegion, error) {
 	pk, err := loadKey(o)
 	if err != nil {
 		return nil, nil, err
@@ -166,10 +174,11 @@ func quiet(logf logger.Logf) logger.Logf {
 }
 
 // newTailcatServer is the whole tailcat configuration; a test pins what it must never set.
-func newTailcatServer(pk *tailcat.PrivateKey, reg *tailcfg.DERPRegion, logf logger.Logf, onTCP func(uint16) func(net.Conn)) *tailcat.Server {
-	// Existing invites must keep working; PSK addresses are a later, explicit migration.
+func newTailcatServer(pk *Identity, reg *tailcfg.DERPRegion, logf logger.Logf, onTCP func(uint16) func(net.Conn)) *tailcat.Server {
+	// A stored PSK alone never opts a release-one identity into the new transport.
 	return &tailcat.Server{
-		DisablePresharedKey: true,
+		DisablePresharedKey: pk.Format != 2,
+		PresharedKey:        pk.Public.PresharedKey,
 		Key:                 pk.Private,
 		Logf:                logf,
 		Region:              reg,
@@ -181,7 +190,7 @@ func newTailcatServer(pk *tailcat.PrivateKey, reg *tailcfg.DERPRegion, logf logg
 // SavedAddr derives the address from the key saved under dataDir without starting a server.
 // With no saved key the error wraps os.ErrNotExist.
 func SavedAddr(dataDir string) (string, error) {
-	pk, err := readKey(filepath.Join(dataDir, KeyFile))
+	pk, err := ReadIdentity(filepath.Join(dataDir, KeyFile))
 	if err != nil {
 		return "", err
 	}
@@ -222,25 +231,31 @@ func (s *Server) onTCP(port uint16) func(net.Conn) {
 	return s.ln.deliver
 }
 
-func loadKey(o Options) (*tailcat.PrivateKey, error) {
+func loadKey(o Options) (*Identity, error) {
 	if o.Ephemeral {
-		return tailcat.NewPrivateKey(), nil
+		return NewIdentity(), nil
 	}
-	pk, err := readKey(filepath.Join(o.DataDir, KeyFile))
+	pk, err := ReadIdentity(filepath.Join(o.DataDir, KeyFile))
 	if errors.Is(err, os.ErrNotExist) {
-		return tailcat.NewPrivateKey(), nil
+		return NewIdentity(), nil
 	}
 	return pk, err
 }
 
-func readKey(path string) (*tailcat.PrivateKey, error) {
+func ReadIdentity(path string) (*Identity, error) {
 	b, err := os.ReadFile(path)
 	if err != nil {
 		return nil, fmt.Errorf("tunnel: reading host key: %w", err)
 	}
-	pk := new(tailcat.PrivateKey)
+	pk := new(Identity)
 	if err := json.Unmarshal(b, pk); err != nil {
 		return nil, fmt.Errorf("tunnel: parsing %s: %w", path, err)
+	}
+	if pk.Format != 0 && pk.Format != 2 {
+		return nil, fmt.Errorf("tunnel: unsupported identity format %d", pk.Format)
+	}
+	if pk.Format == 2 && pk.Public.PresharedKey.IsZero() {
+		return nil, errors.New("tunnel: version 2 identity has no pre-shared key")
 	}
 	if pk.Private.IsZero() {
 		return nil, fmt.Errorf("tunnel: %s has no private key", path)
@@ -257,7 +272,7 @@ func readKey(path string) (*tailcat.PrivateKey, error) {
 //
 // A filesystem without hard links falls back to rename and re-reads what landed, which keeps the
 // "the address is what is on disk" guarantee even though the last writer then wins the file.
-func saveKey(path string, pk *tailcat.PrivateKey) (*tailcat.PrivateKey, error) {
+func saveKey(path string, pk *Identity) (*Identity, error) {
 	dir := filepath.Dir(path)
 	if err := os.MkdirAll(dir, 0o700); err != nil {
 		return nil, fmt.Errorf("tunnel: creating data dir: %w", err)
@@ -282,30 +297,33 @@ func saveKey(path string, pk *tailcat.PrivateKey) (*tailcat.PrivateKey, error) {
 	case err == nil:
 		return pk, nil
 	case errors.Is(err, os.ErrExist):
-		return readKey(path) // another host published first; its key is the host's identity
+		return ReadIdentity(path) // another host published first; its key is the host's identity
 	default:
 		if err := os.Rename(tmp.Name(), path); err != nil {
 			return nil, fmt.Errorf("tunnel: writing host key: %w", err)
 		}
-		return readKey(path)
+		return ReadIdentity(path)
 	}
 }
 
 // addrFor builds the address from the private key and the pinned region. The public keys are
 // derived from the private key, not read from the file, so the address always matches the server.
-func addrFor(pk *tailcat.PrivateKey) string {
+func addrFor(pk *Identity) string {
 	ci := tailcat.ConnInfo{
 		ServerPublic:      tailcat.NodePublic{NodePublic: pk.Private.Public()},
 		ServerDiscoPublic: tailcat.DiscoPublicForNode(pk.Private),
 		Region:            pk.Public.Region,
 		RegionID:          pk.Public.RegionID,
 	}
+	if pk.Format == 2 {
+		ci.PresharedKey = pk.Public.PresharedKey
+	}
 	return string(ci.Addr())
 }
 
 // pinRegion records the relay in the key: embedded (full form; two relay nodes suffice, as in
 // tailcat's Addr.Resolve) or as a DERP map region ID (short form).
-func pinRegion(pk *tailcat.PrivateKey, reg *tailcfg.DERPRegion, full bool) {
+func pinRegion(pk *Identity, reg *tailcfg.DERPRegion, full bool) {
 	pk.Public.Region, pk.Public.RegionID = nil, 0
 	if !full {
 		pk.Public.RegionID = reg.RegionID

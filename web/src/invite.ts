@@ -1,7 +1,7 @@
 import { tr } from './i18n/text';
 // Invite parsing, mirroring internal/invite on the Go side (docs/ARCHITECTURE.md §Invite format):
 //
-//   ic1.<tailcat ConnBlob>.<secret>
+//   ic1.<legacy tailcat address>.<secret> or ic2.<PSK tailcat address>.<secret>
 //
 // The blob and the secret are base64url and never contain a dot, so splitting on "." is exact.
 // Whitespace around the whole string is trimmed; everything else is case-sensitive. The checks and
@@ -40,10 +40,11 @@ const BASE64URL = /^[A-Za-z0-9_-]+$/;
 // The prefix family without its version number ("ic" of "ic1"), from the constant: the family
 // changes with the product name (037), and the Go side derives it the same way.
 const VERSION_TAG = new RegExp(`^${INVITE_PREFIX.replace(/\d+$/, '')}(\\d+)$`);
+const PSK_PREFIX = INVITE_PREFIX.replace(/\d+$/, '2');
 const NEWER = () => tr('app_this_invite_needs_a_newer_version_of_the_app');
 
-export function encodeInvite(addr: string, secret: string): string {
-  return `${INVITE_PREFIX}.${addr}.${secret}`;
+export function encodeInvite(addr: string, secret: string, prefix = INVITE_PREFIX): string {
+  return `${prefix}.${addr}.${secret}`;
 }
 
 export function decodeInvite(raw: string): Invite {
@@ -55,7 +56,7 @@ export function decodeInvite(raw: string): Invite {
   // The prefix is checked before the part count, so an invite from a newer app says so even if
   // that app's layout differs — same order as the Go side.
   const tag = parts[0] as string;
-  if (tag !== INVITE_PREFIX) {
+  if (tag !== INVITE_PREFIX && tag !== PSK_PREFIX) {
     if (isNewerVersion(tag)) throw new InviteError('newer_version', NEWER());
     throw new InviteError(
       'missing_prefix',
@@ -85,12 +86,12 @@ export function decodeInvite(raw: string): Invite {
   return { addr, secret };
 }
 
-/** "ic2" and up mean the host is ahead of us. "ic", "icx", "ic0", "ic01" and overflow do not. */
+/** "ic3" and up mean the host is ahead of us. "ic", "icx", "ic0", "ic01" and overflow do not. */
 function isNewerVersion(tag: string): boolean {
   const digits = VERSION_TAG.exec(tag)?.[1];
   if (digits === undefined) return false;
   const n = Number(digits);
-  return Number.isSafeInteger(n) && n > 1;
+  return Number.isSafeInteger(n) && n > 2;
 }
 
 function clip(s: string): string {
@@ -110,7 +111,7 @@ export function inviteFromHash(hash: string): string {
     /* a malformed percent escape is not an invite */
   }
   raw = raw.trim();
-  return raw.startsWith(`${INVITE_PREFIX}.`) ? raw : '';
+  return raw.startsWith(`${INVITE_PREFIX}.`) || raw.startsWith(`${PSK_PREFIX}.`) ? raw : '';
 }
 
 /**

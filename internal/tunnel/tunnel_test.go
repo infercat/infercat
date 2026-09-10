@@ -270,10 +270,10 @@ func TestHostKeyPersistsAddr(t *testing.T) {
 // --- no relay needed below ---
 
 func TestAddrShortForm(t *testing.T) {
-	pk := tailcat.NewPrivateKey()
+	pk := NewIdentity()
 	pk.Public.RegionID = 302
 	addr := addrFor(pk)
-	want := (&tailcat.ConnInfo{ServerPublic: pk.Public.ServerPublic, ServerDiscoPublic: pk.Public.ServerDiscoPublic, RegionID: 302}).Addr()
+	want := (&tailcat.ConnInfo{ServerPublic: pk.Public.ServerPublic, ServerDiscoPublic: pk.Public.ServerDiscoPublic, RegionID: 302, PresharedKey: pk.Public.PresharedKey}).Addr()
 	if addr != string(want) {
 		t.Fatalf("addrFor = %s; want %s", addr, want)
 	}
@@ -281,10 +281,10 @@ func TestAddrShortForm(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if ci.RegionID != 302 || len(ci.Region) != 0 || ci.ServerDiscoPublic.IsZero() {
+	if ci.RegionID != 302 || len(ci.Region) != 0 || ci.ServerDiscoPublic.IsZero() || ci.PresharedKey.IsZero() {
 		t.Fatalf("short form parsed to %+v; want RegionID 302, no embedded region, a disco key", ci)
 	}
-	// A tampered Public block does not change the address: keys derive from Private.
+	// A tampered Public.ServerPublic does not change the address: that key derives from Private.
 	pk.Public.ServerPublic = tailcat.NodePublic{NodePublic: key.NewNode().Public()}
 	if addrFor(pk) != addr {
 		t.Fatal("addrFor followed a tampered Public.ServerPublic")
@@ -310,13 +310,13 @@ func TestSaveKeyIsCreateOnce(t *testing.T) {
 	if err := os.WriteFile(decoy, []byte("decoy"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	first := tailcat.NewPrivateKey()
+	first := (&Identity{PrivateKey: *tailcat.NewPrivateKey()})
 	first.Public.RegionID = 302
 	for round := 0; round < 2; round++ {
 		// Round 1 creates the identity; round 2 is a second host arriving with a different key.
 		pk := first
 		if round == 1 {
-			pk = tailcat.NewPrivateKey()
+			pk = (&Identity{PrivateKey: *tailcat.NewPrivateKey()})
 			pk.Public.RegionID = 303
 		}
 		saved, err := saveKey(path, pk)
@@ -352,7 +352,7 @@ func TestSaveKeyIsCreateOnce(t *testing.T) {
 		wg.Add(1)
 		go func() {
 			defer wg.Done()
-			pk := tailcat.NewPrivateKey()
+			pk := (&Identity{PrivateKey: *tailcat.NewPrivateKey()})
 			pk.Public.RegionID = 301
 			saved, err := saveKey(rpath, pk)
 			if err != nil {
@@ -454,11 +454,15 @@ func TestSavedAddrErrors(t *testing.T) {
 	dir := t.TempDir()
 	path := filepath.Join(dir, KeyFile)
 	for name, body := range map[string]string{
-		"corrupt":   `{"Private": "nope"`,
-		"no_key":    `{"Public": {"RegionID": 302}}`,
-		"empty":     ``,
-		"unpinned":  mustJSON(t, tailcat.NewPrivateKey()),
-		"auto_-1":   mustJSON(t, func() *tailcat.PrivateKey { pk := tailcat.NewPrivateKey(); pk.Public.RegionID = -1; return pk }()),
+		"corrupt":  `{"Private": "nope"`,
+		"no_key":   `{"Public": {"RegionID": 302}}`,
+		"empty":    ``,
+		"unpinned": mustJSON(t, (&Identity{PrivateKey: *tailcat.NewPrivateKey()})),
+		"auto_-1": mustJSON(t, func() *Identity {
+			pk := (&Identity{PrivateKey: *tailcat.NewPrivateKey()})
+			pk.Public.RegionID = -1
+			return pk
+		}()),
 		"array":     `[]`,
 		"huge_null": strings.Repeat(" ", 1<<16) + "null",
 	} {
@@ -513,7 +517,7 @@ func TestOnTCPGate(t *testing.T) {
 func TestProtection1Config(t *testing.T) {
 	s := &Server{}
 	s.ln = newListener(s)
-	tc := newTailcatServer(tailcat.NewPrivateKey(), &tailcfg.DERPRegion{RegionID: 1}, logger.Discard, s.onTCP)
+	tc := newTailcatServer((&Identity{PrivateKey: *tailcat.NewPrivateKey()}), &tailcfg.DERPRegion{RegionID: 1}, logger.Discard, s.onTCP)
 	if tc.OnTCPForward != nil || tc.AllowProxy != nil || len(tc.AllowedClients) != 0 {
 		t.Fatalf("tailcat server has forwarding/proxy/allowlist set: %+v", tc)
 	}

@@ -2,6 +2,8 @@ English · [简体中文](DATA-DIRECTORY.zh-CN.md)
 
 # Data directory
 
+`host.lock` is a permanent lock-file inode, not a PID file. `serve` holds an exclusive OS lock for its lifetime; a second `serve` or identity upgrade on the same directory refuses. The OS releases the lock on process exit, including a crash; do not delete the file while a host is running. Stop older binaries too: they predate this lock; the upgrade also checks their admin listener. `infercat identity upgrade` requires a stopped host, saves `host.key.json.pre-ic2` once without overwriting it, and atomically publishes the version-2 identity.
+
 `~/Library/Application Support/infercat` (macOS), `~/.config/infercat` (Linux),
 `%AppData%\infercat` (Windows), or `--data-dir`:
 

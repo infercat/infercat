@@ -22,12 +22,16 @@ friend's browser                                     host machine
 
 Browser traffic is relay-only until tailcat ships WebRTC (issue #4). Native clients get direct paths.
 
-Tailcat 0.6.0 clients accept both old addresses and addresses carrying a WireGuard pre-shared
-key (PSK). Hosts keep `DisablePresharedKey: true` and omit the PSK from every minted address
-so existing invites stay byte-identical. Old identity files remain untouched; new files store
-a PSK at rest but do not use it yet. A later migration must use an `ic2` invite prefix: old
-clients otherwise ignore the extra address field and stall at the handshake, rather than
-showing the existing newer-app message. This release does not enable PSKs on hosts.
+Tailcat 0.6.0 clients accept both address forms. New identities persist `infercat_format: 2`
+and enable the WireGuard pre-shared key (PSK); their invites use `ic2`. A missing marker is
+legacy even if the file already contains a PSK: that identity remains unchanged and mints `ic1`.
+Clients accept both versions; older clients reject `ic2` with the newer-app message before
+connecting. The full new address contains a shared secret, so keep the whole invite private.
+To migrate, stop `serve`, run `infercat identity upgrade`, then start it and rotate/add keys to
+re-issue every invite. The command preserves the old file as `host.key.json.pre-ic2` without
+overwriting an existing backup and atomically replaces the identity. `serve` and the upgrade
+hold one OS lock for the data directory; process exit releases it. Old invites name the retired
+endpoint, so an unreachable result cannot prove that an upgrade happened.
 
 ## Go layout and ownership (scope contracts)
 
@@ -35,7 +39,7 @@ showing the existing newer-app message. This release does not enable PSKs on hos
 |---|---|---|
 | `cmd/infercat/` | 003 | CLI: `serve`, `keys …`, `status`, `usage`, `invite` |
 | `internal/product/` | PM | name constants |
-| `internal/invite/` | 001 | invite encode/decode (`ic1.<tc>.<secret>`) |
+| `internal/invite/` | 001 | invite encode/decode (`ic1/ic2.<tc>.<secret>`) |
 | `internal/tunnel/` | 001 | tailcat server wrapper → `net.Listener` |
 | `web/wasm/` | 001 | wasm bridge (Go, GOOS=js) → `web/public/infercat.wasm` |
 | `internal/gateway/` | 002 | http.Handler: auth, limits, queue, clamps, proxy, errors, CORS(dev) |
@@ -54,7 +58,7 @@ Module: `github.com/infercat/infercat`, Go 1.27.1 (auto toolchain), tailcat pinn
 
 | File | Owner | Format |
 |---|---|---|
-| `host.key.json` | 001/009 | tailcat `PrivateKey` JSON: the host identity, created once (exclusive link; a racing second `serve` adopts the winner). `Addr() == SavedAddr(dir)` always. `--ephemeral` never writes it. |
+| `host.key.json` | 001/009 | tailcat `PrivateKey` JSON plus `infercat_format`: the host identity, created once; an explicit stopped-host upgrade replaces it with a backed-up v2 identity. `Addr() == SavedAddr(dir)` always. `--ephemeral` never writes it. |
 | `keys.json` | 003 | see Key store below; gateway re-reads on mtime change (≤1/s, plus on any lookup miss); the CLI pokes `POST /reload` on the admin socket after every write so changes are live at once |
 | `usage.jsonl` | 003 | one `usage.Event` per line, append-only |
 | `admin.sock` | 003/009 | unix socket, HTTP: `GET /status`, `POST /reload` (Windows: loopback port in `admin.port`); every platform authenticates with per-run `admin.token` |
@@ -64,9 +68,10 @@ Module: `github.com/infercat/infercat`, Go 1.27.1 (auto toolchain), tailcat pinn
 ## Invite format (001 defines in Go, 004 mirrors in TS; MUST match)
 
 ```
-ic1.<tailcat address>.<secret>
+ic1.<legacy tailcat address>.<secret>
+ic2.<PSK tailcat address>.<secret>
 ```
-- `ic1` = format version. Unknown prefix → "this invite needs a newer app".
+- `ic1` / `ic2` = legacy / PSK identity format. A higher version → "this invite needs a newer app".
 - `<tailcat address>` = the `tc…` string exactly as `tunnel.Server.Addr()` returns it (base64url, no dots).
 - `<secret>` = 32 random bytes, base64url unpadded (43 chars). Never contains `.`.
 - Whitespace trimmed; the whole string is case-sensitive.

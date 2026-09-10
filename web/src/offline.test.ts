@@ -128,3 +128,8 @@ it('an edited draft survives a refused replacement and stays available after rec
   expect(container.querySelector('.bubble.editing')).toBeNull();
   expect(container.querySelector('.row.user .bubble')?.textContent).toBe('Keep my edited draft');
 });
+
+it('retains an ic2 invite version when restoring offline history', () => {
+  save(KEYS.invite, `ic2.${addr}.YWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXoxMjM0NTY3`);
+  expect(live(restoredSession(false, true, false))?.invitePrefix).toBe('ic2');
+});

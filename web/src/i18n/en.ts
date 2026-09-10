@@ -123,7 +123,7 @@ export const en = {
   seg_a: "Tunnel address",
   seg_s: "Gateway key",
   tt_v: '<b>Format version.</b> If a code needs a newer app, the app says so.',
-  tt_a: "Where the host is, from the tunnel library. It carries the host's public key, so your tunnel can only end at their machine. Same for every friend; not a secret.",
+  tt_a: "Where the host is, from the tunnel library. It carries the host's public key, so your tunnel can only end at their machine. Same for every friend; it also carries a shared secret, so keep the whole invite private.",
   tt_s: "Your API key for the host's gateway, like OPENAI_API_KEY. The app sends it with every request; the host keeps only a hash. Made when the host adds you.",
   verbs: 'keys add · limits · pause · rotate · revoke · applied at once, no restart',
   lim_sum: 'Limits a host can set',
@@ -368,7 +368,7 @@ export const en = {
   // api.ts:525 — PropertyAssignment
   app_host_didn_t_answer: "{host} didn’t answer",
   // api.ts:526 — PropertyAssignment
-  app_it_s_probably_asleep_or_offline_your_message_is: "It’s probably asleep or offline — your message is saved, try again in a minute.",
+  app_it_s_probably_asleep_or_offline_your_message_is: "It’s probably asleep or offline — your message is saved, try again in a minute. If the host upgraded recently, ask them for a fresh invite.",
   // api.ts:528 — PropertyAssignment
   app_host_stopped_answering_mid_reply: "{host} stopped answering mid-reply",
   // api.ts:529 — PropertyAssignment
@@ -450,7 +450,7 @@ export const en = {
   // session.ts:309 — PropertyAssignment
   app_can_t_reach_the_relay_from_this_network: "Can’t reach the relay from this network",
   // session.ts:316 — PropertyAssignment
-  app_it_s_probably_asleep_or_offline_ask_them_to: "It’s probably asleep or offline. Ask them to check that the host is running, then try again.",
+  app_it_s_probably_asleep_or_offline_ask_them_to: "It’s probably asleep or offline. Ask them to check that the host is running, then try again. If the host upgraded recently, ask them for a fresh invite.",
   // session.ts:330 — BinaryExpression
   app_the_host: "The host",
   // session.ts:412 — BinaryExpression

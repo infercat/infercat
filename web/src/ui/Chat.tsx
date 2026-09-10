@@ -784,7 +784,7 @@ export default function Chat({ state, live, dispatch, onRedial, reconnecting = f
           onClose={() => setSheet(false)}
         />
       )}
-      {iosInstall && <IOSInstallSheet invite={encodeInvite(live.addr, live.secret)} onClose={closeIOS} />}
+      {iosInstall && <IOSInstallSheet invite={encodeInvite(live.addr, live.secret, live.invitePrefix)} onClose={closeIOS} />}
       {limitsSheet && <LimitsSheet live={live} messages={conv.messages} onClose={() => setLimitsSheet(false)} />}
     </div>
   );

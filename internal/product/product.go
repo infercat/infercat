@@ -4,7 +4,7 @@ package product
 const (
 	Name    = "Infercat" // founder decision 2026-09-05 (docs/PRINCIPLES.md)
 	CLIName = "infercat"
-	// InvitePrefix is the invite format version tag (docs/ARCHITECTURE.md).
+	// InvitePrefix is the legacy format tag; invite derives the shared family for version 2.
 	InvitePrefix = "ic1"
 	// WebURL is where a friend opens the web app. Empty until hosting is decided; a host can
 	// name their own with `serve --web-url`. When it is known, an invite is printed as a link

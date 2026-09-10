@@ -135,6 +135,8 @@ func run(ctx context.Context, args []string, out, errw io.Writer, in io.Reader, 
 	}
 	cmd, cargs := rest[0], rest[1:]
 	switch cmd {
+	case "identity":
+		err = e.cmdIdentity(ctx, dataDir, cargs)
 	case "remote":
 		err = e.cmdRemote(ctx, dataDir, cargs)
 	case "console":
@@ -308,6 +310,7 @@ Commands:
   usage      what your friends have used, from the usage log
   connect    use an invite from this machine: an OpenAI-compatible API on localhost for any app
   expose     enable or disable a public endpoint for this host
+  identity   upgrade a stopped host to ic2 (temporary)
   version    print the version
 
 Start here:

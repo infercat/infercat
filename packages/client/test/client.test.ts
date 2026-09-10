@@ -51,7 +51,7 @@ it('connects once, authenticates /me, exposes measured status and caller-owned i
   s.close(); s.close(); expect(bridgeSession.close).toHaveBeenCalledTimes(1);
 });
 
-it.each(['', 'ic2.tcA.secret', 'ic1.tcA', 'ic1..secret', 'ic1.tc.secret', 'ic1.bad.secret', 'ic1.tcA.s!', 'ic1.tcA.secret.extra'])('rejects malformed invite %j before connection', async (bad) => {
+it.each(['', 'ic3.tcA.secret', 'ic1.tcA', 'ic1..secret', 'ic1.tc.secret', 'ic1.bad.secret', 'ic1.tcA.s!', 'ic1.tcA.secret.extra'])('rejects malformed invite %j before connection', async (bad) => {
   await expect(connect(bad)).rejects.toBeInstanceOf(TypeError);
   expect(bridge.connect).not.toHaveBeenCalled();
 });
@@ -167,4 +167,11 @@ it('cancelling a response body closes the request connection without closing its
   await response.body!.cancel();
   expect(conn.close).toHaveBeenCalledTimes(1);
   expect(bridgeSession.close).not.toHaveBeenCalled(); s.close();
+});
+
+it('accepts an ic2 invite and passes its address and credential unchanged', async () => {
+  const session = await connect('ic2.tcFixture.test_secret');
+  expect(bridge.connect).toHaveBeenCalledWith(expect.objectContaining({ addr: 'tcFixture' }));
+  expect(requests[0]).toContain('authorization: Bearer test_secret');
+  session.close();
 });

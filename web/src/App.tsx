@@ -70,10 +70,11 @@ export function restoredSession(online = typeof navigator === 'undefined' || nav
   const last = load<LastHost | null>(KEYS.lastHost, null);
   if (!last || last.left) return IDLE;
   try {
-    const { addr, secret } = decodeInvite(load<string>(KEYS.invite, ''));
+    const raw = load<string>(KEYS.invite, '');
+    const { addr, secret } = decodeInvite(raw);
     const scope = hostScope(addr), me = load<Me | null>(scopedKeys(scope).me, null);
     if (scope !== last.scope || !loadChats(scope).length || !usableSnapshot(me)) return IDLE;
-    const held: Live = { addr, secret, me, transport: shellTransport(), mode: 'tunnel', path: null, pathAt: 0, pathOk: false, meOk: false, key: me.key.status, ephemeral: true, probed: 0, snapshot: true, offline: !online };
+    const held: Live = { addr, secret, invitePrefix: raw.split('.')[0], me, transport: shellTransport(), mode: 'tunnel', path: null, pathAt: 0, pathOk: false, meOk: false, key: me.key.status, ephemeral: true, probed: 0, snapshot: true, offline: !online };
     return online ? { name: 'connecting', redial: held } : { name: 'degraded', reason: 'path', live: held };
   } catch { return IDLE; }
 }

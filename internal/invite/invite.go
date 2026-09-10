@@ -1,6 +1,7 @@
 // Package invite encodes and decodes the one string a friend pastes:
 //
-//	ic1.<tailcat address>.<secret>
+//	ic1.<legacy tailcat address>.<secret>
+//	ic2.<PSK tailcat address>.<secret>
 //
 // Ticket 004 mirrors this in TypeScript; the two MUST agree (docs/ARCHITECTURE.md §Invite format).
 package invite
@@ -12,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/infercat/infercat/internal/product"
+	"github.com/tailscale/tailcat"
 )
 
 // Invite is the decoded form. Addr is the tailcat address ("tc…"); Secret is the friend's key.
@@ -20,7 +22,7 @@ type Invite struct {
 	Secret string
 }
 
-// Decode errors. Compare with errors.Is; the messages are for humans. An "ic<N>" prefix with N > 1
+// Decode errors. Compare with errors.Is; the messages are for humans. An "ic<N>" prefix with N > 2
 // wraps ErrPrefix with a message saying the invite needs a newer app.
 var (
 	ErrPrefix      = errors.New("not an " + product.Name + " invite (missing or wrong prefix)")
@@ -32,7 +34,11 @@ var (
 
 // Encode builds the invite string. It does not validate its inputs; Decode does.
 func Encode(addr, secret string) string {
-	return product.InvitePrefix + "." + addr + "." + secret
+	prefix := product.InvitePrefix
+	if ci, err := tailcat.ParseAddr(tailcat.Addr(addr)); err == nil && !ci.PresharedKey.IsZero() {
+		prefix = prefixFamily + "2"
+	}
+	return prefix + "." + addr + "." + secret
 }
 
 // Decode parses s. Surrounding whitespace is trimmed; everything else is case-sensitive.
@@ -65,11 +71,11 @@ func Decode(s string) (Invite, error) {
 var prefixFamily = strings.TrimRight(product.InvitePrefix, "0123456789")
 
 func checkPrefix(p string) error {
-	if p == product.InvitePrefix {
+	if p == product.InvitePrefix || p == prefixFamily+"2" {
 		return nil
 	}
 	if digits, ok := strings.CutPrefix(p, prefixFamily); ok {
-		if n, err := strconv.Atoi(digits); err == nil && n > 1 {
+		if n, err := strconv.Atoi(digits); err == nil && n > 2 {
 			return fmt.Errorf("%w: this invite needs a newer app (format %s)", ErrPrefix, p)
 		}
 	}

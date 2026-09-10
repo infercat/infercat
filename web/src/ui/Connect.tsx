@@ -212,6 +212,7 @@ function ConnectBody({ state, dispatch, offline = false, onAdmin }: Props) {
       const live: Live = {
         transport,
         secret,
+        invitePrefix: raw.split('.')[0],
         addr,
         me,
         mode,

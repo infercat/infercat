@@ -89,7 +89,7 @@ func TestDecodeErrors(t *testing.T) {
 		{"prefix_ic0", "ic0." + ok, ErrPrefix},
 		{"prefix_ic01", "ic01." + ok, ErrPrefix},
 		{"prefix_huge", "ic99999999999999999999." + ok, ErrPrefix},
-		{"newer_ic2", "ic2." + ok, ErrPrefix},
+		{"newer_ic3", "ic3." + ok, ErrPrefix},
 		{"newer_ic10_four_parts", "ic10." + ok + ".extra", ErrPrefix},
 		{"two_parts", "ic1." + addr, ErrParts},
 		{"four_parts", "ic1." + ok + ".extra", ErrParts},
@@ -127,5 +127,24 @@ func TestDecodeErrors(t *testing.T) {
 				t.Fatalf("Decode(%q) error %q wrongly claims a newer app is needed", tt.in, err)
 			}
 		})
+	}
+}
+
+func TestPrefixFollowsAddressTransport(t *testing.T) {
+	oldAddr := realAddr(t)
+	ci, err := tailcat.ParseAddr(tailcat.Addr(oldAddr))
+	if err != nil {
+		t.Fatal(err)
+	}
+	ci.PresharedKey = tailcat.NewPresharedKey()
+	for prefix, addr := range map[string]string{"ic1": oldAddr, "ic2": string(ci.Addr())} {
+		encoded := Encode(addr, "test-secret")
+		if !strings.HasPrefix(encoded, prefix+".") {
+			t.Fatal("wrong transport prefix")
+		}
+		got, err := Decode(encoded)
+		if err != nil || got.Addr != addr {
+			t.Fatalf("round trip: %v", err)
+		}
 	}
 }

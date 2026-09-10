@@ -3,6 +3,16 @@
 Versions are tags (`v0.1.0`); the binary prints its own with `infercat version` and the web
 app shows the same one under Settings. Dates are the tag's.
 
+## Unreleased — 0.1.4
+
+- New hosts use PSK tunnel addresses and `ic2` invites. Existing identities stay unchanged until
+  the host stops `serve` and runs `infercat identity upgrade`, then restarts and re-issues invites.
+  The old identity is backed up once; the temporary upgrade command exists until its planned
+  retirement after **2026-09-25** (137). Old clients need an update to accept `ic2`.
+- An exclusive OS data-directory lock prevents concurrent hosts and identity upgrades; it is
+  released automatically on process exit. Keep the whole invite private: its address now carries
+  a shared secret as well as the host's public key.
+
 ## v0.1.3 — 2026-09-11
 
 One day after 0.1.2: the host serves several engines at once, keeps its accounting exact across a

@@ -2,6 +2,8 @@
 
 # 数据目录
 
+`host.lock` 是保留在磁盘上的锁文件，不是 PID 文件。`serve` 在运行期间持有操作系统独占锁；同一目录上的第二个 `serve` 或身份升级会被拒绝。进程退出或崩溃时，操作系统会释放锁；主机运行期间不要删除这个文件。旧版本没有这把锁，也必须先停止；升级命令还会检查其管理监听端口。`infercat identity upgrade` 要求先停止主机，只创建一次 `host.key.json.pre-ic2` 备份且不覆盖已有备份，然后原子替换为第二版身份。
+
 `~/Library/Application Support/infercat`（macOS）、`~/.config/infercat`（Linux）、
 `%AppData%\infercat`（Windows），或通过 `--data-dir` 指定：
 

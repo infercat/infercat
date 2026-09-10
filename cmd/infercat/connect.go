@@ -228,7 +228,7 @@ var friendWords = map[string]string{
 	"invalid_key":         "{host} does not recognise this invite — it may have been rotated or deleted; ask for a fresh code",
 	"key_paused":          "your invite is paused — ask {host} to resume it, then try again",
 	"key_revoked":         "this invite was revoked — ask {host} for a new code",
-	"host_asleep":         "{host} didn't answer — it's probably asleep or offline; try again in a minute",
+	"host_asleep":         "{host} didn't answer — it's probably asleep or offline; try again in a minute. If the host upgraded recently, ask them for a fresh invite.",
 	"host_stalled":        "{host} stopped answering mid-reply — try again; if it keeps happening, their machine may have gone to sleep",
 	"rate_limited":        "too fast for this invite — {host} allows a set number of messages a minute; the count clears on its own",
 	"concurrency_limited": "one reply at a time — this invite may have one request in flight",

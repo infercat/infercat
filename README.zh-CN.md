@@ -30,6 +30,8 @@
 
 ## 快速上手（主机端）
 
+**已有主机？** 先停止 `serve`，运行一次 `infercat identity upgrade`，再启动 `serve`，轮换或新增密钥，把新的 `ic2` 邀请码发给每位朋友。旧身份备份为 `host.key.json.pre-ic2`；升级后，原有邀请码全部失效。在你明确升级之前，旧身份仍按原样提供服务。这个临时升级命令计划在 2026-09-25 之后移除。
+
 你需要先启动一个推理服务（llama.cpp、llama-swap、vLLM、Ollama 或 LM Studio 均可；任何兼容 OpenAI `/v1/chat/completions` 的服务都能用）。朋友那边只要有个浏览器就行。
 
 **可选——还没有推理引擎？** [安装 Ollama](https://ollama.com/download)，然后：

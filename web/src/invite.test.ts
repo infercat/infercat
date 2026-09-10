@@ -44,7 +44,7 @@ describe('invite', () => {
     ['prefix_ic0', `ic0.${OK}`, 'missing_prefix'],
     ['prefix_ic01', `ic01.${OK}`, 'missing_prefix'],
     ['prefix_huge', `ic99999999999999999999.${OK}`, 'missing_prefix'],
-    ['newer_ic2', `ic2.${OK}`, 'newer_version'],
+    ['newer_ic3', `ic3.${OK}`, 'newer_version'],
     ['newer_ic10_four_parts', `ic10.${OK}.extra`, 'newer_version'],
     ['two_parts', `ic1.${ADDR}`, 'wrong_part_count'],
     ['four_parts', `ic1.${OK}.extra`, 'wrong_part_count'],
@@ -108,7 +108,7 @@ describe('inviteFromHash', () => {
   });
 
   it('ignores a fragment that is not an invite, and never throws', () => {
-    for (const hash of ['', '#', '#section-2', '#ic2.something', '#%E0%A4%A', '#nope']) {
+    for (const hash of ['', '#', '#section-2', '#ic3.something', '#%E0%A4%A', '#nope']) {
       expect(inviteFromHash(hash), hash).toBe('');
     }
   });
@@ -157,7 +157,7 @@ describe('inviteHint', () => {
       'nonsense',
       'ic1',
       `ic9.${ADDR}.${SECRET}`, // not an invite prefix
-      `ic2.${ADDR}.${SECRET}`, // a newer app's invite
+      `ic3.${ADDR}.${SECRET}`, // a newer app's invite
       `ic1.${ADDR}`, // cut off
       `ic1..${SECRET}`, // an empty part
       `ic1.notanaddress.${SECRET}`, // not a host address
@@ -174,4 +174,16 @@ describe('inviteHint', () => {
     expect(inviteHint('ic1.x.y').state).toBe('invalid');
     expect(() => decodeInvite('ic1.x.y')).toThrow(InviteError);
   });
+});
+
+it('accepts both released invite prefixes without altering credentials', () => {
+  for (const prefix of ['ic1', 'ic2']) {
+    const code = `${prefix}.${ADDR}.${SECRET}`;
+    expect(decodeInvite(code)).toEqual({ addr: ADDR, secret: SECRET });
+    expect(inviteFromHash(`#${code}`)).toBe(code);
+  }
+});
+
+it('retains the minted version when rebuilding an install invite', () => {
+  expect(encodeInvite(ADDR, SECRET, 'ic2')).toBe(`ic2.${ADDR}.${SECRET}`);
 });

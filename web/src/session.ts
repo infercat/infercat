@@ -21,7 +21,8 @@ export type KeyState = 'active' | 'paused' | 'revoked' | 'invalid';
 export interface Live {
   transport: Transport;
   secret: string;
-  /** The tunnel address from the invite. Public, not the secret: it names the host for storage. */
+  invitePrefix?: string; // retain the host-minted version when sharing/installing the invite
+  /** The tunnel address names the host for storage; an ic2 address also carries a secret PSK. */
   addr: string;
   me: Me;
   mode: 'direct' | 'tunnel';
