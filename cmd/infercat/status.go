@@ -171,11 +171,10 @@ func requestLine(e usage.Event, who string) string {
 }
 
 func endpointWord(path string) string {
+	if word, _ := usage.ModelEndpoint(path); word != "" {
+		return word
+	}
 	switch path {
-	case "/v1/chat/completions":
-		return "chat"
-	case "/v1/embeddings":
-		return "embed"
 	case "/v1/models":
 		return "models"
 	case "/me":

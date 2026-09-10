@@ -177,7 +177,7 @@ export const zh = {
     "Open WebUI、Cursor、Claude Code、各家 SDK，或者直接一行 curl。朋友的模型，就像跑在你自己的机器上。<br>主机用 <code>infercat expose</code> 就能获得公开网址。",
   reach_sum: '你的应用能访问什么',
   reach_b:
-    '<code>/v1/chat/completions</code> · <code>/v1/models</code> · <code>/v1/embeddings</code> · <code>/me</code>。别的都碰不到：没有别的端口，没有文件。<code>connect</code> 会自动给每个请求带上邀请码里的密钥，应用自己填的那个会被忽略。超过限额：429 加 Retry-After。主机忙：短暂排队，然后 503。主机睡了：<code>connect</code> 会告诉你，并自动重连。',
+    '<code>/v1/chat/completions</code> · <code>/v1/responses</code> · <code>/v1/models</code> · <code>/v1/embeddings</code> · <code>/me</code>。别的都碰不到：没有别的端口，没有文件。<code>connect</code> 会自动给每个请求带上邀请码里的密钥，应用自己填的那个会被忽略。超过限额：429 加 Retry-After。主机忙：短暂排队，然后 503。主机睡了：<code>connect</code> 会告诉你，并自动重连。',
   s4_eye: '04 · 路线图',
   s4_tag: "预览",
   s4_h: '给主机一个公开网址。',

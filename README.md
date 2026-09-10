@@ -160,7 +160,7 @@ The header shows the path you are on (`relayed via nyc · 64 ms`), the model, an
 
 ## What friends can reach
 
-Exactly `/v1/models` and `/v1/chat/completions` on your inference server (and `/v1/embeddings` when the engine has it) — nothing else on your machine: no other port, no files, no admin API. The tunnel exposes the gateway and only the gateway; `serve` prints this line every time it starts.
+Exactly `/v1/models`, `/v1/chat/completions` and `/v1/responses` through the gateway to your inference server (and `/v1/embeddings` when the engine has it) — nothing else on your machine: no other port, no files, no admin API. The tunnel exposes the gateway and only the gateway; `serve` prints this line every time it starts.
 
 ## Privacy
 

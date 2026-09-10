@@ -20,15 +20,16 @@ func (e Event) ResourceMeters() []Meter {
 	if e.Meters != nil {
 		return e.Meters
 	}
+	_, class := ModelEndpoint(e.Endpoint)
 	var meters []Meter
-	if e.PromptTokens != 0 || e.CompletionTokens != 0 || e.Endpoint == "/v1/chat/completions" || e.Endpoint == "/v1/embeddings" {
+	if e.PromptTokens != 0 || e.CompletionTokens != 0 || class == "tokens" {
 		n := float64(e.PromptTokens) + float64(e.CompletionTokens)
 		meters = append(meters, Meter{"tokens", "tokens", n, n})
 	}
-	if e.Seconds != 0 || e.Kind == "transcription" || e.Endpoint == "/v1/audio/transcriptions" {
+	if e.Seconds != 0 || e.Kind == "transcription" || class == "audio" {
 		meters = append(meters, Meter{"audio", "seconds", e.Seconds, e.Seconds})
 	}
-	if e.Characters != 0 || e.Kind == "speech" || e.Endpoint == "/v1/audio/speech" {
+	if e.Characters != 0 || e.Kind == "speech" || class == "speech" {
 		n := float64(e.Characters)
 		meters = append(meters, Meter{"speech", "characters", n, n})
 	}

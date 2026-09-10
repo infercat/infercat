@@ -2,6 +2,7 @@ package gateway
 
 import (
 	"slices"
+	"sort"
 
 	"github.com/infercat/infercat/internal/keys"
 	"github.com/infercat/infercat/internal/upstream"
@@ -140,4 +141,14 @@ func (q *request) resolveDestination(model string) *gwError {
 	}
 	q.destination, q.ev.Destination = d, d.ID
 	return nil
+}
+
+// EngineRoutes is the configured engine-facing surface, including model discovery.
+func (g *Gateway) EngineRoutes() []string {
+	routes := make([]string, 0, len(g.router.routes))
+	for path := range g.router.routes {
+		routes = append(routes, path)
+	}
+	sort.Strings(routes)
+	return routes
 }

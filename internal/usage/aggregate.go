@@ -37,11 +37,8 @@ func (f Filter) match(e *Event, at time.Time) bool {
 // connect) is a poll, and counting the two together is what made `usage` read as 58 requests for
 // one conversation and put a 3 ms poll in the latency percentiles (ticket 009 promise 6).
 func ModelCall(e *Event) bool {
-	switch e.Endpoint {
-	case "/v1/chat/completions", "/v1/embeddings", "/v1/audio/transcriptions", "/v1/audio/speech":
-		return true
-	}
-	return false
+	_, class := ModelEndpoint(e.Endpoint)
+	return class != ""
 }
 
 // Stats are the numbers `usage` prints, for one key or for the whole file.

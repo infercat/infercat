@@ -234,13 +234,16 @@ func translateResponses(body map[string]any) (map[string]any, *responsesAdapter,
 				if role != "user" && role != "assistant" && role != "system" && role != "developer" {
 					return nil, nil, errf(CodeInvalidRequest, 0, "unsupported message role")
 				}
+				if role == "developer" {
+					role = "system"
+				}
 				content, err := responseContent(item["content"])
 				if err != nil {
 					return nil, nil, err
 				}
 				messages = append(messages, map[string]any{"role": role, "content": content})
 			case "function_call":
-				name, err := a.name(str(item, "namespace"), str(item, "name"))
+				name, err := a.historyName(str(item, "namespace"), str(item, "name"))
 				if err != nil {
 					return nil, nil, err
 				}
@@ -323,3 +326,21 @@ func responseContent(v any) (any, *gwError) {
 }
 
 func responseID(prefix string) string { return fmt.Sprintf("%s_%s", prefix, newResponseID()) }
+
+// Codex 0.154.0 serializes FunctionCall namespace/name separately. A legacy bare
+// name can resolve only when exactly one declaration matches; history adds none.
+func (a *responsesAdapter) historyName(namespace, name string) (string, *gwError) {
+	found := ""
+	for alias, tool := range a.tools {
+		if tool.Name == name && (namespace == "" || tool.Namespace == namespace) {
+			if found != "" {
+				return "", errf(CodeInvalidRequest, 0, "function %q is ambiguous across namespaces; include its namespace", name)
+			}
+			found = alias
+		}
+	}
+	if found == "" {
+		return "", errf(CodeInvalidRequest, 0, "function %q in namespace %q has no matching declared function; check namespace history", name, namespace)
+	}
+	return found, nil
+}

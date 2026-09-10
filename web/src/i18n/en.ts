@@ -182,7 +182,7 @@ export const en = {
     "Open WebUI, Cursor, Claude Code, the SDKs or plain curl. Your friend’s model, as if it ran on your machine.<br>Hosts: use <code>infercat expose</code> to give your host a public URL.",
   reach_sum: 'What your app can reach',
   reach_b:
-    '<p><code>/v1/chat/completions</code> · <code>/v1/models</code> · <code>/v1/embeddings</code> · <code>/me</code>. Nothing else: no other port, no files.</p><p><code>connect</code> adds the invite’s key to every request and ignores your app’s own. Over a limit: <code>429</code> with <code>Retry-After</code>. Host busy: a short wait, then <code>503</code>. Host asleep: <code>connect</code> says so and reconnects on its own.</p>',
+    '<p><code>/v1/chat/completions</code> · <code>/v1/responses</code> · <code>/v1/models</code> · <code>/v1/embeddings</code> · <code>/me</code>. Nothing else: no other port, no files.</p><p><code>connect</code> adds the invite’s key to every request and ignores your app’s own. Over a limit: <code>429</code> with <code>Retry-After</code>. Host busy: a short wait, then <code>503</code>. Host asleep: <code>connect</code> says so and reconnects on its own.</p>',
   s4_eye: '04 · Roadmap',
   s4_tag: "Preview",
   s4_h: 'A public URL for your host.',

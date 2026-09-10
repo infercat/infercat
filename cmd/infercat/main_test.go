@@ -674,7 +674,7 @@ func TestServeBannerTellsTheTruth(t *testing.T) {
 	first := serveOnce(t, dir, "--upstream", engine, "--name", "Max's laptop", "--web-url", "https://app.example")
 	for _, want := range []string{
 		"name      Max's laptop  (shown to your friends)",
-		"access    friends reach only /v1/models, /v1/chat/completions and /v1/embeddings on " + engine,
+		"access    friends reach only /v1/models, /v1/chat/completions, /v1/responses and /v1/embeddings on " + engine,
 		"nothing else on this machine",
 		"data      " + dir,
 		"web       https://app.example",

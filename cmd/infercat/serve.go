@@ -289,7 +289,7 @@ func (e *env) cmdServe(ctx context.Context, pre string, args []string) error {
 	}
 
 	e.printStartup(ctx, startup{
-		transcribe: transcribe, speech: speech, remoteWarning: remoteStore.Warning(),
+		transcribe: transcribe, speech: speech, images: images, remoteWarning: remoteStore.Warning(),
 		tun: tun, up: up, store: store, dataDir: dataDir, consoleAddr: consoleAddress, pinned: pinned,
 		hostName: hostName, webURL: webURL(config{WebURL: *webURLFlag}), newIdentity: newIdentity,
 	})
@@ -428,6 +428,7 @@ func refreshLoop(ctx context.Context, up upstream.Upstream, logf func(string, ..
 // the strangers asked for (web, name, access, data) and a positional list of seven was worse.
 type startup struct {
 	transcribe, speech upstream.AudioEngine
+	images             upstream.ImageEngine
 	pinned             []string
 	consoleAddr        string
 	remoteWarning      string
@@ -476,7 +477,7 @@ func (e *env) printStartup(ctx context.Context, s startup) {
 	if s.hostName != "" {
 		fmt.Fprintf(e.out, "name      %s  (shown to your friends)\n", s.hostName)
 	}
-	routes := friendRoutes(s.transcribe != nil, s.speech != nil)
+	routes := friendRoutes(s.transcribe != nil, s.speech != nil, s.images != nil)
 	for _, route := range []string{"transcriptions", "speech"} {
 		if a, ok := audioStatus(s.transcribe, s.speech)[route]; ok {
 			fmt.Fprintf(e.out, "audio     /v1/audio/%s  %s  %s\n", route, a.URL, healthWord(a.Healthy, a.Since))
@@ -523,16 +524,18 @@ func (e *env) printStartup(ctx context.Context, s startup) {
 	}
 }
 
-// friendRoutes is the whole of what the tunnel exposes, checked against internal/gateway's router
-// (request.go serve): /me and /healthz are answered by the gateway itself and never touch the
-// engine, so the sentence names the three routes that reach it.
-func friendRoutes(transcribe, speech bool) string {
-	routes := []string{"/v1/models", "/v1/chat/completions", "/v1/embeddings"}
+// friendRoutes names engine routes, pinned to Gateway.EngineRoutes by a test.
+// Gateway-owned control routes (/me, runs, health) do not reach the engine.
+func friendRoutes(transcribe, speech, images bool) string {
+	routes := []string{"/v1/models", "/v1/chat/completions", "/v1/responses", "/v1/embeddings"}
 	if transcribe {
 		routes = append(routes, "/v1/audio/transcriptions")
 	}
 	if speech {
 		routes = append(routes, "/v1/audio/speech")
+	}
+	if images {
+		routes = append(routes, "/v1/images/generations")
 	}
 	return strings.Join(routes[:len(routes)-1], ", ") + " and " + routes[len(routes)-1]
 }

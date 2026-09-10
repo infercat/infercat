@@ -275,7 +275,7 @@ func TestResponsesRefusalsBeforeEngine(t *testing.T) {
 	alias, _ := chatToolName("ns", "x")
 	h := fastResponses(t)
 	h.expectErr(h.post(string(responsesEndpoint), responseBody(fmt.Sprintf(`"tools":[{"type":"function","name":%q},{"type":"namespace","name":"ns","tools":[{"type":"function","name":"x"}]}]`, alias))), CodeInvalidRequest)
-	h.expectErr(h.do(http.MethodGet, string(responsesEndpoint), "bearer", ""), CodeInvalidRequest)
+	h.expectErr(h.do(http.MethodGet, string(responsesEndpoint), "bearer", ""), CodeNotFound)
 	h.expectErr(h.do(http.MethodPost, string(responsesEndpoint), "", responseBody("")), CodeInvalidKey)
 }
 

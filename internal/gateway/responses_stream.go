@@ -64,22 +64,25 @@ type responseOutput struct {
 }
 
 func newResponseOutput(q *request, emit bool) *responseOutput {
-	return &responseOutput{q: q, id: responseID("resp"), items: []*responseItem{}, calls: map[int]*responseCall{}, emit: emit}
+	o := &responseOutput{q: q, id: responseID("resp"), items: []*responseItem{}, calls: map[int]*responseCall{}, emit: emit}
+	q.responseOutput = o
+	return o
 }
 func newResponseID() string { return rand.Text() }
 func (o *responseOutput) envelope(status string) map[string]any {
 	value := map[string]any{"id": o.id, "object": "response", "created_at": o.q.start.Unix(), "status": status, "model": o.q.n.model, "output": o.items, "store": false, "error": nil, "incomplete_details": nil}
-	if status != "in_progress" {
-		cached, reasoning := 0, 0
-		if o.usage != nil {
-			cached = o.usage.PromptDetails.Cached
-			reasoning = o.usage.CompletionDetails.Reasoning
-		}
+	if status != "in_progress" && o.usage != nil {
+		cached, reasoning := o.usage.PromptDetails.Cached, o.usage.CompletionDetails.Reasoning
 		value["usage"] = map[string]any{"input_tokens": o.q.ev.PromptTokens, "output_tokens": o.q.ev.CompletionTokens, "total_tokens": o.q.ev.PromptTokens + o.q.ev.CompletionTokens, "input_tokens_details": map[string]any{"cached_tokens": cached}, "output_tokens_details": map[string]any{"reasoning_tokens": reasoning}}
 	}
 	if status == "incomplete" {
-		reason := "max_output_tokens"
-		if o.finishReason == "content_filter" {
+		reason := "unknown_finish_reason"
+		switch o.finishReason {
+		case "":
+			reason = "missing_finish_reason"
+		case "length":
+			reason = "max_output_tokens"
+		case "content_filter":
 			reason = "content_filter"
 		}
 		value["incomplete_details"] = map[string]any{"reason": reason}
@@ -99,7 +102,9 @@ func (o *responseOutput) event(kind string, fields map[string]any) *gwError {
 	if len(b) > maxUpstreamBody {
 		return errf(CodeUpstreamError, 0, "engine response exceeds the output size limit")
 	}
-	o.q.armWrite()
+	if kind != "response.failed" {
+		o.q.armWrite()
+	} // Terminal failure never extends a failed write deadline.
 	if _, err = io.WriteString(o.q.w, "event: "+kind+"\ndata: "+string(b)+"\n\n"); err != nil {
 		return errf(CodeClientClosed, 0, "client stopped reading")
 	}
@@ -185,11 +190,18 @@ func (o *responseOutput) toolDelta(delta chatToolCall) *gwError {
 		call = &responseCall{}
 		o.calls[delta.Index] = call
 	}
-	if call.item != nil && (delta.Function.Name != "" || delta.ID != "") {
-		return errf(CodeUpstreamError, 0, "engine changed a function identity after arguments started")
+	if call.item != nil {
+		if (delta.Function.Name != "" && delta.Function.Name != call.name) || (delta.ID != "" && delta.ID != call.id) {
+			return errf(CodeUpstreamError, 0, "engine changed a function identity after arguments started")
+		}
+	} else {
+		if delta.Function.Name != call.name {
+			call.name += delta.Function.Name
+		}
+		if delta.ID != call.id {
+			call.id += delta.ID
+		}
 	}
-	call.name += delta.Function.Name
-	call.id += delta.ID
 	if delta.Function.Arguments != "" {
 		if err := o.startCall(call); err != nil {
 			return err
@@ -207,7 +219,7 @@ func (o *responseOutput) startCall(call *responseCall) *gwError {
 	}
 	original, ok := o.q.responses.tools[call.name]
 	if !ok {
-		return errf(CodeUpstreamError, 0, "engine called an undeclared function")
+		original = responseToolName{Name: call.name}
 	}
 	if call.id == "" {
 		call.id = responseID("call")
@@ -232,6 +244,9 @@ func (o *responseOutput) chunk(ch sseChunk) *gwError {
 	}
 	for _, choice := range ch.Choices {
 		o.sawChoice = true
+		if o.finishReason != "" && choice.Index == 0 && choice.Delta.empty() {
+			continue
+		}
 		if choice.Index != 0 || o.finishReason != "" {
 			return errf(CodeUpstreamError, 0, "engine sent a choice after response finalisation")
 		}
@@ -267,11 +282,9 @@ func (o *responseOutput) complete() (map[string]any, *gwError) {
 	}
 	status := "completed"
 	switch o.finishReason {
-	case "", "stop", "tool_calls":
-	case "length", "content_filter":
-		status = "incomplete"
+	case "stop", "tool_calls":
 	default:
-		return nil, errf(CodeUpstreamError, 0, "engine returned an unsupported finish reason")
+		status = "incomplete"
 	}
 	for _, item := range o.items {
 		switch item.Type {
@@ -424,13 +437,14 @@ func (q *request) pipeResponsesBody(body io.Reader) *gwError {
 		Usage *usageT         `json:"usage"`
 		Error json.RawMessage `json:"error"`
 	}
-	if json.Unmarshal(raw, &chat) != nil || len(chat.Choices) != 1 || (chat.Error != nil && !bytes.Equal(chat.Error, []byte("null"))) {
+	if json.Unmarshal(raw, &chat) != nil {
 		return errf(CodeUpstreamError, 0, "engine returned an invalid chat response")
 	}
 	q.applyUsage(chat.Usage)
+	if len(chat.Choices) != 1 || (chat.Error != nil && !bytes.Equal(chat.Error, []byte("null"))) {
+		return errf(CodeUpstreamError, 0, "engine returned an invalid chat response")
+	}
 	choice := chat.Choices[0]
-	// Non-stream chat reasoning is not an encrypted Responses reasoning item.
-	choice.Message.Reasoning, choice.Message.ReasoningContent = "", nil
 	for i := range choice.Message.ToolCalls {
 		choice.Message.ToolCalls[i].Index = i
 	}
@@ -473,4 +487,23 @@ func sortedCallIndices(calls map[int]*responseCall) []int {
 	}
 	sort.Ints(indices)
 	return indices
+}
+
+func (d chatDelta) empty() bool {
+	return d.Content == "" && d.reasoning() == "" && d.Refusal == "" && len(d.ToolCalls) == 0
+}
+
+// Delivery may already be impossible. Try once under the existing deadline,
+// retaining response identity/sequence and the recorded error regardless.
+func (q *request) failResponses(e *gwError) {
+	o := q.responseOutput
+	if o == nil {
+		o = newResponseOutput(q, true)
+	}
+	value := o.envelope("failed")
+	value["output"] = []any{} // Never duplicate a potentially oversized partial result.
+	var body errorBody
+	_ = json.Unmarshal(errorJSON(e, true), &body)
+	value["error"] = body.Error
+	_ = o.event("response.failed", map[string]any{"response": value})
 }

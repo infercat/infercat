@@ -158,7 +158,7 @@ unzip web-<version>.zip -d web && python3 -m http.server 8080 --directory web --
 
 ## 朋友能访问什么
 
-只能访问你推理服务上的 `/v1/models` 和 `/v1/chat/completions`（若引擎支持则包含 `/v1/embeddings`）——无法触碰你电脑上的其他任何内容：没有其他端口、没有文件、没有管理 API。隧道暴露出去的只有网关，别的什么都没有；`serve` 每次启动都会把这行打出来。
+只能通过网关访问你推理服务的 `/v1/models`、`/v1/chat/completions` 和 `/v1/responses`（若引擎支持则包含 `/v1/embeddings`）——无法触碰你电脑上的其他任何内容：没有其他端口、没有文件、没有管理 API。隧道暴露出去的只有网关，别的什么都没有；`serve` 每次启动都会把这行打出来。
 
 ## 隐私
 

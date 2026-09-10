@@ -34,7 +34,8 @@ const (
 // connect; counting it made the friend's first message read "2 of 20 used this minute" (ticket 014
 // ruling; measured on the real stack, 014 Log).
 func (e endpoint) countsAgainstRPM() bool {
-	return e == imagesEndpoint || e == chatEndpoint || e == embeddingsEndpoint || e == transcribeEndpoint || e == speechEndpoint
+	_, class := usage.ModelEndpoint(string(e))
+	return class != ""
 }
 
 // outcome is how a request ended, set by the stage that ended it (DESIGN §1.4). finish reads it
@@ -70,18 +71,19 @@ type normalized struct {
 // rejection, client abort, timeout, and panic all leave through it; no stage releases anything
 // itself (ticket 006 design ruling).
 type request struct {
-	onAcquired  func() error
-	dispatched  atomic.Bool
-	destination *Destination
-	audio       *audioRequest
-	responses   *responsesAdapter
-	image       *imageRequest
-	g           *Gateway
-	w           http.ResponseWriter
-	r           *http.Request
-	rc          *http.ResponseController
-	start       time.Time
-	ev          usage.Event
+	onAcquired     func() error
+	dispatched     atomic.Bool
+	destination    *Destination
+	audio          *audioRequest
+	responses      *responsesAdapter
+	image          *imageRequest
+	responseOutput *responseOutput
+	g              *Gateway
+	w              http.ResponseWriter
+	r              *http.Request
+	rc             *http.ResponseController
+	start          time.Time
+	ev             usage.Event
 
 	// Identity and input, filled stage by stage.
 	key    *keys.Key
@@ -137,8 +139,8 @@ func (q *request) serve() {
 		q.proxyAudio(transcribeEndpoint)
 	case r.Method == http.MethodPost && r.URL.Path == string(speechEndpoint) && q.destination != nil:
 		q.proxyAudio(speechEndpoint)
-	case r.URL.Path == string(responsesEndpoint):
-		if r.Method != http.MethodPost || r.Header.Get("Upgrade") != "" {
+	case r.URL.Path == string(responsesEndpoint) && (r.Method == http.MethodPost || r.Header.Get("Upgrade") != ""):
+		if r.Header.Get("Upgrade") != "" {
 			q.fail(errf(CodeInvalidRequest, 0, "Responses requires POST over HTTP; WebSockets are not supported"))
 		} else {
 			q.proxy(chatEndpoint)
@@ -553,6 +555,10 @@ func (q *request) fail(e *gwError) {
 	if q.wroteHeader {
 		q.ev.Code = string(e.Code)
 		if q.audio != nil {
+			return
+		}
+		if q.r.URL.Path == string(responsesEndpoint) {
+			q.failResponses(e)
 			return
 		}
 		if e.Code != CodeClientClosed && q.r.Context().Err() == nil {
