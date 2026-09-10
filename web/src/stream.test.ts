@@ -236,8 +236,8 @@ describe('which wall a reply hit', () => {
   });
 
   it('the meter reads what the next question will carry, never the last exchange', () => {
-    const turn = (id: string, content: string, over: Partial<Message> = {}): Message => ({ id, role: 'user', content, ...over });
-    const reply = (id: string, content: string, over: Partial<Message> = {}): Message => ({ id, role: 'assistant', content, status: 'complete', ...over });
+    const turn = (id: string, content: string, over: Partial<import('./storage').ChatItem> = {}): Message => ({ id, role: 'user', content, ...over });
+    const reply = (id: string, content: string, over: Partial<import('./storage').ChatItem> = {}): Message => ({ id, role: 'assistant', content, status: 'complete', ...over });
     const s = { systemPrompt: 'Be brief.' };
     const est = (text: string) => estimateTokens(text) + 4;
     // Counted: the system prompt and every answer. Never thinking, never a reply that was cut off or empty.

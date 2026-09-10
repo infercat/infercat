@@ -11,7 +11,9 @@ it('preserves named placeholders across both complete tables', () => {
   expect(Object.keys(zh).sort()).toEqual(Object.keys(en).sort());
   for (const key of Object.keys(en) as (keyof typeof en)[]) {
     const names = (s: string) => [...s.matchAll(/\{(\w+)\}/g)].map((m) => m[1]).sort();
-    expect(names(zh[key]), key).toEqual(names(en[key]));
+    // Frozen run copy uses an English ordinal and a Chinese numeric position.
+    if (key === 'app_run_queued') { expect(names(zh[key])).toEqual(['n']); expect(names(en[key])).toEqual(['ordinal']); }
+    else expect(names(zh[key]), key).toEqual(names(en[key]));
   }
 });
 it('keeps English plurals and formats Chinese as whole sentences', () => {

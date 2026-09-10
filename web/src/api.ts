@@ -122,7 +122,15 @@ export async function getMe(t: Transport, secret: string, signal?: AbortSignal):
 export const ME_TIMEOUT_MS = 10_000;
 
 /** AbortSignal.timeout, where it exists; a hand-rolled one where it does not. */
-export function timeoutSignal(ms: number): AbortSignal {
+export function timeoutSignal(ms: number, parent?: AbortSignal): AbortSignal {
+  if (parent) {
+    const ac = new AbortController();
+    const stop = () => { clearTimeout(timer); parent.removeEventListener('abort', stop); ac.abort(parent.reason); };
+    const timer = setTimeout(() => { parent.removeEventListener('abort', stop); ac.abort(); }, ms);
+    parent.addEventListener('abort', stop, { once: true });
+    if (parent.aborted) stop();
+    return ac.signal;
+  }
   const T = AbortSignal as typeof AbortSignal & { timeout?: (ms: number) => AbortSignal };
   if (typeof T.timeout === 'function') return T.timeout(ms);
   const ac = new AbortController();
@@ -596,4 +604,85 @@ export function describeError(err: unknown, host?: string): FriendlyError {
     detail: tr('app_the_tunnel_dropped_part_way_through_try_again_if'),
     ...(err instanceof Error && err.message.trim() !== '' ? { hostSaid: err.message.trim() } : {}),
   };
+}
+
+// Durable runs are independent of the submitting HTTP request. Mutations are sent once;
+// reconnect and cursor recovery repeat only reads, never the user's action.
+export interface RunStep {
+  id: string; type: 'step'; at: string;
+  kind: 'think' | 'search' | 'run' | 'read' | 'write' | 'wait' | 'other';
+  status: 'running' | 'waiting' | 'done' | 'failed' | 'cancelled';
+  name?: string; tool?: string; result?: string; text?: string; output_id?: string;
+}
+export interface RunOutput { id: string; name: string; mime: string; size: number }
+export interface RunRecord {
+  id: string;
+  kind: string;
+  state: 'queued' | 'running' | 'waiting' | 'done' | 'failed' | 'cancelled';
+  created: string;
+  updated: string;
+  expires: string;
+  cancel_requested: boolean;
+  queue_position?: number;
+  client_request_id?: string;
+  key_id?: string;
+  steps?: RunStep[];
+  outputs?: RunOutput[];
+  text?: string;
+  approval?: { id: string; request: string; status: 'pending' | 'answered'; allow?: boolean };
+  reason?: string;
+  input: unknown;
+  output?: unknown;
+  attempts: { id: string; dispatched: boolean; settled: boolean; accounting_uncertain: boolean; usage: { prompt_tokens?: number; completion_tokens?: number } }[];
+}
+export interface RunEvent {
+  cursor: string;
+  run_id?: string;
+  state?: RunRecord['state'];
+  time: string;
+  reset?: boolean;
+  type?: 'step';
+  step?: RunStep;
+  runs?: { id: string; kind: string; state: RunRecord['state']; client_request_id?: string }[];
+}
+export async function submitRun(t: Transport, secret: string, input: unknown, signal: AbortSignal, clientRequestId?: string): Promise<{ id: string }> {
+  if (clientRequestId !== undefined && !/^[A-Za-z0-9_-]{1,128}$/.test(clientRequestId)) throw new Error('Invalid client request id');
+  const response = await call(t, secret, '/v1/runs', { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ kind: 'agent', input, ...(clientRequestId ? { client_request_id: clientRequestId } : {}) }), signal });
+  const result = await response.json() as { id: string };
+  if (typeof result.id !== 'string' || !result.id) throw new Error('Invalid run response');
+  return result;
+}
+export async function getRun(t: Transport, secret: string, id: string, signal: AbortSignal): Promise<RunRecord> {
+  return (await call(t, secret, `/v1/runs/${encodeURIComponent(id)}`, { signal })).json() as Promise<RunRecord>;
+}
+export async function cancelRun(t: Transport, secret: string, id: string, signal: AbortSignal): Promise<RunRecord> {
+  return (await call(t, secret, `/v1/runs/${encodeURIComponent(id)}`, { method: 'DELETE', signal })).json() as Promise<RunRecord>;
+}
+export async function* runEvents(t: Transport, secret: string, cursor: string, signal: AbortSignal): AsyncGenerator<RunEvent> {
+  const headers = cursor ? { 'Last-Event-ID': cursor } : undefined;
+  const response = await call(t, secret, '/v1/events', { headers, signal });
+  if (!response.body || !response.headers.get('content-type')?.includes('text/event-stream')) throw new Error('Invalid run event stream');
+  try {
+    for await (const block of sseData(response.body)) {
+      if (!('data' in block)) continue;
+      const event = JSON.parse(block.data) as RunEvent;
+      if (typeof event.cursor !== 'string' || typeof event.time !== 'string') throw new Error('Invalid run event');
+      yield event;
+    }
+  } finally { await response.body.cancel().catch(() => {}); }
+}
+
+export async function answerRun(t: Transport, secret: string, run: string, id: string, allow: boolean, signal: AbortSignal): Promise<RunRecord> {
+  return (await call(t, secret, `/v1/runs/${encodeURIComponent(run)}/approval`, { method: 'POST', headers: { 'content-type': 'application/json' }, body: JSON.stringify({ id, allow }), signal })).json() as Promise<RunRecord>;
+}
+export async function listRuns(t: Transport, secret: string, signal: AbortSignal): Promise<{ runs: { id: string; kind: string; client_request_id?: string }[] }> {
+  return (await call(t, secret, '/v1/runs', { signal })).json() as Promise<{ runs: { id: string; kind: string; client_request_id?: string }[] }>;
+}
+export async function runOutput(t: Transport, secret: string, run: string, output: string, signal: AbortSignal): Promise<Blob> {
+  const res = await call(t, secret, `/v1/runs/${encodeURIComponent(run)}/outputs/${encodeURIComponent(output)}`, { signal });
+  if (!res.body) throw new Error('Missing run output');
+  const reader = res.body.getReader(), chunks: Uint8Array<ArrayBuffer>[] = []; let size = 0;
+  try { for (;;) { const { value, done } = await reader.read(); if (done) break; size += value.byteLength; if (size > 1024 * 1024) throw new Error('Run output exceeds 1 MiB'); chunks.push(new Uint8Array(value)); } }
+  finally { await reader.cancel().catch(() => {}); reader.releaseLock(); }
+  return new Blob(chunks, { type: res.headers.get('content-type') ?? 'application/octet-stream' });
 }

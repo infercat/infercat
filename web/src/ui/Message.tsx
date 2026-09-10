@@ -256,7 +256,7 @@ function Details({ text }: { text: string }) {
   );
 }
 
-function CopyButton({ text }: { text: string }) {
+export function CopyButton({ text }: { text: string }) {
   const [done, setDone] = useState(false);
   return (
     <button
@@ -277,7 +277,7 @@ function CopyButton({ text }: { text: string }) {
  * While the model is still thinking the block is a window that follows the newest line; once the
  * answer has started it is a record, and opening it shows all of it (020 promise 7).
  */
-function Thinking({ text, answering, note }: { text: string; answering: boolean; note?: string }) {
+export function Thinking({ text, answering, note }: { text: string; answering: boolean; note?: string }) {
   const [manual, setManual] = useState<boolean | null>(null);
   const open = manual ?? !answering;
   const body = useRef<HTMLDivElement>(null);

@@ -1,3 +1,4 @@
+import { handleFakeRuns } from './fake-runs';
 import type { Me } from '../../packages/client/src/contract';
 
 // A stand-in for the real gateway (ticket 002), shaped exactly by docs/ARCHITECTURE.md §Gateway
@@ -22,6 +23,8 @@ export interface FakeResponse {
 }
 
 export interface FakeOptions {
+  agent?: boolean;
+  runState?: string;
   hostName?: string;
   models?: string[];
   vision?: boolean | null;
@@ -115,6 +118,7 @@ const FAILURES: Record<string, { status: number; type: string; code: string; mes
 export function fakeMe(opts: FakeOptions = {}) {
   const models = opts.models ?? ['gemma-4-e2b-it', 'deepseek-v4-flash'];
   return {
+    ...(opts.agent ? { agent: true } : {}),
     key: { id: 'k_7f3a2b', name: 'alice', status: opts.keyPaused && pauseBit ? 'paused' : 'active' },
     limits: LIMITS,
     usage: { ...counters },
@@ -140,6 +144,8 @@ export function handleFake(req: FakeRequest, opts: FakeOptions = {}): FakeRespon
   if (!auth.startsWith('Bearer ') || auth.length < 8) {
     return error(401, 'authentication_error', 'invalid_key', 'No key was presented with this request.');
   }
+
+  if (opts.agent) { const run = handleFakeRuns(req, opts.runState); if (run) return run; }
 
   if (path === '/me') {
     if (revokedBit) return error(403, 'permission_error', 'key_revoked', 'This invite was revoked by the host.');

@@ -13,6 +13,8 @@ export interface Limits {
 }
 
 export interface Me {
+  /** Agent runs are available only when the host explicitly reports this capability. */
+  agent?: boolean;
   key: { id: string; name: string; status: 'active' | 'paused' | 'revoked' };
   limits: Limits;
   usage: { rpm_used: number; tpm_used: number; today_tokens: number; in_flight: number };

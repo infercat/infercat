@@ -6,11 +6,11 @@ import { tr } from '../i18n/text';
 export function chipName(name: string): string {
   return name.length <= 30 ? name : `${name.slice(0, 17)}…${name.slice(-12)}`;
 }
-export function FileChip({ file, reading = false, onRemove, onOpen }: {
-  file: AttachedFile; reading?: boolean; onRemove?: () => void; onOpen?: () => void;
+export function FileChip({ file, reading = false, line, onRemove, onOpen }: {
+  file: AttachedFile; reading?: boolean; line?: string; onRemove?: () => void; onOpen?: () => void;
 }) {
   const label = <><span className="chip-name">{chipName(file.name)}</span><span className="chip-line">{
-    reading ? tr('app_file_reading', { kind: file.kind }) : measure(file)
+    reading ? tr('app_file_reading', { kind: file.kind }) : (line ?? measure(file))
   }</span></>;
   return onOpen && !onRemove
     ? <button className="chip" title={file.name} onClick={onOpen}>{label}</button>
@@ -18,10 +18,10 @@ export function FileChip({ file, reading = false, onRemove, onOpen }: {
       <button className="thumb-x" aria-label={`${tr('app_file_remove')}: ${file.name}`} onClick={onRemove}>×</button>
     }</div>;
 }
-export function FileSheet({ file, host, onClose }: { file: AttachedFile; host: string; onClose: () => void }) {
+export function FileSheet({ file, host, caption, raw = false, onClose }: { file: AttachedFile; host: string; caption?: string; raw?: boolean; onClose: () => void }) {
   const [copied, setCopied] = useState(false);
   const ref = useRef<HTMLElement>(null);
-  const block = fileBlocks([file]);
+  const block = raw ? file.text : fileBlocks([file]);
   useEffect(() => {
     const previous = document.activeElement as HTMLElement | null;
     ref.current?.focus();
@@ -40,7 +40,7 @@ export function FileSheet({ file, host, onClose }: { file: AttachedFile; host: s
       <header><strong>{file.name}</strong><span className="actions"><button className="ghost tiny" onClick={() => {
         void navigator.clipboard?.writeText(block).then(() => setCopied(true)).catch(() => setCopied(false));
       }}>{tr(copied ? 'app_copied' : 'app_copy')}</button></span>
-        <span className="caption">{tr('app_file_sent_caption', { measure: measure(file), host })}</span>
+        <span className="caption">{caption ?? tr('app_file_sent_caption', { measure: measure(file), host })}</span>
       </header>
       <pre>{block}</pre>
     </section>
