@@ -59,11 +59,12 @@ type Info struct {
 type Engine interface {
 	// Info returns the state as of the last probe.
 	Info() Info
-	// CountTokens returns an exact count where the engine offers /tokenize, else an estimate
+	// CountTokens uses the resolved model: counting against a different tokenizer misprices admission.
+	// It returns an exact count where the engine offers /tokenize, else an estimate
 	// (ceil(len/4)) with exact=false. Text is the concatenation of message contents. For a
 	// chat, messages is the request's messages array as JSON and the count is of the prompt
 	// under the engine's chat template — what its chat endpoint enforces (036); nil otherwise.
-	CountTokens(ctx context.Context, text string, messages []byte) (n int, exact bool, err error)
+	CountTokens(ctx context.Context, model, text string, messages []byte) (n int, exact bool, err error)
 	// Do sends one request to the engine: bearer added, base URL private, redirects never
 	// followed, a generation bounded by the first-byte deadline and a GET by the probe deadline
 	// (DESIGN §1.6). A non-2xx comes back as a response, not an error. The caller owns resp.Body.

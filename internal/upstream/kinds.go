@@ -271,16 +271,16 @@ func (c *client) refreshOpenAI(ctx context.Context, in *Info) error {
 // itself (equals usage.prompt_tokens, checked on 0.25.0); an estimating engine adds
 // TemplateAllowance. A failed exact count silently degrades to the estimate: the gateway's
 // context pre-check must not turn a tokenizer hiccup into a 5xx.
-func (c *client) CountTokens(ctx context.Context, text string, messages []byte) (int, bool, error) {
+func (c *client) CountTokens(ctx context.Context, model, text string, messages []byte) (int, bool, error) {
 	info := c.Info()
 	switch info.Kind {
-	case LlamaCPP:
+	case LlamaCPP, LlamaSwap:
 		content, special := text, false
 		if messages != nil {
 			var tpl struct {
 				Prompt string `json:"prompt"`
 			}
-			if err := c.doJSON(ctx, "POST", "/apply-template", map[string]any{"messages": json.RawMessage(messages)}, &tpl); err != nil || tpl.Prompt == "" {
+			if err := c.doJSON(ctx, "POST", "/apply-template", map[string]any{"model": model, "messages": json.RawMessage(messages)}, &tpl); err != nil || tpl.Prompt == "" {
 				break
 			}
 			content, special = tpl.Prompt, true
@@ -288,14 +288,14 @@ func (c *client) CountTokens(ctx context.Context, text string, messages []byte) 
 		var out struct {
 			Tokens []int `json:"tokens"`
 		}
-		if err := c.doJSON(ctx, "POST", "/tokenize", map[string]any{"content": content, "add_special": special}, &out); err == nil {
+		if err := c.doJSON(ctx, "POST", "/tokenize", map[string]any{"model": model, "content": content, "add_special": special}, &out); err == nil {
 			return len(out.Tokens), true, nil
 		}
 	case VLLM:
-		if len(info.Models) > 0 {
-			req := map[string]any{"model": info.Models[0], "prompt": text}
+		if model != "" {
+			req := map[string]any{"model": model, "prompt": text}
 			if messages != nil {
-				req = map[string]any{"model": info.Models[0], "messages": json.RawMessage(messages), "add_generation_prompt": true}
+				req = map[string]any{"model": model, "messages": json.RawMessage(messages), "add_generation_prompt": true}
 			}
 			var out struct {
 				Count  int   `json:"count"`

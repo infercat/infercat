@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-// slotQueue is the global queue in front of the engine (DESIGN §1.5): a FIFO whose capacity is the
+// slotQueue is one destination's queue in front of its engine (DESIGN §1.5): a FIFO whose capacity is the
 // engine's slot count read at decision time, never pushed. A released slot goes to the oldest
 // waiter; at most max(2, 2×cap) requests wait at once (006 promise 10) and one more is refused on
 // the spot, so a burst degrades to fast 503s with Retry-After rather than a growing set of parked

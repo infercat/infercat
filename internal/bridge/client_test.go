@@ -411,7 +411,9 @@ type engine struct{}
 func (engine) Info() upstream.Info {
 	return upstream.Info{Kind: upstream.Generic, Health: upstream.Health{OK: true}, Slots: 1, Models: []string{"test"}, ModelContext: 4096}
 }
-func (engine) CountTokens(context.Context, string, []byte) (int, bool, error) { return 1, true, nil }
+func (engine) CountTokens(context.Context, string, string, []byte) (int, bool, error) {
+	return 1, true, nil
+}
 func (engine) Do(context.Context, string, string, []byte, bool) (*http.Response, error) {
 	return &http.Response{StatusCode: 200, Header: http.Header{"Content-Type": {"text/event-stream"}}, Body: io.NopCloser(strings.NewReader("data: {\"choices\":[{\"delta\":{\"content\":\"hello\"}}]}\n\ndata: [DONE]\n\n"))}, nil
 }

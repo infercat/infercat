@@ -193,6 +193,7 @@ type fakeUpstream struct {
 	finished  atomic.Bool   // set when an sse handler wrote [DONE]
 	wrote     bytes.Buffer  // exact bytes an sse handler wrote
 	lastBody  []byte
+	lastModel string
 	lastMsgs  []byte // the messages the last CountTokens was given; nil = a text-only count
 	lastPath  string
 	lastAuth  string
@@ -385,10 +386,11 @@ func (f *fakeUpstream) set(mode string, events ...string) {
 // CountTokens: one token per whitespace-separated word, exact — so tests can build a prompt of N tokens
 // — plus, for a chat, the template overhead the test set (tplPerMsg a message, tplBase a chat).
 // It tracks how many calls run at once and, with countGate set, parks callers until the gate closes.
-func (f *fakeUpstream) CountTokens(_ context.Context, text string, messages []byte) (int, bool, error) {
+func (f *fakeUpstream) CountTokens(_ context.Context, model string, text string, messages []byte) (int, bool, error) {
 	f.mu.Lock()
 	err, gate, boom, perMsg, base := f.countErr, f.countGate, f.countPanic, f.tplPerMsg, f.tplBase
 	f.lastMsgs = messages
+	f.lastModel = model
 	f.mu.Unlock()
 	if err != nil {
 		return 0, false, err

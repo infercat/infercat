@@ -1,5 +1,5 @@
 // Package gateway is the http.Handler that sits between the tunnel listener and the upstream engine:
-// bearer auth against the key store, per-key limits, a global queue sized to the engine's slots,
+// bearer auth against the key store, per-key limits, a queue per destination sized to its engine's slots,
 // request clamps, a streaming reverse proxy, OpenAI-shaped errors, and one usage event per request.
 // It exposes exactly one thing to the tunnel (Protection 1) and never logs or stores a secret
 // (Protection 2).
@@ -62,12 +62,11 @@ const (
 type Gateway struct {
 	audioHistoryErr error
 	cfg             Config
-	up              upstream.Engine // the gateway's whole view of the engine (DESIGN §3.4)
+	router          *Router
 	store           keys.Store
 	rec             usage.Recorder
 	logf            func(string, ...any)
 	lim             *limiter
-	queue           slotQueue    // global slots; capacity = up.Info().Slots, read at every decision
 	bodies          atomic.Int32 // request bodies held in memory (per-key slots bound it; tests read it)
 
 	// The deadlines, the keepalive and the body cap, unexported: tests shorten them, hosts get the constants.
@@ -97,13 +96,12 @@ func New(cfg Config, up upstream.Engine, store keys.Store, rec usage.Recorder, l
 		cfg.MaxTranscriptionSeconds = 300
 	}
 	g := &Gateway{
-		cfg:   cfg,
-		up:    up,
-		store: store,
-		rec:   rec,
-		logf:  logf,
-		lim:   newLimiter(),
-		queue: slotQueue{cap: func() int { return up.Info().Slots }},
+		cfg:    cfg,
+		router: newRouter(up, cfg),
+		store:  store,
+		rec:    rec,
+		logf:   logf,
+		lim:    newLimiter(),
 
 		queueTimeout: defaultQueueTimeout,
 		readTimeout:  defaultReadTimeout,
@@ -217,9 +215,8 @@ func (g *Gateway) Counters(keyID string) usage.KeyCounters { return g.lim.counte
 // AllCounters implements usage.Snapshot.
 func (g *Gateway) AllCounters() map[string]usage.KeyCounters { return g.lim.allCounters() }
 
-// Queue implements usage.Snapshot: holders of a global slot, and requests waiting for one — read
-// from the queue itself, exact.
-func (g *Gateway) Queue() (inFlight, waiting int) { return g.queue.counts() }
+// Queue preserves the existing text-engine counters; Destinations reports every queue.
+func (g *Gateway) Queue() (inFlight, waiting int) { return g.router.text.Queue.counts() }
 
 func (g *Gateway) serveHTTP(w http.ResponseWriter, r *http.Request) {
 	if r.URL.Path == "/console" || strings.HasPrefix(r.URL.Path, "/console/") {

@@ -166,7 +166,7 @@ func (q *request) countTokens(text string, messages []byte) int {
 	if text == "" {
 		return 0
 	}
-	n, _, err := q.g.up.CountTokens(q.r.Context(), text, messages)
+	n, _, err := q.destination.Text.CountTokens(q.r.Context(), q.n.model, text, messages)
 	if err != nil {
 		q.g.logf("gateway: count tokens failed, estimating: %v", err)
 		return upstream.EstimateTokens(text) + upstream.TemplateAllowance(messages)
@@ -259,9 +259,13 @@ func (q *request) fitContext() *gwError {
 	return nil
 }
 
-// effContext is the context in force: min(key.MaxContext, the engine's), ignoring zeros; 0 = unknown.
+// effContext keeps the key ceiling while using the selected model's window when reported.
 func (q *request) effContext() int {
-	eff := q.g.up.Info().ModelContext
+	info := q.destination.Up.Info()
+	eff := info.ModelContext
+	if model := info.ModelDetails[q.n.model]; model.Context > 0 {
+		eff = model.Context
+	}
 	if k := q.key.Limits.MaxContext; k > 0 && (eff == 0 || k < eff) {
 		eff = k
 	}
@@ -307,7 +311,7 @@ func (q *request) models() {
 		return
 	}
 	q.outcome = outcomeEngineErr
-	resp, err := q.g.up.Do(q.r.Context(), http.MethodGet, "/v1/models", nil, false)
+	resp, err := q.destination.Text.Do(q.r.Context(), http.MethodGet, "/v1/models", nil, false)
 	if err != nil {
 		q.fail(q.upstreamErr(err))
 		return
@@ -376,13 +380,13 @@ func (q *request) me() {
 	m.Limits = q.key.Limits
 	cnt := q.g.lim.counters(q.key.ID)
 	m.Usage.RPMUsed, m.Usage.TPMUsed, m.Usage.TodayTokens, m.Usage.InFlight = cnt.RPMUsed, cnt.TPMUsed, cnt.TodayTokens, cnt.InFlight
-	info := q.g.up.Info()
+	info := q.g.router.text.Up.Info()
 	m.Host.Name = q.g.cfg.HostName
 	if q.g.cfg.LiveHostName != nil {
 		m.Host.Name = q.g.cfg.LiveHostName()
 	}
-	m.Host.Audio.Transcriptions = audioModel(q.g.cfg.Transcribe, q.g.cfg.TranscribeModel)
-	m.Host.Audio.Speech = audioModel(q.g.cfg.Speech, q.g.cfg.SpeechModel)
+	m.Host.Audio.Transcriptions = q.g.router.audioModel(transcribeEndpoint)
+	m.Host.Audio.Speech = q.g.router.audioModel(speechEndpoint)
 	for _, model := range []**string{&m.Host.Audio.Transcriptions, &m.Host.Audio.Speech} {
 		if *model != nil && !allowsModel(q.key, q.g.cfg.ModelsPinned, **model) {
 			*model = nil
