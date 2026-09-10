@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/infercat/infercat/internal/admin"
+	"github.com/infercat/infercat/internal/agentconfig"
 	"github.com/infercat/infercat/internal/product"
 	"github.com/infercat/infercat/internal/tunnel"
 	"github.com/infercat/infercat/internal/upstream"
@@ -32,8 +33,23 @@ func (e *env) cmdStatus(ctx context.Context, pre string, args []string) error {
 	if err != nil {
 		return err
 	}
+	cfg, err := agentconfig.Default()
+	if err != nil {
+		return err
+	}
+	agents, err := cfg.List()
+	if err != nil {
+		return err
+	}
+	if len(agents) > 0 && !*watch {
+		fmt.Fprintf(e.out, "agents    %s\n", strings.Join(agents, ", "))
+	}
 	st, err := admin.Fetch(ctx, dataDir)
 	if errors.Is(err, admin.ErrNoDaemon) {
+		if len(agents) > 0 && !*watch {
+			fmt.Fprintln(e.out, "no running host or bridge for this data directory")
+			return nil
+		}
 		return fmt.Errorf("no host is running for %s — start one with `%s serve` (a bridge: `%s connect --data-dir %s …`)", dataDir, product.CLIName, product.CLIName, dataDir)
 	}
 	if err != nil {
@@ -68,6 +84,11 @@ func (e *env) watchStatus(ctx context.Context, dataDir string, st admin.Status, 
 	var lines []string
 	refresh := func(st admin.Status, err error) {
 		var b strings.Builder
+		if cfg, e := agentconfig.Default(); e == nil {
+			if a, e := cfg.List(); e == nil && len(a) > 0 {
+				fmt.Fprintf(&b, "agents    %s\n", strings.Join(a, ", "))
+			}
+		}
 		if err != nil {
 			fmt.Fprintf(&b, "%s %s — no answer from the host for %s (%v); still watching\n", product.Name, product.Version, dataDir, err)
 		} else {

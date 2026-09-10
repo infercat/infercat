@@ -61,6 +61,7 @@ License of each typeface are reproduced verbatim at the end of this file.
 | golang.org/x/time/rate | v0.15.0 | BSD-3-Clause | https://cs.opensource.google/go/x/time/+/v0.15.0:LICENSE |
 | golang.zx2c4.com/wintun | v0.0.0-20230126152724-0fa3db229ce2 | MIT | https://git.zx2c4.com/wintun-go/tree/LICENSE?id=0fa3db229ce2 |
 | golang.zx2c4.com/wireguard/windows/tunnel/winipcfg | v0.5.3 | MIT | https://git.zx2c4.com/wireguard-windows/tree/COPYING?h=v0.5.3 |
+| gopkg.in/yaml.v3 | v3.0.1 | MIT | https://github.com/go-yaml/yaml/blob/v3.0.1/LICENSE |
 | gvisor.dev/gvisor/pkg | v0.0.0-20260224225140-573d5e7127a8 | Apache-2.0 | https://github.com/google/gvisor/blob/573d5e7127a8/LICENSE |
 | tailscale.com | v1.103.0-pre.0.20260904030409-31d8badb3bfb | BSD-3-Clause | https://github.com/tailscale/tailscale/blob/31d8badb3bfb/LICENSE |
 
