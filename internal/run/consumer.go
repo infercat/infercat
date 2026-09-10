@@ -7,10 +7,20 @@ import (
 )
 
 // Policy is registered by the host alongside a kind, never supplied by a friend.
+// BatchAdmission is prepared without the manager lock. Reserve runs under the store
+// admission lock, does no disk I/O, and returns rollback for a refused commit.
+type BatchAdmission struct {
+	QueueLimit int
+	Reserve    func([]Run) (func(), error)
+}
+
 type Policy struct {
+	Admission func(context.Context, string) (BatchAdmission, error)
+	Release   func(string, string) // Idempotently release any unspent per-job reservation.
+
 	ForceStop      func() // Must end the owned runtime generation; installed before Start.
 	Serial         bool
-	QueueLimit     func(string) (int, error)
+	QueueLimit     func(string) (int, error) // Resolved outside the manager mutex.
 	Validate       func(json.RawMessage) error
 	DeferredCancel bool // A running attempt finishes; successful completion remains Done.
 	JoinCancel     bool // An active consumer must return before cancellation becomes terminal.

@@ -94,6 +94,12 @@ func AudioDefaults(l Limits) Limits {
 }
 
 func ImageDefaults(l Limits) Limits {
+	if l.DailyImages < 0 {
+		l.DailyImages = -1
+	}
+	if l.MaxQueuedImages < 0 {
+		l.MaxQueuedImages = -1
+	}
 	if l.DailyImages == 0 {
 		l.DailyImages = 20
 	}

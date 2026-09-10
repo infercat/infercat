@@ -141,6 +141,7 @@ func TestImageSettlementFailureAndAmbiguity(t *testing.T) {
 		charged, measured float64
 	}{
 		{"complete", 200, `{"data":[{"b64_json":"` + tinyImage() + `"}]}`, 1, 1},
+		{"empty", 200, `{"data":[]}`, 0, 0},
 		{"definitive", 500, `{"error":{"message":"could not make it"}}`, 0, 0},
 		{"invalid", 200, `{"data":[{"b64_json":"bad"}]}`, 1, 0},
 		{"url-only", 200, `{"data":[{"url":"https://invalid.example/PRIVATE"}]}`, 1, 0},

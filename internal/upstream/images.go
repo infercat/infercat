@@ -3,6 +3,7 @@ package upstream
 import (
 	"context"
 	"net/http"
+	"time"
 )
 
 // ImageEngine shares the explicit engine probe/transport; it needs no tokenizer.
@@ -11,13 +12,24 @@ type ImageEngine interface {
 	Refresh(context.Context) error
 	ImageDo(context.Context, []byte) (*http.Response, error)
 }
-type imageClient struct{ AudioEngine }
+
+// ImageGenerationTimeout bounds the complete non-streaming image response.
+const ImageGenerationTimeout = 15 * time.Minute
+
+type imageClient struct{ *audioClient }
 
 func OpenImages(ctx context.Context, url, key string) (ImageEngine, error) {
-	a, e := OpenAudio(ctx, url, key)
-	if e != nil || a == nil {
+	if url == "" {
+		return nil, nil
+	}
+	base, e := normalize(url)
+	if e != nil {
 		return nil, e
 	}
+	c := newClientWithHeaderTimeout(base, key, ImageGenerationTimeout)
+	c.hc.Timeout = ImageGenerationTimeout
+	a := &audioClient{c: c, info: Info{URL: base.String(), Slots: 1}}
+	_ = a.Refresh(ctx)
 	return &imageClient{a}, nil
 }
 func (i *imageClient) ImageDo(ctx context.Context, body []byte) (*http.Response, error) {

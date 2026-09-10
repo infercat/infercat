@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"net/http/httptrace"
 	"os"
+	"strings"
 	"sync/atomic"
 	"time"
 
@@ -35,7 +36,7 @@ const (
 // ruling; measured on the real stack, 014 Log).
 func (e endpoint) countsAgainstRPM() bool {
 	_, class := usage.ModelEndpoint(string(e))
-	return class != ""
+	return class != "" || e == "/v1/images/jobs" || strings.HasPrefix(string(e), "/v1/images/outputs/")
 }
 
 // outcome is how a request ended, set by the stage that ended it (DESIGN §1.4). finish reads it

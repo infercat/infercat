@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"errors"
 	"io"
+	"log"
 	"os"
 	"path/filepath"
 	"sort"
@@ -138,24 +139,27 @@ func (s *Store) PutImage(key, rid string, raw []byte, mime string, w, h int) (js
 		return nil, err
 	}
 	for _, id := range evict {
-		if err = os.Remove(s.artifactPath(key, id)); err != nil && !errors.Is(err, os.ErrNotExist) {
-			s.broken[key] = err
-			return nil, err
-		}
+		s.unlinkImage(s.artifactPath(key, id))
 	}
 	return result, nil
 }
 func (s *Store) ReadImage(key, rid string) ([]byte, ImageOutput, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	v, err := s.load(key)
+	o, err := func() (ImageOutput, error) {
+		s.mu.Lock()
+		defer s.mu.Unlock()
+		v, err := s.load(key)
+		if err != nil {
+			return ImageOutput{}, err
+		}
+		r, ok := v.Runs[rid]
+		o, has := imageOutput(r)
+		if !ok || !has || o.Gone || !o.ExpiresAt.After(s.now()) {
+			return o, ErrNotFound
+		}
+		return o, nil
+	}()
 	if err != nil {
-		return nil, ImageOutput{}, err
-	}
-	r, ok := v.Runs[rid]
-	o, has := imageOutput(r)
-	if !ok || !has || o.Gone || !o.ExpiresAt.After(s.now()) {
-		return nil, o, ErrNotFound
+		return nil, o, err
 	}
 	path := s.artifactPath(key, rid)
 	if info, e := os.Lstat(filepath.Dir(path)); e != nil || !info.IsDir() || info.Mode()&os.ModeSymlink != 0 {
@@ -198,16 +202,19 @@ func (s *Store) DiscardImage(key, rid string) error {
 	if err = s.commit(key, next, &Event{RunID: rid, State: r.State, Time: s.now().UTC()}); err != nil {
 		return err
 	}
-	if err = os.Remove(s.artifactPath(key, rid)); errors.Is(err, os.ErrNotExist) {
-		return nil
-	}
-	return err
+	s.unlinkImage(s.artifactPath(key, rid))
+	return nil
 }
 
 // Called under the store lock after expiry. Removes orphaned files after an interrupted commit too.
 func (s *Store) sweepImages(key string, v *snapshot) error {
 	dir := filepath.Join(s.root, key, "images")
 	if info, e := os.Lstat(dir); errors.Is(e, os.ErrNotExist) {
+		for path := range s.imageCleanup {
+			if filepath.Dir(path) == dir {
+				delete(s.imageCleanup, path)
+			}
+		}
 		return nil
 	} else if e != nil {
 		return e
@@ -217,6 +224,11 @@ func (s *Store) sweepImages(key string, v *snapshot) error {
 	entries, err := os.ReadDir(dir)
 	if err != nil {
 		return err
+	}
+	for path := range s.imageCleanup {
+		if filepath.Dir(path) == dir {
+			delete(s.imageCleanup, path)
+		}
 	}
 	next := clone(v)
 	changed := false
@@ -237,10 +249,29 @@ func (s *Store) sweepImages(key string, v *snapshot) error {
 		r, exists := next.Runs[e.Name()]
 		o, ok := imageOutput(r)
 		if !exists || !ok || o.Gone {
-			if err = os.Remove(filepath.Join(dir, e.Name())); err != nil {
-				return err
-			}
+			s.unlinkImage(filepath.Join(dir, e.Name()))
 		}
 	}
 	return nil
+}
+
+func (s *Store) unlinkImage(path string) {
+	if err := os.Remove(path); err != nil && !errors.Is(err, os.ErrNotExist) {
+		if s.imageCleanup == nil {
+			s.imageCleanup = map[string]bool{}
+		}
+		s.imageCleanup[path] = true
+		if s.Log != nil {
+			s.Log("image cleanup pending for %s: %v", path, err)
+		} else {
+			log.Printf("image cleanup pending for %s: %v", path, err)
+		}
+	} else {
+		delete(s.imageCleanup, path)
+	}
+}
+func (s *Store) ImageCleanupPending() int {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return len(s.imageCleanup)
 }

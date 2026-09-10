@@ -572,3 +572,29 @@ when not queued). Each output is `{url,mime,w,h,bytes,expiresAt,gone?}`; metadat
 is sent without image bytes. One admission event names a batch's first sibling;
 clients refresh the whole image list on any run event and after reconnect, so
 all siblings, current positions and evictions are observed together.
+
+
+### Image admission and failure boundaries (156)
+
+The batch's daily image reservation and queued cap now admit together, before any
+run is committed. A refused batch (including the synchronous route) creates no
+failed rows. Commit failure rolls the reservation back; queued cancellation and
+pre-dispatch failure release unused holds. The gateway request owner alone charges
+completed or ambiguous dispatched work. Outstanding holds carry over UTC midnight;
+charges belong to the settlement day. Restart interrupts queued work without replay.
+Zero image limits mean defaults, negative values mean unlimited (reported as -1).
+
+One owned HTTP image request runs at a time, with a 15-minute complete-response
+ceiling. Successful request-body write establishes dispatch. Sent-but-lost work
+uses `image_abandoned` with cause-specific, charged wording; the next dispatch waits
+for a fresh successful health probe. A remote server may keep computing after a
+lost connection; health does not prove remote work stopped. A valid empty data
+array is a definitive no-output failure and releases the hold.
+
+Each configured upstream is re-probed periodically. The host model pin applies to
+text only; key allowlists still apply to image/audio models. List and output GETs
+use request admission and RPM; list positions come from one queued snapshot, and
+artifact reads release the store mutex before reading bytes. Clients coalesce
+refreshes and respect 429. The 256 MiB image budget counts retained, servable bytes;
+unlinkable stale files are logged and retried, never marking a key broken. Status
+reports `image_cleanup_pending` and prints a pending-cleanup line when nonzero.

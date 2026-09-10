@@ -379,7 +379,7 @@ type meResponse struct {
 func (q *request) me() {
 	var m meResponse
 	m.Key.ID, m.Key.Name, m.Key.Status = q.key.ID, q.key.Name, q.key.Status
-	m.Limits = keys.ImageDefaults(q.key.Limits)
+	m.Limits = keys.AudioDefaults(q.key.Limits)
 	m.Host.Images = q.g.imageOffer(q.key)
 	cnt := q.g.lim.counters(q.key.ID)
 	m.Usage.TodayImages = cnt.TodayImages
@@ -392,7 +392,7 @@ func (q *request) me() {
 	m.Host.Audio.Transcriptions = q.g.router.audioModel(transcribeEndpoint)
 	m.Host.Audio.Speech = q.g.router.audioModel(speechEndpoint)
 	for _, model := range []**string{&m.Host.Audio.Transcriptions, &m.Host.Audio.Speech} {
-		if *model != nil && !allowsModel(q.key, q.g.cfg.ModelsPinned, **model) {
+		if *model != nil && !allowsModel(q.key, nil, **model) {
 			*model = nil
 		}
 	}

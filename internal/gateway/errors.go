@@ -15,6 +15,7 @@ import (
 type Code string
 
 const (
+	CodeImageAbandoned        Code = "image_abandoned"
 	CodeImageQueueFull        Code = "image_queue_full"
 	CodeImageBudgetExhausted  Code = "image_budget_exhausted"
 	CodeInvalidKey            Code = "invalid_key"
@@ -43,6 +44,7 @@ type codeRow struct {
 }
 
 var codeTable = map[Code]codeRow{
+	CodeImageAbandoned:        {http.StatusBadGateway, "upstream_error"},
 	CodeImageQueueFull:        {http.StatusTooManyRequests, "rate_limit_error"},
 	CodeImageBudgetExhausted:  {http.StatusTooManyRequests, "rate_limit_error"},
 	CodeInvalidKey:            {http.StatusUnauthorized, "authentication_error"},

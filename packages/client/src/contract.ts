@@ -38,7 +38,7 @@ export type GatewayErrorCode =
   | 'invalid_key' | 'key_paused' | 'key_revoked' | 'model_not_allowed'
   | 'body_too_large' | 'context_too_long' | 'rate_limited' | 'concurrency_limited'
   | 'budget_exhausted' | 'queue_timeout' | 'upstream_down' | 'upstream_error'
-  | 'image_queue_full' | 'image_budget_exhausted'
+  | 'image_queue_full' | 'image_budget_exhausted' | 'image_abandoned'
   | 'audio_budget_exhausted' | 'speech_budget_exhausted' | 'images_not_supported'
   | 'invalid_request' | 'not_found' | 'client_closed';
 

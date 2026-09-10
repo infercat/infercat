@@ -17,8 +17,10 @@ The host binary and the web app, and specifically the four things the product pr
    else on the host — another port, a file, the admin socket — through an invite is a vulnerability.
 2. **Invite secrets.** Stored hashed on the host, shown once at creation, never logged. A secret that
    lands in a log, an error body, or a usage record is a vulnerability.
-3. **Friends' usage data.** The host sees counts and timings only, unless they ran `serve --log-prompts`.
-   Prompt or completion text reaching disk without that flag is a vulnerability.
+3. **Friends' usage data.** Chat request logs contain counts and timings unless the host ran `serve --log-prompts`.
+   Image jobs retain prompts and pictures under the friend’s key for 7 days, subject to storage/retention
+   limits, independently of logging; opting into prompt logs also writes image prompts to `usage.jsonl`.
+   Cross-key access, retention violations, or unexpected chat-text logging are vulnerabilities.
 4. **The upstream engine.** A burst must degrade to `429`/`503` with `Retry-After`, never to an
    out-of-memory engine or a stalled queue. A request pattern that stalls or crashes the engine
    through the gateway's limits is a vulnerability.

@@ -24,6 +24,7 @@ type Manager struct {
 	started     bool
 	sweeping    bool
 	joinTimeout time.Duration
+	releases    map[string]func()
 }
 
 type execution struct {
@@ -56,44 +57,69 @@ func (m *Manager) Submit(key, kind, priority string, input json.RawMessage) (Run
 }
 func (m *Manager) SubmitBatch(key, kind, priority string, inputs []json.RawMessage) ([]Run, error) {
 	m.mu.Lock()
-	defer m.mu.Unlock()
 	if m.ctx.Err() != nil {
+		m.mu.Unlock()
 		return nil, ErrConflict
 	}
 	if m.Kinds[kind] == nil {
+		m.mu.Unlock()
 		return nil, ErrInvalid
-	}
-	if priority == "" {
-		priority = "interactive"
 	}
 	m.started = true
 	p := m.Policies[kind]
-	cap := MaxLiveKey
+	m.mu.Unlock()
+	if priority == "" {
+		priority = "interactive"
+	}
+	admission := BatchAdmission{QueueLimit: MaxLiveKey}
+	var err error
 	if p.QueueLimit != nil {
-		var err error
-		cap, err = p.QueueLimit(key)
-		if err != nil {
-			return nil, err
-		}
+		admission.QueueLimit, err = p.QueueLimit(key)
+	}
+	if err == nil && p.Admission != nil {
+		admission, err = p.Admission(m.ctx, key)
+	}
+	if err != nil {
+		return nil, err
 	}
 	for _, in := range inputs {
 		if p.Validate != nil {
-			if err := p.Validate(in); err != nil {
+			if err = p.Validate(in); err != nil {
 				return nil, err
 			}
 		}
 	}
-	rows, err := m.Store.CreateBatch(key, kind, priority, inputs, cap)
-	if err == nil {
-		if p.Serial {
-			m.schedule(kind)
-		} else {
-			for _, r := range rows {
-				m.start(r)
-			}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if m.ctx.Err() != nil {
+		return nil, ErrConflict
+	}
+	rows, err := m.Store.CreateBatch(key, kind, priority, inputs, admission.QueueLimit, admission.Reserve)
+	if err != nil {
+		return nil, err
+	}
+	if p.Release != nil {
+		if m.releases == nil {
+			m.releases = map[string]func(){}
+		}
+		for _, r := range rows {
+			m.releases[r.ID] = func() { p.Release(key, r.ID) }
 		}
 	}
-	return rows, err
+	if p.Serial {
+		m.schedule(kind)
+	} else {
+		for _, r := range rows {
+			m.start(r)
+		}
+	}
+	return rows, nil
+}
+func (m *Manager) release(rid string) {
+	if release := m.releases[rid]; release != nil {
+		delete(m.releases, rid)
+		release()
+	}
 }
 func (m *Manager) queued(kind string) []Run {
 	summaries, _ := m.Store.List("")
@@ -152,6 +178,7 @@ func (m *Manager) start(r Run) {
 			m.mu.Lock()
 			if m.active[r.ID] == worker {
 				delete(m.active, r.ID)
+				m.release(r.ID)
 				if m.Policies[r.Kind].Serial {
 					m.schedule(r.Kind)
 				}
@@ -199,6 +226,9 @@ func (m *Manager) Cancel(key, rid string) (Run, error) {
 		return nil
 	})
 	if err == nil {
+		if terminal(r.State) {
+			m.release(r.ID)
+		}
 		if worker := m.active[rid]; worker != nil && !(r.State == Running && m.Policies[r.Kind].DeferredCancel) {
 			worker.cancel()
 			if m.Policies[r.Kind].JoinCancel {
@@ -346,6 +376,9 @@ func (m *Manager) attempt(ctx context.Context, r Run, step Step, live bool) (Run
 		} else if stepErr != nil || len(result.Output) > MaxOutput || !json.Valid(result.Output) {
 			v.State = Failed
 			v.Reason = "step failed"
+			if v.Kind == "image" && result.Usage.Code != "" {
+				v.Reason = boundedReason(result.Usage.Code)
+			}
 		} else if _, stored := imageOutput(*v); stored && m.Policies[v.Kind].DeferredCancel {
 			v.State = Running // the completed image remains running until its terminal snapshot
 		} else {
@@ -449,6 +482,9 @@ func (m *Manager) Start() {
 func (m *Manager) Close() {
 	m.mu.Lock()
 	m.cancel()
+	for id := range m.releases {
+		m.release(id)
+	}
 	for id, w := range m.active {
 		m.boundJoin(Run{ID: id, KeyID: w.key}, w)
 	}

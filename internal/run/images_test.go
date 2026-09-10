@@ -249,3 +249,90 @@ func TestImageCancelAfterOutputBeforeFinalSnapshot(t *testing.T) {
 	finish <- struct{}{}
 	untilImage(t, s, "key", r.ID, Done)
 }
+
+func TestUnlinkFailureKeepsKeyUsableAndRetries(t *testing.T) {
+	s, _ := NewStore(t.TempDir())
+	s.imageBudget = 4
+	a, _ := s.Create("key", "image", "interactive", imageIn("first"))
+	if _, e := s.PutImage("key", a.ID, []byte("four"), "image/png", 1, 1); e != nil {
+		t.Fatal(e)
+	}
+	path := s.artifactPath("key", a.ID)
+	if e := os.Remove(path); e != nil {
+		t.Fatal(e)
+	}
+	if e := os.Mkdir(path, 0700); e != nil {
+		t.Fatal(e)
+	}
+	if e := os.WriteFile(path+"/held", []byte("busy"), 0600); e != nil {
+		t.Fatal(e)
+	}
+	b, _ := s.Create("key", "image", "interactive", imageIn("second"))
+	if _, e := s.PutImage("key", b.ID, []byte("four"), "image/png", 1, 1); e != nil {
+		t.Fatal("stale unlink refused a new image", e)
+	}
+	r, e := s.Get("key", a.ID)
+	if e != nil {
+		t.Fatal("key bricked", e)
+	}
+	if s.ImageCleanupPending() != 1 {
+		t.Fatal("missing pending cleanup count")
+	}
+	o, _ := imageOutput(r)
+	if !o.Gone {
+		t.Fatal("old output still servable")
+	}
+	if e = s.DiscardImage("key", a.ID); e != nil {
+		t.Fatal(e)
+	}
+	if _, _, e = s.ReadImage("key", b.ID); e != nil {
+		t.Fatal(e)
+	}
+	if e = os.Remove(path + "/held"); e != nil {
+		t.Fatal(e)
+	}
+	s.mu.Lock()
+	e = s.sweepImages("key", s.data["key"])
+	s.mu.Unlock()
+	if e != nil {
+		t.Fatal(e)
+	}
+	if _, e = os.Stat(path); !errors.Is(e, os.ErrNotExist) {
+		t.Fatal("cleanup not retried", e)
+	}
+	if s.ImageCleanupPending() != 0 {
+		t.Fatal("stale cleanup count")
+	}
+}
+
+func TestImageAdmissionRollsBackFailedCommit(t *testing.T) {
+	s, _ := NewStore(t.TempDir())
+	held := 0
+	s.write = func(string, []byte) error { return errors.New("disk refusal") }
+	_, e := s.CreateBatch("key", "image", "interactive", []json.RawMessage{imageIn("a"), imageIn("b")}, 8, func(rows []Run) (func(), error) {
+		held += len(rows)
+		return func() { held -= len(rows) }, nil
+	})
+	if e == nil || held != 0 {
+		t.Fatal("failed commit retained image reservations", e, held)
+	}
+}
+func TestQueueLimitResolvesOutsideManagerLock(t *testing.T) {
+	s, _ := NewStore(t.TempDir())
+	m, _ := New(s, nil, nil)
+	defer m.Close()
+	entered, release := make(chan struct{}), make(chan struct{})
+	_ = m.Register("image", ImageKind, Policy{QueueLimit: func(string) (int, error) { close(entered); <-release; return 0, errors.New("refused") }})
+	done := make(chan struct{})
+	go func() { defer close(done); _, _ = m.Submit("key", "image", "interactive", imageIn("one")) }()
+	<-entered
+	free := m.mu.TryLock()
+	if free {
+		m.mu.Unlock()
+	}
+	close(release)
+	<-done
+	if !free {
+		t.Fatal("queue lookup held the manager mutex")
+	}
+}

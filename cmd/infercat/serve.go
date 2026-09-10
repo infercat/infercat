@@ -261,6 +261,7 @@ func (e *env) cmdServe(ctx context.Context, pre string, args []string) error {
 			s := harness.Status()
 			st.Agent = &s
 		}
+		st.ImageCleanupPending = runStore.ImageCleanupPending()
 		st.Console = consoleAddress
 		st.Name = state.name()
 		remoteState := remoteStore.State()
@@ -296,6 +297,11 @@ func (e *env) cmdServe(ctx context.Context, pre string, args []string) error {
 	})
 
 	go refreshLoop(ctx, up, e.logf, refreshEvery)
+	for _, engine := range []probeEngine{transcribe, speech, images} {
+		if engine != nil {
+			go refreshLoop(ctx, engine, e.logf, refreshEvery)
+		}
+	}
 
 	errc := make(chan error, 2)
 	go func() { errc <- gw.Serve(tun.Listener()) }()
@@ -397,7 +403,12 @@ func tunnelLogf(dataDir string, verbose bool, terminal func(string, ...any)) (fu
 // refreshLoop re-probes the engine; when it comes or goes, or reports a different slot count,
 // that is logged once. Nothing is pushed anywhere: the gateway's queue reads the engine's slot
 // count at every decision (ticket 010, DESIGN §1.5), so an engine down at startup cannot pin it.
-func refreshLoop(ctx context.Context, up upstream.Upstream, logf func(string, ...any), every time.Duration) {
+type probeEngine interface {
+	Info() upstream.Info
+	Refresh(context.Context) error
+}
+
+func refreshLoop(ctx context.Context, up probeEngine, logf func(string, ...any), every time.Duration) {
 	t := time.NewTicker(every)
 	defer t.Stop()
 	was := up.Info().Health.OK

@@ -53,13 +53,14 @@ type meterState struct {
 }
 
 type keyState struct {
-	mu       sync.Mutex
-	log      []logEntry
-	seq      uint64
-	inFlight int
-	day      time.Time
-	lastSeen time.Time
-	meters   map[string]*meterState
+	imageHolds map[string]bool
+	mu         sync.Mutex
+	log        []logEntry
+	seq        uint64
+	inFlight   int
+	day        time.Time
+	lastSeen   time.Time
+	meters     map[string]*meterState
 }
 
 // Caller holds the key lock; all classes share its admission/settlement boundary.
