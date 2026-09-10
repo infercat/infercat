@@ -114,6 +114,8 @@ infercat serve --upstream http://127.0.0.1:18080
 
 传给 `serve` 的参数会保存在 `config.json` 中，下次直接运行 `serve` 即可，无需重复输入。
 
+用[图片生成主机配方](docs/IMAGES.zh-CN.md)让朋友生成图片。
+
 <details>
 <summary><b>macOS 提示无法验证开发者</b></summary>
 
