@@ -105,14 +105,16 @@ hook: joined consumers have at most one active run per kind on the host. Joined 
 a 30-second deadline. The host registers
 `Policy.ForceStop(runID)` to stop that run's owned runtime generation. At the
 deadline, the manager waits up to ten more seconds for the hook, recovering a
-panic. A successful stop permits the next queued run; timeout or panic quarantines
-the kind from new starts. Accepted queued and waiting runs fail as `runtime quarantined`,
+panic. Only a nil hook result permits the next queued run; a returned error,
+timeout or panic quarantines the kind from new starts. Accepted queued and waiting runs fail as `runtime quarantined`,
 release their reservations and publish terminal events. New submissions receive
 503 `upstream_down` with Retry-After: 10, rather than a malformed-request error.
 While the stop is still in progress the message is `runtime stopping; retry
 shortly`, distinct from quarantine. Entry
-logs name timeout or panic; a successful stop (including a late return) logs recovery
-and clears quarantine. Host restart also clears it. The bounded Cancelled outcome remains authoritative,
+logs distinguish returned errors, timeouts and panics; a successful stop (including a late return) logs recovery
+and clears quarantine. Host restart also clears it. Shutdown does not create a new quarantine or fail
+other queued/waiting rows through that mechanism; existing interrupted-run recovery
+still fails native work without replay. The bounded Cancelled outcome remains authoritative,
 and late worker returns cannot replace it. Close returns within join + stop bounds.
 At the stop deadline the manager abandons its waiter and closes the joined
 notification. Go cannot kill a non-cooperative hook goroutine: that one goroutine
@@ -214,6 +216,34 @@ SHA-512-verified registry tarball (/tmp/infercat-157-tarball.log). The verified
 manifest SHA-256 is
 `885d9766775a2585f8c3a608cd2d2c97391e158b3ac1c53365cb2d1ca82040db`.
 
-Generation-bound sends reject generation zero as unestablished; callers capture
+A live row whose remaining per-run exception allowance cannot fit a minimal
+terminal record after dropping replay entries fails its key closed at load.
+The operator-reclamation mark is derived from snapshot bytes, including at the
+ordinary ceiling; it is not gated on the snapshot being near the absolute cap.
+Their bytes remain untouched; other keys continue serving. No extra allowance
+is added beyond the absolute cap. Valid v3-produced live states retain terminal
+headroom, and their expired join settles terminally.
+
+Generation-bound sends reject generation zero as unestablished. A stop for zero,
+a superseded generation or an already stopped child succeeds without touching
+the current child. Only a real stop failure quarantines; shutdown logs failures
+without changing other accepted rows. Callers capture
 the generation only after the child starts. Model identifiers are limited to
 256 bytes before gateway dispatch, preserving charged identities without truncation.
+
+A single nonresident ceiling key (67,043,328 encoded bytes) required 46.8–51.7 ms
+per all-key enumeration on this Mac with filesystem pages warm; each call parsed
+the snapshot again. Measurement: /tmp/infercat-157-v4-focused.log.
+The CLI separates proven retries from report-only observations as
+`N awaiting cleanup, M for review`; the admin response carries
+`image_cleanup_pending` (proven retries) and additive `image_orphans_for_review`
+(report-only). The aggregate Store.ImageCleanupPending accessor remains their sum.
+
+The allowance-exhausted 67,043,328-byte fixture enters the new load check and took
+73.9 ms cold (filesystem pages warm); the 67,518,464-byte absolute-cap case took
+83.2 ms. Both preserve bytes and fail only that key. Measurements, without timing
+assertions: /tmp/infercat-157-v5-focused.log. Failed recovery is marked complete
+only after success and is retried on the next load. Needs-attention responses use
+503 upstream_down with Retry-After: 60 and direct the friend to the host.
+Resume, Answer and StopGeneration still have no production caller before 116c;
+these lifecycle behaviours are fixture-proven here, and route proof belongs there.

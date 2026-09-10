@@ -20,6 +20,8 @@ const (
 	MaxAge      = 24 * time.Hour
 )
 
+var ErrNeedsAttention = errors.New("run store needs operator reclamation")
+
 var (
 	ErrStopping    = errors.New("runtime stopping")
 	ErrQuarantined = errors.New("runtime quarantined")

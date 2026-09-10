@@ -184,6 +184,31 @@ func (s *Store) load(key string) (*snapshot, error) {
 		raw, _ := json.Marshal(v)
 		v.encodedBytes = len(raw)
 	}
+	for rid, used := range v.ExceptionBytes {
+		r := v.Runs[rid]
+		if terminal(r.State) || terminalBound-used >= 512 {
+			continue // Valid live states retain the final-state reserve.
+		}
+		probe := *v
+		probe.Runs = map[string]Run{}
+		for id, row := range v.Runs {
+			probe.Runs[id] = row
+		}
+		probe.Events = []Event{}
+		probe.Seq++
+		r.State, r.Reason = Failed, "storage exhausted"
+		r.Updated, r.Expires = s.now().UTC(), s.now().UTC().Add(Retention)
+		if len(r.Output) == 0 {
+			r.Output = json.RawMessage(`{"error":"output not retained: budget"}`)
+		}
+		probe.Runs[rid] = r
+		raw, _ := json.Marshal(&probe)
+		if used+max(0, len(raw)-v.encodedBytes) > terminalBound || len(raw) > MaxStored+MaxRuns*terminalBound {
+			s.log("runs for key %s fail closed: operator reclamation required; snapshot bytes preserved", key)
+			s.markBroken(key, ErrNeedsAttention)
+			return nil, ErrNeedsAttention
+		}
+	}
 	s.data[key] = v
 	if s.recovery && !s.recovered[key] {
 		if err := s.recoverKey(key); err != nil {

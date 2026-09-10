@@ -198,7 +198,9 @@ func Test154SettlementErrorDistinguishesSuccessfulCall(t *testing.T) {
 		_, e := w.Step(Step{Input: json.RawMessage(`{}`)})
 		observed <- e
 		return nil, e
-	}), Policy{Serial: true, JoinCancel: true, ForceStop: func(string) {}})
+	}), Policy{Serial: true, JoinCancel: true, ForceStop: func(string) error {
+		return nil
+	}})
 	submit(t, m)
 	err := <-observed
 	var recorded *SettlementError
@@ -220,10 +222,12 @@ func Test154JoinDeadlineAndRegistrationFreeze(t *testing.T) {
 	}
 	release, entered := make(chan struct{}), make(chan struct{})
 	var stops atomic.Int32
-	m.Register("test", m.Consumer(func(context.Context, *Work) (json.RawMessage, error) { close(entered); <-release; return nil, nil }), Policy{Serial: true, JoinCancel: true, ForceStop: func(string) {
+	m.Register("test", m.Consumer(func(context.Context, *Work) (json.RawMessage, error) { close(entered); <-release; return nil, nil }), Policy{Serial: true, JoinCancel: true, ForceStop: func(string) error {
 		if stops.Add(1) == 1 {
 			close(release)
 		}
+
+		return nil
 	}})
 	r := submit(t, m)
 	<-entered

@@ -597,7 +597,9 @@ use request admission and RPM; list positions come from one queued snapshot, and
 artifact reads release the store mutex before reading bytes. Clients coalesce
 refreshes and respect 429. The 256 MiB image budget counts retained, servable bytes;
 unlinkable stale files are logged and retried, never marking a key broken. Status
-reports `image_cleanup_pending` and prints a pending-cleanup line when nonzero.
+reports `image_cleanup_pending` for proven retries and `image_orphans_for_review`
+for report-only observations. If either is nonzero, it prints "N awaiting cleanup,
+M for review". The Go `ImageCleanupPending()` accessor remains their sum.
 
 ### Loadout profiles and setup
 

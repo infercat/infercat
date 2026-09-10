@@ -13,7 +13,7 @@ import (
 )
 
 func Test157StopJoinAndQuarantine(t *testing.T) {
-	for _, mode := range []string{"success", "timeout", "panic"} {
+	for _, mode := range []string{"success", "timeout", "panic", "error"} {
 		t.Run(mode, func(t *testing.T) {
 			s := store(t)
 			m := manager(t, s, nil, nil)
@@ -38,12 +38,17 @@ func Test157StopJoinAndQuarantine(t *testing.T) {
 					<-stuck
 				}
 				return json.RawMessage(`{}`), nil
-			}), Policy{Serial: true, JoinCancel: true, Release: func(string, string) { releases.Add(1) }, ForceStop: func(id string) {
+			}), Policy{Serial: true, JoinCancel: true, Release: func(string, string) { releases.Add(1) }, ForceStop: func(id string) error {
 				stopping <- id
 				if mode == "panic" {
 					panic("fixture")
 				}
+				if mode == "error" {
+					return errors.New("owned generation was not stopped")
+				}
 				<-release
+
+				return nil
 			}})
 			a, err := m.Submit("key", "test", "", json.RawMessage(`{}`))
 			if err != nil {

@@ -44,11 +44,12 @@ func (m *Manager) resumeKind(kind string) {
 
 // Called under m.mu. Accepted queued work settles before any new admission.
 func (m *Manager) quarantine(kind, cause string) {
+	m.Store.log("run kind %s force-stop %s", kind, cause)
+	if m.ctx.Err() != nil {
+		return
+	}
 	if m.quarantined == nil {
 		m.quarantined = map[string]bool{}
-	}
-	if !m.quarantined[kind] {
-		m.Store.log("run kind %s quarantined: force-stop %s", kind, cause)
 	}
 	m.quarantined[kind] = true
 	rows, _ := m.Store.List("")
@@ -94,41 +95,44 @@ func (m *Manager) boundJoin(r Run, w *execution) {
 			m.blocked[w.kind]++
 			stop := m.Policies[w.kind].ForceStop
 			m.mu.Unlock()
-			stopped := make(chan bool, 1)
+			stopped := make(chan string, 1)
 			go func() {
-				ok := false
+				result := "panic"
 				defer func() {
 					_ = recover()
 					m.mu.Lock()
 					defer m.mu.Unlock()
 					if w.stopAbandoned {
-						if ok {
+						if result == "" {
 							m.recoveredKind(w.kind)
 						}
 					} else {
-						stopped <- ok
+						stopped <- result
 					}
 				}()
 				if stop != nil {
-					stop(r.ID)
+					if err := stop(r.ID); err != nil {
+						result = "error"
+						return
+					}
 				} else {
 					m.Store.log("run %s join deadline: no force-stop hook", r.ID)
 				}
-				ok = true
+				result = ""
 			}()
 			deadline := time.NewTimer(m.stopTimeout)
 			defer deadline.Stop()
-			ok, timedOut := false, false
+			cause, timedOut := "", false
 			select {
-			case ok = <-stopped:
+			case cause = <-stopped:
 			case <-deadline.C:
-				timedOut = true
+				cause, timedOut = "timeout", true
 			}
 			m.finish(r.KeyID, r.ID, Cancelled, "consumer did not join", nil)
 			m.mu.Lock()
 			if timedOut {
 				select {
-				case ok = <-stopped:
+				case cause = <-stopped:
 					timedOut = false
 				default:
 					w.stopAbandoned = true
@@ -139,13 +143,9 @@ func (m *Manager) boundJoin(r Run, w *execution) {
 				m.release(r.ID)
 			}
 			m.blocked[w.kind]--
-			if ok {
+			if cause == "" {
 				m.recoveredKind(w.kind)
 			} else {
-				cause := "panic"
-				if timedOut {
-					cause = "timeout"
-				}
 				m.quarantine(w.kind, cause)
 			}
 			m.mu.Unlock()

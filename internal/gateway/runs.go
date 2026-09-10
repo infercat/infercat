@@ -129,6 +129,8 @@ func runError(err error) *gwError {
 		return gatewayError
 	}
 	switch {
+	case errors.Is(err, runstate.ErrNeedsAttention):
+		return errf(CodeUpstreamDown, 60, "this key's run store needs the host's attention")
 	case errors.Is(err, runstate.ErrStopping):
 		return errf(CodeUpstreamDown, retryAfterUpstreamDown, "runtime stopping; retry shortly")
 	case errors.Is(err, runstate.ErrQuarantined):

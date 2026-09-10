@@ -21,7 +21,6 @@ func (s *Store) markBroken(key string, err error) {
 	}
 }
 func (s *Store) recoverKey(key string) error {
-	s.recovered[key] = true
 	v := s.data[key]
 	for id, r := range v.Runs {
 		if terminal(r.State) {
@@ -40,9 +39,12 @@ func (s *Store) recoverKey(key string) error {
 		next.Runs[id] = r
 		if err := s.commit(key, next, &Event{RunID: id, State: Failed, Time: r.Updated}); err != nil {
 			s.markBroken(key, err)
+			delete(s.data, key)
+			delete(s.recovered, key)
 			return err
 		}
 	}
+	s.recovered[key] = true
 	return nil
 }
 func (s *Store) releaseIdle() {
@@ -104,5 +106,10 @@ func (s *Store) log(format string, args ...any) {
 // stop owned execution and present this snapshot instead of retrying the mutation.
 type CommittedTerminal struct{ Run Run }
 
-func (e *CommittedTerminal) Error() string { return "run ended: " + e.Run.Reason }
-func committedTerminal(err error) bool     { var ended *CommittedTerminal; return errors.As(err, &ended) }
+func (e *CommittedTerminal) Error() string {
+	if e.Run.Reason == "" {
+		return "run ended"
+	}
+	return "run ended: " + e.Run.Reason
+}
+func committedTerminal(err error) bool { var ended *CommittedTerminal; return errors.As(err, &ended) }

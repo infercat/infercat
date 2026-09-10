@@ -244,8 +244,8 @@ func writeStatus(w io.Writer, st admin.Status) {
 	fmt.Fprintf(w, "queue     %d in flight, %d waiting  (peak %d in flight, sampled)\n", st.Queue.InFlight, st.Queue.Waiting, st.Engine.SlotsPeak)
 	fmt.Fprintf(w, "engine    %s\n", engineWords(st.Engine))
 	fmt.Fprintf(w, "process   %s\n", processWords(st.Process))
-	if st.ImageCleanupPending > 0 {
-		fmt.Fprintf(w, "images    %d stale output files awaiting cleanup\n", st.ImageCleanupPending)
+	if st.ImageCleanupPending > 0 || st.ImageOrphansForReview > 0 {
+		fmt.Fprintf(w, "images    %d awaiting cleanup, %d for review\n", st.ImageCleanupPending, st.ImageOrphansForReview)
 	}
 	if len(st.Keys) == 0 {
 		fmt.Fprintf(w, "\nno keys yet — `%s keys add <name>` mints one\n", product.CLIName)
