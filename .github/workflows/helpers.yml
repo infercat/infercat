@@ -1,0 +1,90 @@
+name: Native helpers
+
+on:
+  push:
+    branches: ['**']
+    tags: ['helpers-v*']
+    paths: ['cmd/infercat-speech/**', 'internal/speech/**', 'packaging/helpers/**', '.github/workflows/helpers.yml']
+  pull_request:
+    paths: ['cmd/infercat-speech/**', 'internal/speech/**', 'packaging/helpers/**', '.github/workflows/helpers.yml']
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - runner: macos-14
+            target: darwin-arm64
+          - runner: ubuntu-24.04
+            target: linux-amd64
+    runs-on: ${{ matrix.runner }}
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - uses: actions/setup-python@v6
+        with:
+          python-version: '3.12'
+      - name: Pinned CMake
+        run: python3 -m pip install cmake==3.31.6
+      - name: Read source pin
+        id: pins
+        run: python3 -c 'import json; print("audio=" + json.load(open("packaging/helpers/pins.json"))["audio"])' >> "$GITHUB_OUTPUT"
+      - uses: actions/checkout@v5
+        with:
+          repository: 0xShug0/audio.cpp
+          ref: ${{ steps.pins.outputs.audio }}
+          path: helper-source
+          persist-credentials: false
+      - name: Test and build relocatable snapshot
+        env:
+          REF: ${{ github.ref_name }}
+        run: |
+          go test -race ./internal/speech
+          python3 -m unittest discover -s packaging/helpers -p '*_test.py'
+          version="snapshot-${GITHUB_SHA}"
+          case "$GITHUB_REF" in refs/tags/helpers-v*) version="${REF#helpers-}" ;; esac
+          python3 packaging/helpers/build.py --audio-source helper-source --work "$RUNNER_TEMP/helpers" --version "$version"
+      - uses: actions/upload-artifact@v6
+        with:
+          name: helpers-${{ matrix.target }}
+          path: |
+            ${{ runner.temp }}/helpers/*.tar.gz
+            ${{ runner.temp }}/helpers/*.sha256
+          if-no-files-found: error
+          retention-days: 7
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/helpers-v')
+    needs: build
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          persist-credentials: false
+      - uses: actions/download-artifact@v6
+        with:
+          pattern: helpers-*
+          path: assets
+          merge-multiple: true
+      - name: Verify and create draft release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          python3 packaging/helpers/verify.py assets "$(git rev-parse HEAD)"
+          cd assets
+          sha256sum -c ./*.sha256
+          gh release create "$TAG" --verify-tag --draft --title "Native helpers $TAG" --notes "Pinned native helpers. See each manifest for dependency pins; sherpa and models are fetched separately." ./*.tar.gz ./*.sha256

@@ -182,7 +182,7 @@ func TestAudioReservationsAndUsage(t *testing.T) {
 		})
 	}
 }
-func TestAudioSpeechStreamsAndChargesCodePoints(t *testing.T) {
+func TestAudioSpeechClientCutChargesAfterFirstByte(t *testing.T) {
 	gate := make(chan struct{})
 	defer close(gate)
 	engine, _ := audioEngine(t, func(w http.ResponseWriter, r *http.Request) {
@@ -214,10 +214,12 @@ func TestAudioSpeechStreamsAndChargesCodePoints(t *testing.T) {
 	}
 	r.Body.Close()
 	ev := h.rec.waitFor(t, 1)[0]
-	if ev.Characters != 3 || ev.Prompt != "" || ev.Completion != "" {
+	if ev.Characters != 3 || len(ev.Meters) != 1 || ev.Meters[0].Measured != 3 || ev.Meters[0].Charged != 3 || ev.Prompt != "" || ev.Completion != "" {
 		t.Fatalf("partial speech settlement %+v", ev)
 	}
-	h.expectErr(h.post(string(speechEndpoint), `{"model":"m1","input":"a","voice":"voice"}`), CodeSpeechBudgetExhausted)
+	if h.gw.Counters(h.key.ID).TodaySpeechChars != 3 {
+		t.Fatal("client cut speech not charged")
+	}
 }
 func TestAudioConcurrentReservations(t *testing.T) {
 	gate, entered := make(chan struct{}), make(chan struct{})
