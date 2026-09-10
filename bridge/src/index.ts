@@ -91,6 +91,36 @@ async function discardUnread(req: Request) {
   // Admission owns input until it is consumed or cancellation has settled.
   if (!req.bodyUsed) await req.body?.cancel().catch(() => {});
 }
+function forwardInput(body: ReadableStream<Uint8Array>) {
+  const reader = body.getReader();
+  let controller: ReadableStreamDefaultController<Uint8Array>;
+  let pending = Promise.resolve(), stopped = false;
+  let stopping: Promise<void> | undefined;
+  const stop = () => {
+    if (!stopping) {
+      stopped = true;
+      try { controller.close(); } catch {} // The object may already have cancelled it.
+      stopping = (async () => {
+        await reader.cancel().catch(() => {});
+        await pending;
+        reader.releaseLock();
+      })();
+    }
+    return stopping;
+  };
+  const stream = new ReadableStream<Uint8Array>({
+    start(c) { controller = c; },
+    pull() {
+      pending = reader.read().then(({ done, value }) => {
+        if (stopped) return;
+        if (done) controller.close(); else controller.enqueue(value);
+      }).catch((error) => { if (!stopped) controller.error(error); });
+      return pending;
+    },
+    cancel: stop,
+  }, { highWaterMark: 0 });
+  return { stream, stop };
+}
 export default {
   async fetch(req: Request, env: Env): Promise<Response> {
     const u = new URL(req.url);
@@ -128,9 +158,19 @@ export default {
     }
     const internal = new URL(req.url);
     internal.pathname = m[2];
-    const forwarded = new Request(internal, req);
-    forwarded.headers.set("x-bridge-host", m[1]);
-    return env.HOSTS.get(env.HOSTS.idFromName(m[1])).fetch(forwarded);
+    // Own the native client reader: a fast object refusal must not outlive its input.
+    // No whole-body buffer or read-ahead queue; at most one native chunk is in flight.
+    const input = req.body ? forwardInput(req.body) : undefined;
+    try {
+      const forwarded = input ? new Request(internal, {
+        method: req.method, headers: req.headers, signal: req.signal,
+        redirect: req.redirect, body: input.stream, duplex: "half",
+      } as RequestInit) : new Request(internal, req);
+      forwarded.headers.set("x-bridge-host", m[1]);
+      return await env.HOSTS.get(env.HOSTS.idFromName(m[1])).fetch(forwarded);
+    } finally {
+      await input?.stop();
+    }
   },
 } satisfies ExportedHandler<Env>;
 
