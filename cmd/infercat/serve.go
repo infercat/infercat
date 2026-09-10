@@ -177,6 +177,8 @@ func (e *env) cmdServe(ctx context.Context, pre string, args []string) error {
 		return strings.TrimSpace(string(b))
 	}, events, e.logf)
 
+	public := bridge.Manager{Keys: store}
+	defer public.Close()
 	gw, err := e.plat.newGateway(gatewayOptions{
 		RemoteConsole: remoteHandler, LiveHostName: state.name,
 		ModelsPinned:    pinned,
@@ -186,13 +188,11 @@ func (e *env) cmdServe(ctx context.Context, pre string, args []string) error {
 		HostName:    hostName,
 		RelayRegion: func() string { return tun.Status().Region },
 		DataDir:     dataDir, // today's counters are seeded from usage.jsonl there
-	}, up, store, bridge.Recorder{Next: events}, e.logf)
+	}, up, store, bridge.Recorder{Next: events, Count: public.Count}, e.logf)
 	if err != nil {
 		return fmt.Errorf("gateway: %w", err)
 	}
 
-	public := bridge.Manager{Keys: store}
-	defer public.Close()
 	reload := func() error {
 		if err := store.Reload(); err != nil {
 			return err
@@ -210,7 +210,7 @@ func (e *env) cmdServe(ctx context.Context, pre string, args []string) error {
 	started := time.Now()
 	adm, err := admin.Serve(dataDir, func() admin.Status {
 		st := buildStatus(ctx, started, tun, up, gw, store, tele)
-		st.Bridge = public.Status(dataDir)
+		st.Bridge = public.Status()
 		st.Console = consoleAddress
 		st.Name = state.name()
 		remoteState := remoteStore.State()

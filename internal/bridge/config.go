@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"regexp"
 	"sync"
+	"time"
 
 	"github.com/infercat/infercat/internal/keys"
 	"github.com/infercat/infercat/internal/usage"
@@ -97,17 +98,27 @@ func save(dir string, c Config, replace bool) error {
 }
 
 type viaKey struct{}
-type Recorder struct{ Next usage.Recorder }
+type Recorder struct {
+	Next  usage.Recorder
+	Count func(usage.Event)
+}
 
 func (r Recorder) Record(ctx context.Context, e usage.Event) {
 	if ctx.Value(viaKey{}) == true {
 		e.Via = "bridge"
+	}
+	if r.Count != nil {
+		if e.TS.IsZero() {
+			e.TS = time.Now().UTC()
+		}
+		r.Count(e)
 	}
 	r.Next.Record(ctx, e)
 }
 
 // Manager serializes reloads. A cancelled client is joined before its replacement starts.
 type Manager struct {
+	now     func() time.Time // Optional clock for counter day-boundary tests.
 	state   connectionState
 	Keys    *keys.FileStore
 	updates chan struct{}
@@ -139,6 +150,7 @@ func (m *Manager) Reload(ctx context.Context, dir string, h http.Handler, logf f
 	if err != nil {
 		return err
 	}
+	m.seedCounter(dir, logf)
 	if c == m.cfg {
 		if m.updates != nil {
 			select {
