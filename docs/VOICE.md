@@ -60,6 +60,35 @@ use those ids. They are not interchangeable with the v1.0 voice packs in the pin
 that recipe uses `zh=zf_xiaoxiao,en=af_heart` instead. The host accepts the configured voice ids
 without tying them to a particular checkpoint.
 
+For v1.1-zh, the pinned Kokoro-FastAPI also needs an English phoneme callback in its Chinese
+pipeline; there is no configuration flag for it. In `api/src/inference/kokoro_v1.py`, inside
+`_get_pipeline`, replace the cached `KPipeline(...)` assignment after the creation log with:
+
+```python
+en_callable = None
+if lang_code == "z":
+    english = KPipeline(lang_code="a", repo_id=settings.model_repo_id, model=False)
+
+    def english_phonemes(text: str) -> str:
+        return " ".join(result.phonemes for result in english(text))
+
+    en_callable = english_phonemes
+self._pipelines[lang_code] = KPipeline(
+    lang_code=lang_code,
+    repo_id=settings.model_repo_id,
+    model=self._model,
+    device=self._device,
+    en_callable=en_callable,
+)
+```
+
+Restart Kokoro-FastAPI after applying this setup patch. This follows the checkpoint's
+[pinned mixed-language example](https://huggingface.co/hexgrad/Kokoro-82M-v1.1-zh/blob/01e7505bd6a7a2ac4975463114c3a7650a9f7218/samples/make_zh.py):
+`model=False` creates only an English pronunciation frontend, and joining all its chunks keeps
+long English spans too. The same Chinese voice then speaks those phonemes; the host does not
+switch voices inside a sentence. Without the callback, English spans become an unknown marker
+and disappear from this checkpoint's audio. No wrapper or second synthesis model is required.
+
 Han characters count against all letters and ideographs; digits, punctuation and whitespace do
 not dilute the ratio. A Han share of at least 30% selects `zh`; otherwise it selects `en`.
 The detected tag's entry is used first, then `default` if that entry is missing. With neither
