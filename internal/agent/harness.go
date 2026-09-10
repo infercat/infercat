@@ -13,6 +13,9 @@ import (
 //go:embed assets/base.cordis.patch.yml
 var baseComposition []byte
 
+//go:embed assets/wire.mjs
+var wire []byte
+
 //go:embed assets/adapter.mjs
 var adapter []byte
 
@@ -34,6 +37,9 @@ func HarnessOptions(dataDir string) (RuntimeOptions, error) {
 	if err = os.MkdirAll(filepath.Join(dir, "harness", "sessions"), 0700); err != nil {
 		return RuntimeOptions{}, err
 	}
+	if err = os.WriteFile(filepath.Join(dir, "wire.mjs"), wire, 0600); err != nil {
+		return RuntimeOptions{}, err
+	}
 	plugin := filepath.Join(dir, "adapter.mjs")
 	if err = os.WriteFile(plugin, adapter, 0600); err != nil {
 		return RuntimeOptions{}, err
@@ -43,6 +49,7 @@ func HarnessOptions(dataDir string) (RuntimeOptions, error) {
 		map[string]any{"id": "headless-runner", "disabled": true},
 		map[string]any{"id": "session-persistence-jsonl", "disabled": true},
 		map[string]any{"id": "session-checkpoint-policy", "disabled": true},
+		map[string]any{"id": "session-projection-cache", "disabled": true},
 		map[string]any{"id": "llm-deepseek", "disabled": true},
 		map[string]any{"id": "llm-pi-ai", "disabled": true},
 		map[string]any{"id": "agent-default-model", "config": map[string]any{"provider": "infercat", "model": "run-model"}},

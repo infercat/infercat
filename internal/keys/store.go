@@ -269,7 +269,18 @@ func (s *FileStore) Rotate(ctx context.Context, id string) (string, error) {
 // SetLimits replaces a key's limits wholesale. Unlike Add it does not apply defaults: a zero
 // here is the host explicitly saying "no limit", except image fields: zero is default, negative unlimited.
 func (s *FileStore) SetLimits(ctx context.Context, id string, l Limits) error {
-	return s.mutate(id, func(k *Key) error { k.Limits = ImageDefaults(l); return nil })
+	return s.SetLimitsAndAgent(ctx, id, l, nil)
+}
+
+// SetLimitsAndAgent commits a capability change and its limits as one mutation.
+func (s *FileStore) SetLimitsAndAgent(ctx context.Context, id string, l Limits, agent *bool) error {
+	return s.mutate(id, func(k *Key) error {
+		k.Limits = ImageDefaults(l)
+		if agent != nil {
+			k.Agent = *agent
+		}
+		return nil
+	})
 }
 
 // Find resolves an id, or the exact name of a key when that name is unique.

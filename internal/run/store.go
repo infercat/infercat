@@ -9,6 +9,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"reflect"
 	"regexp"
 	"sort"
 	"strconv"
@@ -418,8 +419,17 @@ func (s *Store) change(key, rid string, fn func(*Run) error, retain ...func(*Ret
 	if len(r.Attempts) > 0 {
 		ev.AttemptID = r.Attempts[len(r.Attempts)-1].ID
 	}
+	oldSteps := s.data[key].Retained[rid].Steps
+	for i, step := range v.Retained[rid].Steps {
+		if i >= len(oldSteps) || !reflect.DeepEqual(step, oldSteps[i]) {
+			copy := step
+			ev.Type = "step"
+			ev.Step = &copy
+			break
+		}
+	}
 	var event *Event
-	if lifecycle {
+	if lifecycle || ev.Step != nil {
 		event = &ev
 	}
 	err = s.commitFor(key, v, event, rid)
@@ -433,6 +443,20 @@ func (s *Store) change(key, rid string, fn func(*Run) error, retain ...func(*Ret
 	return committed, nil
 }
 func (s *Store) CreateBatch(key, kind, priority string, inputs []json.RawMessage, cap int, admit ...func([]Run) (func(), error)) ([]Run, error) {
+	return s.createBatch(key, kind, priority, inputs, cap, nil, admit...)
+}
+func (s *Store) createBatch(key, kind, priority string, inputs []json.RawMessage, cap int, correlation []string, admit ...func([]Run) (func(), error)) ([]Run, error) {
+	cid := ""
+	if len(correlation) > 1 {
+		return nil, ErrInvalid
+	}
+	if len(correlation) > 0 {
+		cid = correlation[0]
+		if !regexp.MustCompile(`^[A-Za-z0-9_-]{1,128}$`).MatchString(cid) {
+			return nil, ErrInvalid
+		}
+	}
+
 	if kind == "image" && len(inputs) > MaxLiveKey {
 		return nil, ErrQueueLimit
 	}
@@ -479,7 +503,7 @@ func (s *Store) CreateBatch(key, kind, priority string, inputs []json.RawMessage
 	batchID := id("b_")
 	rows := make([]Run, 0, len(inputs))
 	for i, input := range inputs {
-		r := Run{ID: id("r_"), KeyID: key, Kind: kind, Priority: priority, State: Queued, Created: now.Add(time.Duration(i)), Updated: now, Expires: now.Add(MaxAge), Input: append(json.RawMessage(nil), input...), Attempts: []Attempt{}}
+		r := Run{ClientRequestID: cid, ID: id("r_"), KeyID: key, Kind: kind, Priority: priority, State: Queued, Created: now.Add(time.Duration(i)), Updated: now, Expires: now.Add(MaxAge), Input: append(json.RawMessage(nil), input...), Attempts: []Attempt{}}
 		if kind == "image" {
 			r.Batch = &Batch{batchID, i, len(inputs)}
 		}

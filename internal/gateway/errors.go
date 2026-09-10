@@ -16,6 +16,7 @@ type Code string
 
 const (
 	CodeStorageFailed         Code = "storage_failed"
+	CodeAgentUnavailable      Code = "agent_unavailable"
 	CodeImageAbandoned        Code = "image_abandoned"
 	CodeImageQueueFull        Code = "image_queue_full"
 	CodeImageBudgetExhausted  Code = "image_budget_exhausted"
@@ -46,6 +47,7 @@ type codeRow struct {
 
 var codeTable = map[Code]codeRow{
 	CodeStorageFailed:         {http.StatusInternalServerError, "server_error"},
+	CodeAgentUnavailable:      {http.StatusServiceUnavailable, "upstream_error"},
 	CodeImageAbandoned:        {http.StatusBadGateway, "upstream_error"},
 	CodeImageQueueFull:        {http.StatusTooManyRequests, "rate_limit_error"},
 	CodeImageBudgetExhausted:  {http.StatusTooManyRequests, "rate_limit_error"},

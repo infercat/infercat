@@ -38,6 +38,7 @@ func DefaultLimits() Limits {
 
 // Key is one friend. SecretHash is "sha256:<hex>" of the invite secret; the secret itself is never stored.
 type Key struct {
+	Agent      bool      `json:"agent,omitempty"`
 	ID         string    `json:"id"`
 	Name       string    `json:"name"`
 	SecretHash string    `json:"secret_hash"`

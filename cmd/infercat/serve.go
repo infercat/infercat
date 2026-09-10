@@ -231,6 +231,11 @@ func (e *env) cmdServe(ctx context.Context, pre string, args []string) error {
 	if err = runs.Sweep(); err != nil {
 		e.logf("run expiry: %v", err)
 	}
+	var harness *agent.Runtime
+	if *agentEnabled {
+		harness = agent.StartAdapter(ctx, dataDir, runs, store).Runtime
+		defer harness.Close()
+	}
 	if err = gw.SetRuns(runs); err != nil {
 		return fmt.Errorf("register runs: %w", err)
 	}
@@ -246,11 +251,6 @@ func (e *env) cmdServe(ctx context.Context, pre string, args []string) error {
 		return fmt.Errorf("bridge: %w", err)
 	}
 	tele := &telemetry{events: events, name: hostName}
-	var harness *agent.Runtime
-	if *agentEnabled {
-		harness = agent.StartHarness(ctx, dataDir)
-		defer harness.Close()
-	}
 	go tele.sample(ctx, gw, tun)
 	if requestLines != nil {
 		go printRequests(ctx, requestLines, e.out, keyNamer(ctx, store), state.logs.Load)

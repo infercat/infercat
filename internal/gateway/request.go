@@ -36,7 +36,7 @@ const (
 // ruling; measured on the real stack, 014 Log).
 func (e endpoint) countsAgainstRPM() bool {
 	_, class := usage.ModelEndpoint(string(e))
-	return class != "" || e == "/v1/images/jobs" || strings.HasPrefix(string(e), "/v1/images/outputs/") || strings.HasPrefix(string(e), "/v1/runs/")
+	return class != "" || e == "/v1/runs" || e == "/v1/images/jobs" || strings.HasPrefix(string(e), "/v1/images/outputs/") || strings.HasPrefix(string(e), "/v1/runs/")
 }
 
 // outcome is how a request ended, set by the stage that ended it (DESIGN §1.4). finish reads it

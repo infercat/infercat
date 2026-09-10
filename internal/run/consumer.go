@@ -51,17 +51,34 @@ func (m *Manager) Register(name string, kind Kind, policy Policy) error {
 // on runtime loss it returns an error, never recreates or replays the native run.
 func (m *Manager) Consumer(fn func(context.Context, *Work) (json.RawMessage, error)) Kind {
 	return func(ctx context.Context, r Run) (Decision, error) {
-		output, err := fn(ctx, &Work{Run: r, Store: m.Store, manager: m, ctx: ctx})
+		w := &Work{Run: r, Store: m.Store, manager: m, ctx: ctx}
+		defer func() {
+			if w.finalRelease != nil {
+				w.finalRelease()
+			}
+		}()
+		output, err := fn(ctx, w)
 		return Decision{Output: output}, err
 	}
 }
 
 type Work struct {
-	Run     Run
-	Store   *Store
-	manager *Manager
-	ctx     context.Context
-	mu      sync.Mutex
+	Run          Run
+	Store        *Store
+	manager      *Manager
+	ctx          context.Context
+	mu           sync.Mutex
+	finalRelease func()
+}
+
+// Abort stops owned work on failure without claiming a user cancellation.
+func (w *Work) Abort() {
+	w.manager.mu.Lock()
+	defer w.manager.mu.Unlock()
+	if active := w.manager.active[w.Run.ID]; active != nil {
+		active.cancel()
+		w.manager.boundJoin(w.Run, active)
+	}
 }
 
 // Step serializes helper/model calls within one run and persists each attempt
@@ -76,7 +93,7 @@ func (w *Work) Step(step Step) (StepResult, error) {
 	if err != nil {
 		return StepResult{}, err
 	}
-	defer release()
+	defer w.releaseAfter(release)
 	r, result, err := w.manager.attempt(w.ctx, w.Run, step, true)
 	if committedTerminal(err) {
 		w.manager.mu.Lock()
@@ -84,6 +101,15 @@ func (w *Work) Step(step Step) (StepResult, error) {
 		w.manager.mu.Unlock()
 	}
 	return result, err
+}
+
+// Keep the existing settlement lease through cancellation; never admit fresh work.
+func (w *Work) releaseAfter(release func()) {
+	if w.ctx.Err() != nil {
+		w.finalRelease = release
+	} else {
+		release()
+	}
 }
 
 // Approval returns only the committed answer. The consumer may then forward it
@@ -98,7 +124,7 @@ func (w *Work) Approval(id, request string) (bool, error) {
 	if err != nil {
 		return false, err
 	}
-	defer release()
+	defer w.releaseAfter(release)
 	r, err := w.Store.change(w.Run.KeyID, w.Run.ID, func(r *Run) error {
 		if terminal(r.State) || r.CancelRequested {
 			return ErrConflict

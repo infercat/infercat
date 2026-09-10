@@ -378,7 +378,20 @@ func (e *env) keysRotate(ctx context.Context, pre string, args []string) error {
 
 func (e *env) keysLimits(ctx context.Context, pre string, args []string) error {
 	var apply func(keys.Limits) keys.Limits
-	store, dataDir, pos, err := e.open("limits", keysLimitsHelp, pre, args, 1, func(fs *flag.FlagSet) { apply = limitFlags(fs) })
+	var agent *bool
+	var selected *bool
+	store, dataDir, pos, err := e.open("limits", keysLimitsHelp, pre, args, 1, func(fs *flag.FlagSet) {
+		agent = fs.Bool("agent", false, "allow agent runs; use --agent=false to disable")
+		limits := limitFlags(fs)
+		apply = func(l keys.Limits) keys.Limits {
+			fs.Visit(func(f *flag.Flag) {
+				if f.Name == "agent" {
+					selected = agent
+				}
+			})
+			return limits(l)
+		}
+	})
 	if err != nil {
 		return err
 	}
@@ -387,7 +400,7 @@ func (e *env) keysLimits(ctx context.Context, pre string, args []string) error {
 		return err
 	}
 	next := apply(k.Limits)
-	if err := store.SetLimits(ctx, k.ID, next); err != nil {
+	if err := store.SetLimitsAndAgent(ctx, k.ID, next, selected); err != nil {
 		return err
 	}
 	e.reloadHost(ctx, dataDir)
@@ -502,6 +515,8 @@ Changes limits on an existing key. Only the flags you pass change; 0 means "no l
 
   infercat keys limits alice --rpm 60 --daily-tokens 1000000
   infercat keys limits k_7f3a2b --models gemma-4-E2B-it-Q4_K_M.gguf
+
+Agent access: --agent=true enables agent runs; --agent=false disables them.
 
 Limit flags: --rpm --tpm --max-concurrent --max-output-tokens --max-context --daily-tokens --models
 `

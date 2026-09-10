@@ -10,6 +10,7 @@ import (
 // Retained is the sole durable owner of consumer state, native trajectory and
 // captured bytes. It lives in the same capped per-key snapshot as the run ledger.
 type Retained struct {
+	Steps      []StepEvent         `json:"steps,omitempty"`
 	State      json.RawMessage     `json:"state,omitempty"`
 	Trajectory []json.RawMessage   `json:"trajectory,omitempty"`
 	Outputs    map[string]Captured `json:"outputs,omitempty"`
@@ -111,8 +112,11 @@ func (s *Store) retainedBudget(key string, next *snapshot, rid string, size int)
 
 // Retain atomically replaces opaque step state, appends exact native events and
 // adds immutable output snapshots. The caller must reserve capacity first.
-func (s *Store) Retain(key, rid string, state json.RawMessage, events []json.RawMessage, outputs map[string]Captured) error {
-	input, err := json.Marshal(Retained{State: state, Trajectory: events, Outputs: outputs})
+func (s *Store) Retain(key, rid string, state json.RawMessage, events []json.RawMessage, outputs map[string]Captured, steps ...StepEvent) error {
+	if len(steps) > 1 {
+		return ErrInvalid
+	}
+	input, err := json.Marshal(Retained{State: state, Trajectory: events, Outputs: outputs, Steps: steps})
 	if err != nil {
 		return ErrInvalid
 	}
@@ -123,7 +127,12 @@ func (s *Store) Retain(key, rid string, state json.RawMessage, events []json.Raw
 	if err = json.Unmarshal(input, &detached); err != nil {
 		return ErrInvalid
 	}
-	state, events, outputs = detached.State, detached.Trajectory, detached.Outputs
+	state, events, outputs, steps = detached.State, detached.Trajectory, detached.Outputs, detached.Steps
+	for _, step := range steps {
+		if !step.Valid() {
+			return ErrInvalid
+		}
+	}
 	for id, o := range outputs {
 		_, _, mimeErr := mime.ParseMediaType(o.MIME)
 		if !safeID.MatchString(id) || o.Name == "" || o.Name == "." || o.Name == ".." || len(o.Name) > 255 || filepath.Base(o.Name) != o.Name || strings.ContainsAny(o.Name, "\\\r\n\x00") || mimeErr != nil {
@@ -162,6 +171,22 @@ func (s *Store) Retain(key, rid string, state json.RawMessage, events []json.Raw
 			}
 			data.Outputs[id] = output
 		}
+		for _, step := range steps {
+			found := false
+			for i, old := range data.Steps {
+				if old.ID == step.ID {
+					if !old.At.Equal(step.At) {
+						return ErrConflict
+					}
+					data.Steps[i] = step
+					found = true
+					break
+				}
+			}
+			if !found {
+				data.Steps = append(data.Steps, step)
+			}
+		}
 		next, _ := json.Marshal(data)
 		// Includes room for the change's cursor, timestamps and envelope.
 		if max(0, len(next)-len(old))+1024 > lease.bytes {
@@ -189,5 +214,11 @@ func (s *Store) Retained(key, rid string) (Retained, error) {
 	if _, ok := v.Runs[rid]; !ok {
 		return Retained{}, ErrNotFound
 	}
-	return clone(v).Retained[rid], nil
+	raw, err := json.Marshal(v.Retained[rid])
+	if err != nil {
+		return Retained{}, err
+	}
+	var out Retained
+	err = json.Unmarshal(raw, &out)
+	return out, err
 }

@@ -1,4 +1,5 @@
 {
+  "agent": false,
   "key": {
     "id": "fixture-key",
     "name": "compat-fixture",
