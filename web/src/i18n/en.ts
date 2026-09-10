@@ -1,5 +1,35 @@
 // Approved landing spec, with PM copy rulings. HTML is authored here, never user input.
 export const en = {
+  app_job_daily_exhausted: "The host's images for today are used up. Try again tomorrow.",
+  app_job_meter_uncapped: "{used} images today",
+  app_privacy_images: "Pictures you ask for, and the words you asked with, stay on the host under your key for {days} days.",
+  app_close: "Close",
+  app_job_attachments: "Images are made from text. Remove the attachments, or switch back to chat.",
+  app_job_uncertain: "The host has not confirmed these images. They were not sent again.",
+  app_job_meter: "{used}/{limit} images today",
+
+  app_job_make: "Make an image",
+  app_job_placeholder: "Describe an image…",
+  app_job_prompts_line: "{prompts} prompts · {images} images",
+  app_job_cancelling: "cancelling · after this image · {elapsed}",
+  app_job_cancelled_unstarted: "cancelled · not started",
+  app_job_failed: "{host} could not make this image. Its own words are under Details.",
+  app_job_refused: "{host} keeps {n} of your images in line at most. Wait for one to finish, then ask again.",
+  app_job_meta_failed: "{elapsed} on {host}",
+  app_job_output_gone: "no longer on {host}",
+  app_job_save: "Save",
+  app_job_discard: "Discard",
+  app_job_edit_prompt: "Edit prompt",
+  app_job_list: "Images",
+  app_job_list_caption: "{count} images on {host} · kept {days} days",
+  app_job_group: "{when} · {count} images",
+  app_job_output_line: "{w} × {h} · {size} · {elapsed} · {days} days left",
+  app_job_list_empty: "No images yet. Press the picture square by the field and describe one.",
+  app_settings_images: ", makes images with {model}",
+  app_limits_jobs: "An image is made on {host} one at a time, in the order it was asked for; chats keep going, a little slower while an image is being made. The host counts the images each key makes in a day and decides how many it will hold in line for you. A finished image stays on the host {days} days, in Images, for you to save.",
+  app_job_prompts_line_one: "1 prompt · 1 image",
+  app_run_meta_images_one: "1 image · {elapsed} on {host}",
+
   app_run_queued_unknown: "queued",
   app_run_submitting: "sending to {host}",
   app_run_uncertain: "The host has not confirmed this run. It was not sent again.",
@@ -138,7 +168,7 @@ export const en = {
   pop_r:
     '<p>The two machines meet here. It passes on packets that are already encrypted. It holds no key, so it cannot read them. (WireGuard, over a DERP relay.)</p><p>Browsers always use it today. Run your own with <code>serve --derpmap-url</code>.</p>',
   pop_h:
-    '<p><code>infercat serve</code> finds your engine (llama.cpp, llama-swap, vLLM, Ollama or LM Studio) and serves it inside the tunnel. Nothing else is reachable: no other port, no files.</p><p>It records one line per request: key, endpoint, status, token counts, timings. Never the text, unless you run <code>--log-prompts</code>. The app tells your friend if you do.</p>',
+    '<p><code>infercat serve</code> finds your engine (llama.cpp, llama-swap, vLLM, Ollama or LM Studio) and serves it inside the tunnel. Nothing else is reachable: no other port, no files.</p><p>It records one line per request: key, endpoint, status, token counts, timings. These request logs never include text unless you run <code>--log-prompts</code>. The app tells your friend if you do.</p><p>Hosts with an image engine also keep requested pictures and their prompts under your key until they expire.</p>',
   close: 'close',
   path_r: 'relayed',
   path_d: 'direct',
@@ -659,7 +689,7 @@ export const en = {
   // Parser: prefix and format example unchanged.
   app_invite_part_count: "An invite has three dot-separated parts ({prefix}.address.secret); this one has {count}.",
   // Dynamic privacy line used in Chat/Connect; computer phrase localized, name unchanged.
-  app_privacy_normal: "Encrypted end-to-end from your device to {computer} — the relay in between can’t read it. {product} records counts, never text. The model runs on their machine. Chat history stays on your device. The host stores job and run inputs, outputs and trajectories under your key until they expire.",
+  app_privacy_normal: "Encrypted end-to-end from your device to {computer} — the relay in between can’t read it. {product} request logs record counts, never text. The model runs on their machine. Chat history stays on your device. The host stores job and run inputs, outputs and trajectories under your key until they expire.",
   // Dynamic logging privacy line; computer phrase localized.
   app_privacy_logging: "Encrypted end-to-end from your device to {computer} — but this host has prompt logging on, so everything you send and everything the model answers is written to a log on their machine. Chat history stays on your device. The host stores job and run inputs, outputs and trajectories under your key until they expire.",
   // Computer-name formatter: empty host name.

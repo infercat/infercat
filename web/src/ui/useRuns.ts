@@ -1,27 +1,29 @@
+import { hostImages } from '../api';
 import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react';
 import { timeoutSignal, answerRun, cancelRun, describeError, GatewayError, getRun, listRuns, submitRun, type ChatRequest, type RunRecord } from '../api';
 import type { Live, SessionEvent } from '../session';
 import { type Conversation, type RunItem, type Message, hostScope, loadChats, saveChat } from '../storage';
 import { followRuns, mergeRunRecords, runItem } from '../runs';
 
-export function useRuns(live: Live, enabled: boolean, convs: Conversation[], setConvs: Dispatch<SetStateAction<Conversation[]>>, dispatch: (e: SessionEvent) => void, refresh: () => Promise<boolean>) {
+export function useRuns(live: Live, enabled: boolean, convs: Conversation[], setConvs: Dispatch<SetStateAction<Conversation[]>>, dispatch: (e: SessionEvent) => void, refresh: () => Promise<boolean>, imagesChanged?: (signal: AbortSignal) => Promise<void>) {
   const [connected, setConnected] = useState(false), [pending, setPending] = useState<Set<string>>(new Set());
   const [observed, setObserved] = useState<Set<string>>(new Set());
-  const latest = useRef({ live, enabled, convs, refresh }); latest.current = { live, enabled, convs, refresh };
+  const latest = useRef({ live, enabled, convs, refresh, imagesChanged }); latest.current = { live, enabled, convs, refresh, imagesChanged };
   const active = useRef(new Set<string>()), requests = useRef(new Set<AbortController>());
   useEffect(() => { const held = requests.current; return () => { held.forEach((c) => c.abort()); }; }, [live.transport, live.secret, enabled]);
-  const merge = (records: RunRecord[]) => setConvs((prev) => mergeRunRecords(prev, records, live.me.key.id));
+  const merge = (records: RunRecord[]) => setConvs((prev) => mergeRunRecords(prev, records.filter((r) => r.kind === 'agent'), live.me.key.id));
   useEffect(() => {
-    if (!enabled || live.offline || live.key !== 'active' || !live.me.agent) return;
+    if (!enabled || live.offline || live.key !== 'active' || (!live.me.agent && !hostImages(live.me)?.model)) return;
     const ac = new AbortController();
     void followRuns({ transport: live.transport, secret: live.secret, signal: ac.signal,
-      known: () => latest.current.convs.flatMap((c) => c.messages.flatMap((m) => m.kind === 'run' ? [m.run?.id ?? m.remoteId ?? ''].filter(Boolean) : [])),
-      changed(records, reset) { if (!ac.signal.aborted) { setObserved((old) => new Set([...(reset ? [] : old), ...records.map((r) => r.id)])); setConvs((prev) => mergeRunRecords(prev, records, live.me.key.id)); if (records.some((r) => ['done','failed','cancelled'].includes(r.state))) void latest.current.refresh(); } },
+      onEvent: (signal) => { void latest.current.imagesChanged?.(signal).catch((error) => { if (!signal.aborted) dispatch({ t: 'streamError', code: error instanceof GatewayError ? error.code : '', error: describeError(error, live.me.host.name) }); }); return Promise.resolve(); },
+      known: () => latest.current.convs.flatMap((c) => c.messages.flatMap((m) => m.kind === 'run' && m.runKind !== 'image' ? [m.run?.id ?? m.remoteId ?? ''].filter(Boolean) : [])),
+      changed(records, reset) { if (!ac.signal.aborted) { setObserved((old) => new Set([...(reset ? [] : old), ...records.map((r) => r.id)])); setConvs((prev) => mergeRunRecords(prev, records.filter((r) => r.kind === 'agent'), live.me.key.id)); if (records.some((r) => ['done','failed','cancelled'].includes(r.state))) void latest.current.refresh(); } },
       connected(value) { if (!ac.signal.aborted) { setConnected(value); if (!value) dispatch({ t: 'streamError', code: '', error: describeError(new Error('Run event stream ended'), live.me.host.name) }); } },
       failed(error) { if (!ac.signal.aborted) dispatch({ t: 'streamError', code: error instanceof GatewayError ? error.code : '', error: describeError(error, live.me.host.name) }); },
     });
     return () => { ac.abort(); setConnected(false); };
-  }, [enabled, live.offline, live.key, live.me.agent, live.transport, live.secret, live.me.host.name, live.me.key.id, setConvs, dispatch]);
+  }, [enabled, live.offline, live.key, live.me.agent, hostImages(live.me)?.model, live.transport, live.secret, live.me.host.name, live.me.key.id, setConvs, dispatch]);
   async function act(item: RunItem, answer?: { id: string; allow: boolean }) {
     const current = latest.current;
     if (!current.enabled || current.live.offline || current.live.key !== 'active' || !item.run || active.current.has(item.id)) return;

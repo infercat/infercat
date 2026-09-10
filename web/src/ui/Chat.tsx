@@ -1,3 +1,7 @@
+import { hostImages } from '../api';
+import { useImageJobs } from './useImageJobs';
+import { ImageJobRow, ImagesSheet } from './ImageJobs';
+import { imageGone, imagePrompts, imageLimit } from '../imageJobs';
 import RunItemView from './RunItem';
 import { useRuns } from './useRuns';
 import { fitsRunInput } from '../runs';
@@ -130,6 +134,8 @@ export default function Chat({ state, live, dispatch, onRedial, reconnecting = f
   const [streaming, setStreaming] = useState(false);
   const [waitingForHeaders, setWaitingForHeaders] = useState(false);
   const [draft, setDraft] = useState('');
+  const [imageMode, setImageMode] = useState(false), [imagesOpen, setImagesOpen] = useState(false);
+  const closeImages = useCallback(() => setImagesOpen(false), []);
   const [attached, setAttached] = useState<Attachment[]>([]);
   const [imageData, setImageData] = useState<ImageData>({});
   const [loadedImageRefs, setLoadedImageRefs] = useState('');
@@ -216,7 +222,8 @@ export default function Chat({ state, live, dispatch, onRedial, reconnecting = f
         return false;
       });
   }, [live.transport, live.secret, dispatch, host, keys.me]);
-  const agentRuns = useRuns(live, !readOnly && !reconnecting, convs, setConvs, dispatch, refreshMe);
+  const imageWork = useImageJobs(live, !readOnly && !reconnecting, setConvs, dispatch);
+  const agentRuns = useRuns(live, !readOnly && !reconnecting, convs, setConvs, dispatch, refreshMe, imageWork.refresh);
   const runSaved = useRef(new Map<string, Conversation>());
   useEffect(() => {
     if (readOnly) return;
@@ -293,7 +300,7 @@ export default function Chat({ state, live, dispatch, onRedial, reconnecting = f
   // age of a stale path measurement. Re-derived from Date.now() on every tick and whenever the tab
   // comes back, so a backgrounded tab never resumes with a countdown that kept its own time.
   useEffect(() => {
-    if (retryUntil === 0 && live.pathOk && live.meOk) return;
+    if (retryUntil === 0 && live.pathOk && live.meOk && !hostImages(me)?.model) return;
     const tick = () => setNow(Date.now());
     tick();
     const timer = setInterval(tick, 1000);
@@ -302,7 +309,7 @@ export default function Chat({ state, live, dispatch, onRedial, reconnecting = f
       clearInterval(timer);
       document.removeEventListener('visibilitychange', tick);
     };
-  }, [retryUntil, live.pathOk, live.meOk]);
+  }, [retryUntil, live.pathOk, live.meOk, hostImages(me)?.model]);
 
   // Persistence is rules, not a streaming guard (DESIGN §2.3): the user turn is written by send()
   // before any I/O, a streaming reply is checkpointed at most every 2 s, and every terminal
@@ -448,6 +455,11 @@ export default function Chat({ state, live, dispatch, onRedial, reconnecting = f
 
   async function send(text: string): Promise<void> {
     if (streaming || locked || readOnly || sendBlocked || (text.trim() === '' && !attached.length)) return;
+    if (imageMode && hostImages(me)?.model) {
+      if (attached.length) { setImageNotice(rejectionNotice({ reason: 'body_too_large', message: tr('app_job_attachments') })); return; }
+      if (await imageWork.submit(conv, imagePrompts(text))) { setDraft((value) => value === text ? '' : value); setImageMode(false); }
+      return;
+    }
     if (attached.some((a) => a.kind === 'image') && !vision) { setImageNotice(rejectionNotice({ reason: 'no_vision', message: tr('app_model_cant_see_images', { model: modelLabel(model) }) })); return; }
     const sending = attached.flatMap((a) => a.kind === 'image' ? [a.image] : []);
     const fresh = Object.fromEntries(sending.map((i) => [i.id, i.data]));
@@ -488,6 +500,10 @@ export default function Chat({ state, live, dispatch, onRedial, reconnecting = f
     if (streaming || locked || readOnly || sendBlocked) return;
     const idx = lastIndexOfRole(conv.messages, 'user');
     if (idx < 0) return;
+    if (conv.messages.slice(idx + 1).some((m) => m.kind === 'run' && m.runKind === 'image')) {
+      if (attachments?.length) { setImageNotice(rejectionNotice({ reason: 'body_too_large', message: tr('app_job_attachments') })); return; }
+      await imageWork.submit(conv, imagePrompts(text ?? conv.messages[idx]!.content)); return;
+    }
     const replaced = conv.messages.slice(idx + 1).find((m) => m.content.trim() !== '')?.content;
     const original = conv.messages[idx] as Message;
     const asked = { ...original, ...(me.agent ? { id: newId() } : {}), ...(text === undefined ? {} : { content: text.trim() }), ...(attachments ? attachmentFields(attachments) : {}) };
@@ -580,6 +596,7 @@ export default function Chat({ state, live, dispatch, onRedial, reconnecting = f
           </button>
         </div>
         <nav className="conv-list">
+          {hostImages(me)?.model && <div className="conv harvest"><button className="conv-open" onClick={() => { setImagesOpen(true); setDrawer(false); }}>{tr('app_job_list')} <span className="count">{imageWork.jobs.filter((j) => j.output && !imageGone(j)).length}</span></button></div>}
           {convs.map((c) => (
             <div key={c.id} className={`conv ${c.id === conv.id ? 'current' : ''}`}>
               <button
@@ -673,11 +690,14 @@ export default function Chat({ state, live, dispatch, onRedial, reconnecting = f
                 host={host}
                 model={model}
                 logging={logsPrompts(me)}
+                imageRetentionDays={hostImages(me)?.retention_days}
                 engineDown={live.meOk && !me.host.upstream.healthy}
                 onPick={send}
               />
             ) : (
-              conv.messages.map((m, i) => m.kind === 'run' ? (
+              conv.messages.map((m, i) => m.kind === 'run' && m.runKind === 'image' ? (
+                <ImageJobRow key={m.id} item={m} live={live} connected={agentRuns.connected && !sendBlocked} disabled={readOnly || locked || sendBlocked} pending={imageWork.pending.has(m.job?.id ?? '') || imageWork.pending.has('submit')} onCancel={() => { if (m.job) void imageWork.act(m.job); }} onRetry={() => { if (m.job) void imageWork.submit(conv, [m.job.input.prompt]); }} />
+              ) : m.kind === 'run' ? (
                 <RunItemView key={m.id} item={m} live={live} connected={agentRuns.connected && !sendBlocked && Boolean(m.run && agentRuns.observed.has(m.run.id))} disabled={readOnly || locked || sendBlocked} pending={agentRuns.pending.has(m.id)}
                   onCancel={() => { void agentRuns.act(m); }} onAnswer={(id, allow) => { void agentRuns.act(m, { id, allow }); }}
                   onRetry={() => { const at = lastIndexOfRole(conv.messages.slice(0, i), 'user'); if (at >= 0) void run(conv.id, conv.messages.slice(0, at + 1), undefined, {}, m.id); }} />
@@ -760,7 +780,9 @@ export default function Chat({ state, live, dispatch, onRedial, reconnecting = f
         )}
 
         {missingChats.has(conv.id) && <p className="image-notice" role="status">{tr('app_image_missing')}</p>}
+        {imageWork.notice && <p className="attached-line bad image-notice" role="status">{imageWork.notice}</p>}
         <Composer
+          imageMode={hostImages(me)?.model ? { on: imageMode, toggle: () => { setImageMode(!imageMode); setImageNotice(null); imageWork.setNotice(''); } } : undefined}
           key={conv.id}
           voice={hostAudio(me, 'transcriptions') ? { host, upload: recordVoice } : undefined}
           attachments={attached}
@@ -783,7 +805,7 @@ export default function Chat({ state, live, dispatch, onRedial, reconnecting = f
           status={streaming && waitingForHeaders ? tr('app_waiting_for_model_load', { host: host || tr('app_the_host_lowercase'), model: modelLabel(model) }) : null}
           touch={touch}
           disabled={locked || readOnly}
-          sendBlocked={sendBlocked}
+          sendBlocked={sendBlocked || imageWork.pending.has('submit')}
           hint={
             live.offline ? tr('app_offline_hint') : live.key === 'paused'
               ? tr('app_send_will_work_again_the_moment_your_host_resumes')
@@ -796,6 +818,11 @@ export default function Chat({ state, live, dispatch, onRedial, reconnecting = f
         />
       </main>
 
+      {imagesOpen && hostImages(me)?.model && <ImagesSheet jobs={imageWork.jobs} live={live} connected={agentRuns.connected && !sendBlocked} disabled={readOnly || locked || sendBlocked} pending={imageWork.pending} onClose={closeImages}
+        onEdit={(text) => { closeImages(); setDraft(text); setImageMode(true); composer.current?.focus(); }}
+        conversationTitle={(job) => convs.find((c) => c.messages.some((m) => m.kind === 'run' && m.job?.id === job.id))?.title ?? tr('app_untitled_chat')}
+        onConversation={(job) => { const c = convs.find((c) => c.messages.some((m) => m.kind === 'run' && m.job?.id === job.id)); if (c) setCurrentId(c.id); closeImages(); }}
+        onCancel={(job) => { void imageWork.act(job); }} onDiscard={(job) => { void imageWork.act(job, true); }} />}
       {sheet && (
         <SettingsSheet
           settings={settings}
@@ -828,6 +855,7 @@ function Meters({ live, used, images, onOpen }: { live: Live; used: number | nul
   const context = contextMeter(used, live.me.host.upstream.model_context);
   if (context && images) context.label = imageCopy(context.unknown ? 'app_meter_context_unknown_images' : 'app_meter_context_images', images, { used: compact(used ?? 0), limit: compact(live.me.host.upstream.model_context) });
   const all: MeterView[] = context ? [...meters(live), context] : meters(live);
+  if (live.me.limits.daily_images !== undefined) { const limit = imageLimit(live.me.limits.daily_images, 20); all.push({ label: tr(limit < 0 ? 'app_job_meter_uncapped' : 'app_job_meter', { used: live.me.usage.today_images ?? 0, limit }), value: limit < 0 ? 0 : (live.me.usage.today_images ?? 0) / limit, unknown: !live.meOk }); }
   return (
     <button className="meters" onClick={onOpen} aria-label={tr('app_what_these_limits_mean')}>
       {all.map((m) => (
@@ -865,7 +893,9 @@ function LimitsSheet({ live, messages, onClose }: { live: Live; messages: readon
         <p>{tr('app_limits_images')}</p>
         {ACCEPT(false) && <p>{tr('app_limits_files')}</p>}
         {(hostAudio(me, 'transcriptions') || hostAudio(me, 'speech')) && <p>{tr('app_limits_voice', { host: hostName(me) || tr('app_the_host_lowercase') })}</p>}
-        {me.agent && <p>{tr('app_limits_runs', { host: hostName(me) || tr('app_the_host_lowercase') })}</p>}
+        {(me.agent || hostImages(me)?.model) && <p>{tr('app_limits_runs', { host: hostName(me) || tr('app_the_host_lowercase') })}</p>}
+        {hostImages(me)?.model && <p>{tr('app_privacy_images', { days: hostImages(me)!.retention_days })}</p>}
+        {hostImages(me)?.model && <p>{tr('app_limits_jobs', { host: hostName(me), days: hostImages(me)!.retention_days })}</p>}
         {/* Speed, from where the reader sits (032): this chat's medians and what is inside them. The
             relay round trip is quoted only when there is one: direct mode has no hop. */}
         {pace.n > 0 && (
@@ -892,12 +922,14 @@ function Empty({
   host,
   model,
   logging,
+  imageRetentionDays,
   engineDown,
   onPick,
 }: {
   host: string;
   model: string;
   logging: boolean;
+  imageRetentionDays?: number;
   engineDown: boolean;
   onPick: (t: string) => void;
 }) {
@@ -917,7 +949,7 @@ function Empty({
             ? tr('app_model_listening', { model: modelLabel(model) })
             : tr('app_waiting_for_a_model')}
       </p>
-      <p className="dim">{privacy(host, logging)}</p>
+      <p className="dim">{privacy(host, logging, imageRetentionDays)}</p>
       <div className="suggestions">
         {prompts.map((p) => (
           <button key={p} className="suggestion" onClick={() => onPick(p)}>
@@ -931,6 +963,7 @@ function Empty({
 
 function Composer({
   ref,
+  imageMode,
   voice,
   attachments, onAttachments, vision, model, modelContext, storedBytes, notice, onNotice, accepts,
   text,
@@ -945,6 +978,7 @@ function Composer({
   onStop,
 }: {
   ref: React.RefObject<HTMLTextAreaElement | null>;
+  imageMode?: { on: boolean; toggle: () => void };
   voice?: { host: string; upload: (clip: Blob, signal: AbortSignal) => Promise<string> };
   attachments: Attachment[];
   onAttachments: (attachments: Attachment[]) => void;
@@ -1066,7 +1100,7 @@ function Composer({
       onPaste={(e) => {
         const clipboard = e.clipboardData, pasted = clipboard.getData('text/plain');
         const files = Array.from(clipboard.files), start = ref.current?.selectionStart ?? text.length, end = ref.current?.selectionEnd ?? start;
-        if (!files.length && pasted.length < 4000) return;
+        if (!files.length && (imageMode?.on || pasted.length < 4000)) return;
         e.preventDefault();
         const input = { files: clipboard.files, getData: () => pasted };
         attach(input, () => { editText(text.slice(0, start) + pasted + text.slice(end)); });
@@ -1075,17 +1109,19 @@ function Composer({
       onDragLeave={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setOver(false); }}
       onDrop={(e) => { e.preventDefault(); setOver(false); const files = Array.from(e.dataTransfer.files); if (files.length) void attach(files); }}>
       <AttachedImages attachments={attachments} data={data} reading={reading} onCancel={(id) => { jobs.current.get(id)?.abort(); setReading((prev) => prev.filter((r) => r.id !== id)); }} onRemove={(id) => { update(current.current.filter((a) => a.id !== id)); onNotice(null); }} />
+      {imageMode?.on && <p className="attached-line">{tr(imagePrompts(text).length === 1 ? 'app_job_prompts_line_one' : 'app_job_prompts_line', { prompts: imagePrompts(text).length, images: imagePrompts(text).length })}</p>}
       {danger && <p className="attached-line bad image-notice" role="status">{notice?.message}</p>}
       {voice && <RecordingLine state={recording} host={voice.host} onCancel={() => recorder.cancel()} />}
       <div className={`composer-box ${over ? 'over' : ''}`}>
         <input ref={picker} type="file" accept={accept} multiple hidden onChange={(e) => { void attach(Array.from(e.target.files ?? [])); e.target.value = ''; }} />
         {accept !== '' && <button className="attach" aria-label={tr(ACCEPT(false) ? (vision ? 'app_attach' : 'app_attach_file') : 'app_attach_an_image')} onClick={() => { if (!disabled && !streaming) picker.current?.click(); }}>+</button>}
+        {imageMode && <button className={`attach make ${imageMode.on ? 'on' : ''}`} aria-label={tr('app_job_make')} aria-pressed={imageMode.on} onClick={() => { if (!disabled && !streaming) imageMode.toggle(); }}><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" aria-hidden="true"><path d="M2 2h16v16H2zM3 15l5-5 3 3 2-2 4 5" /><circle cx="13" cy="6" r="1.5" /></svg></button>}
         <textarea
           ref={ref}
           value={text}
           rows={1}
           aria-label={tr('app_message')}
-          placeholder={tr(voice ? 'app_type_or_speak' : 'app_message_the_host_s_model')}
+          placeholder={tr(imageMode?.on ? 'app_job_placeholder' : voice ? 'app_type_or_speak' : 'app_message_the_host_s_model')}
           disabled={disabled}
           onChange={(e) => { editText(e.target.value); onNotice(null); }}
           onKeyDown={(e) => {
@@ -1215,10 +1251,11 @@ function SettingsSheet({
           )}
         </label>
         <p className="dim small-print">
-          {privacy(hostName(me), logsPrompts(me))} <Text name="app_settings_invite" values={{ name: <code>{me.key.name}</code>, id: me.key.id }} />{' '}
+          {privacy(hostName(me), logsPrompts(me), hostImages(me)?.retention_days)} <Text name="app_settings_invite" values={{ name: <code>{me.key.name}</code>, id: me.key.id }} />{' '}
           {tr('app_settings_limits', { rpm: me.limits.rpm, daily: compact(me.limits.daily_tokens), concurrent: me.limits.max_concurrent, output: compact(me.limits.max_output_tokens) })}{' '}
           {tr('app_settings_engine', { engine: me.host.upstream.kind })}
           {me.host.upstream.model_context > 0 ? tr('app_settings_context', { context: compact(me.host.upstream.model_context) }) : ''}
+          {hostImages(me)?.model && tr('app_settings_images', { model: hostImages(me)!.model })}
           {live.meOk && modelVision(me, chosen) === true ? tr('app_settings_vision') : ''}
           {live.meOk && !me.host.upstream.healthy ? tr('app_not_answering_right_now') : ''}.{' '}
           {hostAudio(me, 'transcriptions') && <>{tr('app_settings_hears', { model: hostAudio(me, 'transcriptions')! })}{' '}</>}

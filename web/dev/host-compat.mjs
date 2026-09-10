@@ -1,3 +1,4 @@
+import { setInterval, clearInterval } from 'node:timers';
 // Real Connect → Chat rendering against captured /me responses, no relay or model required.
 import { readFileSync } from 'node:fs';
 import assert from 'node:assert/strict';
@@ -6,7 +7,13 @@ import { chromium } from 'playwright';
 import { consoleCompat } from './console-compat.mjs';
 import { assertLive } from './live-assert.mjs';
 const invite = `ic1.tcCOMPATproofaddressCOMPATproofaddress.${'D'.repeat(43)}`;
-const server = await createServer({ server: { port: 0, strictPort: false } });
+const server = await createServer({ server: { port: 0, strictPort: false }, plugins: [{ name: 'compat-events', configureServer(server) {
+  server.middlewares.use('/compat-events', (req, res) => {
+    res.writeHead(200, { 'content-type': 'text/event-stream', 'access-control-allow-origin': '*', 'access-control-allow-headers': '*' });
+    res.write('event: run\ndata: '+JSON.stringify({ cursor: 'compat:0', time: new Date().toISOString(), reset: true, runs: [] })+'\n\n');
+    const timer = setInterval(() => res.write(': heartbeat\n\n'), 2000); req.on('close', () => clearInterval(timer));
+  });
+} }] });
 await server.listen();
 const base = server.resolvedUrls.local[0];
 const browser = await chromium.launch({ headless: true });
@@ -21,7 +28,8 @@ try {
       const respond = async (route) => {
         const path = new URL(route.request().url()).pathname;
         if (path === '/me') reads++;
-        const body = path === '/me' ? fixture : path === '/v1/models' ? { data: fixture.host.models.map((id) => ({ id })) } : { status: 'ok' };
+        if (path === '/v1/events') { await route.continue({ url: base+'compat-events' }); return; }
+        const body = path === '/me' ? fixture : path === '/v1/images/jobs' ? { jobs: [] } : path === '/v1/models' ? { data: fixture.host.models.map((id) => ({ id })) } : { status: 'ok' };
         await route.fulfill({ json: body, headers: { 'access-control-allow-origin': '*' } });
       };
       await context.route('http://127.0.0.1:49090/**', respond);
@@ -31,7 +39,8 @@ try {
       assert.equal(observed.microphone, false);
       assert.equal(observed.listen, false);
       // The + remains available for files on old hosts; image MIME types must be absent.
-      assert.equal(await page.locator('.composer .attach').count(), 1);
+      assert.equal(await page.locator('.composer .attach:not(.make)').count(), 1);
+      assert.equal(await page.locator('.composer .make').count(), fixture.host.images?.model ? 1 : 0);
       console.log(`COMPAT ${version} PASS ${JSON.stringify(observed)}`);
       if (process.env.COMPAT_SHOTS) await page.screenshot({ path: `${process.env.COMPAT_SHOTS}/compat-${version}.png` });
       passed++;

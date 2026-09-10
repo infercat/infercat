@@ -16,7 +16,7 @@ async function boot(): Promise<void> {
   if (import.meta.env.DEV && q.has('fake')) {
     const { installFakeTunnel } = await import('../dev/fake-infercat-tunnel.ts');
     installFakeTunnel({
-      agent: q.has('agent'), runState: q.get('runState') ?? 'running',
+      imageJobs: q.has('imageJobs'), agent: q.has('agent'), runState: q.get('runState') ?? 'running',
       transcriptions: q.has('transcriptions'), speech: q.has('speech'),
       ...(q.has('audioFailure') ? { audioFailure: Number(q.get('audioFailure')) } : {}),
       ...(q.has('audioDelay') ? { audioDelayMs: Number(q.get('audioDelay')) } : {}),

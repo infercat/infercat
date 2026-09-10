@@ -20,7 +20,10 @@ function seed() {
   saveChat(scope, { id: 'saved', title: 'Saved conversation', createdAt: 1, updatedAt: 1, messages: [{ id: 'question', role: 'user', content: 'History remains readable' }] });
 }
 function candidate(): Transport {
-  return { kind: 'tunnel', close: vi.fn(), ping: async () => null, fetch: vi.fn(async () => new Response(JSON.stringify(fixture))) };
+  return { kind: 'tunnel', close: vi.fn(), ping: async () => null, fetch: vi.fn(async (path: string, init?: RequestInit) => {
+    if (path === '/v1/events') return new Promise<Response>((_resolve, reject) => { const stop = () => reject(new DOMException('Closed', 'AbortError')); init?.signal?.addEventListener('abort', stop, { once: true }); if (init?.signal?.aborted) stop(); });
+    return new Response(JSON.stringify(fixture));
+  }) };
 }
 beforeEach(() => {
   localStorage.clear(); seed(); vi.clearAllMocks();
@@ -69,8 +72,8 @@ it('offline renders saved chat without a dial, allows drafting and recovers once
   await network(true); await network(true);
   expect(openTransport).toHaveBeenCalledTimes(1); expect(field.value).toBe('Offline draft'); expect(field.disabled).toBe(false);
   expect(container.querySelector<HTMLButtonElement>('.composer button.primary')!.disabled).toBe(false);
-  const transport = (await vi.mocked(openTransport).mock.results[0]!.value).transport;
-  expect(transport.fetch).toHaveBeenCalledTimes(1); // verify only, no replay of history/draft
+  const transport: Transport = (await vi.mocked(openTransport).mock.results[0]!.value).transport;
+  expect(vi.mocked(transport.fetch).mock.calls.map(([path, init]) => [path, init?.method ?? 'GET'])).toEqual([['/me', 'GET'], ['/v1/events', 'GET']]); // verify and subscribe only; never replay history/draft
 });
 it('long standalone resumes redial once; short resumes and browser tabs do not', async () => {
   device.online = true; await mount(); expect(openTransport).toHaveBeenCalledTimes(1);

@@ -1,3 +1,4 @@
+import { handleImageJobs, fakeImageJobs, imageControl } from './fake-image-jobs';
 import { handleFakeRuns } from './fake-runs';
 import type { Me } from '../../packages/client/src/contract';
 
@@ -24,6 +25,7 @@ export interface FakeResponse {
 
 export interface FakeOptions {
   agent?: boolean;
+  imageJobs?: boolean;
   runState?: string;
   hostName?: string;
   models?: string[];
@@ -120,12 +122,13 @@ export function fakeMe(opts: FakeOptions = {}) {
   return {
     ...(opts.agent ? { agent: true } : {}),
     key: { id: 'k_7f3a2b', name: 'alice', status: opts.keyPaused && pauseBit ? 'paused' : 'active' },
-    limits: LIMITS,
-    usage: { ...counters },
+    limits: { ...LIMITS, ...(opts.imageJobs ? { daily_images: imageControl.daily, max_queued_images: 8 } : {}) },
+    usage: { ...counters, ...(opts.imageJobs ? { today_images: fakeImageJobs().filter((j) => j.state === 'done').length } : {}) },
     host: {
       name: opts.hostName ?? "Max's workstation",
       upstream: { kind: 'llama.cpp', healthy: !opts.upstreamDown, model_context: 8192 },
       models,
+      ...(opts.imageJobs ? { images: { model: 'Qwen-Image', retention_days: 7, queue_cap: imageControl.cap, queued: fakeImageJobs().filter((j) => j.state === 'queued').length } } : {}),
       audio: { transcriptions: opts.transcriptions ? 'whisper-large-v3' : null, speech: opts.speech ? 'kokoro' : null },
       vision: Object.fromEntries(models.map((id) => [id, opts.vision ?? null])),
       relay: { region: opts.region ?? 'sfo' },
@@ -145,7 +148,8 @@ export function handleFake(req: FakeRequest, opts: FakeOptions = {}): FakeRespon
     return error(401, 'authentication_error', 'invalid_key', 'No key was presented with this request.');
   }
 
-  if (opts.agent) { const run = handleFakeRuns(req, opts.runState); if (run) return run; }
+  if (opts.imageJobs) { const image = handleImageJobs(req); if (image) return image; }
+  if (opts.agent || opts.imageJobs) { const run = handleFakeRuns(req, opts.runState); if (run) return run; }
 
   if (path === '/me') {
     if (revokedBit) return error(403, 'permission_error', 'key_revoked', 'This invite was revoked by the host.');

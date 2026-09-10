@@ -1204,3 +1204,69 @@ body { overscroll-behavior-y: none; }
 
 /* A host-reported path or diagnostic must still fit the frozen step column. */
 .row.run .step > span:last-child { min-width: 0; overflow-wrap: anywhere; }
+
+/* ================= NEW: image jobs (design record docs/brand/chat-jobs/design.md) ================= */
+
+/* The ask: the attach square's twin on the same side of the field — attach brings a picture in,
+   make asks for one out. Rendered only when /me names an image model; never disabled for its
+   absence. Pressed (aria-pressed) it is the mode: ink ground, paper glyph, as the mic while it
+   records; Send then submits a job instead of a question, one image per paragraph. */
+.make svg { width: 19px; height: 19px; display: block; }
+.make.on { background: var(--rule); color: var(--paper); }
+.make.on:hover { background: var(--rule); }
+/* While the mode is on, the frozen attached row carries one mono line — what is about to be asked
+   for — exactly where an attachment's measurement line goes. Nothing else changes on the composer
+   at desktop widths. On the phone a third square would leave the field 107 px wide (165 with two),
+   so where the make square is drawn the box becomes two rows: the field on its own line, the four
+   controls under it, Send still at the thumb. Always, not only in the mode: a composer must not
+   change shape as it is used. */
+@media (max-width: 760px) {
+  .composer-box:has(.make) { flex-wrap: wrap; }
+  .composer-box:has(.make) textarea { flex: 1 1 100%; order: -1; }
+  .composer-box:has(.make) .mic { margin-left: auto; }
+}
+
+/* Cancel during generation: the engine finishes the image it is on; the line says so. Same
+   frozen .spoken, no new element. */
+
+/* The image sheet gains one actions row under its caption — Save, because the person does not
+   have this file (the sent-image sheet had no Save: they had the original). Discard beside it in
+   the sheet reached from the Images list. */
+.sheet.image .sheet-actions { margin: 0; padding: 6px 8px; border-top: 1px solid var(--border); justify-content: flex-end; gap: 4px; }
+
+/* The Images list: one fixed row above the conversations, only when the host has an image
+   model, with the count in mono. It is a conversation row doing one more job. */
+.conv.harvest { margin-bottom: 8px; }
+.conv.harvest .conv-open { font-weight: 500; display: flex; gap: 8px; align-items: baseline; }
+.conv.harvest .count { font-family: var(--mono); font-size: 10.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+/* The Images sheet: the frozen file sheet's frame (header, scrolling body), listing every image
+   the host still keeps for this key, newest asking first. An asking is a mono heading (when, how
+   many) and its prompt; each image is the frozen frame with its own prompt beside it and one mono
+   line of what it took and how long it stays; three ghost-tiny actions. */
+.sheet.harvest { width: min(46rem, 100%); max-height: 86dvh; padding: 0; display: grid; grid-template-rows: auto minmax(0, 1fr); overflow: hidden; }
+.sheet.harvest header { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: baseline; gap: 3px 12px; padding: 10px 14px 9px; border-bottom: 1px solid var(--border); }
+.sheet.harvest header strong { font-size: 14px; font-weight: 600; letter-spacing: -0.01em; }
+.sheet.harvest header .actions { grid-column: 2; grid-row: 1; justify-self: end; }
+.sheet.harvest header .caption { grid-column: 1 / -1; font-family: var(--mono); font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.sheet.harvest .body { overflow-y: auto; min-height: 0; padding: 4px 14px 14px; }
+.asking { padding: 12px 0 6px; border-top: 1px solid var(--border); }
+.asking:first-child { border-top: 0; }
+.asking-head { font-family: var(--mono); font-size: 11px; color: var(--muted); font-variant-numeric: tabular-nums; margin: 0 0 8px; display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; }
+.asking-head .ghost.tiny { margin-left: auto; }
+.output { display: grid; grid-template-columns: auto minmax(0, 1fr); grid-template-rows: auto auto auto 1fr; gap: 4px 14px; align-items: start; margin: 0 0 12px; }
+.output .shot { grid-row: 1 / span 4; justify-self: start; display: block; padding: 0; border: 1px solid var(--rule); background: var(--paper); }
+.output .shot img { display: block; height: 180px; width: auto; max-width: 100%; object-fit: contain; }
+.output .prompt { margin: 0; font-size: 13.5px; line-height: 1.5; color: var(--text); overflow-wrap: anywhere; }
+.output .line { font-family: var(--mono); font-size: 10.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.output .actions { display: flex; gap: 4px; flex-wrap: wrap; }
+.output .waitline { font-family: var(--mono); font-size: 10.5px; color: var(--muted); display: flex; gap: 8px; align-items: center; }
+@media (max-width: 760px) {
+  .output { grid-template-columns: 1fr; }
+  .output .shot { grid-row: auto; }
+  .output .shot img { height: 140px; }
+}
+.output.pending { grid-template-columns: 1fr; }
+.output .spoken { margin: 0; }
+.sheet.harvest .empty-line { color: var(--muted); font-size: 13.5px; padding: 18px 0; margin: 0; }
+.app.zh :is(.conv.harvest .count, .sheet.harvest header .caption, .asking-head, .output .line, .output .waitline) { font-family: var(--mono-cjk); }
