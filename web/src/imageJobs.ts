@@ -1,7 +1,7 @@
 /** One image per non-empty paragraph; lines inside a paragraph stay together. */
 export function imagePrompts(text: string): string[] { return text.trim().split(/\r?\n[\t ]*\r?\n(?:[\t ]*\r?\n)*/).map((p) => p.trim()).filter(Boolean); }
 
-import { call, type RunRecord } from './api';
+import { call, GatewayError, timeoutSignal, type RunRecord } from './api';
 import type { Transport } from './transport';
 import type { Conversation, RunItem } from './storage';
 export interface ImageJob extends RunRecord {
@@ -40,8 +40,43 @@ export function mergeImageJobs(convs: Conversation[], jobs: ImageJob[], keyId: s
   }
   return next;
 }
-/** Never follow the host-supplied URL; the authenticated route is fixed and key scoped. */
+// Shared by the sheet, chat rows and Save; a slot covers the complete response body.
+let artifactReads = 0;
+const artifactWaiting: (() => void)[] = [];
+function artifactSlot(signal: AbortSignal): Promise<() => void> {
+  return new Promise((resolve, reject) => {
+    if (signal.aborted) { reject(signal.reason); return; }
+    const start = () => {
+      signal.removeEventListener('abort', abort); artifactReads++;
+      resolve(() => { artifactReads--; artifactWaiting.shift()?.(); });
+    };
+    const abort = () => { const i = artifactWaiting.indexOf(start); if (i >= 0) artifactWaiting.splice(i, 1); reject(signal.reason); };
+    if (artifactReads < 4) start();
+    else { artifactWaiting.push(start); signal.addEventListener('abort', abort, { once: true }); }
+  });
+}
+function artifactCooldown(ms: number, signal: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal.aborted) { reject(signal.reason); return; }
+    const abort = () => { clearTimeout(timer); signal.removeEventListener('abort', abort); reject(signal.reason); };
+    const timer = setTimeout(() => { signal.removeEventListener('abort', abort); resolve(); }, ms);
+    signal.addEventListener('abort', abort, { once: true });
+  });
+}
+/** Only reads retry: two retries after the host's cooldown, never a mutation replay. */
 export async function imageArtifact(t: Transport, secret: string, id: string, signal: AbortSignal, download = false): Promise<Blob> {
+  for (let attempt = 0; ; attempt++) {
+    const release = await artifactSlot(signal); let wait: number;
+    try { return await readImageArtifact(t, secret, id, timeoutSignal(30000, signal), download); }
+    catch (error) {
+      if (signal.aborted || !(error instanceof GatewayError) || error.status !== 429 || attempt === 2) throw error;
+      wait = (error.retryAfterS ?? 1) * 1000;
+    } finally { release(); }
+    await artifactCooldown(wait, signal);
+  }
+}
+/** Never follow the host-supplied URL; the authenticated route is fixed and key scoped. */
+async function readImageArtifact(t: Transport, secret: string, id: string, signal: AbortSignal, download: boolean): Promise<Blob> {
   const response = await call(t, secret, `/v1/images/outputs/${encodeURIComponent(id)}${download ? '?download=1' : ''}`, { signal });
   const mime = response.headers.get('content-type')?.split(';')[0];
   if (!['image/png','image/jpeg'].includes(mime ?? '') || !response.body) { await response.body?.cancel(); throw new Error('Invalid image output'); }

@@ -1,6 +1,6 @@
 import { hostImages } from '../api';
 import { useEffect, useState } from 'react';
-import { GatewayError, timeoutSignal } from '../api';
+import { GatewayError } from '../api';
 import { imageArtifact, imageElapsed, imageGone, type ImageJob } from '../imageJobs';
 import { appLanguage, tr } from '../i18n/text';
 import { bytesLabel } from '../images';
@@ -14,7 +14,7 @@ function useOutput(job: ImageJob | undefined, live: Live) {
   useEffect(() => {
     if (!job || !available || live.offline) return;
     const ac = new AbortController(); let url = '';
-    void imageArtifact(live.transport, live.secret, job.id, timeoutSignal(30000, ac.signal)).then((blob) => {
+    void imageArtifact(live.transport, live.secret, job.id, ac.signal).then((blob) => {
       if (ac.signal.aborted) return;
       url = URL.createObjectURL(blob); setLoaded({ id: job.id, url, gone: false, error: '' });
     }).catch((error) => { if (!ac.signal.aborted) setLoaded({ id: job.id, url: '', gone: error instanceof GatewayError && error.status === 404, error: String(error) }); });
@@ -23,7 +23,7 @@ function useOutput(job: ImageJob | undefined, live: Live) {
   return loaded.id === job?.id && available ? loaded : { url: '', gone: false, error: '' };
 }
 export async function saveImage(job: ImageJob, live: Live) {
-  const blob = await imageArtifact(live.transport, live.secret, job.id, timeoutSignal(30000), true), url = URL.createObjectURL(blob);
+  const blob = await imageArtifact(live.transport, live.secret, job.id, new AbortController().signal, true), url = URL.createObjectURL(blob);
   const a = document.createElement('a'); a.href = url; a.download = `${job.id}.${blob.type === 'image/jpeg' ? 'jpg' : 'png'}`; a.click();
   setTimeout(() => URL.revokeObjectURL(url), 1000);
 }
