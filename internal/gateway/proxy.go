@@ -605,6 +605,11 @@ type sseChunk struct {
 			Content          string  `json:"content"`
 			ReasoningContent *string `json:"reasoning_content"`
 			Reasoning        string  `json:"reasoning"`
+			ToolCalls        []struct {
+				Function struct {
+					Arguments string `json:"arguments"`
+				} `json:"function"`
+			} `json:"tool_calls"`
 		} `json:"delta"`
 	} `json:"choices"`
 }
@@ -654,7 +659,11 @@ func (q *request) pipeStream(body io.Reader) *gwError {
 						if choice.Delta.ReasoningContent != nil {
 							reasoning = *choice.Delta.ReasoningContent
 						}
-						if choice.Delta.Content != "" || reasoning != "" {
+						hasArguments := false
+						for _, call := range choice.Delta.ToolCalls {
+							hasArguments = hasArguments || call.Function.Arguments != ""
+						}
+						if choice.Delta.Content != "" || reasoning != "" || hasArguments {
 							chunks++
 							if q.g.cfg.LogPrompts {
 								completion.WriteString(choice.Delta.Content)
