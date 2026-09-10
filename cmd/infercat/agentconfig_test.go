@@ -78,10 +78,10 @@ func TestConnectConfigureLifecycle(t *testing.T) {
 		})
 	}
 }
-func TestConfigureCodexDoesNotWrite(t *testing.T) {
+func TestConfigureUnknownDoesNotWrite(t *testing.T) {
 	cfg, original := agentFixture(t)
-	r := exec(t, testPlatform(fakeAddr, nil), "connect", "--configure", "opencode,codex")
-	if r.code == 0 || !strings.Contains(r.err, "Codex needs the Responses API; not yet supported") {
+	r := exec(t, testPlatform(fakeAddr, nil), "connect", "--configure", "opencode,unknown")
+	if r.code == 0 || !strings.Contains(r.err, "unknown agent") {
 		t.Fatal(r)
 	}
 	if _, err := os.Stat(cfg.Dir); !os.IsNotExist(err) {
