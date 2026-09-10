@@ -3,6 +3,7 @@ package run
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"path/filepath"
 	"strings"
@@ -194,5 +195,47 @@ func TestInvalidPersistedCursorFailsClosed(t *testing.T) {
 	}
 	if _, _, _, e = reopened.Subscribe(r.KeyID, ""); e == nil {
 		t.Fatal("corrupt cursor accepted")
+	}
+}
+func TestReturnedMutationCannotChangeStore(t *testing.T) {
+	s := store(t)
+	r := create(t, s, "k_a")
+	r.Input[2] = 'X'
+	got, _ := s.Get(r.KeyID, r.ID)
+	if string(got.Input) != `{"hello":"world"}` {
+		t.Fatal("Create exposed stored input")
+	}
+	changed, err := s.change(r.KeyID, r.ID, func(v *Run) error {
+		v.Attempts = []Attempt{{ID: "a_1", Output: json.RawMessage(`{"x":1}`)}}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	changed.Attempts[0].Output[2] = 'z'
+	got, _ = s.Get(r.KeyID, r.ID)
+	if string(got.Attempts[0].Output) != `{"x":1}` {
+		t.Fatal("change exposed stored attempt")
+	}
+}
+func TestHostAndRetainedRunLimits(t *testing.T) {
+	s := store(t)
+	for key := 0; key < 4; key++ {
+		for n := 0; n < 16; n++ {
+			create(t, s, fmt.Sprintf("k_%d", key))
+		}
+	}
+	if _, e := s.Create("k_other", "test", "interactive", json.RawMessage(`{}`)); !errors.Is(e, ErrLimit) {
+		t.Fatal("host cap", e)
+	}
+	s = store(t)
+	for n := 0; n < 100; n++ {
+		r := create(t, s, "k_a")
+		if _, e := s.change("k_a", r.ID, func(v *Run) error { v.State = Done; return nil }); e != nil {
+			t.Fatal(e)
+		}
+	}
+	if _, e := s.Create("k_a", "test", "interactive", json.RawMessage(`{}`)); !errors.Is(e, ErrLimit) {
+		t.Fatal("retained cap", e)
 	}
 }

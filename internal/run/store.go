@@ -170,11 +170,14 @@ func clone(v *snapshot) *snapshot {
 	return &out
 }
 func (s *Store) commit(key string, v *snapshot, event *Event) error {
+	if err := s.broken[key]; err != nil {
+		return err
+	}
 	if event != nil {
 		v.Seq++
 		event.Cursor = fmt.Sprintf("%s:%d", v.Epoch, v.Seq)
 		v.Events = append(v.Events, *event)
-		if len(v.Events) > 256 || v.Seq < uint64(len(v.Events)) {
+		if len(v.Events) > 256 {
 			v.Events = v.Events[len(v.Events)-256:]
 		}
 	}
@@ -229,7 +232,8 @@ func (s *Store) change(key, rid string, fn func(*Run) error) (Run, error) {
 	if len(r.Attempts) > 0 {
 		ev.AttemptID = r.Attempts[len(r.Attempts)-1].ID
 	}
-	return r, s.commit(key, v, &ev)
+	err = s.commit(key, v, &ev)
+	return clone(v).Runs[rid], err
 }
 func (s *Store) Create(key, kind, priority string, input json.RawMessage) (Run, error) {
 	if len(input) > MaxInput {
@@ -262,7 +266,8 @@ func (s *Store) Create(key, kind, priority string, input json.RawMessage) (Run, 
 	r := Run{ID: id("r_"), KeyID: key, Kind: kind, Priority: priority, State: Queued, Created: now, Updated: now, Expires: now.Add(MaxAge), Input: append(json.RawMessage(nil), input...), Attempts: []Attempt{}}
 	v = clone(v)
 	v.Runs[r.ID] = r
-	return r, s.commit(key, v, &Event{RunID: r.ID, State: r.State, Time: now})
+	err = s.commit(key, v, &Event{RunID: r.ID, State: r.State, Time: now})
+	return clone(v).Runs[r.ID], err
 }
 func (s *Store) Get(key, rid string) (Run, error) {
 	s.mu.Lock()

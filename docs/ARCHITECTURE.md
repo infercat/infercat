@@ -383,3 +383,29 @@ or speech text is written by the gateway, even with `--log-prompts`. Aggregate
 seconds/characters restore daily budgets on restart; unreadable or malformed
 usage history refuses audio rather than silently resetting its budget.
 `status` and the startup banner name both configured audio routes and engines.
+
+### Run core
+
+`internal/run` separates the lifetime of a run from an HTTP request and from engine
+capacity. This core is not wired into the host yet; ticket 122 adds the gateway
+adapter and routes. Production registers no run kind. A trusted kind chooses a
+step, a tool/approval wait, or a terminal output; clients cannot submit executable
+code as a kind. Each engine step has a distinct attempt ID, persisted before
+execution, and an injected executor returns only after releasing and settling its
+resources. `StepResult.Usage` carries the resulting usage event (including meters
+when supplied by the gateway); run totals must not charge those steps again.
+
+States are queued, running, waiting, done, failed and cancelled. Waiting holds no
+engine or key capacity. Cancellation is cooperative, terminal states are final,
+and a waiting event is published only when an immediate internal resume is safe.
+Interactive/planted are stored labels; they do not change destination FIFO order.
+On restart, unfinished runs become failed/interrupted and unsettled attempts are
+marked accounting-uncertain. Engine work is never replayed. This does not promise
+crash-exact accounting across the run snapshot and the usage recorder.
+
+A per-key atomic snapshot commits state and its event sequence together before
+notifying subscribers. The last 256 events support cursor replay; an old cursor
+gets an explicit reset inventory, while malformed, foreign-epoch and future
+cursors are refused. Each key has at most two subscribers. A slow subscriber is
+closed and must reconnect, so it cannot block an executor. This is the internal
+event log; the friend-facing SSE transport is added separately.

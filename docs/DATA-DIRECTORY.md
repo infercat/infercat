@@ -45,3 +45,21 @@ accounting; rows without meters keep the historical
 measured-equals-charged interpretation; existing token/audio telemetry remains readable. No file
 migration occurs: `keys.json` keeps its existing limit fields, interpreted as resource budgets in
 memory, and reading it does not rewrite it.
+
+### Run state (core; host wiring follows separately)
+
+`runs/<key-id>/state.json` is an atomic per-key snapshot containing inputs, outputs,
+attempt trajectory, lifecycle metadata and the last 256 state events. Directories
+are private (0700), files 0600. Only key IDs are stored as identity; bearer secrets
+are never saved in run metadata. Run contents are user data, independent of the
+optional prompt logging in `usage.jsonl`. Corrupt snapshots fail closed for that
+key; they are never silently replaced with an empty store.
+
+The fixed initial bounds are 1 MiB input and 1 MiB output per step, 64 MiB of stored
+snapshot data per key, 100 retained runs per key, 16 live runs per key and 64 live
+runs per host. Additions refuse at a bound rather than trim existing work. Terminal
+content expires seven days after completion or cancellation. A run's maximum live
+age is 24 hours; the sweep cancels abandoned waits. Startup recovery interrupts
+unfinished runs without replaying engine work; terminal snapshots remain readable
+until expiry. The host wiring adds startup and periodic expiry sweeps in ticket 122.
+No CLI flags change these constants in this slice.

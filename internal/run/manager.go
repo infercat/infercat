@@ -14,15 +14,17 @@ type Manager struct {
 	Execute Executor
 	Kinds   map[string]Kind
 	mu      sync.Mutex
-	active  map[string]context.CancelFunc
+	active  map[string]*execution
 	ctx     context.Context
 	cancel  context.CancelFunc
 	wg      sync.WaitGroup
 }
 
+type execution struct{ cancel context.CancelFunc }
+
 func New(s *Store, exec Executor, kinds map[string]Kind) (*Manager, error) {
 	ctx, cancel := context.WithCancel(context.Background())
-	m := &Manager{Store: s, Execute: exec, Kinds: kinds, active: map[string]context.CancelFunc{}, ctx: ctx, cancel: cancel}
+	m := &Manager{Store: s, Execute: exec, Kinds: kinds, active: map[string]*execution{}, ctx: ctx, cancel: cancel}
 	rows, _ := s.List("")
 	for _, r := range rows {
 		if !terminal(r.State) {
@@ -64,11 +66,19 @@ func (m *Manager) Submit(key, kind, priority string, input json.RawMessage) (Run
 }
 func (m *Manager) start(r Run) {
 	ctx, cancel := context.WithCancel(m.ctx)
-	m.active[r.ID] = cancel
+	worker := &execution{cancel: cancel}
+	m.active[r.ID] = worker
 	m.wg.Add(1)
 	go func() {
 		defer m.wg.Done()
-		defer func() { m.mu.Lock(); delete(m.active, r.ID); m.mu.Unlock(); cancel() }()
+		defer func() {
+			m.mu.Lock()
+			if m.active[r.ID] == worker {
+				delete(m.active, r.ID)
+			}
+			m.mu.Unlock()
+			cancel()
+		}()
 		m.drive(ctx, r)
 	}()
 }
@@ -109,13 +119,19 @@ func (m *Manager) Cancel(key, rid string) (Run, error) {
 		return nil
 	})
 	if err == nil {
-		if cancel := m.active[rid]; cancel != nil {
-			cancel()
+		if worker := m.active[rid]; worker != nil {
+			worker.cancel()
 		}
 	}
 	return r, err
 }
 func (m *Manager) finish(key, rid string, st State, reason string, output json.RawMessage) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	// A waiting event is a promise that Resume can start its next worker immediately.
+	if st == Waiting {
+		delete(m.active, rid)
+	}
 	_, _ = m.Store.change(key, rid, func(v *Run) error {
 		if terminal(v.State) {
 			return ErrConflict
@@ -151,6 +167,10 @@ func (m *Manager) drive(ctx context.Context, r Run) {
 			} else {
 				m.finish(r.KeyID, r.ID, Done, "", d.Output)
 			}
+			return
+		}
+		if len(d.Step.Input) > MaxInput || !json.Valid(d.Step.Input) {
+			m.finish(r.KeyID, r.ID, Failed, "step input limit or format", nil)
 			return
 		}
 		aid := id("a_")
