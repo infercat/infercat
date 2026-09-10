@@ -546,6 +546,12 @@ func (x idleReader) Read(p []byte) (int, error) {
 type usageT struct {
 	PromptTokens     int `json:"prompt_tokens"`
 	CompletionTokens int `json:"completion_tokens"`
+	PromptDetails    struct {
+		Cached int `json:"cached_tokens"`
+	} `json:"prompt_tokens_details"`
+	CompletionDetails struct {
+		Reasoning int `json:"reasoning_tokens"`
+	} `json:"completion_tokens_details"`
 }
 
 func (q *request) applyUsage(u *usageT) {
@@ -598,20 +604,73 @@ func (q *request) pipeBody(body io.Reader) *gwError {
 	return nil
 }
 
+type chatToolCall struct {
+	Index    int    `json:"index"`
+	ID       string `json:"id"`
+	Type     string `json:"type"`
+	Function struct {
+		Name      string `json:"name"`
+		Arguments string `json:"arguments"`
+	} `json:"function"`
+}
+type chatDelta struct {
+	Content          string         `json:"content"`
+	ReasoningContent *string        `json:"reasoning_content"`
+	Reasoning        string         `json:"reasoning"`
+	Refusal          string         `json:"refusal"`
+	ToolCalls        []chatToolCall `json:"tool_calls"`
+}
+
+func (d chatDelta) reasoning() string {
+	if d.ReasoningContent != nil {
+		return *d.ReasoningContent
+	}
+	return d.Reasoning
+}
+
+// Both wire formats observe original chat deltas, never the translated envelope.
+type streamMeter struct {
+	chunks     int
+	sawUsage   bool
+	completion strings.Builder
+}
+
+func (m *streamMeter) observe(q *request, ch sseChunk) {
+	if ch.Usage != nil {
+		m.sawUsage = true
+		q.applyUsage(ch.Usage)
+	}
+	for _, c := range ch.Choices {
+		work := c.Delta.Content != "" || c.Delta.reasoning() != ""
+		for _, call := range c.Delta.ToolCalls {
+			work = work || call.Function.Arguments != ""
+		}
+		if work {
+			m.chunks++
+		}
+		if q.g.cfg.LogPrompts {
+			m.completion.WriteString(c.Delta.Content)
+		}
+	}
+}
+func (m *streamMeter) finish(q *request) {
+	if !m.sawUsage {
+		q.ev.CompletionTokens = m.chunks
+	}
+	if q.g.cfg.LogPrompts {
+		q.ev.Completion = m.completion.String()
+	}
+}
+
+type chatChoice struct {
+	Index        int       `json:"index"`
+	Delta        chatDelta `json:"delta"`
+	FinishReason *string   `json:"finish_reason"`
+}
 type sseChunk struct {
-	Usage   *usageT `json:"usage"`
-	Choices []struct {
-		Delta struct {
-			Content          string  `json:"content"`
-			ReasoningContent *string `json:"reasoning_content"`
-			Reasoning        string  `json:"reasoning"`
-			ToolCalls        []struct {
-				Function struct {
-					Arguments string `json:"arguments"`
-				} `json:"function"`
-			} `json:"tool_calls"`
-		} `json:"delta"`
-	} `json:"choices"`
+	Usage   *usageT         `json:"usage"`
+	Choices []chatChoice    `json:"choices"`
+	Error   json.RawMessage `json:"error"`
 }
 
 // pipeStream copies SSE bytes to the friend verbatim, flushing at every event boundary, while
@@ -628,8 +687,7 @@ func (q *request) pipeStream(body io.Reader) *gwError {
 	}
 
 	br := bufio.NewReaderSize(body, 64<<10)
-	chunks, sawUsage := 0, false
-	var completion strings.Builder
+	meter := &streamMeter{}
 	var result *gwError
 	for result == nil {
 		line, err := br.ReadBytes('\n')
@@ -650,26 +708,7 @@ func (q *request) pipeStream(body io.Reader) *gwError {
 				data = bytes.TrimSpace(data)
 				var ch sseChunk
 				if !bytes.Equal(data, []byte("[DONE]")) && json.Unmarshal(data, &ch) == nil {
-					if ch.Usage != nil {
-						sawUsage = true
-						q.applyUsage(ch.Usage)
-					}
-					for _, choice := range ch.Choices {
-						reasoning := choice.Delta.Reasoning
-						if choice.Delta.ReasoningContent != nil {
-							reasoning = *choice.Delta.ReasoningContent
-						}
-						hasArguments := false
-						for _, call := range choice.Delta.ToolCalls {
-							hasArguments = hasArguments || call.Function.Arguments != ""
-						}
-						if choice.Delta.Content != "" || reasoning != "" || hasArguments {
-							chunks++
-							if q.g.cfg.LogPrompts {
-								completion.WriteString(choice.Delta.Content)
-							}
-						}
-					}
+					meter.observe(q, ch)
 				}
 			}
 		}
@@ -685,11 +724,6 @@ func (q *request) pipeStream(body io.Reader) *gwError {
 	if result != nil {
 		q.outcome = outcomeCut
 	}
-	if !sawUsage {
-		q.ev.CompletionTokens = chunks
-	}
-	if q.g.cfg.LogPrompts {
-		q.ev.Completion = completion.String()
-	}
+	meter.finish(q)
 	return result
 }
