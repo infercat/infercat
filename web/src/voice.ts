@@ -238,25 +238,25 @@ export class VoicePlayer {
     try {
       const cached = speechCache.get(key);
       if (cached) { ready = true; this.url = URL.createObjectURL(cached); element.src = this.url; start(); return; }
-      const sourceType = [(globalThis as typeof globalThis & { ManagedMediaSource?: typeof MediaSource }).ManagedMediaSource, globalThis.MediaSource].find((type) => type?.isTypeSupported('audio/mpeg'));
-      const source = sourceType ? new sourceType() : null;
-      if (source) {
-        ready = true;
-        // The source and play() are created inside the tap, before the authenticated request.
-        await mediaEvent(source, 'sourceopen', signal, () => { this.url = URL.createObjectURL(source); element.src = this.url; start(); });
-      } else {
-        element.src = SILENT_AUDIO;
-        void element.play().catch(() => {});
-      }
+      // Unlock the same element in the gesture; the response chooses its decoder later.
+      element.src = SILENT_AUDIO;
+      void element.play().catch(() => {});
       const response = await request(signal);
       signal.throwIfAborted();
       if (!response.body) throw new Error('The host returned no speech audio.');
-      const buffer = source?.addSourceBuffer('audio/mpeg');
+      const mime = response.headers.get('content-type')?.trim() ?? '';
       const reader = response.body.getReader();
       const chunks: Uint8Array<ArrayBuffer>[] = [];
       const cancelReader = () => { void reader.cancel().catch(() => {}); };
       signal.addEventListener('abort', cancelReader, { once: true });
       try {
+        const sourceType = mime && [(globalThis as typeof globalThis & { ManagedMediaSource?: typeof MediaSource }).ManagedMediaSource, globalThis.MediaSource].find((type) => type?.isTypeSupported(mime));
+        const source = sourceType ? new sourceType() : null;
+        if (source) {
+          ready = true;
+          await mediaEvent(source, 'sourceopen', signal, () => { this.url = URL.createObjectURL(source); element.src = this.url; start(); });
+        }
+        const buffer = source?.addSourceBuffer(mime);
         for (;;) {
           const { value, done } = await reader.read();
           signal.throwIfAborted();
@@ -264,12 +264,23 @@ export class VoicePlayer {
           const chunk = new Uint8Array(value); chunks.push(chunk);
           if (buffer) await mediaEvent(buffer, 'updateend', signal, () => buffer.appendBuffer(chunk));
         }
-        if (!chunks.length) throw new Error('The host returned empty speech audio.');
-        const blob = new Blob(chunks, { type: 'audio/mpeg' });
+        let blob = new Blob(chunks, { type: mime });
+        if (!blob.size) throw new Error('The host returned empty speech audio.');
+        if (!source && !element.canPlayType(mime)) {
+          const header = new Uint8Array(await blob.slice(0, 12).arrayBuffer());
+          const tag = new TextDecoder().decode(header);
+          const sniffed = tag.startsWith('RIFF') && tag.slice(8, 12) === 'WAVE' ? 'audio/wav'
+            : tag.startsWith('OggS') ? 'audio/ogg'
+            : tag.startsWith('ID3') || (header[0] === 0xff && ((header[1] ?? 0) & 0xe0) === 0xe0) ? 'audio/mpeg'
+            : header[0] === 0x1a && header[1] === 0x45 && header[2] === 0xdf && header[3] === 0xa3 ? 'audio/webm' : '';
+          if (!sniffed) throw new Error('The host returned an unrecognized speech audio format.');
+          blob = blob.slice(0, blob.size, sniffed);
+        }
+        signal.throwIfAborted();
         speechCache.set(key, blob);
         if (source) source.endOfStream();
         else { ready = true; this.url = URL.createObjectURL(blob); element.src = this.url; start(); }
-      } finally { signal.removeEventListener('abort', cancelReader); reader.releaseLock(); }
+      } finally { signal.removeEventListener('abort', cancelReader); cancelReader(); reader.releaseLock(); }
     } catch (error) { fail(error); }
   }
 }

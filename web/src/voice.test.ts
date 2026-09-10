@@ -243,13 +243,14 @@ class FakeAudio {
   setAttribute() {} removeAttribute() {} load() {}
   play() { this.paused = false; if (mediaURLs.get(this.src) instanceof Blob) queueMicrotask(() => this.onplaying?.()); return Promise.resolve(); }
   pause() { this.paused = true; }
+  canPlayType(type: string) { return /^(audio\/(mpeg|wav|ogg|webm))(;|$)/i.test(type) ? 'probably' : ''; }
 }
 const mediaURLs = new Map<string, object>();
 class FakeSourceBuffer extends EventTarget {
   appendBuffer() { queueMicrotask(() => { FakeAudio.latest.onplaying?.(); this.dispatchEvent(new Event('updateend')); }); }
 }
 class FakeSource extends EventTarget {
-  static isTypeSupported = (type: string) => type === 'audio/mpeg';
+  static isTypeSupported = (type: string): boolean => type === 'audio/mpeg';
   addSourceBuffer() { return new FakeSourceBuffer(); }
   endOfStream() { FakeAudio.latest.duration = 2; FakeAudio.latest.ondurationchange?.(); }
 }
@@ -269,7 +270,7 @@ describe('speech player', () => {
   it('plays before the response ends and Stop cancels the active reader', async () => {
     let stream!: ReadableStreamDefaultController<Uint8Array>;
     const cancel = vi.fn();
-    const request = vi.fn(async () => new Response(new ReadableStream({ start(c) { stream = c; }, cancel })));
+    const request = vi.fn(async () => new Response(new ReadableStream({ start(c) { stream = c; }, cancel }), { headers: { 'Content-Type': 'audio/mpeg' } }));
     const player = new VoicePlayer(() => {});
     const playing = player.play('one', 'stream-case', 'kokoro', 'hello', request);
     await vi.waitFor(() => expect(request).toHaveBeenCalled());
@@ -280,7 +281,7 @@ describe('speech player', () => {
     expect(URL.revokeObjectURL).toHaveBeenCalled();
   });
   it('caches completed audio only in memory, and cache identity includes model and scope', async () => {
-    const request = vi.fn(async () => new Response(new Uint8Array([1, 2, 3])));
+    const request = vi.fn(async () => new Response(new Uint8Array([1, 2, 3]), { headers: { 'Content-Type': 'audio/mpeg' } }));
     const player = new VoicePlayer(() => {});
     await player.play('first', 'cache-case', 'kokoro', '你好🦊', request);
     expect(player.state).toMatchObject({ kind: 'playing', characters: 3, duration: 2 });
@@ -297,9 +298,66 @@ describe('speech player', () => {
     const player = new VoicePlayer(() => {});
     const first = player.play('old', 'switch-case', 'kokoro', 'old', (signal) => { oldSignal = signal; return new Promise((_resolve, fail) => { reject = fail; }); });
     await vi.waitFor(() => expect(oldSignal).toBeDefined());
-    await player.play('new', 'switch-case', 'kokoro', 'new', async () => new Response(new Uint8Array([1])));
+    await player.play('new', 'switch-case', 'kokoro', 'new', async () => new Response(new Uint8Array([1]), { headers: { 'Content-Type': 'audio/mpeg' } }));
     expect(oldSignal.aborted).toBe(true); reject(new Error('late')); await first;
     expect(player.state).toMatchObject({ kind: 'playing', id: 'new' }); player.stop();
+  });
+  it.each(['audio/mpeg', 'audio/webm;codecs=opus'])('streams only a supported response type: %s', async (type) => {
+    vi.spyOn(FakeSource, 'isTypeSupported').mockImplementation((mime) => mime === type);
+    const add = vi.spyOn(FakeSource.prototype, 'addSourceBuffer');
+    const player = new VoicePlayer(() => {});
+    await player.play('mime', type, 'engine', 'hello', async () => new Response(new Uint8Array([1]), { headers: { 'Content-Type': type } }));
+    expect(add).toHaveBeenCalledWith(type);
+    expect([...mediaURLs.values()].some((value) => value instanceof FakeSource)).toBe(true);
+    player.stop();
+  });
+  it.each(['audio/wav', 'audio/ogg;codecs=opus'])('keeps unsupported MSE type %s in the complete Blob and cache', async (type) => {
+    let stream!: ReadableStreamDefaultController<Uint8Array>;
+    const request = vi.fn(async () => new Response(new ReadableStream({ start(c) { stream = c; } }), { headers: { 'Content-Type': type } }));
+    const player = new VoicePlayer(() => {});
+    const playing = player.play('blob', type, 'engine', 'hello', request);
+    const element = FakeAudio.latest;
+    expect(element.src).toMatch(/^data:audio/); expect(element.paused).toBe(false);
+    await flush(); stream.enqueue(new Uint8Array([1, 2])); await flush();
+    expect(player.state.kind).toBe('making'); expect([...mediaURLs.values()].some((value) => value instanceof FakeSource)).toBe(false);
+    stream.close(); await playing; await flush();
+    expect(mediaURLs.get(element.src)).toBeInstanceOf(Blob);
+    expect((mediaURLs.get(element.src) as Blob).type).toBe(type);
+    expect(player.state.kind).toBe('playing');
+    player.stop(); await player.play('cached', type, 'engine', 'hello', request); await flush();
+    expect(request).toHaveBeenCalledTimes(1); expect((mediaURLs.get(FakeAudio.latest.src) as Blob).type).toBe(type); player.stop();
+  });
+  it.each([undefined, 'application/octet-stream'])('sniffs split RIFF/WAVE without a usable type (%s)', async (type) => {
+    const bytes = new TextEncoder().encode('RIFFxxxxWAVEdata');
+    const response = new Response(new ReadableStream({ start(c) { c.enqueue(bytes.slice(0, 3)); c.enqueue(bytes.slice(3)); c.close(); } }), { headers: type ? { 'Content-Type': type } : {} });
+    const player = new VoicePlayer(() => {});
+    await player.play('sniff', String(type), 'engine', 'hello', async () => response); await flush();
+    expect((mediaURLs.get(FakeAudio.latest.src) as Blob).type).toBe('audio/wav'); expect(player.state.kind).toBe('playing'); player.stop();
+  });
+  it('selects ManagedMediaSource with the returned type and keeps remote playback disabled', async () => {
+    class Managed extends FakeSource { static isTypeSupported = (type: string) => type === 'audio/webm;codecs=opus'; }
+    vi.stubGlobal('ManagedMediaSource', Managed);
+    const player = new VoicePlayer(() => {});
+    await player.play('managed', 'managed-type', 'engine', 'hello', async () => new Response(new Uint8Array([1]), { headers: { 'Content-Type': 'audio/webm;codecs=opus' } }));
+    expect([...mediaURLs.values()].some((value) => value instanceof Managed)).toBe(true);
+    expect((FakeAudio.latest as unknown as HTMLAudioElement).disableRemotePlayback).toBe(true); player.stop();
+  });
+  it('cancellation during container sniff cannot cache or start the late Blob', async () => {
+    let finish!: (value: ArrayBuffer) => void;
+    vi.spyOn(Blob.prototype, 'arrayBuffer').mockImplementation(() => new Promise((resolve) => { finish = resolve; }));
+    const player = new VoicePlayer(() => {});
+    const playing = player.play('sniff', 'cancel-sniff', 'engine', 'hello', async () => new Response(new Uint8Array([1])));
+    await vi.waitFor(() => expect(finish).toBeDefined()); player.stop();
+    finish(new TextEncoder().encode('RIFFxxxxWAVE').buffer); await playing;
+    expect(player.state.kind).toBe('idle'); expect(FakeAudio.latest.paused).toBe(true); expect(mediaURLs.size).toBe(0);
+  });
+  it('ends unrecognized audio without caching it or leaving an active element', async () => {
+    const request = vi.fn(async () => new Response(new Uint8Array([0, 1, 2])));
+    const player = new VoicePlayer(() => {});
+    await player.play('unknown', 'unknown-format', 'engine', 'hello', request);
+    expect(player.state.kind).toBe('error'); expect(FakeAudio.latest.paused).toBe(true);
+    await player.play('retry', 'unknown-format', 'engine', 'hello', request);
+    expect(request).toHaveBeenCalledTimes(2); player.stop();
   });
   it('keeps request failures on the requested reply and releases the element', async () => {
     const error = new GatewayError(429, 'speech_budget_exhausted', '', 'spent', 10);
@@ -331,7 +389,7 @@ it('Blob fallback unlocks inside the tap, waits for EOF, and plays on the same e
   vi.spyOn(URL, 'createObjectURL').mockImplementation((value) => { const url = 'blob:fallback'; mediaURLs.set(url, value); return url; });
   vi.spyOn(URL, 'revokeObjectURL').mockImplementation(() => {});
   let stream!: ReadableStreamDefaultController<Uint8Array>;
-  const request = vi.fn(async () => new Response(new ReadableStream({ start(c) { stream = c; } })));
+  const request = vi.fn(async () => new Response(new ReadableStream({ start(c) { stream = c; } }), { headers: { 'Content-Type': 'audio/mpeg' } }));
   const player = new VoicePlayer(() => {});
   try {
     const playing = player.play('blob', 'blob-case', 'kokoro', 'hello', request);

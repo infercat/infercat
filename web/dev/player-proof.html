@@ -1,0 +1,33 @@
+<!doctype html><meta charset="utf-8"><title>123 — native speech playback</title>
+<style>body{font:16px system-ui;max-width:850px;margin:2rem auto;padding:1rem}button{padding:.7rem;margin:.5rem}pre{white-space:pre-wrap}</style>
+<h1>Native speech playback</h1><p>Real engine → isolated Infercat host → VoicePlayer. The invite stays in this page's fragment.</p>
+<button id="listen">Listen</button><button id="stop">Stop</button><pre id="result">ready</pre>
+<script type="module">
+import { VoicePlayer, requestSpeech } from '/src/voice.ts';
+import { DirectTransport } from '/src/transport/index.ts';
+const kind=new URLSearchParams(location.search).get('kind')||'wav';
+const host=kind==='wav'?'http://127.0.0.1:19083':'http://127.0.0.1:19084';
+const model=kind==='wav'?'Qwen3-TTS-12Hz-1.7B-CustomVoice-Q8_0':'kokoro';
+const secret=location.hash.slice(1).split('.').at(-1), transport=new DirectTransport(host);
+const text='你好，欢迎使用语音。';let started=0,requests=0;
+window.result={kind,ready:true};
+const draw=()=>document.querySelector('#result').textContent=JSON.stringify(window.result,null,2);
+const create=URL.createObjectURL.bind(URL);
+URL.createObjectURL=value=>{window.result.paths??=[];window.result.paths.push(value instanceof Blob?'Blob:'+value.type:value.constructor.name);draw();return create(value);};
+const player=new VoicePlayer(state=>{
+ window.result.state=state.kind;
+ if(state.kind==='playing'){window.result.firstPlayingMs??=performance.now()-started;window.result.duration=state.duration;}
+ if(state.kind==='error')window.result.error=String(state.error);
+ if(state.kind==='idle'&&window.result.firstPlayingMs!==undefined)window.result.ended=true;
+ draw();
+});
+window.player=player;
+document.querySelector('#listen').onclick=()=>{
+ started=performance.now();window.result={kind,browser:navigator.userAgent,characters:Array.from(text).length,requests,ended:false};
+ void player.play('proof',host,model,text,async signal=>{requests++;window.result.requests=requests;
+  const response=await requestSpeech(transport,secret,text,signal);window.result.responseType=response.headers.get('content-type');draw();return response;});
+};
+document.querySelector('#stop').onclick=()=>player.stop();
+window.addEventListener('pagehide',()=>player.stop());
+draw();
+</script>
