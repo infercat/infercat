@@ -11,6 +11,7 @@ import (
 	"bytes"
 	"cmp"
 	"context"
+	"crypto/rand"
 	"encoding/json"
 	"errors"
 	"flag"
@@ -27,6 +28,7 @@ import (
 	"time"
 
 	"github.com/infercat/infercat/internal/admin"
+	"github.com/infercat/infercat/internal/agentconfig"
 	"github.com/infercat/infercat/internal/invite"
 	"github.com/infercat/infercat/internal/product"
 	"github.com/infercat/infercat/internal/tunnel"
@@ -64,14 +66,38 @@ func (s tunnelSession) Redial(ctx context.Context) (session, error) {
 	return tunnelSession{n}, nil
 }
 
-func (e *env) cmdConnect(ctx context.Context, pre string, args []string) error {
+func (e *env) cmdConnect(ctx context.Context, pre string, args []string) (retErr error) {
 	fs := flag.NewFlagSet("connect", flag.ContinueOnError)
+	configure := fs.String("configure", "", "register opencode,dsh providers; selection remains yours")
+	unconfigure := fs.Bool("unconfigure", false, "remove checksum-verified managed providers without connecting")
 	listen := fs.String("listen", connectListen, "loopback address to serve the API on")
 	verbose := fs.Bool("verbose", false, "print the tunnel engine's log on the terminal")
 	logRequests := fs.Bool("log-requests", false, "print one line per request on this terminal (never prompt content)")
 	dd := fs.String("data-dir", pre, "serve an admin socket there, so `status --data-dir` can watch this bridge")
 	if err := e.parse(fs, connectHelp, args); err != nil {
 		return err
+	}
+	var agents []string
+	if *configure != "" {
+		var err error
+		agents, err = agentconfig.Parse(*configure)
+		if err != nil {
+			return err
+		}
+	}
+	var ac agentconfig.Config
+	if len(agents) > 0 || *unconfigure {
+		var err error
+		ac, err = agentconfig.Default()
+		if err != nil {
+			return err
+		}
+	}
+	if *unconfigure {
+		if len(agents) > 0 || fs.NArg() != 0 {
+			return errors.New("--unconfigure takes no invite or --configure")
+		}
+		return ac.Remove("")
 	}
 	if fs.NArg() != 1 {
 		fmt.Fprint(e.errw, "connect takes exactly one invite\n\n", connectHelp)
@@ -110,6 +136,20 @@ func (e *env) cmdConnect(ctx context.Context, pre string, args []string) error {
 	me, herr := c.me(ctx)
 	if herr != nil && (herr.Code == "invalid_key" || herr.Code == "key_revoked" || herr.Status == 0) {
 		return errors.New(herr.Message)
+	}
+	if len(agents) > 0 {
+		if herr != nil {
+			return errors.New(herr.Message)
+		}
+		owner := rand.Text()
+		defer func() { retErr = errors.Join(retErr, ac.Remove(owner)) }()
+		lines, err := ac.Configure(agents, owner, c.local+"/v1", agentconfig.Models{IDs: me.Host.Models, Context: me.Host.Upstream.ModelContext, Output: me.Limits.MaxOutputTokens, Vision: me.Host.Vision})
+		if err != nil {
+			return err
+		}
+		for _, line := range lines {
+			fmt.Fprintln(e.out, line)
+		}
 	}
 	c.host, c.relayName = me.Host.Name, me.Host.Relay.Region
 	p, _ := c.path(ctx)
@@ -572,9 +612,16 @@ func (c *connector) probe() bool {
 
 // meInfo is what connect reads from /me: who the host is, what it shares, where its relay is.
 type meInfo struct {
+	Limits struct {
+		MaxOutputTokens int `json:"max_output_tokens"`
+	} `json:"limits"`
 	Key  struct{ Status string } `json:"key"`
 	Host struct {
-		Name   string                  `json:"name"`
+		Name     string `json:"name"`
+		Upstream struct {
+			ModelContext int `json:"model_context"`
+		} `json:"upstream"`
+		Vision map[string]*bool        `json:"vision"`
 		Models []string                `json:"models"`
 		Relay  struct{ Region string } `json:"relay"`
 	} `json:"host"`
@@ -711,6 +758,8 @@ found each other — and is re-checked every 30s. When the host stops answering,
 reconnects on its own.
 
 Flags:
+  --configure LIST register opencode,dsh from /me; prints selection instructions; removed on exit
+  --unconfigure    remove unchanged managed blocks (no invite); edited blocks are preserved
   --listen ADDR    loopback address to serve on (default 127.0.0.1:11435); other addresses are refused
   --log-requests   print one line per request: when, what, how long, how it ended — never the prompt
   --data-dir DIR   also serve an admin socket there, so "status --data-dir DIR [--watch]" shows this

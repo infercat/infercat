@@ -443,3 +443,23 @@ is introduced. Run SSE never keeps a model slot and exits on manager shutdown.
 
 Run steps do not update the console’s last-seen or connected-session indicators;
 those still reflect ordinary gateway requests and tunnel sessions.
+
+
+### Managed coding-agent providers
+
+`internal/agentconfig` owns only provider spans for `connect --configure opencode,dsh`:
+an extra JSONC file selected with `OPENCODE_CONFIG`, and a YAML block-map insertion under
+Harness `llm-pi-ai.providers`. It never serializes surrounding settings or changes
+`agent-default-model`; `/me` supplies model IDs and available limits/capabilities, and the
+listener supplies the local URL. Global receipts under the user config directory
+`infercat/agents` bind each span's SHA-256, target, before-hash and connection owner; a
+cross-process file lock serializes operations. Backups are written once and pending receipts
+precede target replacement, so an interrupted process can be cleaned up with `--unconfigure`.
+Removal checks the span and preserves other bytes, refusing changed markers, duplicate spans,
+symlinks or foreign entries depending on managed parent mappings. A later connection cannot
+claim an existing owner; an older connection's exit cannot remove a newer owner's span.
+`status` reads these local receipts independently of the admin endpoint. Replacements use
+synced temporary files and rename, preserving existing permissions; external editors do not
+share our lock, so simultaneous edits during replacement are not a transactional collaboration
+protocol. No invite or gateway bearer is written into agent settings. Windows locking is
+compiled separately; native Windows paths/shell invocation remain unproved.
