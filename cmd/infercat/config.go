@@ -20,6 +20,9 @@ const configName = "config.json"
 // Keys a newer build no longer knows (queue_timeout, request_timeout, max_body, retired by ticket
 // 010) are ignored on load and dropped on the next save.
 type config struct {
+	UpstreamImages          string `json:"upstream_images,omitempty"`
+	UpstreamImagesKey       string `json:"upstream_images_key,omitempty"`
+	UpstreamImagesModel     string `json:"upstream_images_model,omitempty"`
 	UpstreamSpeechVoices    string `json:"upstream_speech_voices,omitempty"`
 	UpstreamTranscribeModel string `json:"upstream_transcribe_model,omitempty"`
 	UpstreamSpeechModel     string `json:"upstream_speech_model,omitempty"`

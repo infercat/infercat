@@ -65,3 +65,11 @@ age is 24 hours; the sweep cancels abandoned waits. Startup recovery interrupts
 unfinished runs without replaying engine work; terminal snapshots remain readable
 until expiry. The host runs expiry sweeps at startup and once per minute.
 No CLI flags change these constants in this slice.
+
+Image runs keep PNG/JPEG bytes in `runs/<key-id>/images/<run-id>`, with private
+permissions, and only output metadata in the run snapshot. Each output is at most
+8 MiB. Images have a separate 256 MiB per-key budget: oldest outputs are evicted
+first, independently of the 64 MiB state ceiling. Outputs expire after seven days;
+Discard removes an output immediately. The run metadata remains with an output-gone
+marker until the run record expires. Startup sweeps remove orphaned artifacts;
+interrupted work is never automatically replayed.

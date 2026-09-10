@@ -25,14 +25,15 @@ type snapshot struct {
 	Retained map[string]Retained `json:"retained,omitempty"`
 }
 type Store struct {
-	mu       sync.Mutex
-	root     string
-	data     map[string]*snapshot
-	broken   map[string]error
-	subs     map[string]map[chan Event]bool
-	now      func() time.Time
-	write    func(string, []byte) error
-	reserved map[string]map[string]*reservation
+	mu          sync.Mutex
+	root        string
+	data        map[string]*snapshot
+	broken      map[string]error
+	subs        map[string]map[chan Event]bool
+	now         func() time.Time
+	write       func(string, []byte) error
+	reserved    map[string]map[string]*reservation
+	imageBudget int
 }
 
 var safeID = regexp.MustCompile(`^[a-zA-Z0-9_-]{1,80}$`)
@@ -269,40 +270,73 @@ func (s *Store) change(key, rid string, fn func(*Run) error, retain ...func(*Ret
 	err = s.commit(key, v, &ev)
 	return clone(v).Runs[rid], err
 }
-func (s *Store) Create(key, kind, priority string, input json.RawMessage) (Run, error) {
-	if len(input) > MaxInput {
-		return Run{}, ErrLimit
+func (s *Store) CreateBatch(key, kind, priority string, inputs []json.RawMessage, cap int) ([]Run, error) {
+	if len(inputs) == 0 || len(inputs) > MaxLiveKey {
+		return nil, ErrLimit
 	}
-	if !json.Valid(input) || (priority != "interactive" && priority != "planted") {
-		return Run{}, ErrInvalid
+	for _, input := range inputs {
+		if len(input) > MaxInput {
+			return nil, ErrLimit
+		}
+		if !json.Valid(input) || (priority != "interactive" && priority != "planted") {
+			return nil, ErrInvalid
+		}
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	v, err := s.load(key)
 	if err != nil {
-		return Run{}, err
+		return nil, err
 	}
-	keyLive, total := 0, 0
+	keyLive, total, queued := 0, 0, 0
 	for k, d := range s.data {
 		for _, r := range d.Runs {
 			if !terminal(r.State) {
 				total++
 				if k == key {
 					keyLive++
+					if r.Kind == kind && r.State == Queued {
+						queued++
+					}
 				}
 			}
 		}
 	}
-	if keyLive >= MaxLiveKey || total >= MaxLiveHost || len(v.Runs) >= MaxRuns {
-		return Run{}, ErrLimit
+	if keyLive+len(inputs) > MaxLiveKey || total+len(inputs) > MaxLiveHost || len(v.Runs)+len(inputs) > MaxRuns {
+		return nil, ErrLimit
 	}
+	if queued+len(inputs) > cap {
+		return nil, ErrQueueLimit
+	}
+	next := clone(v)
 	now := s.now().UTC()
-	r := Run{ID: id("r_"), KeyID: key, Kind: kind, Priority: priority, State: Queued, Created: now, Updated: now, Expires: now.Add(MaxAge), Input: append(json.RawMessage(nil), input...), Attempts: []Attempt{}}
-	v = clone(v)
-	v.Runs[r.ID] = r
-	err = s.commit(key, v, &Event{RunID: r.ID, State: r.State, Time: now})
-	return clone(v).Runs[r.ID], err
+	batchID := id("b_")
+	rows := make([]Run, 0, len(inputs))
+	for i, input := range inputs {
+		r := Run{ID: id("r_"), KeyID: key, Kind: kind, Priority: priority, State: Queued, Created: now.Add(time.Duration(i)), Updated: now, Expires: now.Add(MaxAge), Input: append(json.RawMessage(nil), input...), Attempts: []Attempt{}}
+		if kind == "image" {
+			r.Batch = &Batch{batchID, i, len(inputs)}
+		}
+		next.Runs[r.ID] = r
+		rows = append(rows, r)
+	}
+	// A batch has one durable admission point. Its event prompts the image list to refresh all siblings.
+	if err = s.commit(key, next, &Event{RunID: rows[0].ID, State: Queued, Time: now}); err != nil {
+		return nil, err
+	}
+	for i := range rows {
+		rows[i] = clone(next).Runs[rows[i].ID]
+	}
+	return rows, nil
 }
+func (s *Store) Create(key, kind, priority string, input json.RawMessage) (Run, error) {
+	rows, err := s.CreateBatch(key, kind, priority, []json.RawMessage{input}, MaxLiveKey)
+	if err != nil {
+		return Run{}, err
+	}
+	return rows[0], nil
+}
+
 func (s *Store) Get(key, rid string) (Run, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

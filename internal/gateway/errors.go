@@ -15,6 +15,8 @@ import (
 type Code string
 
 const (
+	CodeImageQueueFull        Code = "image_queue_full"
+	CodeImageBudgetExhausted  Code = "image_budget_exhausted"
 	CodeInvalidKey            Code = "invalid_key"
 	CodeKeyPaused             Code = "key_paused"
 	CodeKeyRevoked            Code = "key_revoked"
@@ -41,6 +43,8 @@ type codeRow struct {
 }
 
 var codeTable = map[Code]codeRow{
+	CodeImageQueueFull:        {http.StatusTooManyRequests, "rate_limit_error"},
+	CodeImageBudgetExhausted:  {http.StatusTooManyRequests, "rate_limit_error"},
 	CodeInvalidKey:            {http.StatusUnauthorized, "authentication_error"},
 	CodeKeyPaused:             {http.StatusForbidden, "permission_error"},
 	CodeKeyRevoked:            {http.StatusForbidden, "permission_error"},

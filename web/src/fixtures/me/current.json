@@ -12,13 +12,16 @@
     "max_concurrent": 1,
     "max_output_tokens": 4096,
     "max_context": 0,
-    "daily_tokens": 200000
+    "daily_tokens": 200000,
+    "daily_images": 20,
+    "max_queued_images": 8
   },
   "usage": {
     "rpm_used": 0,
     "tpm_used": 0,
     "today_tokens": 0,
-    "in_flight": 0
+    "in_flight": 0,
+    "today_images": 0
   },
   "host": {
     "name": "Compatibility host",
@@ -40,6 +43,12 @@
     "relay": {
       "region": "New York City"
     },
-    "log_prompts": false
+    "log_prompts": false,
+    "images": {
+      "model": "image-model",
+      "retention_days": 7,
+      "queue_cap": 8,
+      "queued": 0
+    }
   }
 }

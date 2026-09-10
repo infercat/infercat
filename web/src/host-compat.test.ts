@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { readFileSync } from 'node:fs';
 import ts from 'typescript';
-import { hostAudio, logsPrompts, modelVision, type Me } from './api';
+import { hostAudio, hostImages, logsPrompts, modelVision, type Me } from './api';
 import old from './fixtures/me/0.1.0.json';
 import current from './fixtures/me/current.json';
 
@@ -9,7 +9,7 @@ const source = ts.createSourceFile('contract.ts', readFileSync(new URL('../../pa
 const me = source.statements.find((s): s is ts.InterfaceDeclaration => ts.isInterfaceDeclaration(s) && s.name.text === 'Me')!;
 const host = (me.members.find((m) => m.name?.getText(source) === 'host') as ts.PropertySignature).type as ts.TypeLiteralNode;
 // Explicit extension inventory (082's size-1 alternative to a generated Go schema).
-const optional = ['audio', 'log_prompts', 'vision'];
+const optional = ['audio', 'images', 'log_prompts', 'vision'];
 
 describe('shipped host capabilities', () => {
   it('keeps additive fields optional and requires an explicit inventory update', () => {
@@ -17,7 +17,7 @@ describe('shipped host capabilities', () => {
     for (const m of host.members) {
       if (!(m.name!.getText(source) in old.host)) expect((m as ts.PropertySignature).questionToken).toBeDefined();
     }
-    expect(Object.keys(current.host).sort()).toEqual(['audio', 'log_prompts', 'models', 'name', 'relay', 'upstream', 'vision']);
+    expect(Object.keys(current.host).sort()).toEqual(['audio', 'images', 'log_prompts', 'models', 'name', 'relay', 'upstream', 'vision']);
   });
   it('requires current fixture coverage for Go wire field names', () => {
     const proxy = readFileSync(new URL('../../internal/gateway/proxy.go', import.meta.url), 'utf8');
@@ -36,6 +36,8 @@ describe('shipped host capabilities', () => {
     expect(modelVision(old as Me, 'compat-model')).toBeNull();
     expect(hostAudio(old as Me, 'transcriptions')).toBeNull();
     expect(hostAudio(old as Me, 'speech')).toBeNull();
+    expect(hostImages(old as Me)).toBeNull();
+    expect(hostImages(current as Me)?.model).toBe('image-model');
     expect(modelVision(current as Me, 'compat-model')).toBe(true);
     expect(modelVision(current as Me, 'missing')).toBeNull();
     const me = { ...current, host: { ...current.host, vision: { text: false, unknown: null }, audio: { transcriptions: 'asr-model', speech: null } } } as Me;

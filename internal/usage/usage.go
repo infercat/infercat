@@ -45,6 +45,7 @@ type Recorder interface {
 // Counters are the live per-key numbers the gateway keeps in memory for limits and for /me.
 // Implemented by the gateway (002); exposed to admin status via the Snapshot interface.
 type KeyCounters struct {
+	TodayImages       int       `json:"today_images"`
 	TodayAudioSeconds float64   `json:"today_audio_seconds"`
 	TodaySpeechChars  int       `json:"today_speech_chars"`
 	InFlight          int       `json:"in_flight"`

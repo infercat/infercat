@@ -29,3 +29,9 @@ Post-deploy: `cd web && pnpm exec node dev/live-assert.mjs [URL]` (default /try)
 Set INVITE to use a specific invite without printing it. The script observes the
 empty chat's controls, so `listen: false` means no Listen button was rendered;
 it does not infer speech capability from an empty history. It never sends a chat.
+
+144: current.json also includes the additive image capability, image-limit defaults
+and zero image usage, using the same normalized compatibility identity/model. These
+new fields are covered by the real isolated-host `/me` proof and gateway tests; the
+older fixture fields retain their captured values. This fixture is now an explicit
+compatibility assembly, not a claim that every value came from one capture.

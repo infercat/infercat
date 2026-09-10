@@ -19,6 +19,7 @@ import (
 type endpoint string
 
 const (
+	imagesEndpoint     endpoint = "/v1/images/generations"
 	transcribeEndpoint endpoint = "/v1/audio/transcriptions"
 	speechEndpoint     endpoint = "/v1/audio/speech"
 	chatEndpoint       endpoint = "/v1/chat/completions"
@@ -33,7 +34,7 @@ const (
 // connect; counting it made the friend's first message read "2 of 20 used this minute" (ticket 014
 // ruling; measured on the real stack, 014 Log).
 func (e endpoint) countsAgainstRPM() bool {
-	return e == chatEndpoint || e == embeddingsEndpoint || e == transcribeEndpoint || e == speechEndpoint
+	return e == imagesEndpoint || e == chatEndpoint || e == embeddingsEndpoint || e == transcribeEndpoint || e == speechEndpoint
 }
 
 // outcome is how a request ended, set by the stage that ended it (DESIGN §1.4). finish reads it
@@ -74,6 +75,7 @@ type request struct {
 	destination *Destination
 	audio       *audioRequest
 	responses   *responsesAdapter
+	image       *imageRequest
 	g           *Gateway
 	w           http.ResponseWriter
 	r           *http.Request
@@ -123,6 +125,8 @@ func (q *request) serve() {
 	}
 	r := q.r
 	switch {
+	case isImageRoute(r.URL.Path):
+		q.imageRoute()
 	case isRunRoute(r.URL.Path):
 		q.runRoute()
 	case r.Method == http.MethodGet && r.URL.Path == "/me":
@@ -464,8 +468,11 @@ func (q *request) finish() {
 		if q.audio != nil {
 			q.settleAudio()
 		}
+		if q.image != nil {
+			q.settleImage()
+		}
 		settledAt := q.g.lim.settle(q.adm, counted, charged)
-		if q.audio == nil {
+		if q.audio == nil && q.image == nil {
 			q.ev.SettledAt = settledAt
 		} // the same UTC day for live charge and replay
 	}
@@ -475,6 +482,10 @@ func (q *request) finish() {
 		m := &q.ev.Meters[i]
 		m.Charged = 0
 		switch m.Class {
+		case "images":
+			if q.image != nil {
+				m.Charged = q.image.charged
+			}
 		case "tokens":
 			m.Charged = float64(charged)
 		case "audio", "speech":

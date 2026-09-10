@@ -81,6 +81,8 @@ func (st *keyState) tokensReserved() int { return int(st.meter("tokens").reserve
 // wrote (by seq), and the tokens reserve later put on it. The request record holds it; nothing
 // else ends it.
 type admission struct {
+	images       int
+	detached     bool
 	audioSeconds float64
 	speechChars  int
 	key          string
@@ -186,6 +188,11 @@ func (l *limiter) touch(id string) {
 // promise 2): cheap and in memory, so a burst from one key is bounded by max_concurrent in buffered
 // bodies and in engine tokenize calls alike. The caller settles the admission exactly once.
 func (l *limiter) admit(id string, lim keys.Limits) (*admission, *gwError) {
+	return l.admitResource(id, lim, false)
+}
+
+// Images hold their own worker capacity, retaining the same RPM ledger and finish owner.
+func (l *limiter) admitResource(id string, lim keys.Limits, detached bool) (*admission, *gwError) {
 	st := l.state(id)
 	st.mu.Lock()
 	defer st.mu.Unlock()
@@ -193,7 +200,7 @@ func (l *limiter) admit(id string, lim keys.Limits) (*admission, *gwError) {
 	st.prune(now)
 	st.lastSeen = now
 
-	if lim.MaxConcurrent > 0 && st.inFlight >= lim.MaxConcurrent {
+	if !detached && lim.MaxConcurrent > 0 && st.inFlight >= lim.MaxConcurrent {
 		e := errf(CodeConcurrencyLimited, 1, "this key allows %d request(s) at a time; %d in flight", lim.MaxConcurrent, st.inFlight)
 		e.Limit, e.InFlight = lim.MaxConcurrent, st.inFlight
 		return nil, e
@@ -210,10 +217,12 @@ func (l *limiter) admit(id string, lim keys.Limits) (*admission, *gwError) {
 		}
 		return nil, errf(CodeRateLimited, secondsUntil(oldest.Add(window), now), "rate limit: %d requests per minute; %d used", lim.RPM, reqs)
 	}
-	st.inFlight++
+	if !detached {
+		st.inFlight++
+	}
 	st.seq++
 	st.log = append(st.log, logEntry{t: now, req: 1, seq: st.seq})
-	return &admission{key: id, seq: st.seq}, nil
+	return &admission{key: id, seq: st.seq, detached: detached}, nil
 }
 
 // minOutputTokens is the floor when max_tokens is shrunk to fit the context or a token budget.
@@ -310,7 +319,9 @@ func (l *limiter) settle(a *admission, counted bool, charged int) time.Time {
 	defer st.mu.Unlock()
 	now := l.now()
 	st.prune(now)
-	st.inFlight--
+	if !a.detached {
+		st.inFlight--
+	}
 	m := st.meter("tokens")
 	m.reserved -= float64(a.reserved)
 	if !counted {
@@ -340,7 +351,7 @@ func (l *limiter) counters(id string) usage.KeyCounters {
 	st.prune(l.now())
 	reqs, tokens := st.used()
 	text, audio, speech := st.meter("tokens"), st.meter("audio"), st.meter("speech")
-	return usage.KeyCounters{TodayAudioSeconds: audio.today + audio.reserved, TodaySpeechChars: int(speech.today + speech.reserved), InFlight: st.inFlight, RPMUsed: reqs, TPMUsed: tokens + int(text.reserved), TodayTokens: int(text.today + text.reserved), LastSeen: st.lastSeen}
+	return usage.KeyCounters{TodayImages: int(st.meter("images").today + st.meter("images").reserved), TodayAudioSeconds: audio.today + audio.reserved, TodaySpeechChars: int(speech.today + speech.reserved), InFlight: st.inFlight, RPMUsed: reqs, TPMUsed: tokens + int(text.reserved), TodayTokens: int(text.today + text.reserved), LastSeen: st.lastSeen}
 }
 
 func (l *limiter) allCounters() map[string]usage.KeyCounters {

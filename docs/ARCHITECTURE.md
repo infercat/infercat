@@ -395,7 +395,7 @@ usage history refuses audio rather than silently resetting its budget.
 `internal/run` separates the lifetime of a run from an HTTP request and from engine
 capacity. The host constructs the store and manager before exposing the gateway, runs startup
 and periodic expiry sweeps, and cancels the manager before draining listeners.
-Production registers no run kind. A trusted kind chooses a
+An explicitly configured image engine registers the image run kind. A trusted kind chooses a
 step, a tool/approval wait, or a terminal output; clients cannot submit executable
 code as a kind. Each engine step has a distinct attempt ID, persisted before
 execution, and an injected executor returns only after releasing and settling its
@@ -513,3 +513,51 @@ same stateless route.
 
 The current web client does not consume Responses; its versioned `/me` fixtures
 and strict shape guards remain unchanged. Older hosts have no Responses route.
+
+## Image runs (144a)
+
+An explicitly configured `--upstream-images URL` is probed through `/v1/models`
+(or `/health`); `--upstream-images-key` and `--upstream-images-model` follow the audio
+engine settings. An absent image model leaves the capability absent. `/me` adds
+optional `host.images {model, retention_days, queue_cap, queued}`, image limits
+`daily_images` (default 20) and `max_queued_images` (default 8), and
+`usage.today_images`. Zero/absent legacy fields take the defaults without rewriting
+stored keys. Queue caps and image daily limits can be edited through the key
+CLI/admin surface. Text/audio request-concurrency limits exclude image work;
+images retain the shared RPM ledger and their own resource reservation.
+
+`POST /v1/images/jobs` accepts `{prompts:[string], conversation?:string, client_request_id?:string}` and
+atomically admits one batch, returning 202 `{jobs:[run]}`. One prompt is interactive;
+several are planted. One image worker chooses interactive before planted and FIFO
+within each priority; running work is not preempted. `GET /v1/images/jobs` lists the
+key's image runs newest first, with `batch {id,index,count}` and queue `position`.
+`DELETE /v1/runs/{id}` cancels queued images immediately; for a running image it
+records cancellation but allows that image to finish Done, retaining its output.
+
+`GET /v1/images/outputs/{id}` returns only this key's PNG/JPEG bytes;
+`?download=1` adds an attachment disposition. `DELETE` discards the output.
+`POST /v1/images/generations` submits through the same worker and waits, returning
+`{created,data:[{b64_json}]}`. It accepts prompt, n (1–16, subject to the queue cap),
+1024x1024 size, optional configured model and b64_json format. A disconnected waiter
+does not cancel or replay its durable jobs. The engine must return bounded base64
+PNG/JPEG data; URL-only results are refused, never fetched. Native sd.cpp embedded
+control directives are refused in prompts so they cannot override the host's
+single-output dimensions/settings. Current decoded dimensions are bounded to 4096².
+
+The `images` meter reserves one image before dispatch. A definitive engine failure
+without output releases it; a valid output or ambiguous dispatched outcome charges
+one. Measured is one only for a valid image. Settlement uses the existing request
+owner and UTC accounting window; no crash-exact charging guarantee is added.
+The named refusal codes are `image_queue_full` and `image_budget_exhausted` (429).
+
+Each image run keeps `input {prompt, conversation?, client_request_id?}`. Both
+optional strings are bounded to 128 bytes. The client persists its opaque
+correlation id before submitting; an ambiguous response is reconciled by listing
+this key's runs, never by resubmitting. Correlation does not deduplicate: repeating
+an id creates a separate batch. Batch indexes are zero-based. `started` is the
+actual worker-acquisition timestamp; final elapsed is `updated - started`.
+The list and individual image-run GET/DELETE snapshots include `position` (zero
+when not queued). Each output is `{url,mime,w,h,bytes,expiresAt,gone?}`; metadata
+is sent without image bytes. One admission event names a batch's first sibling;
+clients refresh the whole image list on any run event and after reconnect, so
+all siblings, current positions and evictions are observed together.

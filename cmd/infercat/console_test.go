@@ -46,6 +46,11 @@ func TestConsoleKeyLifecycleAndCounts(t *testing.T) {
 		t.Fatal(minted)
 	}
 	id := minted["key_id"]
+	call("PATCH", "/keys/"+id, `{"daily_images":3,"max_queued_images":2}`, 200)
+	edited, _ := store.Find(ctx, id)
+	if edited.Limits.DailyImages != 3 || edited.Limits.MaxQueuedImages != 2 {
+		t.Fatal("image admin limits not applied")
+	}
 	secret := strings.TrimPrefix(minted["invite"], "ic1."+fakeAddr+".")
 	k, ok, err := store.Lookup(ctx, secret)
 	if err != nil || !ok || k.Limits.RPM != 42 {

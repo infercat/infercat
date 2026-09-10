@@ -58,6 +58,8 @@ func limitFlags(fs *flag.FlagSet) func(base keys.Limits) keys.Limits {
 	maxCtx := fs.Int("max-context", 0, "context ceiling; 0 = the upstream's")
 	daily := fs.Int("daily-tokens", 0, "tokens per UTC day")
 	audio := fs.Int("daily-audio-seconds", 0, "transcription seconds per UTC day")
+	images := fs.Int("daily-images", 0, "images per UTC day (default 20)")
+	queuedImages := fs.Int("max-queued-images", 0, "queued images per key (default 8)")
 	speech := fs.Int("daily-speech-chars", 0, "speech Unicode code points per UTC day")
 	models := fs.String("models", "", "comma-separated model allowlist; empty = every model")
 	return func(l keys.Limits) keys.Limits {
@@ -75,6 +77,10 @@ func limitFlags(fs *flag.FlagSet) func(base keys.Limits) keys.Limits {
 				l.MaxContext = *maxCtx
 			case "daily-audio-seconds":
 				l.DailyAudioSeconds = *audio
+			case "daily-images":
+				l.DailyImages = *images
+			case "max-queued-images":
+				l.MaxQueuedImages = *queuedImages
 			case "daily-speech-chars":
 				l.DailySpeechChars = *speech
 			case "daily-tokens":
@@ -281,11 +287,11 @@ func (e *env) keysList(ctx context.Context, pre string, args []string) error {
 	}
 	seen := rep.LastSeen()
 	tw := tabwriter.NewWriter(e.out, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(tw, "ID\tNAME\tSTATUS\tRPM\tTPM\tDAILY\tAUDIO S/DAY\tSPEECH CHARS/DAY\tCREATED\tLAST SEEN")
+	fmt.Fprintln(tw, "ID\tNAME\tSTATUS\tRPM\tTPM\tDAILY\tAUDIO S/DAY\tSPEECH CHARS/DAY\tIMAGES/DAY\tIMAGE QUEUE\tCREATED\tLAST SEEN")
 	for _, k := range list {
-		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
+		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
 			k.ID, k.Name, k.Status,
-			limitNum(k.Limits.RPM), limitNum(k.Limits.TPM), limitNum(k.Limits.DailyTokens), limitNum(k.Limits.DailyAudioSeconds), limitNum(k.Limits.DailySpeechChars),
+			limitNum(k.Limits.RPM), limitNum(k.Limits.TPM), limitNum(k.Limits.DailyTokens), limitNum(k.Limits.DailyAudioSeconds), limitNum(k.Limits.DailySpeechChars), limitNum(k.Limits.DailyImages), limitNum(k.Limits.MaxQueuedImages),
 			k.CreatedAt.Local().Format("2006-01-02"), ago(seen[k.ID]))
 	}
 	return tw.Flush()
@@ -476,6 +482,8 @@ Limit flags:
   --max-output-tokens N   clamp on max_tokens
   --max-context N         context ceiling (0 = the upstream's)
   --daily-tokens N        tokens per UTC day
+  --daily-images N       images per UTC day (default 20)
+  --max-queued-images N queued images per key (default 8)
   --daily-audio-seconds N transcription seconds per UTC day (default 3600)
   --daily-speech-chars N  speech code points per UTC day (default 200000)
   --models a,b            model allowlist (empty = every model); the host pin still applies

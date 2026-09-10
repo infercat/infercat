@@ -8,6 +8,9 @@ import (
 
 // Policy is registered by the host alongside a kind, never supplied by a friend.
 type Policy struct {
+	Serial         bool
+	QueueLimit     func(string) (int, error)
+	Validate       func(json.RawMessage) error
 	DeferredCancel bool // A running attempt finishes; successful completion remains Done.
 	JoinCancel     bool // An active consumer must return before cancellation becomes terminal.
 }

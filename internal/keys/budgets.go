@@ -15,6 +15,7 @@ type Budgets map[string][]Budget
 func (l Limits) Budgets() Budgets {
 	l = AudioDefaults(l)
 	return Budgets{
+		"images": {{"images", "day", l.DailyImages}},
 		"tokens": {{"tokens", "minute", l.TPM}, {"tokens", "day", l.DailyTokens}},
 		"audio":  {{"seconds", "day", l.DailyAudioSeconds}},
 		"speech": {{"characters", "day", l.DailySpeechChars}},

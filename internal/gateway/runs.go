@@ -15,14 +15,30 @@ import (
 )
 
 // SetRuns is startup wiring only, before any gateway listener is exposed.
-func (g *Gateway) SetRuns(m *runstate.Manager) { g.runs = m }
+func (g *Gateway) SetRuns(m *runstate.Manager) {
+	g.runs = m
+	if g.cfg.Images != nil {
+		m.Register("image", runstate.ImageKind, runstate.Policy{Serial: true, DeferredCancel: true, Validate: runstate.ValidateImage, QueueLimit: func(key string) (int, error) {
+			all, e := g.store.List(context.Background())
+			if e != nil {
+				return 0, e
+			}
+			for _, k := range all {
+				if k.ID == key {
+					return keys.ImageDefaults(k.Limits).MaxQueuedImages, nil
+				}
+			}
+			return 0, runstate.ErrNotFound
+		}})
+	}
+}
 
 // ExecuteStep reuses the request owner; finish settles once before the result is observed.
 func (g *Gateway) ExecuteStep(ctx context.Context, keyID string, step runstate.Step, acquired func() error) (result runstate.StepResult, err error) {
 	if len(step.Input) > runstate.MaxInput || !json.Valid(step.Input) {
 		return result, runstate.ErrInvalid
 	}
-	if step.Route != string(chatEndpoint) && step.Route != string(embeddingsEndpoint) {
+	if step.Route != string(chatEndpoint) && step.Route != string(embeddingsEndpoint) && step.Route != string(imagesEndpoint) {
 		return result, runstate.ErrInvalid
 	}
 	sink := &runSink{ctx: ctx, header: make(http.Header)}
@@ -41,7 +57,7 @@ func (g *Gateway) ExecuteStep(ctx context.Context, keyID string, step runstate.S
 			err = sink.err
 		}
 		if err == nil && q.outcome != outcomeServed {
-			err = errors.New("run step ended: " + q.ev.Code)
+			err = errors.New("run step ended: " + q.ev.Code + ": " + sink.String())
 		}
 		if err == nil {
 			result.Output = append(json.RawMessage(nil), sink.Bytes()...)
@@ -80,7 +96,11 @@ func (g *Gateway) ExecuteStep(ctx context.Context, keyID string, step runstate.S
 		q.fail(errf(code, 0, "key is not active"))
 		return result, runstate.ErrInvalid
 	}
-	q.proxy(endpoint(step.Route))
+	if step.Route == string(imagesEndpoint) {
+		q.proxyImage(step.RunID, step.Input)
+	} else {
+		q.proxy(endpoint(step.Route))
+	}
 	return result, nil
 }
 
@@ -109,6 +129,8 @@ func (s *runSink) Write(p []byte) (int, error) {
 }
 func runError(err error) *gwError {
 	switch {
+	case errors.Is(err, runstate.ErrQueueLimit):
+		return errf(CodeImageQueueFull, 1, "image queue is full")
 	case errors.Is(err, runstate.ErrNotFound):
 		return errf(CodeNotFound, 0, "run not found")
 	case errors.Is(err, runstate.ErrLimit):
@@ -186,6 +208,9 @@ func (q *request) runRoute() {
 	if err != nil {
 		q.fail(runError(err))
 		return
+	}
+	if r, ok := value.(runstate.Run); ok && r.Kind == "image" {
+		value = imageJob{r, q.g.runs.Position("image", r.ID)}
 	}
 	q.w.Header().Set("Content-Type", "application/json")
 	q.writeHeader(status)

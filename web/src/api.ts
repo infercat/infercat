@@ -16,6 +16,10 @@ export function hostAudio(me: Me, kind: 'transcriptions' | 'speech'): string | n
   return me.host.audio?.[kind] || null;
 }
 
+export function hostImages(me: Me): NonNullable<Me['host']['images']> | null {
+  return me.host.images?.model ? me.host.images : null;
+}
+
 /** The host's name, trimmed. It can be empty, and "You’re on ." is not a sentence: callers check. */
 export function hostName(me: Me): string {
   return me.host.name.trim();

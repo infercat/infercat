@@ -28,6 +28,8 @@ import (
 // here: it is the engine's slot count, read live (DESIGN §1.5). Deadlines and the body cap are
 // constants (§1.6), each bounding one party's failure.
 type Config struct {
+	Images                       upstream.ImageEngine
+	ImageModel                   string
 	RemoteConsole                http.Handler
 	LiveHostName                 func() string
 	SpeechVoices                 map[string]string
@@ -263,11 +265,14 @@ func cors(h http.Handler) http.Handler {
 		hd.Set("Access-Control-Allow-Origin", "*")
 		hd.Set("Access-Control-Allow-Headers", "authorization, content-type")
 		hd.Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
-		if isRunRoute(r.URL.Path) {
+		if isRunRoute(r.URL.Path) || isImageRoute(r.URL.Path) {
 			hd.Set("Access-Control-Allow-Headers", "authorization, content-type, last-event-id")
 			hd.Set("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
 		}
 		hd.Set("Access-Control-Expose-Headers", "Retry-After")
+		if isImageRoute(r.URL.Path) {
+			hd.Set("Access-Control-Expose-Headers", "Retry-After, Content-Disposition")
+		}
 		if r.Method == http.MethodOptions {
 			hd.Set("Access-Control-Max-Age", "600")
 			w.WriteHeader(http.StatusNoContent)
