@@ -103,15 +103,15 @@ Measured 2026-09-10 using synthetic/public test audio, with model files already 
 
 | Path | Input | Observed elapsed time |
 |---|---|---|
-| Speaches CPU 4/int8, direct HTTP |10.0 s English WAV|5.422 s first model-load request;4.112 and4.152 s warm|
-| Kokoro CPU `af_heart`, local Infercat gateway → Chrome 152 MSE player |67 English characters|1.419 s to first playback on the first request;0.425 s on the warm request|
-| Kokoro CPU `zf_xiaobei`, direct HTTP |28 Mandarin characters/punctuation|1.26 s explicit voice;1.55 s default voice, for 6.298 s of WAV|
+| Speaches CPU 4/int8, direct HTTP | 10.0 s English WAV | 5.422 s first model-load request; 4.112 and 4.152 s warm |
+| Kokoro CPU `af_heart`, local Infercat gateway → Chrome 152 MSE player | 67 English characters | 1.419 s to first playback on the first request; 0.425 s on the warm request |
+| Kokoro CPU `zf_xiaobei`, direct HTTP | 28 Mandarin characters/punctuation | 1.26 s explicit voice; 1.55 s default voice, for 6.298 s of WAV |
 
 First playback means the player's native `playing` event, not the HTTP headers; the warm English response's first bytes arrived at 0.425 s. This measurement used loopback-network permission in a disposable browser, not a production browser-setting change. Earlier real-tunnel proof also completed recorder → Speaches transcript → edited chat turn → Kokoro MP3 playback; its latency is not inferred from the local numbers above.
 
 ### Faster path measured, not a supported recipe
 
-The experimental adapter under [hack/asr-shim](../hack/asr-shim/README.md) runs Fun-ASR-Nano Q8_0 in pinned audio.cpp's resident Metal server. Same-clip local medians were 2286/1891 ms EN/ZH with per-request CPU exec,917/557 ms resident CPU 4, and214/154 ms resident Metal 4; actual browser-tunnel medians improved 2653/2123→519/355 ms. These are different clips from the 10 s Whisper row. The founder found Q8_0 quality excellent; F16 comparison was dropped. The GGUF is under **FunASR Model Open Source License v1.1**, while the `-hf` export says Apache-2.0; audio.cpp is Apache-2.0. This measured proof adapter is not the native supported Speaches recipe above.
+The experimental adapter under [hack/asr-shim](../hack/asr-shim/README.md) runs Fun-ASR-Nano Q8_0 in pinned audio.cpp's resident Metal server. Same-clip local medians were 2286/1891 ms EN/ZH with per-request CPU exec, 917/557 ms resident CPU 4, and 214/154 ms resident Metal 4; actual browser-tunnel medians improved 2653/2123→519/355 ms. These are different clips from the 10 s Whisper row. The founder found Q8_0 quality excellent; F16 comparison was dropped. The GGUF is under **FunASR Model Open Source License v1.1**, while the `-hf` export says Apache-2.0; audio.cpp is Apache-2.0. This measured proof adapter is not the native supported Speaches recipe above.
 
 ## NVIDIA Linux: unmeasured here
 
