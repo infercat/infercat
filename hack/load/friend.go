@@ -24,21 +24,24 @@ import (
 // as a browser friend's would. A friend normally holds one session; --sessions-per-friend opens more
 // on the same key (the abuse shape).
 type session struct {
-	friend, idx int
-	keyID       string
-	secret      string
-	client      *tailcat.Client
-	http        *http.Client
-	history     []msg
-	turn        int
-	path        string
-	connectMS   int64
-	connectErr  string
+	baseURL         string // Set only by the registered preview benchmark.
+	closeAfterToken bool
+	friend, idx     int
+	keyID           string
+	secret          string
+	client          *tailcat.Client
+	http            *http.Client
+	history         []msg
+	turn            int
+	path            string
+	connectMS       int64
+	connectErr      string
 }
 
 // reqRecord is one line of requests.jsonl: what the friend saw. The host's own event for the same
 // request (queued_ms, prompt_tokens, the settle) is in host.jsonl; the summary reads both.
 type reqRecord struct {
+	Done      bool      `json:"done,omitempty"`
 	TS        time.Time `json:"ts"`
 	Friend    int       `json:"friend"`
 	Session   int       `json:"session"`
@@ -116,11 +119,18 @@ func (s *session) do(ctx context.Context, method, path string, body []byte) (*ht
 	if body != nil {
 		rdr = bytes.NewReader(body)
 	}
-	req, err := http.NewRequestWithContext(ctx, method, "http://tunnel"+path, rdr)
+	base := s.baseURL
+	if base == "" {
+		base = "http://tunnel"
+	}
+	req, err := http.NewRequestWithContext(ctx, method, base+path, rdr)
 	if err != nil {
 		return nil, err
 	}
 	req.Header.Set("Authorization", "Bearer "+s.secret)
+	if s.baseURL != "" {
+		req.Header.Set("User-Agent", "infercat-load/113")
+	}
 	if body != nil {
 		req.Header.Set("Content-Type", "application/json")
 	}
@@ -179,6 +189,8 @@ func (s *session) chat(ctx context.Context, model string, messages []msg, maxTok
 		line := sc.Text()
 		rec.BytesDown += len(line) + 1
 		switch {
+		case line == "data: [DONE]":
+			rec.Done = true
 		case line == ": queued":
 			if queuedAt.IsZero() {
 				queuedAt = time.Now()
@@ -187,7 +199,8 @@ func (s *session) chat(ctx context.Context, model string, messages []msg, maxTok
 			var ev struct {
 				Choices []struct {
 					Delta struct {
-						Content string `json:"content"`
+						Content   string `json:"content"`
+						Reasoning string `json:"reasoning_content"`
 					} `json:"delta"`
 				} `json:"choices"`
 				Usage *struct {
@@ -207,19 +220,26 @@ func (s *session) chat(ctx context.Context, model string, messages []msg, maxTok
 				rec.Code, rec.Err, retryAfter = ev.Error.Code, ev.Error.Message, ev.Error.RetryAfter
 				continue
 			}
-			if firstAt.IsZero() {
-				firstAt = time.Now()
-			}
 			if len(ev.Choices) > 0 {
+				if firstAt.IsZero() && (ev.Choices[0].Delta.Content != "" || ev.Choices[0].Delta.Reasoning != "") {
+					firstAt = time.Now()
+				}
 				text.WriteString(ev.Choices[0].Delta.Content)
 			}
 			if ev.Usage != nil {
 				rec.PromptTok, rec.CompTok = ev.Usage.Prompt, ev.Usage.Completion
 			}
 		}
+		if s.closeAfterToken && !firstAt.IsZero() {
+			rec.Aborted, rec.Code = true, "client_closed"
+			break
+		}
 	}
 	if err := sc.Err(); err != nil && rec.Err == "" {
 		rec.Err, rec.Aborted = err.Error(), ctx.Err() != nil
+	}
+	if !rec.Done && !rec.Aborted && rec.Err == "" && rec.Code == "" {
+		rec.Err = "stream ended without [DONE]"
 	}
 	end := time.Now()
 	rec.TotalMS = end.Sub(rec.TS).Milliseconds()
