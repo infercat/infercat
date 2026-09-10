@@ -141,27 +141,27 @@ export const en = {
   s3_lead:
     '<code>infercat connect</code> turns the same code into a local endpoint for any OpenAI-style app.',
   s3_mut:
-    'Open WebUI, Cursor, Claude Code, the SDKs or plain curl. Your friend’s model, as if it ran on your machine.',
+    "Open WebUI, Cursor, Claude Code, the SDKs or plain curl. Your friend’s model, as if it ran on your machine.<br>Hosts: use <code>infercat expose</code> to give your host a public URL.",
   reach_sum: 'What your app can reach',
   reach_b:
     '<p><code>/v1/chat/completions</code> · <code>/v1/models</code> · <code>/v1/embeddings</code> · <code>/me</code>. Nothing else: no other port, no files.</p><p><code>connect</code> adds the invite’s key to every request and ignores your app’s own. Over a limit: <code>429</code> with <code>Retry-After</code>. Host busy: a short wait, then <code>503</code>. Host asleep: <code>connect</code> says so and reconnects on its own.</p>',
   s4_eye: '04 · Roadmap',
-  s4_tag: 'Not built',
+  s4_tag: "Preview",
   s4_h: 'A public URL for your host.',
-  s4_price: 'Planned as a paid add-on, about $5 a month, when it ships.',
-  s4_lead: 'For apps that cannot carry the tunnel: a phone, a CI job, someone else’s server.',
+  s4_price: "Free during preview: <code>gateway.infercat.ai/h/&lt;host&gt;/v1</code> connects any OpenAI-style app to your host.",
+  s4_lead: "a public URL decrypts TLS at the edge and in our object; the tunnel mode's \"nobody in the middle\" does not carry over.",
   s4_mut:
-    'The trade-off: a server in the middle would see the requests. Today nothing between a friend and your machine can.',
+    "The code in the middle is open in <a href=\"https://github.com/infercat/infercat/tree/main/bridge\"><code>bridge/</code> in the Infercat repository</a>.",
   rm_c: 'any client',
   rm_g: 'public gateway',
-  rm_g_s: 'would see requests',
+  rm_g_s: "sees requests",
   rm_h: 'your machine',
   ml_label: 'Email',
   ml_ph: 'you@example.com',
-  ml_btn: 'Tell me when',
-  ml_note: 'Your address, nothing else, on our own server. One email when it ships.',
+  ml_btn: "Tell me when it is priced",
+  ml_note: "Your address, nothing else, on our own server. One email when pricing is announced.",
   ml_ok_t: 'You’re on the list.',
-  ml_ok_b: 'One email when the public URL ships. Nothing else.',
+  ml_ok_b: "One email when pricing is announced. Nothing else.",
 
   ft_about:
     'Built on tailcat, Tailscale’s open-source library. Infercat is not affiliated with or endorsed by Tailscale Inc.',
@@ -173,7 +173,7 @@ export const en = {
   about: 'About',
   made: 'Made by 2185 Lab',
   path_label: 'Path',
-  roadmap_label: 'any client, a public gateway that is not built, your machine',
+  roadmap_label: "any client, a public gateway that sees requests, your machine",
   terminal:
     '$ infercat connect {invite}\nInfercat 0.1.0\nhost    Max’s laptop · gemma-4-E2B-it-Q4_K_M.gguf\npath    relayed via New York City · 27 ms\nlocal   http://127.0.0.1:11435\n        base URL http://127.0.0.1:11435/v1, any API key\n\n$ export OPENAI_BASE_URL=http://127.0.0.1:11435/v1 OPENAI_API_KEY=x\n$ python3 chat.py',
   f_hint_empty: 'Paste the code your friend sent you.',
