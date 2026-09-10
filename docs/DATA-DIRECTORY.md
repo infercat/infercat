@@ -14,6 +14,7 @@ English · [简体中文](DATA-DIRECTORY.zh-CN.md)
 | `usage.jsonl` | One line per request: key, endpoint, status, token counts, timings. No prompt content unless you run `serve --log-prompts`. |
 | `admin.json` | Optional remote-console switch: SHA-256 admin-code hash and enabled-since time, mode 0600; never plaintext or a friend key. Removed when turned off. |
 | `bridge.json` | Public bridge endpoint, host id, and secret bridge token (0600). Created by `expose --register`; read by `serve` at startup/reload; removed by `expose --off`. Keep private. |
+| `runs/<key-id>/images/<run-id>` | Generated PNG/JPEG: up to 8 MiB each, 7-day expiry, separate 256 MiB per-key budget (oldest evicted first). See [image hosting](IMAGES.md). |
 | `config.json` | Remembered `serve` flags. |
 | `tunnel.log` | The tunnel engine's log (`serve --verbose` prints it instead). |
 

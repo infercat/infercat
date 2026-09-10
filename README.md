@@ -115,6 +115,7 @@ infercat serve --upstream http://127.0.0.1:18080
 Flags you pass to `serve` are remembered in `config.json`, so the next `serve` needs none.
 
 Add a microphone and spoken replies with the [voice hosting recipe](docs/VOICE.md).
+Make pictures with the [image generation hosting recipe](docs/IMAGES.md).
 
 <details>
 <summary><b>macOS says it cannot verify the developer</b></summary>
