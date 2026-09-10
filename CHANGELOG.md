@@ -3,6 +3,45 @@
 Versions are tags (`v0.1.0`); the binary prints its own with `infercat version` and the web
 app shows the same one under Settings. Dates are the tag's.
 
+## v0.1.3 — 2026-09-11
+
+One day after 0.1.2: the host serves several engines at once, keeps its accounting exact across a
+restart, speaks replies in their own language, and gives the public gateway all of its slots.
+Every slice was gated and proved against a real host before it landed.
+
+**Hosts**
+
+- The gateway routes each request to its own destination: the text engine and each audio engine
+  now have independent queues, so a transcription never takes a slot from the chat, and the
+  pre-check counts tokens against the model the friend asked for. (107)
+- Charged usage is recorded, not recomputed: a restart restores exactly what each friend was
+  charged today, per resource class (tokens, audio seconds, speech characters), and a request that
+  crosses midnight is listed on the day it started and charged on the day it settled. (108)
+- `--upstream-speech-voices zh=…,en=…,default=…`: when a Listen request names no voice, the host
+  picks one by the reply's script, so a Chinese reply is read in a Chinese voice and an English one
+  in an English voice. (118)
+- `docs/VOICE.md`: the measured recipe for giving a host voice — Speaches with Whisper, Kokoro with
+  the v1.1-zh checkpoint for Chinese and English, the flags, the budgets, and the small setup patch
+  that keeps English words inside a Chinese reply. (114, 130)
+
+**Public URL**
+
+- The host announces its slot count to gateway.infercat.ai, which now serves that many requests
+  concurrently instead of one at a time; `infercat status` shows today's public-URL count from a
+  running counter instead of re-reading history on every poll. The hosted gateway also settles a
+  request's body before answering, at the edge and in the object. (120, 112, 119, 127)
+
+**Developers**
+
+- The app and `@infercat/client` share one `/me` contract; the site publishes the wasm pair under
+  `/v/<version>/` as well as the root, and this release attaches the pair as assets. (111)
+
+**Internal**
+
+- Groundwork for long-running jobs and agent runs: a per-key run store with atomic snapshots, an
+  event log with cursor replay, authenticated run routes and a per-key event stream. No run kind is
+  registered, so nothing is user-visible yet. (109, 122)
+
 ## v0.1.2 — 2026-09-10
 
 Two days after 0.1.1: the host gets a console, the chat gets images, files and voice, and a host
