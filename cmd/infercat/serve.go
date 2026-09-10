@@ -445,7 +445,7 @@ func (e *env) printStartup(ctx context.Context, s startup) {
 	if len(missing) > 0 {
 		fmt.Fprintf(e.out, "          not currently reported by the engine: %s\n", modelList(missing))
 	}
-	fmt.Fprintf(e.out, "tunnel    %s\n", orDash(s.tun.Addr()))
+	fmt.Fprintf(e.out, "tunnel    %s\n", orDash(tunnel.Display(s.tun.Addr())))
 	fmt.Fprintf(e.out, "relay     %s\n", orDash(s.tun.Status().Region))
 	if s.webURL != "" {
 		fmt.Fprintf(e.out, "web       %s  (your friends open this and paste their invite)\n", s.webURL)

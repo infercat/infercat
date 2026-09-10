@@ -12,6 +12,7 @@ import (
 
 	"github.com/infercat/infercat/internal/admin"
 	"github.com/infercat/infercat/internal/product"
+	"github.com/infercat/infercat/internal/tunnel"
 	"github.com/infercat/infercat/internal/upstream"
 	"github.com/infercat/infercat/internal/usage"
 )
@@ -192,7 +193,7 @@ func writeStatus(w io.Writer, st admin.Status) {
 	if len(st.ModelsPinned) > 0 {
 		fmt.Fprintf(w, "models    %s (pinned)\n", modelList(st.ModelsPinned))
 	}
-	fmt.Fprintf(w, "tunnel    %s  relay %s  %s\n", orDash(st.Tunnel.Addr), orDash(st.Tunnel.Region), plural(st.Tunnel.Clients, "client"))
+	fmt.Fprintf(w, "tunnel    %s  relay %s  %s\n", orDash(tunnel.Display(st.Tunnel.Addr)), orDash(st.Tunnel.Region), plural(st.Tunnel.Clients, "client"))
 	if b := st.Bridge; b != nil {
 		state := "off"
 		if b.Enabled {
@@ -292,7 +293,7 @@ func processWords(p admin.Process) string {
 // the path right now, the local endpoint and what is in flight through it.
 func writeBridge(w io.Writer, st admin.Status) {
 	fmt.Fprintf(w, "%s %s — up %s  ·  bridge\n", st.Product, st.Version, shortDur(time.Duration(st.UptimeS)*time.Second))
-	fmt.Fprintf(w, "host      %s  relay %s  %s\n", orDash(st.Name), orDash(st.Tunnel.Region), orDash(st.Tunnel.Addr))
+	fmt.Fprintf(w, "host      %s  relay %s  %s\n", orDash(st.Name), orDash(st.Tunnel.Region), orDash(tunnel.Display(st.Tunnel.Addr)))
 	path := "lost — reconnecting"
 	if len(st.Tunnel.Sessions) > 0 && st.Tunnel.Sessions[0].Active {
 		s := st.Tunnel.Sessions[0]

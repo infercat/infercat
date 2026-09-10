@@ -573,7 +573,7 @@ func TestServeRoutesTunnelLogAndFollowsSlots(t *testing.T) {
 	if r.code != 0 {
 		t.Fatalf("exit %d\n%s%s", r.code, r.out, r.err)
 	}
-	for _, want := range []string{product.Name, "upstream  llama.cpp", "slots 1", "tunnel    " + fakeAddr, "relay     Testville"} {
+	for _, want := range []string{product.Name, "upstream  llama.cpp", "slots 1", "tunnel    [invalid tunnel address]", "relay     Testville"} {
 		if !strings.Contains(r.out, want) {
 			t.Errorf("startup output lacks %q:\n%s", want, r.out)
 		}

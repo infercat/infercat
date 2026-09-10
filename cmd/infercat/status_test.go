@@ -117,7 +117,7 @@ func TestStatusBlockShowsSessionsEngineAndProcess(t *testing.T) {
 		Queue:    admin.Queue{InFlight: 1}}
 	out.Reset()
 	writeStatus(&out, bridge)
-	for _, want := range []string{"up 5s  ·  bridge", "host      Max's laptop  relay New York City  tcABC", "path      relayed via nyc · 27.4 ms  (handshake took 512 ms; session 5s old)", "local     http://127.0.0.1:11435  1 in flight"} {
+	for _, want := range []string{"up 5s  ·  bridge", "host      Max's laptop  relay New York City  [invalid tunnel address]", "path      relayed via nyc · 27.4 ms  (handshake took 512 ms; session 5s old)", "local     http://127.0.0.1:11435  1 in flight"} {
 		if !strings.Contains(out.String(), want) {
 			t.Errorf("bridge status lacks %q:\n%s", want, out.String())
 		}

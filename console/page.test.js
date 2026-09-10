@@ -150,3 +150,11 @@ test('disconnected busy preserves work, optional fields keep legacy text',()=>{
  expect(root.querySelector('.overview .facts .fact:nth-child(3)').textContent).not.toContain('connected');
  const remote=document.createElement('div');remote.innerHTML=render(d,'en',null,null,now,true,2,undefined,false,undefined,{path:'tunnel',leave(){}});expect(remote.querySelector('.c-now').textContent).toBe(root.querySelector('.c-now').textContent);
 });
+
+for (const lang of ['en', 'zh']) test('host facts never render the raw tunnel address '+lang, () => {
+ const snapshot = data();
+ snapshot.status.tunnel.addr = 'tcPRIVATE-PSK-ADDRESS';
+ const root = mount(snapshot, lang);
+ expect(root.innerHTML).not.toContain(snapshot.status.tunnel.addr);
+ expect(root.querySelector('.facts').textContent).toContain(snapshot.status.tunnel.region);
+});
