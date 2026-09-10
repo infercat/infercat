@@ -158,10 +158,10 @@ export const en = {
   rm_h: 'your machine',
   ml_label: 'Email',
   ml_ph: 'you@example.com',
-  ml_btn: "Tell me when it is priced",
-  ml_note: "Your address, nothing else, on our own server. One email when pricing is announced.",
+  ml_btn: "I’d like to keep this after the preview",
+  ml_note: "Your address, nothing else, on our own server. We’ll email you before the preview ends.",
   ml_ok_t: 'You’re on the list.',
-  ml_ok_b: "One email when pricing is announced. Nothing else.",
+  ml_ok_b: "We’ll email you before the preview ends. Nothing else.",
 
   ft_about:
     'Built on tailcat, Tailscale’s open-source library. Infercat is not affiliated with or endorsed by Tailscale Inc.',

@@ -152,10 +152,10 @@ export const zh = {
   rm_h: '你的机器',
   ml_label: '邮箱',
   ml_ph: 'you@example.com',
-  ml_btn: "定价时告诉我",
-  ml_note: "只保存你的邮箱地址，放在我们自己的服务器上。公布定价时发一封邮件。",
+  ml_btn: "预览期结束后我想继续用",
+  ml_note: "只保存你的邮箱地址，放在我们自己的服务器上。预览期结束前发一封邮件。",
   ml_ok_t: '已经记下你了。',
-  ml_ok_b: "公布定价时发一封邮件。别的没有。",
+  ml_ok_b: "预览期结束前发一封邮件。别的没有。",
 
   ft_about: '基于 tailcat（Tailscale 的开源库）。Infercat 与 Tailscale Inc. 无关联，也未获其背书。',
   ml_invalid: '这看起来不像邮箱地址。',
