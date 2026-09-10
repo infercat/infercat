@@ -114,7 +114,17 @@ func Test157V3CommittedTerminalStopsOwnedConsumer(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			await(t, func() bool { return state(s, next) == Done })
+			// CI's race-instrumented ceiling snapshot can hold the store lock longer
+			// than the small-fixture helper's three-second budget. Keep all owner/
+			// force-stop assertions above; allow the follow-on disk work to finish.
+			deadline = time.Now().Add(30 * time.Second)
+			for state(s, next) != Done && time.Now().Before(deadline) {
+				time.Sleep(10 * time.Millisecond)
+			}
+			finished, err := s.Get(next.KeyID, next.ID)
+			if err != nil || finished.State != Done {
+				t.Fatalf("follow-on serial run did not finish: state=%s reason=%q calls=%d stops=%d err=%v", finished.State, finished.Reason, calls.Load(), stops.Load(), err)
+			}
 		})
 	}
 }
