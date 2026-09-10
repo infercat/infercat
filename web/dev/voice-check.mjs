@@ -25,7 +25,7 @@ async function connected(width, lang, extra = '&transcriptions&speech') {
     window.MediaRecorder = class {
       static isTypeSupported(type) { return type.includes('webm'); }
       state = 'inactive'; mimeType = 'audio/webm;codecs=opus';
-      start() { this.state = 'recording'; window.__takes++; }
+      start() { this.state = 'recording'; window.__takes++; window.__deliverAudio = () => this.ondataavailable?.({ data: new window.Blob(['test audio']) }); if (!window.__holdAudio) window.queueMicrotask(window.__deliverAudio); }
       stop() { this.state = 'inactive'; window.queueMicrotask(() => { this.ondataavailable?.({ data: new window.Blob(['test recording']) }); this.onstop?.(); }); }
     };
     window.AudioContext = class {
@@ -73,9 +73,29 @@ try {
       await page.waitForTimeout(30);
       check(await page.locator('.composer .spoken').count() === 0, 'late permission stays cancelled');
 
+      await page.evaluate(() => { window.__holdMic = true; }); await mic.click();
+      check(await mic.isEnabled(), 'pending microphone accepts a Stop tap');
+      await mic.click();
+      await page.evaluate(() => { window.__holdMic = false; window.__permitMic(); });
+      await page.waitForTimeout(30);
+      check(await page.locator('.composer .spoken').count() === 0, 'queued Stop cancels before any captured audio');
+      check((await posts(page, '/v1/audio/transcriptions')).length === 0, 'empty pending take never uploads');
+      await page.evaluate(() => { window.dispatchEvent(new window.Event('pagehide')); window.__holdMic = true; window.__holdAudio = true; });
+      await mic.click(); await page.waitForTimeout(1500);
+      check(await mic.getAttribute('aria-pressed') === 'false' && !await mic.evaluate(el => el.classList.contains('on')), 'permission prompt never presses the mic');
+      await page.evaluate(() => { window.__holdMic = false; window.__permitMic(); }); await page.waitForTimeout(30);
+      check(await page.locator('.waveform').count() === 0 && await mic.getAttribute('aria-pressed') === 'false', 'cold recorder waits for first data, with idle waveform');
+      await shot(page, `cold-data-wait-${tag}`);
+      await page.evaluate(() => { window.__holdAudio = false; window.__deliverAudio(); });
+      await page.waitForFunction(() => document.querySelector('.mic')?.getAttribute('aria-pressed') === 'true');
+      await mic.click(); await page.waitForFunction(() => document.querySelector('.mic')?.getAttribute('aria-pressed') === 'false');
+      await page.waitForTimeout(800);
+      check((await posts(page, '/v1/audio/transcriptions')).length === 1, 'one tap after a delayed permission grant stops and transcribes');
+      await field.fill(''); await page.evaluate(() => { window.__posts = []; });
+      const priorTakes = await page.evaluate(() => window.__takes);
       await mic.focus(); await mic.press('Space');
       await page.waitForFunction(() => document.querySelector('.mic')?.getAttribute('aria-pressed') === 'true');
-      check(await page.evaluate(() => window.__takes) === 1, 'keyboard activation starts exactly one take');
+      check(await page.evaluate(() => window.__takes) === priorTakes + 1, 'keyboard activation starts exactly one take');
       await page.locator('.composer .spoken button').click();
       const acquired = await page.evaluate(() => window.__micRequests);
       await page.getByRole('button', { name: lang === 'zh' ? '设置' : 'Settings', exact: true }).click();

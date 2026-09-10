@@ -1,0 +1,59 @@
+<!doctype html><meta charset="utf-8"><title>102 — microphone Stop and saved-blob check</title>
+<style>body{font:16px system-ui;max-width:900px;margin:2rem auto;padding:0 1rem}button,input{margin:.4rem;padding:.6rem}pre{white-space:pre-wrap}svg{width:100%;height:120px;border:1px solid #888}</style>
+<h1>Local microphone check</h1><p>Tap Mic, speak immediately, then tap Mic or Stop. The recording stays in this page until you download it, save a private local copy, or transcribe it with your invite.</p>
+<label><input id="cold" type="checkbox">Release the stream after each take</label>
+<label>Optional spoken test fixture <input id="fixture" type="file" accept="audio/*"></label>
+<p><button id="mic">Mic</button><button id="stop">Stop</button><button id="cancel">Cancel</button><button id="release">Release microphone</button></p>
+<pre id="state">idle</pre><pre id="result"></pre><audio id="playback" controls></audio><button id="save" disabled>Save local copy</button><a id="download" hidden>Download this exact blob</a>
+<p>First 500 ms: peak envelope. Leading quiet uses 10 ms windows below −60 dBFS RMS; it is not word detection.</p><svg viewBox="0 0 500 100"><path id="wave" fill="none" stroke="black" /></svg>
+<script type="module">
+const base = new URLSearchParams(location.search).has('base');
+const {VoiceRecorder,transcribe} = await import(/* @vite-ignore */ base ? '/src/voice.before.ts' : '/src/voice.ts');
+const {DirectTransport} = await import('/src/transport/index.ts');
+const reference = new Audio(); let playbackURL, referenceURL, tapped = 0, markers = {}, actions = [];
+const mark = key => markers[key] ??= Math.round((performance.now()-tapped)*10)/10;
+const gum = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
+Object.defineProperty(navigator,'mediaDevices',{configurable:true,value:{getUserMedia:async options=>{const stream=await gum(options);mark('streamReady');window.device=stream.getAudioTracks()[0].label;return stream;}}});
+const NativeRecorder=window.MediaRecorder;
+window.MediaRecorder=class extends NativeRecorder { constructor(...args){super(...args);window.nativeRecorder=this;this.addEventListener('dataavailable',e=>{if(e.data.size)mark('firstData');});} start(...args){mark('recorderStarted');super.start(...args);} };
+const read=AnalyserNode.prototype.getFloatTimeDomainData;
+AnalyserNode.prototype.getFloatTimeDomainData=function(samples){read.call(this,samples);mark('firstRead');if(samples.some(n=>n!==0))mark('signal');};
+async function keep(clip,signal){
+ window.lastBlob=clip;document.querySelector('#save').disabled=false;
+ window.result={base,browser:navigator.userAgent,device:window.device,markers,actions,bytes:clip.size};
+ if(playbackURL)URL.revokeObjectURL(playbackURL);playbackURL=URL.createObjectURL(clip);
+ document.querySelector('#playback').src=playbackURL;const link=document.querySelector('#download');link.hidden=false;link.href=playbackURL;link.download=clip.type.includes('mp4')?'take.m4a':'take.webm';
+ try {
+  const audio=await new OfflineAudioContext(1,1,16000).decodeAudioData(await clip.arrayBuffer());
+  const samples=audio.getChannelData(0),step=Math.round(audio.sampleRate*.01);let leading=0;
+  for(let i=0;i<samples.length;i+=step){const slice=samples.subarray(i,i+step);const rms=Math.sqrt(slice.reduce((v,n)=>v+n*n,0)/slice.length);if(rms>=.001)break;leading+=slice.length;}
+  const points=[];for(let i=0;i<50;i++){const slice=samples.subarray(i*step,(i+1)*step);const peak=Math.min(1,Math.max(0,...slice.map(Math.abs)));points.push(`M${i*10+5} ${50-peak*45}v${peak*90}`);}
+  document.querySelector('#wave').setAttribute('d',points.join(' '));
+  Object.assign(window.result,{duration:audio.duration,leadingQuietMs:Math.round(leading/audio.sampleRate*1000)});
+ } catch(error) {window.result.analysisError=error.name;}
+ document.querySelector('#result').textContent=JSON.stringify(window.result,null,2);
+ const invite=location.hash.slice(1);if(!invite)return '';
+ try {
+  const text=await transcribe(new DirectTransport('http://127.0.0.1:19080'),invite.split('.').at(-1),clip,'en',signal);
+  window.result.transcript=text;return text;
+ } catch(error) {window.result.transcriptionError=error.message;throw error;}
+ finally {document.querySelector('#result').textContent=JSON.stringify(window.result,null,2);}
+}
+
+const recorder=new VoiceRecorder(keep,state=>{if(state.kind==='recording')mark('recordingShown');document.querySelector('#state').textContent=JSON.stringify(state,(key,value)=>key==='waveform'?undefined:value);document.querySelector('#mic').disabled=state.kind==='transcribing'||(base&&state.kind==='requesting');});
+window.recorder=recorder;
+function action(kind){actions.push({kind,at:Math.round(performance.now()-tapped),state:recorder.state.kind,native:window.nativeRecorder?.state,micDisabled:document.querySelector('#mic').disabled});}
+document.querySelector('#fixture').onchange=event=>{if(referenceURL)URL.revokeObjectURL(referenceURL);referenceURL=URL.createObjectURL(event.target.files[0]);reference.src=referenceURL;};
+document.querySelector('#mic').onpointerdown=()=>{
+ if(!['recording','requesting'].includes(recorder.state.kind)){tapped=performance.now();markers={};actions=[];window.result=null;document.querySelector('#save').disabled=true;if(referenceURL){reference.currentTime=0;void reference.play();}}
+ action('mic');
+ if(recorder.toggle)recorder.toggle();else if(recorder.state.kind==='recording')recorder.stop();else void recorder.start();
+};
+document.querySelector('#mic').onclick=event=>{if(event.detail===0)document.querySelector('#mic').onpointerdown();};
+document.querySelector('#save').onclick=async()=>{const response=await fetch('/__save-blob',{method:'POST',headers:{'Content-Type':window.lastBlob.type},body:window.lastBlob});Object.assign(window.result,await response.json());document.querySelector('#result').textContent=JSON.stringify(window.result,null,2);};
+document.querySelector('#stop').onclick=()=>{action('stop');recorder.stop();reference.pause();};
+document.querySelector('#cancel').onclick=()=>{action('cancel');recorder.cancel();reference.pause();};
+document.querySelector('#release').onclick=()=>recorder.release();
+document.addEventListener('visibilitychange',()=>{if(document.hidden)recorder.release();});window.addEventListener('pagehide',()=>recorder.release());
+window.setInterval(()=>{if(document.querySelector('#cold').checked&&['done','error'].includes(recorder.state.kind))recorder.release();},100);
+</script>

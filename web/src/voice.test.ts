@@ -5,6 +5,7 @@ import type { Transport } from './transport';
 
 class FakeRecorder {
   static instances: FakeRecorder[] = [];
+  static deliver = true;
   static isTypeSupported = (mime: string) => mime.includes('webm');
   state = 'inactive';
   mimeType: string;
@@ -12,7 +13,7 @@ class FakeRecorder {
   onstop: (() => void) | null = null;
   onerror: (() => void) | null = null;
   constructor(_stream: unknown, options?: { mimeType: string }) { this.mimeType = options?.mimeType ?? ''; FakeRecorder.instances.push(this); }
-  start() { this.state = 'recording'; }
+  start() { this.state = 'recording'; if (FakeRecorder.deliver) queueMicrotask(() => this.ondataavailable?.({ data: new Blob(['audio']) })); }
   stop() { this.state = 'inactive'; queueMicrotask(() => { this.ondataavailable?.({ data: new Blob(['clip']) }); this.onstop?.(); }); }
 }
 class FakeContext {
@@ -28,7 +29,7 @@ describe('voice recorder ownership', () => {
   const stream = { getTracks: () => [{ stop: stopTrack }] };
   beforeEach(() => {
     vi.useFakeTimers({ toFake: ['setTimeout', 'clearTimeout', 'setInterval', 'clearInterval', 'performance'] });
-    FakeRecorder.instances = []; FakeContext.level = .1;
+    FakeRecorder.instances = []; FakeRecorder.deliver = true; FakeContext.level = .1;
     FakeRecorder.isTypeSupported = (mime) => mime.includes('webm');
     vi.stubGlobal('requestAnimationFrame', (cb: () => void) => setTimeout(cb, 0));
     vi.stubGlobal('cancelAnimationFrame', (id: ReturnType<typeof setTimeout>) => clearTimeout(id));
@@ -100,6 +101,75 @@ describe('voice recorder ownership', () => {
     const pending = recorder.start(); recorder.release(); grant(stream); await pending;
     expect(FakeRecorder.instances).toHaveLength(0); expect(stopTrack).toHaveBeenCalledTimes(1);
     expect(recorder.state.kind).toBe('idle');
+  });
+  it.each(['stop', 'cancel', 'mic'] as const)('honours %s during a pending cold take', async (action) => {
+    let grant!: (value: unknown) => void;
+    vi.stubGlobal('navigator', { mediaDevices: { getUserMedia: vi.fn().mockImplementationOnce(() => new Promise((resolve) => { grant = resolve; })).mockResolvedValue(stream) } });
+    const upload = vi.fn(async () => 'short take');
+    const recorder = new VoiceRecorder(upload, () => {});
+    const pending = recorder.start(); expect(recorder.state.kind).toBe('requesting');
+    if (action === 'mic') recorder.toggle(); else recorder[action]();
+    grant(stream); await pending; await flush();
+    expect(FakeRecorder.instances.every((r) => r.state === 'inactive')).toBe(true);
+    expect(recorder.state.kind).toBe('idle'); expect(upload).not.toHaveBeenCalled();
+    // A Stop before capture yields no audio; the next intentional warm tap still works.
+    await recorder.start(); expect(recorder.state.kind).toBe('recording');
+    recorder.release();
+  });
+  it.each(['stop', 'cancel', 'mic'] as const)('preserves %s on a warm take', async (action) => {
+    const upload = vi.fn(async () => 'short take');
+    const recorder = new VoiceRecorder(upload, () => {});
+    await recorder.start(); recorder.cancel(); await flush();
+    await recorder.start(); await vi.advanceTimersByTimeAsync(100);
+    if (action === 'mic') recorder.toggle(); else recorder[action]();
+    await flush();
+    expect(FakeRecorder.instances.at(-1)?.state).toBe('inactive');
+    expect(recorder.state.kind).toBe(action === 'cancel' ? 'idle' : 'done');
+    expect(upload).toHaveBeenCalledTimes(action === 'cancel' ? 0 : 1);
+    expect(navigator.mediaDevices.getUserMedia).toHaveBeenCalledTimes(1);
+    recorder.release();
+  });
+  it.each(['stop', 'cancel', 'mic'] as const)('honours %s while the monitoring context is resuming', async (action) => {
+    let resume!: () => void;
+    class ResumingContext extends FakeContext { resume = vi.fn(() => new Promise<void>((resolve) => { resume = resolve; })); }
+    vi.stubGlobal('AudioContext', ResumingContext);
+    const upload = vi.fn(async () => 'short take'); const recorder = new VoiceRecorder(upload, () => {});
+    const pending = recorder.start(); await flush(); await vi.advanceTimersByTimeAsync(50);
+    expect(recorder.state.kind).toBe('requesting'); expect(FakeRecorder.instances.at(-1)?.state).toBe('recording');
+    if (action === 'mic') recorder.toggle(); else recorder[action]();
+    await flush(); resume(); await pending;
+    expect(recorder.state.kind).toBe(action === 'cancel' ? 'idle' : 'done');
+    expect(upload).toHaveBeenCalledTimes(action === 'cancel' ? 0 : 1);
+    recorder.release();
+  });
+  it('does not upload an empty take', async () => {
+    const upload = vi.fn(); const recorder = new VoiceRecorder(upload, () => {});
+    FakeRecorder.deliver = false; await recorder.start(); FakeRecorder.instances.at(-1)!.ondataavailable = null;
+    recorder.stop(); await flush();
+    expect(recorder.state.kind).toBe('idle'); expect(upload).not.toHaveBeenCalled(); recorder.release();
+  });
+  it('waits for nonempty cold data, starts the counter then, and adds no warm wait', async () => {
+    FakeRecorder.deliver = false;
+    const recorder = new VoiceRecorder(vi.fn(async () => 'hello'), () => {});
+    await recorder.start(); await vi.advanceTimersByTimeAsync(700);
+    const native = FakeRecorder.instances.at(-1)!;
+    native.ondataavailable?.({ data: new Blob() });
+    expect(recorder.state.kind).toBe('requesting');
+    native.ondataavailable?.({ data: new Blob(['audio']) });
+    expect(recorder.state).toMatchObject({ kind: 'recording', seconds: 0 });
+    await vi.advanceTimersByTimeAsync(1000); recorder.stop(); await flush();
+    expect(recorder.state).toMatchObject({ kind: 'done', seconds: 1 });
+    await recorder.start(); expect(recorder.state).toMatchObject({ kind: 'recording', seconds: 0 });
+    recorder.release(); await recorder.start(); expect(recorder.state.kind).toBe('requesting'); recorder.release();
+  });
+  it('a multi-second permission prompt followed by one mic tap stops the granted take', async () => {
+    let grant!: (value: unknown) => void;
+    vi.stubGlobal('navigator', { mediaDevices: { getUserMedia: () => new Promise((resolve) => { grant = resolve; }) } });
+    const recorder = new VoiceRecorder(vi.fn(async () => 'hello'), () => {});
+    const pending = recorder.start(); await vi.advanceTimersByTimeAsync(5000);
+    expect(recorder.state.kind).toBe('requesting');
+    grant(stream); await pending; expect(recorder.state.kind).toBe('recording');
+    recorder.toggle(); await flush(); expect(recorder.state.kind).toBe('done'); recorder.release();
   });
   it('cancel never uploads and a delayed old stop cannot stop a new take', async () => {
     const upload = vi.fn(async () => 'hello');
