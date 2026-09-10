@@ -20,6 +20,7 @@ test:
 	# Race detection also runs in CI; cold instrumented builds can exceed a minute.
 	# Warm full race runs take about 25 seconds on the development Mac.
 	go test -race ./...
+	node --test internal/agent/assets/adapter.test.mjs
 
 vet:
 	go vet ./...

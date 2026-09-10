@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/infercat/infercat/internal/admin"
+	"github.com/infercat/infercat/internal/agent"
 	"github.com/infercat/infercat/internal/gateway"
 	"github.com/infercat/infercat/internal/keys"
 	"github.com/infercat/infercat/internal/product"
@@ -122,6 +123,9 @@ func isTerminal(f *os.File) bool {
 }
 
 func run(ctx context.Context, args []string, out, errw io.Writer, in io.Reader, tty bool, plat platform) int {
+	if len(args) > 0 && args[0] == "_agent-guardian" {
+		return agent.Guardian(args[1:])
+	}
 	e := &env{out: out, errw: errw, in: in, plat: plat, tty: tty}
 	dataDir, rest, err := splitGlobal(args)
 	if err != nil {
@@ -141,6 +145,8 @@ func run(ctx context.Context, args []string, out, errw io.Writer, in io.Reader, 
 		err = e.cmdRemote(ctx, dataDir, cargs)
 	case "console":
 		err = e.cmdConsole(ctx, dataDir, cargs)
+	case "agent":
+		err = e.cmdAgent(ctx, dataDir, cargs)
 	case "serve":
 		err = e.cmdServe(ctx, dataDir, cargs)
 	case "keys":
@@ -304,6 +310,7 @@ Usage:
   infercat <command> [flags]
 
 Commands:
+  agent      install the optional, pinned agent runtime
   serve      run the host: the tunnel and the gateway in front of your inference server
   keys       mint and manage per-friend keys: add, list, pause, resume, revoke, rotate, limits
   status     what the running host is doing right now

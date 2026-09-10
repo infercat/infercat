@@ -20,6 +20,7 @@ import (
 	consolebundle "github.com/infercat/infercat/console"
 	"github.com/infercat/infercat/internal/admin"
 	"github.com/infercat/infercat/internal/adminkey"
+	"github.com/infercat/infercat/internal/agent"
 	"github.com/infercat/infercat/internal/bridge"
 	"github.com/infercat/infercat/internal/dirlock"
 	"github.com/infercat/infercat/internal/gateway"
@@ -82,6 +83,7 @@ func (e *env) cmdServe(ctx context.Context, pre string, args []string) error {
 	webURLFlag := fs.String("web-url", cfg.WebURL, "where your friends open the web app; invites print as <url>#<invite>")
 	verbose := fs.Bool("verbose", false, "print the tunnel engine's log on the terminal instead of tunnel.log (not remembered)")
 	logRequests := fs.Bool("log-requests", false, "print one line per completed request on this terminal (not remembered; never prompt content)")
+	agentEnabled := fs.Bool("agent", false, "start the installed agent runtime (off by default; not remembered)")
 	if err := e.parse(fs, serveHelp, args); err != nil {
 		return err
 	}
@@ -232,6 +234,11 @@ func (e *env) cmdServe(ctx context.Context, pre string, args []string) error {
 		return fmt.Errorf("bridge: %w", err)
 	}
 	tele := &telemetry{events: events, name: hostName}
+	var harness *agent.Runtime
+	if *agentEnabled {
+		harness = agent.StartHarness(ctx, dataDir)
+		defer harness.Close()
+	}
 	go tele.sample(ctx, gw, tun)
 	if requestLines != nil {
 		go printRequests(ctx, requestLines, e.out, keyNamer(ctx, store), state.logs.Load)
@@ -240,6 +247,10 @@ func (e *env) cmdServe(ctx context.Context, pre string, args []string) error {
 	adm, err := admin.Serve(dataDir, func() admin.Status {
 		st := buildStatus(ctx, started, tun, up, gw, store, tele)
 		st.Bridge = public.Status()
+		if harness != nil {
+			s := harness.Status()
+			st.Agent = &s
+		}
 		st.Console = consoleAddress
 		st.Name = state.name()
 		remoteState := remoteStore.State()
@@ -723,6 +734,7 @@ Flags:
   --verbose               print the tunnel engine's log on the terminal instead of
                           <data-dir>/tunnel.log (not remembered)
   --console IP:PORT      loopback console (default 127.0.0.1:9101); off disables; remembered
+  --agent                 start the installed agent runtime (off by default; not remembered)
   --log-requests          print one line per completed request: who, what, tokens, timings,
                           how it ended — never the prompt (not remembered)
   --data-dir DIR          where this host's files live:

@@ -1,0 +1,71 @@
+package agent
+
+import (
+	"context"
+	_ "embed"
+	"encoding/json"
+	"os"
+	"path/filepath"
+)
+
+//go:embed assets/adapter.mjs
+var adapter []byte
+
+// HarnessOptions materializes only our plugin/config. The integrity-locked vendor
+// tree stays unchanged. No external model credentials or host bearer is inherited.
+func HarnessOptions(dataDir string) (RuntimeOptions, error) {
+	runtime, err := Installed(dataDir)
+	if err != nil {
+		return RuntimeOptions{}, err
+	}
+	dir := filepath.Join(dataDir, "agent", "host")
+	if err = os.MkdirAll(dir, 0700); err != nil {
+		return RuntimeOptions{}, err
+	}
+	plugin := filepath.Join(dir, "adapter.mjs")
+	if err = os.WriteFile(plugin, adapter, 0600); err != nil {
+		return RuntimeOptions{}, err
+	}
+	rows := []any{
+		map[string]any{"id": "headless-startup", "disabled": true},
+		map[string]any{"id": "headless-runner", "disabled": true},
+		map[string]any{"id": "llm-deepseek", "disabled": true},
+		map[string]any{"id": "llm-pi-ai", "disabled": true},
+		map[string]any{"id": "agent-default-model", "config": map[string]any{"provider": "infercat", "model": "run-model"}},
+		map[string]any{"id": "web", "config": map[string]any{"searchProvider": "exa"}},
+		map[string]any{"id": "web-search-deepseek", "disabled": true},
+		map[string]any{"insert": []any{
+			map[string]any{"id": "web-search-exa", "name": filepath.Join(runtime, "node_modules/@deepseek-ai/dsh-web-search-exa/lib/index.js"), "config": map[string]any{"numResults": 3}},
+			map[string]any{"id": "infercat-agent", "name": plugin},
+		}},
+	}
+	raw, _ := json.Marshal(rows) // JSON is a YAML subset accepted by the native patch loader.
+	patch := filepath.Join(dir, "adapter.patch.yml")
+	if err = os.WriteFile(patch, raw, 0600); err != nil {
+		return RuntimeOptions{}, err
+	}
+	env := []string{
+		"PATH=" + filepath.Join(runtime, "node/bin") + ":/usr/bin:/bin:/usr/sbin:/sbin",
+		"HOME=" + dir, "DSH_HOME=" + filepath.Join(dir, "harness"),
+		"DSH_TELEMETRY_MODE=DISABLED", "DSH_PERMISSION_MODE=workspace-write",
+		"INFERCAT_AGENT_RUNTIME=" + runtime,
+	}
+	if exa := os.Getenv("EXA_API_KEY"); exa != "" {
+		env = append(env, "EXA_API_KEY="+exa)
+	}
+	return RuntimeOptions{Dir: dir, Env: env, Command: []string{
+		filepath.Join(runtime, "node/bin/node"), filepath.Join(runtime, "node_modules/@deepseek-ai/dsh/lib/bin.js"),
+		"--profile", "headless", "--patch", patch,
+	}}, nil
+}
+
+// StartHarness failure is a runtime status, never a reason to stop normal serving.
+func StartHarness(ctx context.Context, dataDir string) *Runtime {
+	options, err := HarnessOptions(dataDir)
+	if err != nil {
+		done := make(chan struct{})
+		close(done)
+		return &Runtime{status: RuntimeStatus{State: "failed", LastError: err.Error()}, done: done, cancel: func() {}}
+	}
+	return StartRuntime(ctx, options)
+}

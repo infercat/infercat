@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/infercat/infercat/internal/adminkey"
+	"github.com/infercat/infercat/internal/agent"
 	"github.com/infercat/infercat/internal/bridge"
 	"github.com/infercat/infercat/internal/gateway"
 	"github.com/infercat/infercat/internal/product"
@@ -35,6 +36,7 @@ var ErrNoDaemon = errors.New("no running host found for this data dir")
 // for `serve` and "bridge" for a `connect` given a data dir (ticket 029 promise 5): a bridge has
 // one session, its local endpoint under Upstream, and no keys.
 type Status struct {
+	Agent        *agent.RuntimeStatus        `json:"agent,omitempty"`
 	Destinations []gateway.DestinationStatus `json:"destinations,omitempty"`
 	Bridge       *bridge.Status              `json:"bridge,omitempty"`
 	Remote       *adminkey.State             `json:"remote,omitempty"`
