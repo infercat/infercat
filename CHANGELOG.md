@@ -3,12 +3,73 @@
 Versions are tags (`v0.1.0`); the binary prints its own with `infercat version` and the web
 app shows the same one under Settings. Dates are the tag's.
 
-## Unreleased
+## v0.1.2 — 2026-09-10
 
-- Keep chat drafts editable while reconnecting; Send waits until the connection verifies.
+Two days after 0.1.1: the host gets a console, the chat gets images, files and voice, and a host
+can serve more kinds of models and reach tools that cannot use the tunnel. Every slice below was
+gated and proved against a real host before it landed.
 
-- Upgrade Tailcat to 0.6.0: clients accept both address forms while hosts preserve every
-  existing invite and keep new addresses on the old form.
+**The console (new)**
+
+- `infercat serve` serves a console on loopback (`infercat console` opens it): the four truths above
+  the fold, every friend with limits, live in-flight and last-seen, the engine's facts, usage as
+  counts, settings. Mint an invite with the code, link and QR shown once; pause, resume, rotate,
+  revoke; edit limits. Settings apply per field and say which need a restart. (069, 074, 075)
+- Opt in to reach the console through the tunnel from another device with an admin code (`ia1.…`):
+  off by default, one code, rotate or turn off any time; even remotely the console never reads
+  prompts or changes the engine URL or the console address. `infercat remote` manages it from the
+  CLI. (085, 086, 090)
+- The console shows who is connected, the host's public URL and its state, usage split between the
+  tunnel and the public URL, and audio seconds and speech characters per friend. (094, 110)
+
+**Chat**
+
+- Attach images when the host's model can see them: a silent 1024 px downscale, honest cost on the
+  meter, the sent file in a sheet. Attach PDFs, Word documents, text and code: the text is extracted
+  in the browser and is what is sent, shown verbatim. (070, 073, 076, 088)
+- Voice: tap the mic to speak a message — the host transcribes it into the composer for editing, with
+  a live waveform while recording; press Listen on a reply to hear it. The microphone stays warm
+  while the chat is visible so every take starts instantly, the first Stop of a session always
+  responds, and a take never loses its first word. (080, 099, 101, 102)
+- Drafts stay editable while reconnecting; Send waits until the connection verifies. Models that
+  load on demand no longer look like failures: the app waits as long as the host does and names the
+  model. Thinking shows for engines that stream it under the newer field name. (081, 089, 061)
+- The app is installable: an offline shell with readable chats, a home-screen icon set, one-tap
+  return to a saved chat; iOS install copy proved on the simulator. (083, 096, 097)
+
+**Hosts**
+
+- `serve --models a,b` pins what friends can see on multi-model hosts; llama-swap is recognised as
+  an engine with per-model context and slots. (066, 065)
+- `/v1/audio/transcriptions` and `/v1/audio/speech` from separately configured engines
+  (`--upstream-transcribe`, `--upstream-speech`), budgeted per friend in measured seconds and
+  characters, never text; `/me` reports vision per model and the audio models. (078, 070)
+- A public URL (preview): `infercat expose --register <code>` gives a host an OpenAI-compatible
+  HTTPS address at gateway.infercat.ai for tools that cannot use the tunnel. Every key, limit and
+  usage line applies unchanged; only keys the host has issued are admitted at the edge; `infercat
+  status` shows the URL, whether it is connected and today's count; `expose --off` turns it off.
+  Traffic on the public URL is decrypted at the gateway; the tunnel remains the private path.
+  Registration codes are issued by hand while this is a preview. (072, 095, 079, 112)
+- Tailcat 0.6.0: clients accept both address forms while hosts preserve every existing invite.
+  `/status` says which friends are connected. (067, 089)
+
+**Developers and distribution**
+
+- `@infercat/client` (workspace package, browser-only v0, not yet published): an invite in, a
+  tunnel-bound fetch and OpenAI client options out. (071)
+- A Docker image (`ghcr.io/infercat/infercat`, multi-arch, `/data` volume, proved under Apple's
+  container tool) and `.deb`/`.rpm` packages with a systemd user unit. (091, 092)
+
+**Fixed**
+
+- A real race where a restarted host's admin socket could be unlinked by the old server. (077)
+- The web app no longer crashes against a host that reports no vision. (082)
+
+**Checks**
+
+- Web lint, the host compatibility matrix (the app runs against every host version shipped), a
+  platform-independent licence inventory, real asset links, and the public-URL Worker's own tests
+  all run inside `make check`; CI is green end to end. (066, 082, 084, 087, 093, 106, 062)
 
 ## v0.1.1 — 2026-09-08
 
