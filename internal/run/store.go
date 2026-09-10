@@ -36,7 +36,7 @@ type Store struct {
 	write           func(string, []byte) error
 	reserved        map[string]map[string]*reservation
 	imageBudget     int
-	imageCleanup    map[string]bool
+	imageCleanup    map[string]bool // true: proven retry path; false: observed orphan, report only.
 	emptyImageStamp map[string]time.Time
 	known           map[string]bool
 	accessed        map[string]time.Time
@@ -393,10 +393,14 @@ func (s *Store) change(key, rid string, fn func(*Run) error, retain ...func(*Ret
 		event = &ev
 	}
 	err = s.commitFor(key, v, event, rid)
-	if err == nil && v.Runs[rid].State != r.State {
-		err = ErrLimit // The durable terminal fallback refused the requested transition.
+	if err != nil {
+		return Run{}, err
 	}
-	return copyRun(v.Runs[rid]), err
+	committed := copyRun(v.Runs[rid])
+	if committed.State != r.State {
+		return committed, &CommittedTerminal{Run: committed}
+	}
+	return committed, nil
 }
 func (s *Store) CreateBatch(key, kind, priority string, inputs []json.RawMessage, cap int, admit ...func([]Run) (func(), error)) ([]Run, error) {
 	if len(inputs) == 0 || len(inputs) > MaxLiveKey {

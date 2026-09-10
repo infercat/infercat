@@ -30,7 +30,7 @@ type Policy struct {
 func (m *Manager) Register(name string, kind Kind, policy Policy) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if policy.JoinCancel && policy.ForceStop == nil {
+	if policy.JoinCancel && (policy.ForceStop == nil || !policy.Serial) {
 		return ErrInvalid
 	}
 	if m.started || m.ctx.Err() != nil {
@@ -77,7 +77,12 @@ func (w *Work) Step(step Step) (StepResult, error) {
 		return StepResult{}, err
 	}
 	defer release()
-	_, result, err := w.manager.attempt(w.ctx, w.Run, step, true)
+	r, result, err := w.manager.attempt(w.ctx, w.Run, step, true)
+	if committedTerminal(err) {
+		w.manager.mu.Lock()
+		w.manager.stopTerminal(r)
+		w.manager.mu.Unlock()
+	}
 	return result, err
 }
 
@@ -94,7 +99,7 @@ func (w *Work) Approval(id, request string) (bool, error) {
 		return false, err
 	}
 	defer release()
-	_, err = w.Store.change(w.Run.KeyID, w.Run.ID, func(r *Run) error {
+	r, err := w.Store.change(w.Run.KeyID, w.Run.ID, func(r *Run) error {
 		if terminal(r.State) || r.CancelRequested {
 			return ErrConflict
 		}
@@ -108,6 +113,11 @@ func (w *Work) Approval(id, request string) (bool, error) {
 		return nil
 	})
 	if err != nil {
+		if committedTerminal(err) {
+			w.manager.mu.Lock()
+			w.manager.stopTerminal(r)
+			w.manager.mu.Unlock()
+		}
 		return false, err
 	}
 	w.manager.mu.Lock()
@@ -138,8 +148,13 @@ func (w *Work) Approval(id, request string) (bool, error) {
 func (m *Manager) Answer(key, rid, approvalID string, allow bool) (Run, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if _, err := m.Store.Get(key, rid); err != nil {
+	old, err := m.Store.Get(key, rid)
+	if err != nil {
 		return Run{}, err
+	}
+	if old.State == Failed || old.State == Cancelled {
+		m.stopTerminal(old)
+		return old, &CommittedTerminal{Run: old}
 	}
 	worker := m.active[rid]
 	if worker == nil {
@@ -158,6 +173,9 @@ func (m *Manager) Answer(key, rid, approvalID string, allow bool) (Run, error) {
 		data.Approval.Status, data.Approval.Allow = "answered", &allow
 		return nil
 	})
+	if committedTerminal(err) {
+		m.stopTerminal(r)
+	}
 	if err == nil {
 		select {
 		case worker.answer <- struct{}{}:

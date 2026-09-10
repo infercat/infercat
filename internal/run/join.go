@@ -2,8 +2,30 @@ package run
 
 import "time"
 
-func (m *Manager) unavailable(kind string) bool {
-	return m.blocked[kind] > 0 || m.quarantined[kind]
+func (m *Manager) availability(kind string) error {
+	if m.quarantined[kind] {
+		return ErrQuarantined
+	}
+	if m.blocked[kind] > 0 {
+		return ErrStopping
+	}
+	return nil
+}
+func (m *Manager) unavailable(kind string) bool { return m.availability(kind) != nil }
+
+// Called under m.mu, even if the row was already terminal before this request.
+func (m *Manager) stopTerminal(r Run) {
+	if !terminal(r.State) {
+		return
+	}
+	if w := m.active[r.ID]; w != nil {
+		w.cancel()
+		if m.Policies[r.Kind].JoinCancel {
+			m.boundJoin(r, w)
+		}
+	} else {
+		m.release(r.ID)
+	}
 }
 func (m *Manager) resumeKind(kind string) {
 	if m.unavailable(kind) || m.ctx.Err() != nil {
@@ -29,8 +51,9 @@ func (m *Manager) quarantine(kind, cause string) {
 		m.Store.log("run kind %s quarantined: force-stop %s", kind, cause)
 	}
 	m.quarantined[kind] = true
-	for _, r := range m.queued(kind) {
-		if m.active[r.ID] != nil {
+	rows, _ := m.Store.List("")
+	for _, r := range rows {
+		if r.Kind != kind || (r.State != Queued && r.State != Waiting) || m.active[r.ID] != nil {
 			continue
 		}
 		_, err := m.Store.change(r.KeyID, r.ID, func(v *Run) error {
@@ -74,7 +97,18 @@ func (m *Manager) boundJoin(r Run, w *execution) {
 			stopped := make(chan bool, 1)
 			go func() {
 				ok := false
-				defer func() { _ = recover(); stopped <- ok }()
+				defer func() {
+					_ = recover()
+					m.mu.Lock()
+					defer m.mu.Unlock()
+					if w.stopAbandoned {
+						if ok {
+							m.recoveredKind(w.kind)
+						}
+					} else {
+						stopped <- ok
+					}
+				}()
 				if stop != nil {
 					stop(r.ID)
 				} else {
@@ -92,6 +126,14 @@ func (m *Manager) boundJoin(r Run, w *execution) {
 			}
 			m.finish(r.KeyID, r.ID, Cancelled, "consumer did not join", nil)
 			m.mu.Lock()
+			if timedOut {
+				select {
+				case ok = <-stopped:
+					timedOut = false
+				default:
+					w.stopAbandoned = true
+				}
+			}
 			if m.active[r.ID] == w {
 				delete(m.active, r.ID)
 				m.release(r.ID)
@@ -107,11 +149,6 @@ func (m *Manager) boundJoin(r Run, w *execution) {
 				m.quarantine(w.kind, cause)
 			}
 			m.mu.Unlock()
-			if timedOut && <-stopped {
-				m.mu.Lock()
-				m.recoveredKind(w.kind)
-				m.mu.Unlock()
-			}
 		}()
 	})
 }

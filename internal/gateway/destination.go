@@ -1,6 +1,7 @@
 package gateway
 
 import (
+	"github.com/infercat/infercat/internal/usage"
 	"slices"
 	"sort"
 	"sync/atomic"
@@ -100,6 +101,9 @@ func newRouter(text upstream.Engine, cfg Config) *Router {
 func (r *Router) route(route string) *Destination { return r.routes[route] }
 
 func (r *Router) Resolve(key *keys.Key, route, model string) (*Destination, *gwError) {
+	if len(model) > usage.MaxModelBytes {
+		return nil, errf(CodeInvalidRequest, 0, "model identifier exceeds %d bytes", usage.MaxModelBytes)
+	}
 	d := r.route(route)
 	if d == nil {
 		return nil, errf(CodeNotFound, 0, "no route for POST %s", route)

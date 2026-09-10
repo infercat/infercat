@@ -209,12 +209,17 @@ func (s *Store) DiscardImage(key, rid string) error {
 // Called under the store lock after expiry. Removes orphaned files after an interrupted commit too.
 func (s *Store) sweepImages(key string, v *snapshot) error {
 	dir := filepath.Join(s.root, key, "images")
-	for path := range s.imageCleanup {
+	for path, proven := range s.imageCleanup {
 		if filepath.Dir(path) == dir {
-			s.unlinkImage(path)
+			if proven {
+				s.unlinkImage(path)
+			} else if _, err := os.Lstat(path); errors.Is(err, os.ErrNotExist) {
+				delete(s.imageCleanup, path)
+			}
 		}
 	}
-	if info, e := os.Lstat(dir); errors.Is(e, os.ErrNotExist) {
+	info, e := os.Lstat(dir)
+	if errors.Is(e, os.ErrNotExist) {
 		for path := range s.imageCleanup {
 			if filepath.Dir(path) == dir {
 				delete(s.imageCleanup, path)
@@ -227,13 +232,21 @@ func (s *Store) sweepImages(key string, v *snapshot) error {
 		return ErrInvalid
 	}
 	entries, err := os.ReadDir(dir)
+	if errors.Is(err, os.ErrNotExist) {
+		return nil
+	}
 	if err != nil {
 		return err
 	}
 	if v == nil || len(v.Runs) == 0 {
-		info, err := os.Stat(dir)
-		if err != nil {
-			return err
+		if s.imageCleanup == nil {
+			s.imageCleanup = map[string]bool{}
+		}
+		for _, entry := range entries {
+			path := filepath.Join(dir, entry.Name())
+			if _, tracked := s.imageCleanup[path]; !tracked {
+				s.imageCleanup[path] = false
+			}
 		}
 		if s.emptyImageStamp == nil {
 			s.emptyImageStamp = map[string]time.Time{}
@@ -245,8 +258,8 @@ func (s *Store) sweepImages(key string, v *snapshot) error {
 		return nil
 	}
 	delete(s.emptyImageStamp, key)
-	for path := range s.imageCleanup {
-		if filepath.Dir(path) == dir {
+	for path, proven := range s.imageCleanup {
+		if filepath.Dir(path) == dir && proven {
 			delete(s.imageCleanup, path)
 		}
 	}
@@ -266,6 +279,10 @@ func (s *Store) sweepImages(key string, v *snapshot) error {
 		}
 	}
 	for _, e := range entries {
+		path := filepath.Join(dir, e.Name())
+		if proven, tracked := s.imageCleanup[path]; tracked && !proven {
+			continue
+		}
 		r, exists := next.Runs[e.Name()]
 		o, ok := imageOutput(r)
 		if !exists || !ok || o.Gone {

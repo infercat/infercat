@@ -129,8 +129,10 @@ func runError(err error) *gwError {
 		return gatewayError
 	}
 	switch {
+	case errors.Is(err, runstate.ErrStopping):
+		return errf(CodeUpstreamDown, retryAfterUpstreamDown, "runtime stopping; retry shortly")
 	case errors.Is(err, runstate.ErrQuarantined):
-		return errf(CodeUpstreamDown, 1, "runtime quarantined; retry after recovery")
+		return errf(CodeUpstreamDown, retryAfterUpstreamDown, "runtime quarantined; retry after recovery")
 	case errors.Is(err, runstate.ErrQueueLimit):
 		return errf(CodeImageQueueFull, 1, "image queue is full")
 	case errors.Is(err, runstate.ErrNotFound):
@@ -206,6 +208,10 @@ func (q *request) runRoute() {
 		}
 	default:
 		err = runstate.ErrNotFound
+	}
+	var ended *runstate.CommittedTerminal
+	if errors.As(err, &ended) {
+		value, err, status = ended.Run, nil, http.StatusOK
 	}
 	if err != nil {
 		q.fail(runError(err))

@@ -100,17 +100,24 @@ Registration is rejected after startup/first submission, and the manager copies
 the caller's initial kind map. Failed attempt starts end the run, so serial queues
 cannot repeatedly select the same failed start.
 
-Registration refuses JoinCancel without a ForceStop hook. Joined cancellation has
+Registration refuses JoinCancel without both Serial scheduling and a ForceStop
+hook: joined consumers have at most one active run per kind on the host. Joined cancellation has
 a 30-second deadline. The host registers
 `Policy.ForceStop(runID)` to stop that run's owned runtime generation. At the
 deadline, the manager waits up to ten more seconds for the hook, recovering a
 panic. A successful stop permits the next queued run; timeout or panic quarantines
-the kind from new starts. Accepted queued runs fail as `runtime quarantined`,
+the kind from new starts. Accepted queued and waiting runs fail as `runtime quarantined`,
 release their reservations and publish terminal events. New submissions receive
-503 `upstream_down` with Retry-After, rather than a malformed-request error. Entry
+503 `upstream_down` with Retry-After: 10, rather than a malformed-request error.
+While the stop is still in progress the message is `runtime stopping; retry
+shortly`, distinct from quarantine. Entry
 logs name timeout or panic; a successful stop (including a late return) logs recovery
 and clears quarantine. Host restart also clears it. The bounded Cancelled outcome remains authoritative,
 and late worker returns cannot replace it. Close returns within join + stop bounds.
+At the stop deadline the manager abandons its waiter and closes the joined
+notification. Go cannot kill a non-cooperative hook goroutine: that one goroutine
+remains until the hook returns; a late successful return performs recovery
+directly. There is no extra manager goroutine waiting indefinitely for it.
 Go cannot kill an arbitrary goroutine. The supervised adapter identifies a runtime
 generation: other sessions on that generation fail without replay, while a delayed
 stop for an older generation cannot kill its replacement. This is not per-session
@@ -120,7 +127,13 @@ process isolation.
 consumer. `Manager.Answer` commits the identified answer once before waking it;
 stale, duplicate, cross-key and cancelled answers refuse. The consumer forwards
 that committed answer once; an ambiguous IPC send fails the run, never resends.
-Restart recovery fails interrupted runs and keeps accumulated evidence.
+Restart recovery fails interrupted runs and keeps accumulated evidence. If a
+requested Cancel/Answer instead commits an emergency terminal outcome, the typed
+result carries that committed run and cancels its owned worker through the joined
+stop path. The control response is 200 with the terminal snapshot: state and reason
+are authoritative, not a promise that the requested answer was applied. A write
+that did not commit remains a refusal (429 for storage limits), never a speculative
+failed-run snapshot.
 
 The Go run store owns retained state, exact raw native trajectory events, and
 immutable captured output bytes in `runs/<key>/state.json`. The existing 64 MiB
@@ -176,7 +189,12 @@ enumeration does not. Idle terminal keys with no subscriber leave memory after
 five minutes even while other keys are active. Resident snapshots cost up to
 64 MiB plus terminal headroom per key; all-key enumeration can temporarily load
 all known snapshots before releasing idle ones. Live or directly polled keys stay
-resident. A first load reads and parses the snapshot; resident reads use memory. Every run write advances Updated. Retain is explicitly silent on the
+resident. All-key enumeration re-reads and re-parses each nonresident idle key
+on every call, then releases it again. It is not amortized across calls. On this
+Mac, 8 idle keys with 1 MiB each took 6.37–6.59 ms per repeated enumeration with
+filesystem pages warm; the first already-resident call took 7.83 µs. Measurement:
+/tmp/infercat-157-v3-outcomes.log. Scheduling and position reads currently pay this
+tradeoff; the separately dispatched position-cache work is not included here. Every run write advances Updated. Retain is explicitly silent on the
 lifecycle stream, while artifact creation, discard and each eviction publish their
 own notifications. A valid cursor from an unknown epoch returns Reset.
 
@@ -184,10 +202,18 @@ Sweep reloads under the lock after any unlock. Expiry records exact artifact pat
 from the loaded pre-deletion snapshot, commits the shrink, then unlinks those proven
 paths through the retry tracker. Scanning an empty snapshot never authorizes
 orphan deletion: unknown files stay intact. A nonempty orphan directory is logged
-once per observed directory change, not once per sweep tick. Failed unlinks remain
+once per observed directory change, not once per sweep tick. Report-only orphan
+entries and proven retry paths are both counted in pending-cleanup status; only
+the proven paths may be automatically unlinked. Observation never authorizes
+deletion, even if the key later has live rows. A vanished directory is benign.
+Failed unlinks remain
 visible and retryable; they do not break a key. The opt-in pinned tarball test
 requires network access and INFERCAT_AGENT_TEST_INSTALL; ordinary make check skips
 it. Its recorded live run compared the vendored manifest byte-for-byte with the
 SHA-512-verified registry tarball (/tmp/infercat-157-tarball.log). The verified
 manifest SHA-256 is
 `885d9766775a2585f8c3a608cd2d2c97391e158b3ac1c53365cb2d1ca82040db`.
+
+Generation-bound sends reject generation zero as unestablished; callers capture
+the generation only after the child starts. Model identifiers are limited to
+256 bytes before gateway dispatch, preserving charged identities without truncation.

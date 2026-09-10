@@ -267,6 +267,9 @@ func TestStopGenerationCannotStopReplacement(t *testing.T) {
 	defer r.Close()
 	waitRuntime(t, r, "healthy")
 	old := r.Generation()
+	if err := r.SendGeneration(0, json.RawMessage(`{}`)); err == nil {
+		t.Fatal("zero generation bypassed ownership")
+	}
 	r.StopGeneration(old)
 	waitRuntime(t, r, "healthy")
 	replacement := r.Generation()

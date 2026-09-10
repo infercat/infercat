@@ -11,7 +11,7 @@ const terminalBound = 4096
 const idleRelease = 5 * time.Minute
 
 func (s *Store) markBroken(key string, err error) {
-	if errors.Is(err, ErrLimit) || errors.Is(err, ErrConflict) || errors.Is(err, ErrNotFound) {
+	if committedTerminal(err) || errors.Is(err, ErrLimit) || errors.Is(err, ErrConflict) || errors.Is(err, ErrNotFound) {
 		return
 	}
 	first := s.broken[key] == nil
@@ -99,3 +99,10 @@ func (s *Store) log(format string, args ...any) {
 		log.Printf(format, args...)
 	}
 }
+
+// CommittedTerminal reports a durable outcome, not a refused write. Callers must
+// stop owned execution and present this snapshot instead of retrying the mutation.
+type CommittedTerminal struct{ Run Run }
+
+func (e *CommittedTerminal) Error() string { return "run ended: " + e.Run.Reason }
+func committedTerminal(err error) bool     { var ended *CommittedTerminal; return errors.As(err, &ended) }

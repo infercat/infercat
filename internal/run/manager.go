@@ -31,14 +31,15 @@ type Manager struct {
 }
 
 type execution struct {
-	cancel  context.CancelFunc
-	answer  chan struct{}
-	kind    string
-	done    chan struct{}
-	joined  chan struct{}
-	join    sync.Once
-	key     string
-	expired bool
+	cancel        context.CancelFunc
+	answer        chan struct{}
+	kind          string
+	done          chan struct{}
+	joined        chan struct{}
+	join          sync.Once
+	key           string
+	expired       bool
+	stopAbandoned bool
 }
 
 func New(s *Store, exec Executor, kinds map[string]Kind) (*Manager, error) {
@@ -61,9 +62,9 @@ func (m *Manager) Submit(key, kind, priority string, input json.RawMessage) (Run
 }
 func (m *Manager) SubmitBatch(key, kind, priority string, inputs []json.RawMessage) ([]Run, error) {
 	m.mu.Lock()
-	if m.unavailable(kind) {
+	if err := m.availability(kind); err != nil {
 		m.mu.Unlock()
-		return nil, ErrQuarantined
+		return nil, err
 	}
 	if m.ctx.Err() != nil {
 		m.mu.Unlock()
@@ -99,8 +100,8 @@ func (m *Manager) SubmitBatch(key, kind, priority string, inputs []json.RawMessa
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if m.unavailable(kind) {
-		return nil, ErrQuarantined
+	if err := m.availability(kind); err != nil {
+		return nil, err
 	}
 	if m.ctx.Err() != nil {
 		return nil, ErrConflict
@@ -205,7 +206,10 @@ func (m *Manager) Resume(key, rid string) error {
 		return ErrConflict
 	}
 	r, err := m.Store.change(key, rid, func(v *Run) error {
-		if v.State != Waiting || m.active[rid] != nil || m.unavailable(v.Kind) {
+		if err := m.availability(v.Kind); err != nil {
+			return err
+		}
+		if v.State != Waiting || m.active[rid] != nil {
 			return ErrConflict
 		}
 		v.State = Queued
@@ -214,6 +218,8 @@ func (m *Manager) Resume(key, rid string) error {
 	})
 	if err == nil {
 		m.start(r)
+	} else if committedTerminal(err) {
+		m.stopTerminal(r)
 	}
 	return err
 }
@@ -221,8 +227,12 @@ func (m *Manager) Cancel(key, rid string) (Run, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	old, err := m.Store.Get(key, rid)
-	if err != nil || terminal(old.State) {
+	if err != nil {
 		return old, err
+	}
+	if terminal(old.State) {
+		m.stopTerminal(old)
+		return old, nil
 	}
 	r, err := m.Store.change(key, rid, func(v *Run) error {
 		if terminal(v.State) {
@@ -234,9 +244,10 @@ func (m *Manager) Cancel(key, rid string) (Run, error) {
 		}
 		return nil
 	})
-	if err == nil {
+	if err == nil || committedTerminal(err) {
 		if terminal(r.State) {
-			m.release(r.ID)
+			m.stopTerminal(r)
+			return r, err
 		}
 		if worker := m.active[rid]; worker != nil && !(r.State == Running && m.Policies[r.Kind].DeferredCancel) {
 			worker.cancel()
@@ -255,11 +266,7 @@ func (m *Manager) finish(key, rid string, st State, reason string, output json.R
 		reason = "consumer did not join"
 		output = nil
 	}
-	// A waiting event is a promise that Resume can start its next worker immediately.
-	if st == Waiting {
-		delete(m.active, rid)
-	}
-	_, err := m.Store.change(key, rid, func(v *Run) error {
+	r, err := m.Store.change(key, rid, func(v *Run) error {
 		if terminal(v.State) {
 			return ErrConflict
 		}
@@ -274,6 +281,12 @@ func (m *Manager) finish(key, rid string, st State, reason string, output json.R
 		}
 		return nil
 	})
+	if err == nil && st == Waiting {
+		delete(m.active, rid)
+	}
+	if committedTerminal(err) {
+		m.stopTerminal(r)
+	}
 	if err != nil && !errors.Is(err, ErrConflict) {
 		m.Store.mu.Lock()
 		m.Store.markBroken(key, err)

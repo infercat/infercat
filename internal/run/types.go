@@ -21,6 +21,7 @@ const (
 )
 
 var (
+	ErrStopping    = errors.New("runtime stopping")
 	ErrQuarantined = errors.New("runtime quarantined")
 	ErrQueueLimit  = errors.New("image queue limit reached")
 	ErrNotFound    = errors.New("run not found")

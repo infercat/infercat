@@ -51,7 +51,7 @@ func Test157V2ExceptionPerRunSurvivesRestart(t *testing.T) {
 			t.Fatal("per-run growth exceeded")
 		}
 		if err != nil {
-			if !errors.Is(err, ErrLimit) || got.State != Failed || got.Reason != "storage exhausted" {
+			if !committedTerminal(err) || errors.Is(err, ErrLimit) || got.State != Failed || got.Reason != "storage exhausted" {
 				t.Fatal(got.State, got.Reason, err)
 			}
 			failed = true
@@ -121,7 +121,7 @@ func Test157V2AbsoluteCapTrimsReplayNotEvidence(t *testing.T) {
 	logs := 0
 	s.Log = func(string, ...any) { logs++ }
 	got, err := s.change("key", r.ID, func(v *Run) error { v.State = Waiting; return nil })
-	if !errors.Is(err, ErrLimit) || got.State != Failed || got.Reason != "storage exhausted" {
+	if !committedTerminal(err) || errors.Is(err, ErrLimit) || got.State != Failed || got.Reason != "storage exhausted" {
 		t.Fatal(got.State, got.Reason, err)
 	}
 	if !reflect.DeepEqual(got.Attempts, []Attempt{attempt}) || string(got.Output) != string(output) {

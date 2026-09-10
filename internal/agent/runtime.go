@@ -61,6 +61,9 @@ func (r *Runtime) set(state, message string, pid int) {
 func (r *Runtime) Close()                         { r.cancel(); <-r.done }
 func (r *Runtime) Send(raw json.RawMessage) error { return r.send(0, raw) }
 func (r *Runtime) SendGeneration(generation uint64, raw json.RawMessage) error {
+	if generation == 0 {
+		return errors.New("agent runtime generation is not established")
+	}
 	return r.send(generation, raw)
 }
 func (r *Runtime) send(generation uint64, raw json.RawMessage) error {

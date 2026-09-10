@@ -86,7 +86,9 @@ func Test157V2EnumerationReleasesIdleKeys(t *testing.T) {
 	}
 	now = now.Add(idleRelease + time.Hour)
 	for range 4 {
+		started := time.Now()
 		rows, err := s.List("")
+		t.Logf("all-key read: 8 x 1 MiB idle snapshots, elapsed=%v", time.Since(started))
 		if err != nil || len(rows) != 8 {
 			t.Fatal(len(rows), err)
 		}
@@ -123,8 +125,8 @@ func Test157V2EmptyImagesLogOnlyChanges(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if lines != 1 {
-		t.Fatal("repeated orphan log", lines)
+	if lines != 1 || s.ImageCleanupPending() != 1 {
+		t.Fatal("repeated orphan log or missing status count", lines, s.ImageCleanupPending())
 	}
 	later := time.Now().Add(time.Hour)
 	os.Chtimes(dir, later, later)
@@ -137,6 +139,21 @@ func Test157V2EmptyImagesLogOnlyChanges(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(dir, "orphan")); err != nil {
 		t.Fatal("orphan deleted", err)
 	}
+	// Later live rows and repeated sweeps do not turn observation into permission.
+	r := create(t, s, "key")
+	if err := s.sweepImages("key", s.data[r.KeyID]); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := os.Stat(filepath.Join(dir, "orphan")); err != nil {
+		t.Fatal("observation authorized deletion", err)
+	}
+	if err := os.RemoveAll(dir); err != nil {
+		t.Fatal(err)
+	}
+	if err := s.sweepImages("key", empty); err != nil || s.ImageCleanupPending() != 0 {
+		t.Fatal("vanished directory retained or broken", err)
+	}
+
 }
 func Test157V2ExpiryContinuesAfterCancelRefusal(t *testing.T) {
 	s := store(t)

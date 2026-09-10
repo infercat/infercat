@@ -92,7 +92,9 @@ Discard removes an output immediately. The run metadata remains with an output-g
 marker until the run record expires. Startup sweeps remove orphaned artifacts;
 interrupted work is never automatically replayed.
 
-The image budget counts retained, servable outputs. Stale files that cannot be unlinked are logged and retried on the next sweep; they may temporarily add disk usage outside that budget. `infercat status` reports their pending-cleanup count.
+The image budget counts retained, servable outputs. Stale files that cannot be unlinked are logged and retried on the next sweep; they may temporarily add disk usage outside that budget. `infercat status` reports their pending-cleanup count, including observed orphans
+that require manual review. Report-only observations never authorize automatic
+deletion; proven retry paths retain their existing unlink permission.
 
 Shrinking run-snapshot commits are exempt from the retained-byte budget, including
 expiry above the ordinary ceiling. Bounded lifecycle records cover Waiting as well

@@ -40,7 +40,7 @@ func TestConsumerCancelWaitsForCleanupInEveryLiveState(t *testing.T) {
 				close(cleanup)
 				<-release
 				return nil, err
-			}), Policy{JoinCancel: true, ForceStop: func(string) {}})
+			}), Policy{Serial: true, JoinCancel: true, ForceStop: func(string) {}})
 			r := submit(t, m)
 			if phase == Waiting {
 				await(t, func() bool { return state(s, r) == Waiting })
@@ -90,7 +90,7 @@ func TestConsumerApprovalCommitsBeforeDeliveryAndNeverReplays(t *testing.T) {
 		}
 		deliveries.Add(1)
 		return json.RawMessage(`{"answer":"done"}`), nil
-	}), Policy{JoinCancel: true, ForceStop: func(string) {}})
+	}), Policy{Serial: true, JoinCancel: true, ForceStop: func(string) {}})
 	r := submit(t, m)
 	await(t, func() bool { return state(s, r) == Waiting })
 	if _, err := m.Answer("k_other", r.ID, "p_1", true); !errors.Is(err, ErrNotFound) {
@@ -121,7 +121,7 @@ func TestConsumerFailedApprovalCommitNeverDelivers(t *testing.T) {
 			delivered.Store(true)
 		}
 		return nil, e
-	}), Policy{JoinCancel: true, ForceStop: func(string) {}})
+	}), Policy{Serial: true, JoinCancel: true, ForceStop: func(string) {}})
 	r := submit(t, m)
 	await(t, func() bool { return state(s, r) == Waiting })
 	s.mu.Lock()
@@ -164,7 +164,7 @@ func TestConsumerUsesSharedAttemptLedgerForEveryModelCall(t *testing.T) {
 			}
 		}
 		return json.RawMessage(`{"done":true}`), nil
-	}), Policy{JoinCancel: true, ForceStop: func(string) {}})
+	}), Policy{Serial: true, JoinCancel: true, ForceStop: func(string) {}})
 	r := submit(t, m)
 	await(t, func() bool { return state(s, r) == Done })
 	got, _ := s.Get(r.KeyID, r.ID)

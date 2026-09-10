@@ -7,6 +7,9 @@ import (
 	"time"
 )
 
+// MaxModelBytes bounds a model identity before dispatch; charged identities are never truncated.
+const MaxModelBytes = 256
+
 // Event is one request. No prompt or completion content lives here unless the host opted in,
 // in which case Prompt/Completion are set (Protection 3 in docs/PRINCIPLES.md).
 type Event struct {
