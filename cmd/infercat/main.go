@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/infercat/infercat/internal/admin"
+	"github.com/infercat/infercat/internal/gateway"
 	"github.com/infercat/infercat/internal/keys"
 	"github.com/infercat/infercat/internal/product"
 	"github.com/infercat/infercat/internal/upstream"
@@ -52,6 +53,7 @@ type tunnelOptions struct {
 }
 
 type gatewayServer interface {
+	Destinations() []gateway.DestinationStatus
 	Sessions() map[string]int
 	Handler() http.Handler
 	usage.Snapshot

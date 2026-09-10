@@ -161,7 +161,7 @@ func TestOpenSniffsEveryKind(t *testing.T) {
 				t.Errorf("models = %v, want %v", got.Models, tc.info.Models)
 			}
 
-			n, exact, err := up.CountTokens(ctx, "one two three four five", nil)
+			n, exact, err := up.CountTokens(ctx, up.Info().Models[0], "one two three four five", nil)
 			if err != nil {
 				t.Fatalf("CountTokens: %v", err)
 			}
@@ -336,7 +336,7 @@ func TestE1UnknownEngineHasNothingButOneSlot(t *testing.T) {
 		t.Fatalf("Unknown engine = %+v; want one slot, no context, no models", i)
 	}
 	// It still counts tokens, by estimate, so the gateway's pre-check works while it waits.
-	if n, exact, err := up.CountTokens(context.Background(), "abcd", nil); err != nil || exact || n != 1 {
+	if n, exact, err := up.CountTokens(context.Background(), "test-model", "abcd", nil); err != nil || exact || n != 1 {
 		t.Errorf("CountTokens = %d %v %v", n, exact, err)
 	}
 }
@@ -503,13 +503,13 @@ func TestTokenizeFailureFallsBackToTheEstimate(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	n, exact, err := up.CountTokens(context.Background(), "12345678", nil)
+	n, exact, err := up.CountTokens(context.Background(), "test-model", "12345678", nil)
 	if err != nil || exact || n != 2 {
 		t.Errorf("CountTokens = %d exact=%v err=%v, want 2 by estimate", n, exact, err)
 	}
 	// A chat degrades to the estimate plus the template allowance (036), never an error.
 	msgs := []byte(`[{"role":"user","content":"12345678"}]`)
-	if n, exact, err := up.CountTokens(context.Background(), "12345678\n", msgs); err != nil || exact || n != 3+TemplateAllowance(msgs) {
+	if n, exact, err := up.CountTokens(context.Background(), "test-model", "12345678\n", msgs); err != nil || exact || n != 3+TemplateAllowance(msgs) {
 		t.Errorf("CountTokens(chat) = %d exact=%v err=%v, want %d by estimate + allowance", n, exact, err, 3+TemplateAllowance(msgs))
 	}
 }
@@ -540,11 +540,11 @@ func TestCountTokensUnderTheChatTemplate(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			raw, exact, err := up.CountTokens(ctx, text, nil)
+			raw, exact, err := up.CountTokens(ctx, up.Info().Models[0], text, nil)
 			if err != nil || exact != tc.exact {
 				t.Fatalf("text count: %d exact=%v err=%v", raw, exact, err)
 			}
-			chat, exact, err := up.CountTokens(ctx, text, msgs)
+			chat, exact, err := up.CountTokens(ctx, up.Info().Models[0], text, msgs)
 			if err != nil || exact != tc.exact {
 				t.Fatalf("chat count: %d exact=%v err=%v", chat, exact, err)
 			}

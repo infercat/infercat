@@ -23,7 +23,6 @@ import (
 )
 
 type audioRequest struct {
-	engine         upstream.AudioEngine
 	raw            []byte
 	contentType    string
 	dispatched     atomic.Bool
@@ -33,9 +32,9 @@ type audioRequest struct {
 	responseFormat string
 }
 
-func (q *request) proxyAudio(kind endpoint, engine upstream.AudioEngine) {
+func (q *request) proxyAudio(kind endpoint) {
 	q.kind = kind
-	q.audio = &audioRequest{engine: engine}
+	q.audio = &audioRequest{}
 	q.ev.Kind = "transcription"
 	if kind == speechEndpoint {
 		q.ev.Kind = "speech"
@@ -57,7 +56,7 @@ func (q *request) audioHealth() *gwError {
 	if q.g.audioHistoryErr != nil {
 		return errf(CodeUpstreamDown, 1, "the host's audio usage history is unavailable")
 	}
-	if !q.audio.engine.Info().Health.OK {
+	if !q.destination.Audio.Info().Health.OK {
 		return errf(CodeUpstreamDown, retryAfterUpstreamDown, "the host's audio engine is not answering")
 	}
 	return nil
@@ -186,8 +185,8 @@ func (q *request) readAudio() *gwError {
 	if model == "" {
 		return errf(CodeUpstreamDown, retryAfterUpstreamDown, "the host has no audio model configured or reported")
 	}
-	if !q.key.AllowsModel(model) || (len(q.g.cfg.ModelsPinned) > 0 && !slices.Contains(q.g.cfg.ModelsPinned, model)) {
-		return errf(CodeModelNotAllowed, 0, "model is not shared with this invite")
+	if err := q.resolveDestination(model); err != nil {
+		return err
 	}
 	q.ev.Model = model
 	return nil
@@ -209,14 +208,11 @@ func audioModel(engine upstream.AudioEngine, configured string) *string {
 	return nil
 }
 func (q *request) selectAudioModel(requested string) string {
-	if requested != "" && slices.Contains(q.audio.engine.Info().Models, requested) {
+	if requested != "" && slices.Contains(q.destination.Audio.Info().Models, requested) {
 		return requested
 	}
-	configured := q.g.cfg.TranscribeModel
-	if q.kind == speechEndpoint {
-		configured = q.g.cfg.SpeechModel
-	}
-	if model := audioModel(q.audio.engine, configured); model != nil {
+	configured := q.destination.model
+	if model := audioModel(q.destination.Audio, configured); model != nil {
 		return *model
 	}
 	return ""
@@ -250,7 +246,7 @@ func (q *request) callAudio() *gwError {
 	ctx, cancel := context.WithCancel(q.r.Context())
 	q.cancelUpstream = cancel
 	ctx = httptrace.WithClientTrace(ctx, &httptrace.ClientTrace{WroteHeaders: func() { q.audio.dispatched.Store(true) }})
-	resp, err := q.audio.engine.AudioDo(ctx, string(q.kind), q.audio.contentType, q.audio.raw)
+	resp, err := q.destination.Audio.AudioDo(ctx, string(q.kind), q.audio.contentType, q.audio.raw)
 	if err != nil {
 		q.outcome = outcomeEngineErr
 		if q.r.Context().Err() != nil {

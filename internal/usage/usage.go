@@ -10,6 +10,7 @@ import (
 // Event is one request. No prompt or completion content lives here unless the host opted in,
 // in which case Prompt/Completion are set (Protection 3 in docs/PRINCIPLES.md).
 type Event struct {
+	Destination      string    `json:"destination,omitempty"` // empty in old rows means text
 	Kind             string    `json:"kind,omitempty"`
 	Seconds          float64   `json:"seconds,omitempty"`
 	ReservedSeconds  float64   `json:"reserved_seconds,omitempty"`

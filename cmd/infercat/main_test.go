@@ -21,6 +21,7 @@ import (
 	qrcode "github.com/skip2/go-qrcode"
 
 	"github.com/infercat/infercat/internal/admin"
+	"github.com/infercat/infercat/internal/gateway"
 	"github.com/infercat/infercat/internal/keys"
 	"github.com/infercat/infercat/internal/product"
 	"github.com/infercat/infercat/internal/upstream"
@@ -484,6 +485,7 @@ func (g *fakeGateway) ServeDev(string) error                     { return nil }
 func (g *fakeGateway) Shutdown(context.Context) error            { close(g.done); return nil }
 func (g *fakeGateway) Counters(string) usage.KeyCounters         { return usage.KeyCounters{} }
 func (g *fakeGateway) AllCounters() map[string]usage.KeyCounters { return nil }
+func (g *fakeGateway) Destinations() []gateway.DestinationStatus { return nil }
 func (g *fakeGateway) Sessions() map[string]int                  { return g.sessions }
 func (g *fakeGateway) Queue() (int, int)                         { return 0, 0 }
 

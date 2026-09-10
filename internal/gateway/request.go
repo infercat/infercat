@@ -63,19 +63,20 @@ type normalized struct {
 
 // request is one friend's request through the gateway: the record that owns every resource the
 // request takes — the key's admission (per-key slot, RPM entry, token reservation), the buffered
-// body, the global slot, the read, write, first-byte and idle deadlines, the upstream response —
+// body, the destination slot, the read, write, first-byte and idle deadlines, the upstream response —
 // and has exactly one exit, finish, which releases them all in reverse order, settles the
 // admission by the outcome, and records the usage event. serveHTTP defers finish, so success,
 // rejection, client abort, timeout, and panic all leave through it; no stage releases anything
 // itself (ticket 006 design ruling).
 type request struct {
-	audio *audioRequest
-	g     *Gateway
-	w     http.ResponseWriter
-	r     *http.Request
-	rc    *http.ResponseController
-	start time.Time
-	ev    usage.Event
+	destination *Destination
+	audio       *audioRequest
+	g           *Gateway
+	w           http.ResponseWriter
+	r           *http.Request
+	rc          *http.ResponseController
+	start       time.Time
+	ev          usage.Event
 
 	// Identity and input, filled stage by stage.
 	key    *keys.Key
@@ -86,7 +87,7 @@ type request struct {
 	// Resources. Each is taken by one stage and released only by finish.
 	adm            *admission // per-key slot, RPM entry, reservation (limiter.admit, .reserve)
 	buffered       bool       // counted in g.bodies
-	slot           bool       // holds a global slot
+	slot           bool       // holds a destination slot
 	cancelUpstream context.CancelFunc
 	idle           *time.Timer // engine idle deadline, armed by relay
 	resp           *http.Response
@@ -104,6 +105,10 @@ func (g *Gateway) newRequest(w http.ResponseWriter, r *http.Request) *request {
 	q := &request{g: g, w: w, r: r, rc: http.NewResponseController(w), start: time.Now()}
 	q.ev.TS = q.start
 	q.ev.Endpoint = r.URL.Path
+	q.destination = q.g.router.route(r.URL.Path)
+	if q.destination != nil {
+		q.ev.Destination = q.destination.ID
+	}
 	return q
 }
 
@@ -119,10 +124,10 @@ func (q *request) serve() {
 		q.me()
 	case r.Method == http.MethodGet && r.URL.Path == "/v1/models":
 		q.models()
-	case r.Method == http.MethodPost && r.URL.Path == string(transcribeEndpoint) && q.g.cfg.Transcribe != nil:
-		q.proxyAudio(transcribeEndpoint, q.g.cfg.Transcribe)
-	case r.Method == http.MethodPost && r.URL.Path == string(speechEndpoint) && q.g.cfg.Speech != nil:
-		q.proxyAudio(speechEndpoint, q.g.cfg.Speech)
+	case r.Method == http.MethodPost && r.URL.Path == string(transcribeEndpoint) && q.destination != nil:
+		q.proxyAudio(transcribeEndpoint)
+	case r.Method == http.MethodPost && r.URL.Path == string(speechEndpoint) && q.destination != nil:
+		q.proxyAudio(speechEndpoint)
 	case r.Method == http.MethodPost && r.URL.Path == string(chatEndpoint):
 		q.proxy(chatEndpoint)
 	case r.Method == http.MethodPost && r.URL.Path == string(embeddingsEndpoint):
@@ -135,7 +140,7 @@ func (q *request) serve() {
 // proxy is the pipeline for a proxied POST, top to bottom. Each stage takes what it needs onto the
 // record and returns the first error; finish gives everything back. The order is the protection
 // (promise 2): the cheap in-memory admission bounds a key's burst before a byte of body is read or
-// the engine is asked to tokenize, and nothing waits for a global slot before its budgets are known.
+// the engine is asked to tokenize, and nothing waits for a destination slot before its budgets are known.
 // A stage that ends the request past the queue sets the outcome; one that fails before it leaves
 // it unset, which is a rejection.
 func (q *request) proxy(kind endpoint) {
@@ -147,7 +152,7 @@ func (q *request) proxy(kind endpoint) {
 		q.normalize,    // strip override aliases, fill model, clamp max_tokens, stream_options
 		q.count,        // tokenize the prompt: an engine call, bounded by the per-key slot
 		q.checkBudgets, // context, TPM, daily: shrink max_tokens to fit or reject; reserve the worst case
-		q.acquireSlot,  // global slot: FIFO, bounded wait, bounded waiting set
+		q.acquireSlot,  // destination slot: FIFO, bounded wait, bounded waiting set
 		q.callUpstream, // the engine, no redirects, under the first-byte deadline; 4xx is the friend's
 		q.relay,        // stream or body to the friend under the idle and write deadlines
 	} {
@@ -198,7 +203,7 @@ func (q *request) authenticate() *gwError {
 }
 
 func (q *request) checkHealth() *gwError {
-	if !q.g.up.Info().Health.OK {
+	if !q.destination.Up.Info().Health.OK {
 		return errf(CodeUpstreamDown, retryAfterUpstreamDown, "the host's engine is not reachable right now")
 	}
 	return nil
@@ -252,8 +257,11 @@ func (q *request) readBody() *gwError {
 // returns a value; the stage puts it on the record and the event. Shrink-to-fit (005) needs the
 // token count and so runs in checkBudgets.
 func (q *request) normalize() *gwError {
-	n, err := normalize(q.kind, q.n.body, q.key, q.g.up.Info().Models, q.g.cfg.ModelsPinned)
+	n, err := normalize(q.kind, q.n.body, q.key, q.destination.Up.Info().Models, q.g.cfg.ModelsPinned)
 	if err != nil {
+		return err
+	}
+	if err := q.resolveDestination(n.model); err != nil {
 		return err
 	}
 	q.n = n
@@ -299,7 +307,7 @@ func (q *request) checkBudgets() *gwError {
 	return nil
 }
 
-// acquireSlot joins the global queue (DESIGN §1.5). Refused on the spot is a rejection (no place
+// acquireSlot joins the destination queue (DESIGN §1.5). Refused on the spot is a rejection (no place
 // was held); a place held and lost is QueueLost — the settle table counts the timeout, not the
 // friend leaving. A streaming request that has to wait says so to the friend while it does (018).
 func (q *request) acquireSlot() *gwError {
@@ -308,7 +316,7 @@ func (q *request) acquireSlot() *gwError {
 	if q.n.stream {
 		queued = q.queued
 	}
-	o, err := q.g.queue.acquire(q.r.Context(), q.g.queueTimeout, q.g.queuedEvery, queued)
+	o, err := q.destination.Queue.acquire(q.r.Context(), q.g.queueTimeout, q.g.queuedEvery, queued)
 	q.ev.QueuedMS = time.Since(qstart).Milliseconds()
 	if err != nil {
 		q.outcome = o
@@ -366,7 +374,7 @@ func (q *request) callUpstream() *gwError {
 	ctx = httptrace.WithClientTrace(ctx, &httptrace.ClientTrace{
 		WroteRequest: func(i httptrace.WroteRequestInfo) { sent.Store(i.Err == nil) },
 	})
-	resp, derr := q.g.up.Do(ctx, http.MethodPost, string(q.kind), payload, q.n.stream)
+	resp, derr := q.destination.Text.Do(ctx, http.MethodPost, string(q.kind), payload, q.n.stream)
 	if derr != nil {
 		if q.r.Context().Err() != nil {
 			q.outcome = outcomeCut
@@ -417,7 +425,7 @@ func (q *request) finish() {
 		q.cancelUpstream()
 	}
 	if q.slot {
-		q.g.queue.release()
+		q.destination.Queue.release()
 	}
 	if q.adm != nil {
 		counted, charged := q.settleRow()

@@ -183,7 +183,7 @@ probe; `serve` polls it every 10 s and logs health transitions. Consumers **read
 decide (health at request entry, models/context at normalization, slots at slot acquire/release); nothing
 is pushed. The gateway depends only on
 ```go
-type Engine interface { Info() Info; CountTokens(ctx, text, messages) (n int, exact bool, err error); Do(ctx, method, path string, body []byte, stream bool) (*http.Response, error) }
+type Engine interface { Info() Info; CountTokens(ctx, model, text, messages) (n int, exact bool, err error); Do(ctx, method, path string, body []byte, stream bool) (*http.Response, error) }
 // CountTokens counts under the engine's chat template when messages are given (llama.cpp /apply-template → /tokenize; vLLM /tokenize {messages}); estimates add 4/message + 16. (036)
 ```
 `Do` owns the bearer, refuses redirects, applies the first-byte deadline (120 s) and the probe bound (3 s)
@@ -199,6 +199,27 @@ estimate (loaded probe, else that model's last known, else 1), with `--slots` ov
 Unloaded models are never started by discovery; their ordinary first request loads them.
 `--upstream auto` forgets a remembered URL and detects again.
 
+## Destinations
+
+The gateway's router selects one destination by the existing route before health checks and early
+key admission; it validates the parsed model at the existing normalization point. A destination
+owns an ID (`text`, `transcribe`, or `speech`), kind `engine`, origin `local`, a shared `Info()`
+source, the existing typed text `Engine` or `AudioEngine` transport, live offers (models, vision,
+audio kinds), and one instance of the bounded FIFO `slotQueue`. Capacity is its own engine's
+`Info().Slots`, at least one; `--slots` continues to affect text only, with no new flags. Transports
+keep addresses, bearers and deadlines; audio gains no artificial tokenizer or refresh method.
+Text routes remain chat, embeddings and models; absent audio routes remain `not_found`, unloaded
+allowed text models remain valid, and audio still falls back to its configured/default model.
+The request releases the resolved destination's slot through its existing single `finish` exit;
+the settle table is unchanged. `Queue()` and the existing `/status.queue` now describe text only;
+`/status.destinations` adds id, kind, models, slots, in_flight and waiting for each destination
+on the authenticated admin surface only. `/me` stays unchanged: friends receive their existing
+allowlist-filtered models, vision and audio offers, not engine structure. New usage rows carry
+`destination`; an empty value in older rows means text. Token counting receives the selected model
+(vLLM and llama.cpp/llama-swap tokenization), and context admission uses its positive per-model
+context when reported, otherwise the engine context. Independent audio capacity and model-aware
+admission are the intentional corrections; routes, existing fields and error bodies stay intact.
+
 ## Request pipeline, limits, and deadlines (006 + 010; `docs/DESIGN.md` §1)
 
 One pipeline, one exit. A request record owns every resource; the stage order is fixed in one function:
@@ -211,7 +232,7 @@ no usage object) · cut (client stopped reading / gone / engine stalled) → cha
 non-stream cut, deltas seen for a stream. RPM counts model calls (`/v1/chat/completions`,
 `/v1/embeddings`) only.
 
-Slot queue: FIFO; cap read live from `Info().Slots`; waiting set capped at max(2, 2×cap) with an immediate
+Each destination queue: FIFO; cap read live from its own `Info().Slots`; waiting set capped at max(2, 2×cap) with an immediate
 503 `queue_timeout` on overflow; `Queue()` exact under one mutex. No `SetSlots`. **A streaming request that
 must wait writes its response head at once and an SSE comment `: queued` on joining and every 5 s** (under
 the client write deadline, so a dead reader drops its place as `client_closed`); a queue timeout after the

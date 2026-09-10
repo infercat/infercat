@@ -335,10 +335,10 @@ func TestAudioBodyCapAndQueueRelease(t *testing.T) {
 	if response.Code != 413 || calls.Load() != 0 {
 		t.Fatal("25 MiB body cap failed before dispatch")
 	}
-	if _, err := h.gw.queue.acquire(context.Background(), time.Second, time.Second, nil); err != nil {
+	if _, err := h.gw.router.route(string(transcribeEndpoint)).Queue.acquire(context.Background(), time.Second, time.Second, nil); err != nil {
 		t.Fatal(err)
 	}
-	defer h.gw.queue.release()
+	defer h.gw.router.route(string(transcribeEndpoint)).Queue.release()
 	h.gw.queueTimeout = 5 * time.Millisecond
 	raw, ct := multipartAudio(t, wave(10))
 	h.expectErr(postAudio(t, h, string(transcribeEndpoint), ct, raw), CodeQueueTimeout)

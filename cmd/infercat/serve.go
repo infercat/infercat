@@ -588,15 +588,16 @@ func buildStatus(ctx context.Context, started time.Time, tun tunnelServer, up up
 	info := up.Info()
 	inFlight, waiting := gw.Queue()
 	st := admin.Status{
-		UptimeS:  int64(time.Since(started).Seconds()),
-		Mode:     "host",
-		Name:     tele.name,
-		Tunnel:   admin.Tunnel{Addr: ts.Addr, Region: ts.Region, Clients: ts.Clients, Sessions: tun.Peers()},
-		Upstream: admin.Upstream{Kind: string(info.Kind), URL: info.URL, Healthy: info.Health.OK, Since: info.Health.Since, ModelContext: info.ModelContext, Slots: info.Slots},
-		Queue:    admin.Queue{InFlight: inFlight, Waiting: waiting},
-		Engine:   admin.Engine{SlotsPeak: int(tele.peak.Load()), TokensPerS: tele.events.TokensPerSecond()},
-		Process:  admin.ProcessStats(),
-		Keys:     []admin.Key{},
+		Destinations: gw.Destinations(),
+		UptimeS:      int64(time.Since(started).Seconds()),
+		Mode:         "host",
+		Name:         tele.name,
+		Tunnel:       admin.Tunnel{Addr: ts.Addr, Region: ts.Region, Clients: ts.Clients, Sessions: tun.Peers()},
+		Upstream:     admin.Upstream{Kind: string(info.Kind), URL: info.URL, Healthy: info.Health.OK, Since: info.Health.Since, ModelContext: info.ModelContext, Slots: info.Slots},
+		Queue:        admin.Queue{InFlight: inFlight, Waiting: waiting},
+		Engine:       admin.Engine{SlotsPeak: int(tele.peak.Load()), TokensPerS: tele.events.TokensPerSecond()},
+		Process:      admin.ProcessStats(),
+		Keys:         []admin.Key{},
 	}
 	for _, p := range st.Tunnel.Sessions {
 		st.Tunnel.RxBytes += p.RxBytes
