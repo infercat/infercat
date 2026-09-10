@@ -1,0 +1,9 @@
+{
+  "bridge": {"enabled": true, "url": "https://edge.example/h/fixture/v1", "connected": true, "since": "2026-09-10T12:00:00Z", "last_error": "", "requests_today": 5},
+  "limits": {"daily_audio_seconds": 3600, "daily_speech_chars": 200000},
+  "total": {"requests": 9, "model_calls": 6, "app_polls": 3, "errors": 1, "seconds": 12.5, "characters": 340, "ttft_median_ms": 29},
+  "by_via": {
+    "direct": {"requests": 4, "model_calls": 3, "app_polls": 1, "errors": 0, "seconds": 2.5, "characters": 100, "ttft_median_ms": 11},
+    "bridge": {"requests": 5, "model_calls": 3, "app_polls": 2, "errors": 1, "seconds": 10, "characters": 240, "ttft_median_ms": 37}
+  }
+}

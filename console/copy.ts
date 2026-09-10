@@ -1,4 +1,18 @@
 export const copy = {
+  f_public: ["Public URL", "公开网址"],
+  pub_on: ["on · connected since {0}", "开启 · {0} 起已连接"],
+  pub_reconnecting: ["on · not connected", "开启 · 未连接"],
+  pub_error: ["on · not connected · {0}", "开启 · 未连接 · {0}"],
+  pub_off: ["off", "已关闭"],
+  pub_today: ["{0} requests today", "今天 {0} 次请求"],
+  u_via_tunnel: ["Through the tunnel", "经隧道"],
+  u_via_public: ["Through the public URL", "经公开网址"],
+  via_value: ["{0} calls · {1} tokens", "{0} 次调用 · {1} token"],
+  u_audio: ["Audio seconds", "音频秒数"],
+  u_speech: ["Speech characters", "语音字符数"],
+  audio_s: ["{0} s", "{0} 秒"],
+  audio_chars: ["{0} chars", "{0} 字符"],
+
   connected: ["connected", "已连接"],
   devices: ["{0} devices", "{0} 台设备"],
   connected_count: ["{0} connected", "{0} 把密钥已连接"],

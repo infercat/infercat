@@ -1,5 +1,5 @@
 import { text, type CopyKey, type Lang } from './copy';
-import { emptyStats, type Snapshot, type Key, type Stats, type LiveKey } from './types';
+import { emptyStats, type Snapshot, type Key, type Stats, type LiveKey, type ViaStats } from './types';
 
 import { escape } from './html';
 import type { RemoteState } from './remote';
@@ -57,23 +57,28 @@ export function render(data: Snapshot | null, lang: Lang, selected: string | nul
   <td class="c-lim lim">${limitsLine(k)}</td><td class="c-ago mono ago">${ago(k.last_seen)}</td><td class="chev">›</td></tr>`;
  }).join('')}</tbody></table>`;
  const ms = (v: number) => v ? v >= 1000 ? `${(v / 1000).toFixed(1)} s` : `${v} ms` : '—';
- const usageTable = (a: Stats, b: Stats, drawer = false, lastCall = '') => {
+ const usageTable = (a: Stats, b: Stats, drawer = false, lastCall = '', aVia?: ViaStats, bVia?: ViaStats) => {
+  const audioRows: [CopyKey,string,string][] = [];
+  if(b.seconds)audioRows.push(['u_audio',n(a.seconds||0),n(b.seconds)]);
+  if(b.characters)audioRows.push(['u_speech',n(a.characters||0),n(b.characters)]);
+  const viaValue=(value=emptyStats)=>t('via_value',n(value.model_calls),compact(tokens(value)));
+  const viaRows=bVia?.bridge?.requests?(['direct','bridge'] as const).map((via,i)=>`<tr class="via-row${i===0?' via-first':''}"><td>${label(via==='direct'?'u_via_tunnel':'u_via_public')}<span class="sub mono">via ${via}</span></td><td>${viaValue(aVia?.[via])}</td><td>${viaValue(bVia?.[via])}</td></tr>`).join(''):'';
   const errors = (s: Stats) => `${n(s.errors)}<span class="sub">${escape(Object.entries(s.errors_by_code || {}).map(([key, count]) => `${key} ${count}`).join(' · '))}</span>`;
   if (drawer) {
    const rows: [CopyKey, string, string][] = [
     ['u_calls', n(a.model_calls), n(b.model_calls)],
     ['u_tokens', `${compact(a.prompt_tokens)} → ${compact(a.completion_tokens)}`, `${compact(b.prompt_tokens)} → ${compact(b.completion_tokens)}`],
-    ['u_err', errors(a), errors(b)], ['u_ttft50', ms(a.ttft_median_ms), ms(b.ttft_median_ms)],
+    ...audioRows, ['u_err', errors(a), errors(b)], ['u_ttft50', ms(a.ttft_median_ms), ms(b.ttft_median_ms)],
    ];
    return `<table class="u2"><thead><tr><th></th><th>${label('u_today')}</th><th>${label('u_week')}</th></tr></thead><tbody>${rows.map(([key,a,b])=>`<tr><td>${label(key)}</td><td>${a}</td><td>${b}</td></tr>`).join('')}<tr><td>${label('u_lastcall')}</td><td colspan="2">${ago(lastCall)}</td></tr></tbody></table>`;
   }
   const rows: [CopyKey, string, string][] = [
    ['u_calls', n(a.model_calls), n(b.model_calls)], ['u_polls', n(a.app_polls), n(b.app_polls)], ['u_err', errors(a), errors(b)],
    ['u_prompt', n(a.prompt_tokens), n(b.prompt_tokens)], ['u_compl', n(a.completion_tokens), n(b.completion_tokens)],
-   ['u_ttft', `${ms(a.ttft_median_ms)} · ${ms(a.ttft_p95_ms)}`, `${ms(b.ttft_median_ms)} · ${ms(b.ttft_p95_ms)}`],
+   ...audioRows, ['u_ttft', `${ms(a.ttft_median_ms)} · ${ms(a.ttft_p95_ms)}`, `${ms(b.ttft_median_ms)} · ${ms(b.ttft_p95_ms)}`],
    ['u_total', `${ms(a.total_median_ms)} · ${ms(a.total_p95_ms)}`, `${ms(b.total_median_ms)} · ${ms(b.total_p95_ms)}`],
   ];
-  return `<table class="${drawer ? 'u2' : 'utbl'}"><thead><tr><th></th><th>${label('u_today')}</th><th>${label('u_week')}</th></tr></thead><tbody>${rows.map(([key, a, b]) => `<tr><td>${label(key)}${key === 'u_polls' ? `<span class="sub">${t('u_polls_s')}</span>` : key === 'u_total' ? `<span class="sub">${t('u_total_s')}</span>` : key === 'u_ttft' ? '<span class="sub">p50 · p95</span>' : ''}</td><td>${a}</td><td>${b}</td></tr>`).join('')}</tbody></table>`;
+  return `<table class="${drawer ? 'u2' : 'utbl'}"><thead><tr><th></th><th>${label('u_today')}</th><th>${label('u_week')}</th></tr></thead><tbody>${rows.map(([key, a, b]) => `<tr><td>${label(key)}${key === 'u_polls' ? `<span class="sub">${t('u_polls_s')}</span>` : key === 'u_total' ? `<span class="sub">${t('u_total_s')}</span>` : key === 'u_ttft' ? '<span class="sub">p50 · p95</span>' : ''}</td><td>${a}</td><td>${b}</td></tr>`).join('')}${viaRows}</tbody></table>`;
  };
  const modelOpenTo = (k: Key, model: string) => (!s.models_pinned?.length || s.models_pinned.includes(model)) && (!k.limits.models?.length || k.limits.models.includes(model));
  const modelRows = e.models.map(model => `<tr><td class="mono">${escape(model)}${s.models_pinned?.includes(model) ? ` <span class="dim">· ${t('pinned')}</span>` : ''}</td><td class="num">${t('not_reported')}</td><td class="num">${n(day.model_calls_by_model?.[model] || 0)}</td><td class="c-keys">${current.every(k => modelOpenTo(k, model)) ? t('open_all', current.length) : t('open_to', current.filter(k => modelOpenTo(k, model)).length, current.length)}</td></tr>`).join('');
@@ -81,13 +86,16 @@ export function render(data: Snapshot | null, lang: Lang, selected: string | nul
  const days = daily.map((d, i) => `<div class="day${i === daily.length - 1 ? ' today' : ''}"><p class="k">${i === daily.length - 1 ? t('u_today') : escape(new Date(d.date + 'T12:00:00Z').toLocaleDateString(lang === 'zh' ? 'zh-CN' : 'en', { weekday: 'short', timeZone: 'UTC' }))}</p><p class="v">${compact(tokens(d.total))}</p><p class="c">${d.total.model_calls ? t('calls', n(d.total.model_calls)) : t('no_calls')}</p>${meter(tokens(d.total), peak)}</div>`).join('');
  const field = (key: CopyKey, value: string | number, hint: CopyKey) => `<label class="field"><span class="field-label">${label(key)}</span><input disabled value="${escape(value)}"><span class="field-hint">${t(hint)}</span></label>`;
  const section = (id: string, key: CopyKey, subtitle: string, body: string) => `<section class="sec" id="${id}"><div class="sec-in"><div class="sec-head"><h2>${label(key)}</h2><span class="count">${subtitle}</span></div>${body}</div></section>`;
+ const bridge=s.bridge;
+ const publicState=bridge?(!bridge.enabled?t('pub_off'):bridge.connected?t('pub_on',new Date(bridge.since).toLocaleTimeString(lang==='zh'?'zh-CN':'en-GB',{hour:'2-digit',minute:'2-digit'})):bridge.last_error?`<span class="bad">${t('pub_error',bridge.last_error)}</span>`:t('pub_reconnecting')):'';
+ const publicFact=bridge?`<div class="fact wide"><p class="k">${label('f_public')}</p><p class="v mono">${escape(bridge.url.replace(/^https?:\/\//i,''))}</p><p class="s">${publicState} · ${t('pub_today',n(bridge.requests_today))}</p></div>`:'';
  let drawer = '';
  const k = keys.find(k => k.id === selected);
  if (k) {
   const l = live(k), a = today.keys?.find(v => v.key_id === k.id) || emptyStats, b = week.keys?.find(v => v.key_id === k.id) || emptyStats;
   drawer = `<div class="scrim" data-close="true"></div><aside class="drawer" role="dialog" aria-modal="true" aria-labelledby="friend-title"><div class="drawer-head"><h3 id="friend-title">${escape(k.name)}</h3><button class="ghost tiny x" data-close="true">${t('close')}</button></div>
   <p class="meta">${escape(k.id)} · <b>${t(`s_${k.status}`)}</b> · ${t('created')} ${escape(k.created_at.slice(0, 10))}</p>
-  <div class="dsec"><span class="field-label">${label('d_now')}</span><p class="nowline">${!reported(k) && l.in_flight ? '<span class="live" aria-hidden="true">■</span> ' : ''}${nowLine(k)} · ${t('tpm', compact(l.tpm_used), limit(k.limits.tpm))}<br>${t('tokens_today', compact(l.today_tokens), limit(k.limits.daily_tokens))} · ${t('u_lastcall')} ${ago(k.last_seen)}</p></div>
+  <div class="dsec"><span class="field-label">${label('d_now')}</span><p class="nowline">${!reported(k) && l.in_flight ? '<span class="live" aria-hidden="true">■</span> ' : ''}${nowLine(k)} · ${t('tpm', compact(l.tpm_used), limit(k.limits.tpm))}<br>${t('tokens_today', compact(l.today_tokens), limit(k.limits.daily_tokens))} · ${[a.seconds?t('audio_s',n(a.seconds)):'',a.characters?t('audio_chars',n(a.characters)):''].filter(Boolean).map(v=>v+' · ').join('')}${t('u_lastcall')} ${ago(k.last_seen)}</p></div>
   ${limitsForm(data, lang, ui, k, pending)}
   <div class="dsec"><span class="field-label">${label('d_usage')}</span>${usageTable(a,b,true,k.last_seen)}</div>${keyActions(lang, ui, k, pending)}<p class="dfoot">${t('hash_only')}</p></aside>`;
  }
@@ -100,12 +108,12 @@ export function render(data: Snapshot | null, lang: Lang, selected: string | nul
  ${fact('f_tunnel',`${t('relay')} ${escape(s.tunnel.region || '—')}`,t('tunnel_sub',s.tunnel.clients,bytes(s.tunnel.rx_bytes),bytes(s.tunnel.tx_bytes)))}
  ${fact('f_now',t('right_now',s.queue.in_flight,s.queue.waiting)+(s.keys.some(k=>typeof k.connected==='boolean')?' · '+t('connected_count',s.keys.filter(k=>k.connected===true).length):''),t('throughput',compact(s.engine.tokens_per_s_1m)))}
  ${fact('f_today',t('today_value',n(day.model_calls),compact(tokens(day))),t('today_sub',day.errors,ms(day.ttft_median_ms)))}
- </div></div></section>
+ ${publicFact}</div></div></section>
  <section class="sec" id="friends"><div class="sec-in"><div class="sec-head"><h2>${label('friends')}</h2><span class="count">${t('friends_count',current.length,active.length,current.filter(k=>k.status==='paused').length)}</span><p class="lead">${t('friends_lead')}</p><div class="act"><button type="button" class="primary" data-action="new" ${pending ? 'disabled' : ''}>${label('mint')}</button></div></div>
  ${current.length ? keyTable(current) : `<p class="empty">${t('no_keys')}</p>`}${revoked.length ? `<details class="dis"><summary>${t('revoked_n',revoked.length)}</summary>${keyTable(revoked,true)}</details>` : ''}<p class="foot-line">${t('counts_line')}</p></div></section>
  ${section('engine','engine',`${escape(e.kind)} · ${escape(e.url)}`,`<div class="facts8">${fact('e_kind',escape(e.kind),t('not_reported'))}${fact('e_health',e.health.ok ? t('healthy') : health,t('since',duration(since(e.health.since)),ago(e.probed_at)),!e.health.ok)}${fact('e_slots',n(e.slots),t(cfg.slots ? 'slots_override' : 'slots_auto'))}${fact('e_ctx',e.model_context ? n(e.model_context) : t('not_reported'),t('e_ctx_s'))}${fact('e_tps',compact(s.engine.tokens_per_s_1m)+' tok/s',t('e_tps_s'))}${fact('e_says',s.engine.metrics ? t('metrics',s.engine.busy,s.engine.waiting) : t('no_metrics'),s.engine.metrics ? t('e_says_s') : '')}${fact('e_mem',s.engine.memory_bytes ? bytes(s.engine.memory_bytes) : t('not_reported'),s.engine.metrics ? t('kv',s.engine.kv_cache_pct.toFixed(1)) : '')}${fact('e_peak',t('in_flight',s.engine.slots_peak_sampled),t('e_peak_s'))}</div>
  <table class="tbl models"><thead><tr>${(['m_model','m_ctx','m_calls','m_keys'] as CopyKey[]).map(key=>`<th${key==='m_keys'?' class="c-keys"':''}>${label(key)}</th>`).join('')}</tr></thead><tbody>${modelRows}</tbody></table><p class="foot-line">${t('engine_foot')}${!e.health.ok ? ' '+escape(e.health.err) : ''}</p>`)}
- ${section('usage','usage',t('usage_src'),`<div class="usage">${usageTable(day,week.total)}<div><p class="days-cap">${t('days_cap')}</p><div class="days">${days}</div><p class="foot-line">${t('usage_foot')}</p></div></div>${!week.total.requests ? `<p class="empty">${t('no_usage')}</p>`:''}${week.malformed_lines ? `<p class="notice">${t('malformed',week.malformed_lines)}</p>`:''}`)}
+ ${section('usage','usage',t('usage_src'),`<div class="usage">${usageTable(day,week.total,false,'',today.by_via,week.by_via)}<div><p class="days-cap">${t('days_cap')}</p><div class="days">${days}</div><p class="foot-line">${t('usage_foot')}</p></div></div>${!week.total.requests ? `<p class="empty">${t('no_usage')}</p>`:''}${week.malformed_lines ? `<p class="notice">${t('malformed',week.malformed_lines)}</p>`:''}`)}
  ${cfg.writes_supported ? settingsSection(data,lang,settingsUI,pending,!!remote) : section('settings','settings',t('settings_src',cfg.data_dir),`<div class="form">${field('st_name',cfg.name,'st_name_h')}${field('st_web',cfg.configured_web_url,'st_web_h')}${field('st_slots',cfg.slots,'slots_hint')}
  <div class="field"><span class="field-label">${label('st_log')}</span><label class="check"><input type="checkbox" disabled ${cfg.log_requests?'checked':''}><span>${t('st_log_h')} (${t('not_remembered')})</span></label></div>
  <div class="form-actions">${button('save')}<span class="saved">${t('restart')}</span></div><p class="field-hint">${t('effective_web',cfg.web_url)}</p><div class="ro">${fact('ro_data',escape(cfg.data_dir),t('ro_data_s'))}${fact('ro_up',escape(e.url),cfg.upstream ? '--upstream' : t('ro_up_s'))}${fact('ro_relay',cfg.derpmap_url || cfg.region ? `${escape(cfg.derpmap_url || '—')} · ${escape(cfg.region || 'auto')}` : t('default_relay'),t('ro_relay_s'))}</div><p class="truth">${t(cfg.log_prompts?'prompts_on':'prompts_off')}</p></div>`)}
