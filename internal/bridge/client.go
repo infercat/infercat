@@ -67,6 +67,7 @@ func Register(ctx context.Context, endpoint, code string) (Config, error) {
 }
 
 type keySync struct {
+	logf            func(string, ...any)
 	state           *connectionState
 	slots           func() int
 	capacity        int
@@ -96,6 +97,10 @@ func (k keySync) publish(ctx context.Context, send func(frame) error) error {
 	return send(frame{Type: "keys", Hashes: hashes, Slots: k.capacity})
 }
 func Run(ctx context.Context, c Config, h http.Handler, logf func(string, ...any), syncKeys ...keySync) {
+	if len(syncKeys) == 0 {
+		syncKeys = []keySync{{}}
+	}
+	syncKeys[0].logf = logf
 	backoff := time.Second
 	for ctx.Err() == nil {
 		started := time.Now()
@@ -151,6 +156,7 @@ func session(ctx context.Context, c Config, h http.Handler, syncKeys ...keySync)
 	if len(syncKeys) > 0 {
 		snapshot = syncKeys[0]
 	}
+	defer snapshot.state.connection(false, "")
 	snapshot.capacity = 1
 	if snapshot.slots != nil {
 		snapshot.capacity = max(1, snapshot.slots())
@@ -244,8 +250,12 @@ func session(ctx context.Context, c Config, h http.Handler, syncKeys ...keySync)
 			if f.Slots < 0 || accepted > min(maxSlots, snapshot.capacity) || (negotiated && accepted != limit) {
 				return errors.New("invalid bridge slots")
 			}
+			first := !negotiated
 			limit, negotiated = accepted, true
-			snapshot.state.connection(true, "")
+			snapshot.state.connection(true, "", accepted)
+			if first && snapshot.logf != nil {
+				snapshot.logf("bridge connected: negotiated slots=%d", accepted)
+			}
 			continue
 		}
 		if f.Type == "pong" {

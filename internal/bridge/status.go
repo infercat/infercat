@@ -9,6 +9,7 @@ import (
 
 // Status contains public endpoint facts, never the registration credential.
 type Status struct {
+	Slots         int       `json:"slots"` // Negotiated for this connection; zero when disconnected.
 	Enabled       bool      `json:"enabled"`
 	URL           string    `json:"url"`
 	Connected     bool      `json:"connected"`
@@ -36,7 +37,7 @@ func (s *connectionState) configure(c Config) {
 	}
 }
 
-func (s *connectionState) connection(connected bool, message string) {
+func (s *connectionState) connection(connected bool, message string, slots ...int) {
 	if s == nil {
 		return
 	}
@@ -44,6 +45,11 @@ func (s *connectionState) connection(connected bool, message string) {
 	defer s.mu.Unlock()
 	if s.s.Connected != connected {
 		s.s.Since = time.Now().UTC()
+	}
+	if !connected {
+		s.s.Slots = 0
+	} else if len(slots) > 0 {
+		s.s.Slots = slots[0]
 	}
 	s.s.Connected, s.s.LastError = connected, message
 }
