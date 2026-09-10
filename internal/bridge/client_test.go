@@ -296,7 +296,7 @@ func TestReloadReconnectAndOff(t *testing.T) {
 	waitStatus := func(check func(*Status) bool) *Status {
 		t.Helper()
 		for deadline := time.Now().Add(5 * time.Second); ; {
-			s := manager.Status(dir)
+			s := manager.Status()
 			if check(s) {
 				return s
 			}
@@ -314,7 +314,7 @@ func TestReloadReconnectAndOff(t *testing.T) {
 	}
 	reload()
 	conn := connectRaw(t, ch)
-	if s := manager.Status(dir); s == nil || !s.Enabled || s.Connected || s.URL != c.URL() || s.Since.IsZero() {
+	if s := manager.Status(); s == nil || !s.Enabled || s.Connected || s.URL != c.URL() || s.Since.IsZero() {
 		t.Fatalf("connected before key acknowledgment: %+v", s)
 	}
 	initial := receiveFrame(t, conn)
@@ -346,7 +346,7 @@ func TestReloadReconnectAndOff(t *testing.T) {
 		t.Fatal("unchanged reload opened another socket")
 	case <-time.After(30 * time.Millisecond):
 	}
-	if s := manager.Status(dir); !s.Connected || s.Since != connected.Since {
+	if s := manager.Status(); !s.Connected || s.Since != connected.Since {
 		t.Fatal("unchanged reload reset connection status")
 	}
 	conn.CloseNow()
@@ -357,7 +357,7 @@ func TestReloadReconnectAndOff(t *testing.T) {
 		t.Fatal(err)
 	}
 	reload()
-	if s := manager.Status(dir); s.Enabled || s.Connected || s.URL != c.URL() {
+	if s := manager.Status(); s.Enabled || s.Connected || s.URL != c.URL() {
 		t.Fatalf("off lost identity or left connection enabled: %+v", s)
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), time.Second)
@@ -375,7 +375,7 @@ func TestReloadReconnectAndOff(t *testing.T) {
 		t.Fatal(err)
 	}
 	reload()
-	if s := manager.Status(dir); s != nil {
+	if s := manager.Status(); s != nil {
 		t.Fatalf("missing registration should omit status: %+v", s)
 	}
 }
