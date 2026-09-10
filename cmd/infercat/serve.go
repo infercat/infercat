@@ -222,13 +222,14 @@ func (e *env) cmdServe(ctx context.Context, pre string, args []string) error {
 	if err != nil {
 		return fmt.Errorf("runs: %w", err)
 	}
+	runStore.Log = e.logf
 	runs, err := runstate.New(runStore, gw.ExecuteStep, nil)
 	if err != nil {
 		return fmt.Errorf("runs: %w", err)
 	}
 	defer runs.Close()
 	if err = runs.Sweep(); err != nil {
-		return fmt.Errorf("run expiry: %w", err)
+		e.logf("run expiry: %v", err)
 	}
 	gw.SetRuns(runs)
 	runs.Start()

@@ -9,7 +9,6 @@ import (
 	"strings"
 	"sync"
 	"testing"
-	"time"
 )
 
 func store(t *testing.T) *Store {
@@ -130,7 +129,14 @@ func TestReplayResetAndSlowSubscriber(t *testing.T) {
 		t.Fatal(e)
 	}
 	for i := 0; i < 260; i++ {
-		if _, e = s.change("k_a", r.ID, func(v *Run) error { v.Updated = time.Now(); return nil }); e != nil {
+		if _, e = s.change("k_a", r.ID, func(v *Run) error {
+			if v.State == Running {
+				v.State = Queued
+			} else {
+				v.State = Running
+			}
+			return nil
+		}); e != nil {
 			t.Fatal(e)
 		}
 	}

@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"maps"
 	"sort"
 	"sync"
 	"time"
@@ -11,45 +12,39 @@ import (
 
 // Manager serializes control operations; engine work runs outside its mutex and the store lock.
 type Manager struct {
-	Store    *Store
-	Execute  Executor
-	Kinds    map[string]Kind
-	Policies map[string]Policy
-	mu       sync.Mutex
-	active   map[string]*execution
-	ctx      context.Context
-	cancel   context.CancelFunc
-	wg       sync.WaitGroup
+	Store       *Store
+	Execute     Executor
+	Kinds       map[string]Kind
+	Policies    map[string]Policy
+	mu          sync.Mutex
+	active      map[string]*execution
+	ctx         context.Context
+	cancel      context.CancelFunc
+	wg          sync.WaitGroup
+	started     bool
+	sweeping    bool
+	joinTimeout time.Duration
 }
 
 type execution struct {
-	cancel context.CancelFunc
-	answer chan struct{}
-	kind   string
+	cancel  context.CancelFunc
+	answer  chan struct{}
+	kind    string
+	done    chan struct{}
+	join    sync.Once
+	key     string
+	expired bool
 }
 
 func New(s *Store, exec Executor, kinds map[string]Kind) (*Manager, error) {
 	ctx, cancel := context.WithCancel(context.Background())
-	m := &Manager{Store: s, Execute: exec, Kinds: kinds, active: map[string]*execution{}, ctx: ctx, cancel: cancel}
-	rows, _ := s.List("")
-	for _, r := range rows {
-		if !terminal(r.State) {
-			_, err := s.change(r.KeyID, r.ID, func(v *Run) error {
-				v.State = Failed
-				v.Reason = "interrupted"
-				for i := range v.Attempts {
-					if !v.Attempts[i].Settled {
-						v.Attempts[i].AccountingUncertain = true
-					}
-				}
-				return nil
-			})
-			if err != nil {
-				cancel()
-				return nil, err
-			}
-		}
+	m := &Manager{Store: s, Execute: exec, Kinds: maps.Clone(kinds), joinTimeout: 30 * time.Second, active: map[string]*execution{}, ctx: ctx, cancel: cancel}
+	s.mu.Lock()
+	s.recovery = true
+	for key := range s.data {
+		_ = s.recoverKey(key)
 	}
+	s.mu.Unlock()
 	return m, nil
 }
 func (m *Manager) Submit(key, kind, priority string, input json.RawMessage) (Run, error) {
@@ -71,6 +66,7 @@ func (m *Manager) SubmitBatch(key, kind, priority string, inputs []json.RawMessa
 	if priority == "" {
 		priority = "interactive"
 	}
+	m.started = true
 	p := m.Policies[kind]
 	cap := MaxLiveKey
 	if p.QueueLimit != nil {
@@ -146,11 +142,12 @@ func (m *Manager) Position(kind, rid string) int {
 }
 func (m *Manager) start(r Run) {
 	ctx, cancel := context.WithCancel(m.ctx)
-	worker := &execution{cancel: cancel, kind: r.Kind, answer: make(chan struct{}, 1)}
+	worker := &execution{cancel: cancel, kind: r.Kind, key: r.KeyID, done: make(chan struct{}), answer: make(chan struct{}, 1)}
 	m.active[r.ID] = worker
 	m.wg.Add(1)
 	go func() {
 		defer m.wg.Done()
+		defer close(worker.done)
 		defer func() {
 			m.mu.Lock()
 			if m.active[r.ID] == worker {
@@ -204,6 +201,9 @@ func (m *Manager) Cancel(key, rid string) (Run, error) {
 	if err == nil {
 		if worker := m.active[rid]; worker != nil && !(r.State == Running && m.Policies[r.Kind].DeferredCancel) {
 			worker.cancel()
+			if m.Policies[r.Kind].JoinCancel {
+				m.boundJoin(r, worker)
+			}
 		}
 	}
 	return r, err
@@ -211,11 +211,16 @@ func (m *Manager) Cancel(key, rid string) (Run, error) {
 func (m *Manager) finish(key, rid string, st State, reason string, output json.RawMessage) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if w := m.active[rid]; w != nil && w.expired {
+		st = Cancelled
+		reason = "consumer did not join"
+		output = nil
+	}
 	// A waiting event is a promise that Resume can start its next worker immediately.
 	if st == Waiting {
 		delete(m.active, rid)
 	}
-	_, _ = m.Store.change(key, rid, func(v *Run) error {
+	_, err := m.Store.change(key, rid, func(v *Run) error {
 		if terminal(v.State) {
 			return ErrConflict
 		}
@@ -223,14 +228,20 @@ func (m *Manager) finish(key, rid string, st State, reason string, output json.R
 			st = Cancelled
 		}
 		v.State = st
-		v.Reason = reason
+		v.Reason = boundedReason(reason)
 		// Artifact metadata can change (Discard/eviction) between persistence and step finish.
 		if _, stored := imageOutput(*v); !stored {
 			v.Output = output
 		}
 		return nil
 	})
+	if err != nil && !errors.Is(err, ErrConflict) {
+		m.Store.mu.Lock()
+		m.Store.markBroken(key, err)
+		m.Store.mu.Unlock()
+	}
 }
+
 func (m *Manager) drive(ctx context.Context, r Run) {
 	defer func() {
 		if recover() != nil {
@@ -255,8 +266,13 @@ func (m *Manager) drive(ctx context.Context, r Run) {
 			}
 			return
 		}
+		original := r
 		r, _, err = m.attempt(ctx, r, *d.Step, false)
-		if err != nil || terminal(r.State) {
+		if err != nil {
+			m.finish(original.KeyID, original.ID, Failed, "attempt failed", nil)
+			return
+		}
+		if terminal(r.State) {
 			return
 		}
 	}
@@ -276,7 +292,11 @@ func (m *Manager) attempt(ctx context.Context, r Run, step Step, live bool) (Run
 		if (v.State != Queued && !(live && v.State == Running)) || v.CancelRequested {
 			return ErrConflict
 		}
-		v.State = Queued
+		if live {
+			v.State = Running
+		} else {
+			v.State = Queued
+		}
 		v.Attempts = append(v.Attempts, Attempt{ID: aid, AccountingUncertain: true})
 		return nil
 	})
@@ -285,7 +305,7 @@ func (m *Manager) attempt(ctx context.Context, r Run, step Step, live bool) (Run
 	}
 	result, stepErr := m.Execute(ctx, r.KeyID, step, func() error {
 		_, e := m.Store.change(r.KeyID, r.ID, func(v *Run) error {
-			if v.State != Queued || v.CancelRequested {
+			if (v.State != Queued && !(live && v.State == Running)) || v.CancelRequested {
 				return ErrConflict
 			}
 			v.State = Running
@@ -296,6 +316,7 @@ func (m *Manager) attempt(ctx context.Context, r Run, step Step, live bool) (Run
 		return e
 	})
 	r, err = m.Store.change(r.KeyID, r.ID, func(v *Run) error {
+		wasTerminal := terminal(v.State)
 		a := &v.Attempts[len(v.Attempts)-1]
 		if a.ID != aid {
 			return ErrConflict
@@ -307,16 +328,24 @@ func (m *Manager) attempt(ctx context.Context, r Run, step Step, live bool) (Run
 		if len(result.Output) <= MaxOutput && json.Valid(result.Output) {
 			a.Output = result.Output
 		}
+		if wasTerminal {
+			return nil
+		}
 		if live {
 			v.State = Running
-		} else if (v.CancelRequested && !m.Policies[v.Kind].DeferredCancel) || errors.Is(stepErr, context.Canceled) {
+		} else if v.CancelRequested && m.Policies[v.Kind].DeferredCancel {
+			v.State = Cancelled
+			if stepErr == nil && len(result.Output) > 0 && json.Valid(result.Output) {
+				v.State = Done
+				if _, stored := imageOutput(*v); !stored {
+					v.Output = result.Output
+				}
+			}
+		} else if v.CancelRequested || errors.Is(stepErr, context.Canceled) {
 			v.State = Cancelled
 		} else if stepErr != nil || len(result.Output) > MaxOutput || !json.Valid(result.Output) {
 			v.State = Failed
 			v.Reason = "step failed"
-			if stepErr != nil {
-				v.Reason = stepErr.Error()
-			}
 		} else if _, stored := imageOutput(*v); stored && m.Policies[v.Kind].DeferredCancel {
 			v.State = Running // the completed image remains running until its terminal snapshot
 		} else {
@@ -324,6 +353,9 @@ func (m *Manager) attempt(ctx context.Context, r Run, step Step, live bool) (Run
 		}
 		return nil
 	})
+	if err != nil {
+		return r, result, &SettlementError{CallErr: stepErr, StoreErr: err}
+	}
 	if err == nil && (stepErr != nil || len(result.Output) > MaxOutput || !json.Valid(result.Output)) {
 		err = ErrInvalid
 	}
@@ -332,43 +364,74 @@ func (m *Manager) attempt(ctx context.Context, r Run, step Step, live bool) (Run
 
 // Sweep cancels abandoned live work; terminal expiry deletes content without trimming live runs.
 func (m *Manager) Sweep() error {
-	rows, err := m.Store.List("")
-	if err != nil {
-		return err
-	}
-	now := m.Store.now()
-	for _, r := range rows {
-		if !terminal(r.State) && !r.Expires.After(now) {
-			if _, err = m.Cancel(r.KeyID, r.ID); err != nil {
-				return err
-			}
-		}
-	}
 	s := m.Store
 	s.mu.Lock()
-	defer s.mu.Unlock()
-	for key, v := range s.data {
-		next := clone(v)
-		changed := false
-		for rid, r := range next.Runs {
-			if terminal(r.State) && !r.Expires.After(now) {
-				delete(next.Runs, rid)
-				changed = true
+	keys := make([]string, 0, len(s.known))
+	for key := range s.known {
+		keys = append(keys, key)
+	}
+	s.mu.Unlock()
+	for _, key := range keys {
+		s.mu.Lock()
+		last := s.accessed[key]
+		v, err := s.load(key)
+		var rows []Run
+		if err == nil {
+			for _, r := range v.Runs {
+				rows = append(rows, r)
 			}
 		}
-		if changed {
-			if err = s.commit(key, next, nil); err != nil {
-				return err
+		s.accessed[key] = last
+		s.mu.Unlock()
+		if err != nil {
+			s.mu.Lock()
+			s.markBroken(key, err)
+			s.mu.Unlock()
+			continue
+		}
+		for _, r := range rows {
+			if !terminal(r.State) && !r.Expires.After(s.now()) {
+				if _, err = m.Cancel(key, r.ID); err != nil {
+					break
+				}
 			}
 		}
-		if err = s.sweepImages(key, next); err != nil {
-			return err
+		s.mu.Lock()
+		if err == nil {
+			next := clone(s.data[key])
+			changed := false
+			for rid, r := range next.Runs {
+				if terminal(r.State) && !r.Expires.After(s.now()) {
+					delete(next.Runs, rid)
+					changed = true
+				}
+			}
+			if changed {
+				err = s.commit(key, next, nil)
+			}
+			if err == nil {
+				err = s.sweepImages(key, next)
+			}
 		}
+		if err != nil {
+			s.markBroken(key, err)
+		}
+		s.accessed[key] = last
+		s.releaseIdle()
+		s.mu.Unlock()
 	}
 	return nil
 }
 func (m *Manager) Start() {
+	m.mu.Lock()
+	if m.sweeping {
+		m.mu.Unlock()
+		return
+	}
+	m.started = true
+	m.sweeping = true
 	m.wg.Add(1)
+	m.mu.Unlock()
 	go func() {
 		defer m.wg.Done()
 		t := time.NewTicker(time.Minute)
@@ -383,7 +446,20 @@ func (m *Manager) Start() {
 		}
 	}()
 }
-func (m *Manager) Close() { m.mu.Lock(); m.cancel(); m.mu.Unlock(); m.wg.Wait() }
+func (m *Manager) Close() {
+	m.mu.Lock()
+	m.cancel()
+	for id, w := range m.active {
+		m.boundJoin(Run{ID: id, KeyID: w.key}, w)
+	}
+	m.mu.Unlock()
+	done := make(chan struct{})
+	go func() { m.wg.Wait(); close(done) }()
+	select {
+	case <-done:
+	case <-time.After(m.joinTimeout):
+	}
+}
 
 // Done lets transports leave when host shutdown cancels the manager.
 func (m *Manager) Done() <-chan struct{} { return m.ctx.Done() }

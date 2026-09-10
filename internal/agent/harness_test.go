@@ -147,7 +147,7 @@ func TestPinnedHarnessIPC(t *testing.T) {
 	}
 	t.Log("late cancelled reply ignored; successor model call and settlement on the same process")
 	entries, err := os.ReadDir(filepath.Join(options.Dir, "harness", "sessions"))
-	if (err != nil && !os.IsNotExist(err)) || len(entries) != 0 {
+	if err != nil || len(entries) != 0 {
 		t.Fatal("adapter created a second trajectory owner", err, entries)
 	}
 }

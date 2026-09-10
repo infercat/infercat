@@ -94,6 +94,18 @@ join it before returning. Its registered `Policy.JoinCancel` keeps cancellation
 requested but nonterminal through cleanup, including approval waiting. The shared
 `Policy.DeferredCancel` supports work such as an already-generating image that
 finishes successfully as Done. Ordinary pull kinds retain their default behavior.
+After a deferred cancelled attempt settles, its run becomes Done if it produced
+output, otherwise Cancelled; a kind cannot dispatch another step after that cancel.
+Registration is rejected after startup/first submission, and the manager copies
+the caller's initial kind map. Failed attempt starts end the run, so serial queues
+cannot repeatedly select the same failed start.
+
+Joined cancellation has a 30-second deadline. A host consumer registers
+`Policy.ForceStop` to end its owned runtime generation. At the deadline the manager
+invokes that stop hook once and records Cancelled with `consumer did not join`;
+late worker returns cannot replace that terminal outcome. Close has the same bound.
+Go cannot kill an arbitrary uncooperative goroutine; the native adapter must supply
+the stop hook for its supervised process before exposing a real route.
 
 `Work.Approval` persists a pending question and waits without reconstructing the
 consumer. `Manager.Answer` commits the identified answer once before waking it;
@@ -110,6 +122,22 @@ at 1 MiB per call and requires an active reservation, with control-record headro
 Unused reservation capacity is released after the step; expiry removes the run,
 its retained payload and any reservation together. Reads return detached data;
 failed writes publish no event. A corrupt or ambiguous store fails closed.
+Pure storage writes do not advance the lifecycle cursor or publish run-state events.
+The ordinary budget reserves terminal headroom; at the ceiling a bounded minimal
+terminal/usage record can replace the new output with `output not retained: budget`.
+`SettlementError` distinguishes a successful model call whose accounting could not
+be recorded from a failed call. Neither condition replays the model request.
+One bounded cancellation note (4 KiB, no new captured outputs) may be retained from
+the existing lease; filenames and MIME types are validated before capture.
+
+Per-key recovery and Sweep failures are logged and isolated. Unfinished recovered
+runs fail without replay, while the host serves healthy keys. Snapshots load lazily;
+inactive terminal-only keys without subscribers leave memory after five minutes.
+Whole-snapshot commits still cost more as retained data grows: the 116c probe on
+this Mac measured 12–13 ms at 1.4 MiB encoded, 36–37 ms at 11.2 MiB and 175–183 ms
+at 65.7 MiB. 116c must coalesce thinking updates to at most one durable update per
+second and flush admission/approval/output/terminal boundaries; this slice does
+not claim incremental storage or eliminate that measured cost.
 
 The native JSONL backend and its backend-dependent checkpoint row are disabled
 through supported composition. The harness retains execution and its in-memory
@@ -119,3 +147,6 @@ enables before that acknowledgement exists. 116b tests the owner and native
 in-memory composition separately; it does not claim the IPC acknowledgement is
 already connected to model/tool dispatch. Existing 116a JSONL artifacts are not
 imported or deleted by this extraction.
+An offline test in `make check` checks both disabling rows against the vendored
+pinned base composition. Startup refuses a missing or changed installed manifest;
+the live test requires the expected sessions directory to exist and remain empty.

@@ -1,12 +1,17 @@
 package agent
 
 import (
+	"bytes"
 	"context"
 	_ "embed"
 	"encoding/json"
+	"errors"
 	"os"
 	"path/filepath"
 )
+
+//go:embed assets/base.cordis.patch.yml
+var baseComposition []byte
 
 //go:embed assets/adapter.mjs
 var adapter []byte
@@ -18,8 +23,15 @@ func HarnessOptions(dataDir string) (RuntimeOptions, error) {
 	if err != nil {
 		return RuntimeOptions{}, err
 	}
+	actual, err := os.ReadFile(filepath.Join(runtime, "node_modules/@deepseek-ai/dsh-base/cordis.patch.yml"))
+	if err != nil || !bytes.Equal(actual, baseComposition) {
+		return RuntimeOptions{}, errors.New("pinned harness composition missing or changed")
+	}
 	dir := filepath.Join(dataDir, "agent", "host")
 	if err = os.MkdirAll(dir, 0700); err != nil {
+		return RuntimeOptions{}, err
+	}
+	if err = os.MkdirAll(filepath.Join(dir, "harness", "sessions"), 0700); err != nil {
 		return RuntimeOptions{}, err
 	}
 	plugin := filepath.Join(dir, "adapter.mjs")

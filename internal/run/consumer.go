@@ -8,6 +8,7 @@ import (
 
 // Policy is registered by the host alongside a kind, never supplied by a friend.
 type Policy struct {
+	ForceStop      func() // Must end the owned runtime generation; installed before Start.
 	Serial         bool
 	QueueLimit     func(string) (int, error)
 	Validate       func(json.RawMessage) error
@@ -16,9 +17,12 @@ type Policy struct {
 }
 
 // Register is startup wiring, before submitting any work.
-func (m *Manager) Register(name string, kind Kind, policy Policy) {
+func (m *Manager) Register(name string, kind Kind, policy Policy) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if m.started || m.ctx.Err() != nil {
+		return ErrConflict
+	}
 	if m.Kinds == nil {
 		m.Kinds = map[string]Kind{}
 	}
@@ -26,6 +30,7 @@ func (m *Manager) Register(name string, kind Kind, policy Policy) {
 		m.Policies = map[string]Policy{}
 	}
 	m.Kinds[name], m.Policies[name] = kind, policy
+	return nil
 }
 
 // Consumer adapts a long-lived host consumer to the same registry as pull Kinds.
@@ -120,6 +125,9 @@ func (w *Work) Approval(id, request string) (bool, error) {
 func (m *Manager) Answer(key, rid, approvalID string, allow bool) (Run, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if _, err := m.Store.Get(key, rid); err != nil {
+		return Run{}, err
+	}
 	worker := m.active[rid]
 	if worker == nil {
 		return Run{}, ErrConflict

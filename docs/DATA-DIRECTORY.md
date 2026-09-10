@@ -52,7 +52,8 @@ memory, and reading it does not rewrite it.
 ### Run state
 
 `runs/<key-id>/state.json` is an atomic per-key snapshot containing inputs, outputs,
-attempt trajectory, lifecycle metadata and the last 256 state events. Directories
+attempt trajectory, captured file bytes, approval question text and answers,
+lifecycle metadata and the last 256 lifecycle events. Directories
 are private (0700), files 0600. Only key IDs are stored as identity; bearer secrets
 are never saved in run metadata. Run contents are user data, independent of the
 optional prompt logging in `usage.jsonl`. Corrupt snapshots fail closed for that
@@ -66,6 +67,14 @@ age is 24 hours; the sweep cancels abandoned waits. Startup recovery interrupts
 unfinished runs without replaying engine work; terminal snapshots remain readable
 until expiry. The host runs expiry sweeps at startup and once per minute.
 No CLI flags change these constants in this slice.
+
+Ordinary writes leave 64 KiB of terminal headroom. If a legacy full snapshot cannot
+retain a new terminal output, it receives an explicit `output not retained: budget`
+marker and a minimal terminal/usage update. That update may exceed the ordinary
+budget by at most 4 KiB per run, with a 400 KiB maximum exception per key. Disk or
+directory failures still refuse that key and are logged; they do not refuse host
+startup or stop expiry for healthy keys. Snapshot bodies load on first use and are
+released from memory after five idle minutes with no live run or subscriber.
 
 Image runs keep PNG/JPEG bytes in `runs/<key-id>/images/<run-id>`, with private
 permissions, and only output metadata in the run snapshot. Each output is at most

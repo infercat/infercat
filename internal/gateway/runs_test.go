@@ -345,7 +345,7 @@ func TestRunSSEStaleCursorResetsOnWire(t *testing.T) {
 	first, reader := openEvents(t, h, "")
 	cursor := readRunEvent(t, reader).Cursor
 	first.Body.Close()
-	for i := 0; i < 55; i++ {
+	for i := 0; i < 70; i++ {
 		r, e := m.Submit(h.key.ID, "test", "", json.RawMessage(`{}`))
 		if e != nil {
 			t.Fatal(e)
@@ -355,7 +355,7 @@ func TestRunSSEStaleCursorResetsOnWire(t *testing.T) {
 	resp, replay := openEvents(t, h, cursor)
 	defer resp.Body.Close()
 	event := readRunEvent(t, replay)
-	if !event.Reset || len(event.Runs) != 55 {
+	if !event.Reset || len(event.Runs) != 70 {
 		t.Fatal(event.Reset, len(event.Runs))
 	}
 }

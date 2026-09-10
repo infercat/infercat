@@ -34,6 +34,11 @@ type Store struct {
 	write       func(string, []byte) error
 	reserved    map[string]map[string]*reservation
 	imageBudget int
+	known       map[string]bool
+	accessed    map[string]time.Time
+	recovered   map[string]bool
+	recovery    bool
+	Log         func(string, ...any)
 }
 
 var safeID = regexp.MustCompile(`^[a-zA-Z0-9_-]{1,80}$`)
@@ -49,7 +54,7 @@ func NewStore(dataDir string) (*Store, error) {
 	if dataDir == "" {
 		return nil, ErrInvalid
 	}
-	s := &Store{root: filepath.Join(dataDir, "runs"), data: map[string]*snapshot{}, broken: map[string]error{}, subs: map[string]map[chan Event]bool{}, now: time.Now, write: atomicWrite}
+	s := &Store{root: filepath.Join(dataDir, "runs"), data: map[string]*snapshot{}, broken: map[string]error{}, subs: map[string]map[chan Event]bool{}, now: time.Now, write: atomicWrite, known: map[string]bool{}, accessed: map[string]time.Time{}, recovered: map[string]bool{}}
 	if err := privateDir(s.root); err != nil {
 		return nil, err
 	}
@@ -59,10 +64,7 @@ func NewStore(dataDir string) (*Store, error) {
 	}
 	for _, e := range entries {
 		if safeID.MatchString(e.Name()) {
-			_, err = s.load(e.Name())
-			if err != nil {
-				s.broken[e.Name()] = err
-			}
+			s.known[e.Name()] = true
 		}
 	}
 	return s, nil
@@ -114,6 +116,7 @@ func (s *Store) load(key string) (*snapshot, error) {
 	if err := s.broken[key]; err != nil {
 		return nil, err
 	}
+	s.accessed[key] = s.now()
 	if v := s.data[key]; v != nil {
 		return v, nil
 	}
@@ -134,12 +137,12 @@ func (s *Store) load(key string) (*snapshot, error) {
 		if e != nil {
 			return nil, e
 		}
-		raw, e := io.ReadAll(io.LimitReader(f, MaxStored+1))
+		raw, e := io.ReadAll(io.LimitReader(f, MaxStored+MaxRuns*terminalBound+1))
 		f.Close()
 		if e != nil {
 			return nil, e
 		}
-		if len(raw) > MaxStored {
+		if len(raw) > MaxStored+MaxRuns*terminalBound {
 			return nil, ErrLimit
 		}
 		if e = json.Unmarshal(raw, v); e != nil {
@@ -168,6 +171,12 @@ func (s *Store) load(key string) (*snapshot, error) {
 		return nil, err
 	}
 	s.data[key] = v
+	if s.recovery && !s.recovered[key] {
+		if err := s.recoverKey(key); err != nil {
+			return nil, err
+		}
+		v = s.data[key]
+	}
 	return v, nil
 }
 func validState(st State) bool { return st == Queued || st == Running || st == Waiting || terminal(st) }
@@ -178,6 +187,18 @@ func clone(v *snapshot) *snapshot {
 	return &out
 }
 func (s *Store) commit(key string, v *snapshot, event *Event) error {
+	rid := ""
+	if event != nil {
+		rid = event.RunID
+	}
+	return s.commitFor(key, v, event, rid)
+}
+func (s *Store) commitFor(key string, v *snapshot, event *Event, rid string) error {
+	if event != nil {
+		if old, ok := s.data[key].Runs[event.RunID]; ok && old.State == event.State && old.CancelRequested == v.Runs[event.RunID].CancelRequested {
+			event = nil
+		}
+	}
 	if err := s.broken[key]; err != nil {
 		return err
 	}
@@ -198,7 +219,27 @@ func (s *Store) commit(key string, v *snapshot, event *Event) error {
 	if err != nil {
 		return err
 	}
-	undo, err := s.retainedBudget(key, v, event, len(raw))
+	undo, err := s.retainedBudget(key, v, rid, len(raw))
+	if err != nil && rid != "" && terminal(v.Runs[rid].State) {
+		old, _ := json.Marshal(s.data[key])
+		r := v.Runs[rid]
+		r.Output = json.RawMessage(`{"error":"output not retained: budget"}`)
+		if len(r.Attempts) > 0 {
+			a := &r.Attempts[len(r.Attempts)-1]
+			a.Output = nil
+			a.Usage.Prompt = ""
+			a.Usage.Completion = ""
+			a.Usage.Model = boundedReason(a.Usage.Model)
+			a.Usage.Code = boundedReason(a.Usage.Code)
+			a.Usage.Endpoint = boundedReason(a.Usage.Endpoint)
+		}
+		v.Runs[rid] = r
+		raw, _ = json.Marshal(v)
+		if len(raw)-len(old) <= terminalBound && len(raw) <= MaxStored+MaxRuns*terminalBound {
+			err = nil
+			undo = func() {}
+		}
+	}
 	if err != nil {
 		return err
 	}
@@ -208,16 +249,18 @@ func (s *Store) commit(key string, v *snapshot, event *Event) error {
 		}
 	}()
 	if err = privateDir(filepath.Join(s.root, key)); err != nil {
+		s.markBroken(key, err)
 		return err
 	}
 	if err = s.write(filepath.Join(s.root, key, "state.json"), raw); err != nil {
-		s.broken[key] = err
+		s.markBroken(key, err)
 		return err
 	}
 	s.data[key] = v
+	s.known[key] = true
 	// Reservations belong to live run identities, never expired retained files.
 	for rid := range s.reserved[key] {
-		if _, ok := v.Runs[rid]; !ok {
+		if r, ok := v.Runs[rid]; !ok || terminal(r.State) {
 			delete(s.reserved[key], rid)
 		}
 	}
@@ -258,7 +301,10 @@ func (s *Store) change(key, rid string, fn func(*Run) error, retain ...func(*Ret
 		}
 		v.Retained[rid] = data
 	}
-	r.Updated = s.now().UTC()
+	lifecycle := r.State != v.Runs[rid].State || r.CancelRequested != v.Runs[rid].CancelRequested
+	if lifecycle {
+		r.Updated = s.now().UTC()
+	}
 	if terminal(r.State) && !terminal(v.Runs[rid].State) {
 		r.Expires = r.Updated.Add(Retention)
 	}
@@ -267,8 +313,12 @@ func (s *Store) change(key, rid string, fn func(*Run) error, retain ...func(*Ret
 	if len(r.Attempts) > 0 {
 		ev.AttemptID = r.Attempts[len(r.Attempts)-1].ID
 	}
-	err = s.commit(key, v, &ev)
-	return clone(v).Runs[rid], err
+	var event *Event
+	if lifecycle {
+		event = &ev
+	}
+	err = s.commitFor(key, v, event, rid)
+	return copyRun(v.Runs[rid]), err
 }
 func (s *Store) CreateBatch(key, kind, priority string, inputs []json.RawMessage, cap int) ([]Run, error) {
 	if len(inputs) == 0 || len(inputs) > MaxLiveKey {
@@ -290,6 +340,9 @@ func (s *Store) CreateBatch(key, kind, priority string, inputs []json.RawMessage
 	}
 	keyLive, total, queued := 0, 0, 0
 	for k, d := range s.data {
+		if s.broken[k] != nil {
+			continue
+		}
 		for _, r := range d.Runs {
 			if !terminal(r.State) {
 				total++
@@ -344,11 +397,11 @@ func (s *Store) Get(key, rid string) (Run, error) {
 	if err != nil {
 		return Run{}, err
 	}
-	r, ok := clone(v).Runs[rid]
+	r, ok := v.Runs[rid]
 	if !ok {
 		return Run{}, ErrNotFound
 	}
-	return r, nil
+	return copyRun(r), nil
 }
 func (s *Store) List(key string) ([]Summary, error) {
 	s.mu.Lock()
@@ -357,12 +410,24 @@ func (s *Store) List(key string) ([]Summary, error) {
 }
 func (s *Store) list(key string) ([]Summary, error) {
 	out := []Summary{}
+	if key == "" {
+		for k := range s.known {
+			last := s.accessed[k]
+			if _, err := s.load(k); err != nil {
+				s.markBroken(k, err)
+			}
+			s.accessed[k] = last
+		}
+	}
 	if key != "" {
 		if _, err := s.load(key); err != nil {
 			return nil, err
 		}
 	}
 	for k, v := range s.data {
+		if s.broken[k] != nil {
+			continue
+		}
 		if key != "" && key != k {
 			continue
 		}
@@ -370,6 +435,7 @@ func (s *Store) list(key string) ([]Summary, error) {
 			out = append(out, summary(r))
 		}
 	}
+	s.releaseIdle()
 	sort.Slice(out, func(i, j int) bool { return out[i].ID < out[j].ID })
 	return out, nil
 }

@@ -2,6 +2,9 @@ package run
 
 import (
 	"encoding/json"
+	"mime"
+	"path/filepath"
+	"strings"
 )
 
 // Retained is the sole durable owner of consumer state, native trajectory and
@@ -23,7 +26,10 @@ type Approval struct {
 	Status  string `json:"status"`
 	Allow   *bool  `json:"allow,omitempty"`
 }
-type reservation struct{ bytes int }
+type reservation struct {
+	bytes int
+	note  bool
+}
 
 // Admit reserves encoded snapshot capacity before a consumer enters another
 // model/tool step. Reservations are volatile: restart fails live runs, never replays.
@@ -42,7 +48,7 @@ func (s *Store) Admit(key, rid string, bytes int) (func(), error) {
 	if terminal(r.State) || r.CancelRequested {
 		return nil, ErrConflict
 	}
-	if bytes <= 0 || bytes > MaxStored {
+	if bytes <= 0 || bytes > MaxStored-MaxLiveKey*terminalBound {
 		return nil, ErrLimit
 	}
 	if s.reserved == nil {
@@ -77,17 +83,17 @@ func (s *Store) reservedBytes(key string) int {
 }
 
 // Every ledger commit participates, so another run cannot spend reserved capacity.
-func (s *Store) retainedBudget(key string, next *snapshot, event *Event, size int) (func(), error) {
+func (s *Store) retainedBudget(key string, next *snapshot, rid string, size int) (func(), error) {
 	var lease *reservation
 	credit := 0
-	if event != nil {
-		lease = s.reserved[key][event.RunID]
+	if rid != "" {
+		lease = s.reserved[key][rid]
 		if lease != nil {
 			old, _ := json.Marshal(s.data[key])
 			credit = min(lease.bytes, max(0, size-len(old)))
 		}
 	}
-	if size+s.reservedBytes(key)-credit > MaxStored {
+	if size+s.reservedBytes(key)-credit > MaxStored-MaxLiveKey*terminalBound {
 		return nil, ErrLimit
 	}
 	if lease != nil {
@@ -115,12 +121,21 @@ func (s *Store) Retain(key, rid string, state json.RawMessage, events []json.Raw
 		return ErrInvalid
 	}
 	state, events, outputs = detached.State, detached.Trajectory, detached.Outputs
-	for id := range outputs {
-		if !safeID.MatchString(id) {
+	for id, o := range outputs {
+		_, _, mimeErr := mime.ParseMediaType(o.MIME)
+		if !safeID.MatchString(id) || o.Name == "" || o.Name == "." || o.Name == ".." || len(o.Name) > 255 || filepath.Base(o.Name) != o.Name || strings.ContainsAny(o.Name, "\\\r\n\x00") || mimeErr != nil {
 			return ErrInvalid
 		}
 	}
+	var note *reservation
 	_, err = s.change(key, rid, func(r *Run) error {
+		if r.CancelRequested {
+			lease := s.reserved[key][rid]
+			if lease == nil || lease.note || len(input) > terminalBound || len(outputs) > 0 {
+				return ErrLimit
+			}
+			note = lease
+		}
 		if terminal(r.State) {
 			return ErrConflict
 		}
@@ -149,8 +164,16 @@ func (s *Store) Retain(key, rid string, state json.RawMessage, events []json.Raw
 		if max(0, len(next)-len(old))+1024 > lease.bytes {
 			return ErrLimit
 		}
+		if note != nil {
+			note.note = true
+		}
 		return nil
 	})
+	if err != nil && note != nil {
+		s.mu.Lock()
+		note.note = false
+		s.mu.Unlock()
+	}
 	return err
 }
 func (s *Store) Retained(key, rid string) (Retained, error) {

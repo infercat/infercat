@@ -69,7 +69,7 @@ func TestExpiryRemovesRetainedPayloadAndAdmission(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer release()
-	if err = s.Retain(r.KeyID, r.ID, nil, []json.RawMessage{json.RawMessage(`{"native":"retained-fixture"}`)}, map[string]Captured{"o_1": {Name: "notes.md", Data: []byte("retained-fixture")}}); err != nil {
+	if err = s.Retain(r.KeyID, r.ID, nil, []json.RawMessage{json.RawMessage(`{"native":"retained-fixture"}`)}, map[string]Captured{"o_1": {Name: "notes.md", MIME: "text/plain", Data: []byte("retained-fixture")}}); err != nil {
 		t.Fatal(err)
 	}
 	if _, err = s.change(r.KeyID, r.ID, func(v *Run) error { v.State = Done; return nil }); err != nil {
