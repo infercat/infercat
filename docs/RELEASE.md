@@ -16,7 +16,8 @@ launch decisions are closed (name, URL, public repo, history rewrite).
    and uploads it as a workflow artifact, publishing nothing. Download it, install the binary the way
    a stranger would (README, Quickstart), serve, mint, chat from a phone.
 6. Move the `## v0.1.0 — unreleased` heading in `CHANGELOG.md` to the date; set `Version` in
-   `internal/product/product.go` to `0.1.0`.
+   `internal/product/product.go` to `0.1.0`, and `version` in `packages/client/package.json` to the
+   same (the client check refuses a mismatch).
 
 ## Every release
 
@@ -41,7 +42,8 @@ Attach `infercat.wasm.gz` and its matching Go `wasm_exec.js`, built from the tag
 2. `brew install infercat/tap/infercat` on a machine that has never had it; `infercat
    version` prints the tag.
 3. Deploy `web-0.1.0.zip` to the web app's host (F3) — the bundle is static; unzip at the site root.
-4. Bump `Version` in `product.go` to the next `-dev` (e.g. `0.1.1-dev`) on main.
+4. Bump `Version` in `product.go` and `version` in `packages/client/package.json` to the next
+   `-dev` (e.g. `0.1.1-dev`) on main.
 
 ## If the workflow is down
 
