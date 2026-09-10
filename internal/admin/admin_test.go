@@ -70,7 +70,7 @@ func TestPublicBridgeStatusIsAdditiveAndHasNoCredential(t *testing.T) {
 		t.Fatal("older host must omit bridge")
 	}
 	st := sample()
-	st.Bridge = &bridge.Status{Enabled: true, URL: "https://edge.test/h/test/v1", Since: time.Now().UTC(), LastError: "bridge connection failed; reconnecting", RequestsToday: 4}
+	st.Bridge = &bridge.Status{Slots: 48, Connected: true, Enabled: true, URL: "https://edge.test/h/test/v1", Since: time.Now().UTC(), LastError: "bridge connection failed; reconnecting", RequestsToday: 4}
 	dir := shortDir(t)
 	s, err := Serve(dir, func() Status { return st }, nil, nil)
 	if err != nil {
@@ -83,7 +83,7 @@ func TestPublicBridgeStatusIsAdditiveAndHasNoCredential(t *testing.T) {
 	}
 	b, _ = json.Marshal(got.Bridge)
 	var fields map[string]any
-	if err := json.Unmarshal(b, &fields); err != nil || len(fields) != 6 || fields["token"] != nil {
+	if err := json.Unmarshal(b, &fields); err != nil || len(fields) != 7 || fields["slots"] != float64(48) || fields["token"] != nil {
 		t.Fatalf("unexpected bridge status fields: %s", b)
 	}
 }

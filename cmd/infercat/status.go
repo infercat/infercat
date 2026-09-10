@@ -224,6 +224,9 @@ func writeStatus(w io.Writer, st admin.Status) {
 			}
 		}
 		fmt.Fprintf(w, "bridge    %s  %s  since %s  %d requests today (UTC)", b.URL, state, b.Since.Local().Format(time.RFC3339), b.RequestsToday)
+		if b.Connected && b.Slots > 0 {
+			fmt.Fprintf(w, " · %s", plural(b.Slots, "slot"))
+		}
 		if b.LastError != "" {
 			fmt.Fprintf(w, "  %s", b.LastError)
 		}
