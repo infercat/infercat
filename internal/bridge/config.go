@@ -121,6 +121,7 @@ type Manager struct {
 	now     func() time.Time // Optional clock for counter day-boundary tests.
 	state   connectionState
 	Keys    *keys.FileStore
+	Slots   func() int // Effective text-destination capacity, sampled on each connection.
 	updates chan struct{}
 	mu      sync.Mutex
 	cfg     Config
@@ -169,7 +170,7 @@ func (m *Manager) Reload(ctx context.Context, dir string, h http.Handler, logf f
 	child, cancel := context.WithCancel(ctx)
 	m.cfg, m.cancel, m.done = c, cancel, make(chan struct{})
 	m.updates = make(chan struct{}, 1)
-	syncKeys := keySync{store: m.Keys, reload: m.updates, state: &m.state}
+	syncKeys := keySync{store: m.Keys, reload: m.updates, state: &m.state, slots: m.Slots}
 	if m.Keys != nil {
 		syncKeys.changed = m.Keys.Changes()
 	}

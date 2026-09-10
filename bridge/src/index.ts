@@ -8,6 +8,7 @@ type Frame = {
   headers?: Record<string, string>;
   data?: string;
   hashes?: string[];
+  slots?: number;
 };
 type Job = {
   id: string;
@@ -136,13 +137,15 @@ export default {
 export class Host extends DurableObject<Env> {
   private socket?: WebSocket;
   private keyHashes: Uint8Array[] = [];
-  private active?: Job;
+  private active = new Map<string, Job>();
+  private slots?: number;
   private queue: Job[] = [];
   private reading = 0;
   private readBytes = 0;
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
     this.socket = ctx.getWebSockets()[0];
+    this.slots = this.socket?.deserializeAttachment()?.slots;
     ctx.storage.sql.exec(
       "CREATE TABLE IF NOT EXISTS friend_keys (hash TEXT PRIMARY KEY)",
     );
@@ -304,8 +307,13 @@ export class Host extends DurableObject<Env> {
     });
   }
   private next() {
-    if (this.active || !this.queue.length) return;
-    const job = (this.active = this.queue.shift()!);
+    while (this.active.size < (this.slots ?? 1) && this.queue.length) {
+      const job = this.queue.shift()!;
+      this.active.set(job.id, job);
+      this.start(job);
+    }
+  }
+  private start(job: Job) {
     try {
       this.send({
         type: "request",
@@ -328,7 +336,6 @@ export class Host extends DurableObject<Env> {
   }
   async webSocketMessage(ws: WebSocket, message: string | ArrayBuffer) {
     if (ws !== this.socket) return;
-    const job = this.active;
     try {
       if (
         typeof message !== "string" ||
@@ -343,16 +350,23 @@ export class Host extends DurableObject<Env> {
           hashes.some((h) => typeof h !== "string" || !/^[a-f0-9]{64}$/.test(h))
         )
           throw new Error();
+        if (f.slots !== undefined && !Number.isSafeInteger(f.slots))
+          throw new Error();
+        const slots = Math.min(64, Math.max(1, f.slots ?? 1));
+        if (this.slots !== undefined && this.slots !== slots) throw new Error();
+        this.slots = slots;
+        ws.serializeAttachment({ ...ws.deserializeAttachment(), slots });
         this.replaceKeys(hashes);
-        this.send({ type: "keys_ready" });
+        this.send({ type: "keys_ready", ...(f.slots === undefined ? {} : { slots }) });
         return;
       }
-      if (!job || f.id !== job.id) throw new Error();
+      const job = this.active.get(f.id ?? "");
+      if (!job) throw new Error();
       // Drain in-flight response frames until the host confirms the cancelled handler stopped.
       if (job.cancelled) {
         if (f.type === "ready") {
           clearTimeout(job.timer);
-          this.active = undefined;
+          this.active.delete(job.id);
           this.next();
         } else if (!["response", "data", "end", "cancel"].includes(f.type))
           throw new Error();
@@ -411,7 +425,7 @@ export class Host extends DurableObject<Env> {
           this.fail(job, 499, "client_closed");
           return;
         }
-        if (this.active === job && !job.cancelled)
+        if (this.active.get(job.id) === job && !job.cancelled)
           this.send({ type: "ack", id: job.id });
       } else if (f.type === "end") {
         if (!job.writer) throw new Error();
@@ -421,10 +435,10 @@ export class Host extends DurableObject<Env> {
           this.fail(job, 499, "client_closed");
           return;
         }
-        if (ws !== this.socket || this.active !== job || job.cancelled) return;
+        if (ws !== this.socket || this.active.get(job.id) !== job || job.cancelled) return;
         job.signal.removeEventListener("abort", job.onAbort);
         clearTimeout(job.timer);
-        this.active = undefined;
+        this.active.delete(job.id);
         this.send({ type: "ready", id: job.id });
         this.next();
       } else throw new Error();
@@ -441,7 +455,7 @@ export class Host extends DurableObject<Env> {
     job.abortResponse?.(new Error(code));
     void job.writer?.abort(new Error(code)).catch(() => {});
     this.queue = this.queue.filter((j) => j !== job);
-    if (this.active === job) {
+    if (this.active.get(job.id) === job) {
       try {
         this.send({ type: "cancel", id: job.id });
       } catch {
@@ -455,10 +469,11 @@ export class Host extends DurableObject<Env> {
   private disconnect() {
     const ws = this.socket;
     this.socket = undefined;
+    this.slots = undefined;
     try {
       ws?.close(1011, "bridge disconnected");
     } catch {}
-    for (const job of [...(this.active ? [this.active] : []), ...this.queue]) {
+    for (const job of [...this.active.values(), ...this.queue]) {
       job.cancelled = true;
       clearTimeout(job.timer);
       job.signal.removeEventListener("abort", job.onAbort);
@@ -466,7 +481,7 @@ export class Host extends DurableObject<Env> {
       job.abortResponse?.(new Error("bridge disconnected"));
       void job.writer?.abort(new Error("bridge disconnected")).catch(() => {});
     }
-    this.active = undefined;
+    this.active.clear();
     this.queue = [];
   }
   webSocketClose(ws: WebSocket) {

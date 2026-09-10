@@ -19,6 +19,7 @@ import (
 const ChunkSize = 512 << 10 // Base64 + metadata remains below the 1 MiB message cap.
 const MaxBody = 4 << 20
 const MaxFrame = 1 << 20
+const maxSlots = 64
 
 type frame struct {
 	Type    string            `json:"type"`
@@ -28,6 +29,7 @@ type frame struct {
 	Headers map[string]string `json:"headers,omitempty"`
 	Status  int               `json:"status,omitempty"`
 	Hashes  []string          `json:"hashes,omitempty"`
+	Slots   int               `json:"slots,omitempty"`
 	Data    []byte            `json:"data,omitempty"`
 }
 
@@ -66,6 +68,8 @@ func Register(ctx context.Context, endpoint, code string) (Config, error) {
 
 type keySync struct {
 	state           *connectionState
+	slots           func() int
+	capacity        int
 	store           *keys.FileStore
 	reload, changed <-chan struct{}
 }
@@ -89,7 +93,7 @@ func (k keySync) publish(ctx context.Context, send func(frame) error) error {
 			}
 		}
 	}
-	return send(frame{Type: "keys", Hashes: hashes})
+	return send(frame{Type: "keys", Hashes: hashes, Slots: k.capacity})
 }
 func Run(ctx context.Context, c Config, h http.Handler, logf func(string, ...any), syncKeys ...keySync) {
 	backoff := time.Second
@@ -143,11 +147,15 @@ func session(ctx context.Context, c Config, h http.Handler, syncKeys ...keySync)
 		defer stop()
 		return conn.Write(wctx, websocket.MessageText, b)
 	}
-	sync := keySync{}
+	snapshot := keySync{}
 	if len(syncKeys) > 0 {
-		sync = syncKeys[0]
+		snapshot = syncKeys[0]
 	}
-	if err := sync.publish(ctx, send); err != nil {
+	snapshot.capacity = 1
+	if snapshot.slots != nil {
+		snapshot.capacity = max(1, snapshot.slots())
+	}
+	if err := snapshot.publish(ctx, send); err != nil {
 		return err
 	}
 	go func() {
@@ -157,13 +165,13 @@ func session(ctx context.Context, c Config, h http.Handler, syncKeys ...keySync)
 			select {
 			case <-ctx.Done():
 				return
-			case <-sync.reload:
-				if sync.publish(ctx, send) != nil {
+			case <-snapshot.reload:
+				if snapshot.publish(ctx, send) != nil {
 					cancel()
 					return
 				}
-			case <-sync.changed:
-				if sync.publish(ctx, send) != nil {
+			case <-snapshot.changed:
+				if snapshot.publish(ctx, send) != nil {
 					cancel()
 					return
 				}
@@ -175,88 +183,121 @@ func session(ctx context.Context, c Config, h http.Handler, syncKeys ...keySync)
 			}
 		}
 	}()
-	var meta *frame
-	var body bytes.Buffer
-	var done chan struct{}
-	var ack chan struct{}
-	var requestCancel context.CancelFunc
-	defer func() {
-		cancel()
-		if done != nil {
-			<-done
+	// Only this dispatcher owns the map. Joining a cancelled handler is asynchronous,
+	// so another job can still receive the acknowledgements needed to finish.
+	type job struct {
+		meta     frame
+		body     bytes.Buffer
+		done     chan struct{}
+		ack      chan struct{}
+		cancel   context.CancelFunc
+		settling bool
+	}
+	jobs := map[string]*job{}
+	var handlers sync.WaitGroup
+	defer func() { cancel(); handlers.Wait() }()
+	type incoming struct {
+		f   frame
+		err error
+	}
+	frames := make(chan incoming)
+	settled := make(chan string)
+	go func() {
+		for {
+			readCtx, stop := context.WithTimeout(ctx, 60*time.Second)
+			_, b, err := conn.Read(readCtx)
+			stop()
+			var f frame
+			if err == nil && (len(b) > MaxFrame || json.Unmarshal(b, &f) != nil) {
+				err = errors.New("invalid bridge frame")
+			}
+			select {
+			case frames <- incoming{f, err}:
+			case <-ctx.Done():
+				return
+			}
+			if err != nil {
+				return
+			}
 		}
 	}()
+	limit, negotiated := 1, false
 	for {
-		readCtx, stop := context.WithTimeout(ctx, 60*time.Second)
-		_, b, err := conn.Read(readCtx)
-		stop()
-		if err != nil {
-			return err
-		}
 		var f frame
-		if len(b) > MaxFrame || json.Unmarshal(b, &f) != nil {
-			return errors.New("invalid bridge frame")
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case id := <-settled:
+			delete(jobs, id)
+			if err := send(frame{Type: "ready", ID: id}); err != nil {
+				return err
+			}
+			continue
+		case in := <-frames:
+			if in.err != nil {
+				return in.err
+			}
+			f = in.f
 		}
 		if f.Type == "keys_ready" {
-			sync.state.connection(true, "")
+			accepted := max(1, f.Slots) // An old Worker does not echo slots.
+			if f.Slots < 0 || accepted > min(maxSlots, snapshot.capacity) || (negotiated && accepted != limit) {
+				return errors.New("invalid bridge slots")
+			}
+			limit, negotiated = accepted, true
+			snapshot.state.connection(true, "")
 			continue
 		}
 		if f.Type == "pong" {
 			continue
 		}
-		if f.Type == "ack" && meta != nil && f.ID == meta.ID && ack != nil {
-			select {
-			case ack <- struct{}{}:
-			default:
-				return errors.New("unexpected ack")
-			}
-			continue
-		}
+		j := jobs[f.ID]
 		if f.Type == "request" {
-			if done != nil {
-				select {
-				case <-done:
-					done = nil
-				default:
-					return errors.New("concurrent bridge request")
-				}
-			}
-			if meta != nil || f.ID == "" || len(f.ID) > 64 || (f.Method != "GET" && f.Method != "POST") || !strings.HasPrefix(f.Path, "/v1/") || strings.ContainsAny(f.Path, "\r\n#") || len(f.Path) > 2048 {
+			if !negotiated || len(jobs) >= limit || j != nil || f.ID == "" || len(f.ID) > 64 || (f.Method != "GET" && f.Method != "POST") || !strings.HasPrefix(f.Path, "/v1/") || strings.ContainsAny(f.Path, "\r\n#") || len(f.Path) > 2048 {
 				return errors.New("invalid bridge request")
 			}
-			meta = &f
-			body.Reset()
+			jobs[f.ID] = &job{meta: f}
 			continue
 		}
-		if meta == nil || f.ID != meta.ID {
+		if j == nil {
 			return errors.New("unexpected bridge frame")
 		}
 		switch f.Type {
+		case "ack":
+			if j.ack == nil {
+				return errors.New("unexpected ack")
+			}
+			select {
+			case j.ack <- struct{}{}:
+			default:
+				return errors.New("unexpected ack")
+			}
 		case "body":
-			if done != nil || len(f.Data) > ChunkSize || body.Len()+len(f.Data) > MaxBody {
+			if j.done != nil || len(f.Data) > ChunkSize || j.body.Len()+len(f.Data) > MaxBody {
 				return errors.New("bridge body exceeds cap")
 			}
-			body.Write(f.Data)
+			j.body.Write(f.Data)
 		case "end":
-			if done != nil {
+			if j.done != nil {
 				return errors.New("duplicate request end")
 			}
 			requestCtx, stopRequest := context.WithCancel(context.WithValue(ctx, viaKey{}, true))
-			req, err := http.NewRequestWithContext(requestCtx, meta.Method, meta.Path, bytes.NewReader(body.Bytes()))
+			req, err := http.NewRequestWithContext(requestCtx, j.meta.Method, j.meta.Path, bytes.NewReader(j.body.Bytes()))
 			if err != nil {
 				stopRequest()
 				return err
 			}
-			requestCancel = stopRequest
+			j.body = bytes.Buffer{} // Request owns the bytes until its handler settles.
+			j.cancel = stopRequest
 			for _, k := range []string{"authorization", "content-type", "accept"} {
-				req.Header.Set(k, meta.Headers[k])
+				req.Header.Set(k, j.meta.Headers[k])
 			}
 			req.RemoteAddr = "bridge"
-			ack = make(chan struct{}, 1)
-			done = make(chan struct{})
-			// Handler completion is acknowledged explicitly; the next request may only follow ready.
-			id, completed, acks := meta.ID, done, ack
+			j.ack, j.done = make(chan struct{}, 1), make(chan struct{})
+			id, completed, acks := f.ID, j.done, j.ack
+			handlers.Add(1)
 			go func() {
+				defer handlers.Done()
 				defer close(completed)
 				defer stopRequest()
 				w := newResponse(req.Context(), id, send, acks)
@@ -269,29 +310,46 @@ func session(ctx context.Context, c Config, h http.Handler, syncKeys ...keySync)
 					}
 				}
 			}()
-		case "cancel", "ready":
-			if done == nil {
+		case "cancel":
+			if j.settling {
+				continue
+			}
+			j.settling = true
+			if j.cancel != nil {
+				j.cancel()
+			}
+			if j.done == nil {
+				delete(jobs, f.ID)
+				if err := send(frame{Type: "ready", ID: f.ID}); err != nil {
+					return err
+				}
+				continue
+			}
+			go func(id string, done <-chan struct{}) {
+				select {
+				case <-done:
+				case <-ctx.Done():
+					return
+				}
+				select {
+				case settled <- id:
+				case <-ctx.Done():
+				}
+			}(f.ID, j.done)
+		case "ready":
+			if j.done == nil || j.settling {
 				return errors.New("unexpected ready")
 			}
-			if f.Type == "cancel" {
-				requestCancel()
-			}
+			// Normal ready follows our end frame, so no further ack is needed.
 			select {
-			case <-done:
+			case <-j.done:
 			case <-ctx.Done():
 				return ctx.Err()
 			}
-			requestCancel()
-			if f.Type == "cancel" {
-				if err := send(frame{Type: "ready", ID: meta.ID}); err != nil {
-					return err
-				}
-			}
-			meta = nil
-			ack = nil
-			done = nil
+			j.cancel()
+			delete(jobs, f.ID)
 		default:
-			return fmt.Errorf("unexpected frame type")
+			return errors.New("unexpected frame type")
 		}
 	}
 }

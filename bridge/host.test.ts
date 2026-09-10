@@ -25,7 +25,8 @@ beforeEach(() => {
   });
   vi.stubGlobal("WebSocketRequestResponsePair", class {});
   sent = [];
-  ws = { send: (s: string) => sent.push(JSON.parse(s)), close: vi.fn() };
+  let attachment: any = { host: "fixture" };
+  ws = { deserializeAttachment: () => attachment, serializeAttachment(value: any) { attachment = value; }, send: (s: string) => sent.push(JSON.parse(s)), close: vi.fn() };
   const values = new Map();
   hashes = new Set([createHash("sha256").update("friend").digest("hex")]);
   storage = {
@@ -319,4 +320,88 @@ it("loads the persisted key set when the object wakes without a new socket", asy
   const pending = host.fetch(request);
   await drain();
   await finishNext(pending);
+});
+
+it.each([[undefined, 1], [0, 1], [-2, 1], [4, 4], [48, 48], [100, 64]])(
+  "negotiates %s slots as %s and restores them on hibernation",
+  async (advertised, accepted) => {
+    await frame({ type: "keys", hashes: [keyHash("friend")], slots: advertised });
+    expect(ws.deserializeAttachment()).toEqual({ host: "fixture", slots: accepted });
+    expect(sent.at(-1)).toEqual(advertised === undefined
+      ? { type: "keys_ready" } : { type: "keys_ready", slots: accepted });
+    host = new Host({ getWebSockets: () => [ws], storage, setWebSocketAutoResponse() {} } as any,
+      { REGISTRY: { get: async () => null } } as any);
+    expect((host as any).slots).toBe(accepted);
+    host.webSocketClose(ws);
+    expect((host as any).slots).toBeUndefined();
+  },
+);
+it.each([1.5, "4", null, 1e100])("refuses invalid slot announcement %s", async (slots) => {
+  await frame({ type: "keys", slots });
+  expect(ws.close).toHaveBeenCalledOnce();
+});
+it("keeps negotiated capacity unchanged by key reloads", async () => {
+  await frame({ type: "keys", slots: 3, hashes: [keyHash("friend")] });
+  await frame({ type: "keys", slots: 3, hashes: [keyHash("friend")] });
+  expect(ws.close).not.toHaveBeenCalled();
+  await frame({ type: "keys", slots: 4 });
+  expect(ws.close).toHaveBeenCalledOnce();
+});
+it("admits N plus four waiting per host and settles interleaved responses by ID", async () => {
+  await frame({ type: "keys", slots: 3, hashes: [keyHash("friend")] });
+  const pending: Promise<Response>[] = [];
+  for (let i = 0; i < 7; i++) {
+    pending.push(host.fetch(req()));
+    await drain();
+  }
+  expect(requestFrames()).toHaveLength(3);
+  expect((host as any).queue).toHaveLength(4);
+  expect((await host.fetch(req())).status).toBe(429);
+  const ids = requestFrames().map((f) => f.id);
+  const reads = await Promise.all(ids.map(async (id, i) => {
+    const response = await beginResponse(id, pending[i]);
+    return { text: response.text() };
+  }));
+  for (const i of [2, 0, 1]) await frame({ type: "data", id: ids[i], data: btoa(`job-${i}`) });
+  for (const i of [1, 2, 0]) await frame({ type: "end", id: ids[i] });
+  expect(await Promise.all(reads.map((r) => r.text))).toEqual(["job-0", "job-1", "job-2"]);
+  expect(requestFrames()).toHaveLength(6);
+  expect((host as any).active.size).toBe(3);
+  expect((host as any).queue).toHaveLength(1);
+  expect(ws.close).not.toHaveBeenCalled();
+});
+it("one stalled response and its cancellation drain do not hold other slots", async () => {
+  await frame({ type: "keys", slots: 2, hashes: [keyHash("friend")] });
+  const first = host.fetch(req());
+  await drain();
+  const id = requestFrames()[0].id;
+  const response = await beginResponse(id, first);
+  const blocked = frame({ type: "data", id, data: btoa("unread") });
+  const second = host.fetch(req());
+  await drain();
+  const third = host.fetch(req());
+  await drain();
+  expect(requestFrames()).toHaveLength(2);
+  await response.body!.cancel();
+  await blocked;
+  expect(sent).toContainEqual({ type: "cancel", id });
+  await finishNext(second);
+  expect(requestFrames()).toHaveLength(3);
+  await finishNext(third);
+  expect((host as any).active.size).toBe(1);
+  await frame({ type: "ready", id });
+  expect((host as any).active.size).toBe(0);
+  expect(ws.close).not.toHaveBeenCalled();
+});
+
+it("uses all 48 workstation slots with only four additional waiting jobs", async () => {
+  await frame({ type: "keys", slots: 48, hashes: [keyHash("friend")] });
+  for (let i = 0; i < 52; i++) {
+    void host.fetch(req(null));
+    await drain();
+  }
+  expect(requestFrames()).toHaveLength(48);
+  expect((host as any).queue).toHaveLength(4);
+  expect((await host.fetch(req(null))).status).toBe(429);
+  expect((host as any).readBytes).toBe(0);
 });
