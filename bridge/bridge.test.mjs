@@ -1,19 +1,19 @@
 import { beforeAll, afterAll, describe, it, expect } from "vitest";
+import { readFileSync } from "node:fs";
 import { createHash } from "node:crypto";
 import { Miniflare, convertV4MiniflareOptions } from "miniflare";
 
+const workerOptions = {
+  modules: true,
+  scriptPath: "dist/index.js",
+  compatibilityDate: "2026-06-11",
+  durableObjects: { HOSTS: { className: "Host", useSQLite: true } },
+  kvNamespaces: ["REGISTRY"],
+};
 let mf, kv;
 const sockets = [];
 beforeAll(async () => {
-  mf = new Miniflare(
-    convertV4MiniflareOptions({
-      modules: true,
-      scriptPath: "dist/index.js",
-      compatibilityDate: "2026-06-11",
-      durableObjects: { HOSTS: { className: "Host", useSQLite: true } },
-      kvNamespaces: ["REGISTRY"],
-    }),
-  );
+  mf = new Miniflare(convertV4MiniflareOptions(workerOptions));
   kv = await mf.getKVNamespace("REGISTRY");
 });
 afterAll(async () => {
@@ -24,19 +24,20 @@ afterAll(async () => {
   await mf?.dispose();
 });
 let serial = 0;
-async function register(host = `fixture-${++serial}`) {
+async function register(host = `fixture-${++serial}`, runtime = mf) {
+  const registry = runtime === mf ? kv : await runtime.getKVNamespace("REGISTRY");
   const code = `registration-code-${++serial}`;
-  await kv.put("reg:" + code, host);
-  const result = await mf.dispatchFetch("https://test/register", {
+  await registry.put("reg:" + code, host);
+  const result = await runtime.dispatchFetch("https://test/register", {
     method: "POST",
     body: JSON.stringify({ code }),
   });
   expect(result.status).toBe(200);
-  return { ...(await result.json()), code };
+  return { ...(await result.json()), code, runtime };
 }
 const digest = (key) => createHash("sha256").update(key).digest("hex");
 async function socket(c, hashes = [digest("friend")], slots) {
-  const result = await mf.dispatchFetch(`https://test/h/${c.host}/socket`, {
+  const result = await c.runtime.dispatchFetch(`https://test/h/${c.host}/socket`, {
     headers: { upgrade: "websocket", authorization: `Bearer ${c.token}` },
   });
   expect(result.status).toBe(101);
@@ -65,7 +66,7 @@ async function socket(c, hashes = [digest("friend")], slots) {
   return peer;
 }
 const post = (c, body = "{}", headers = {}) =>
-  mf.dispatchFetch(`https://test/h/${c.host}/v1/chat/completions?x=1`, {
+  c.runtime.dispatchFetch(`https://test/h/${c.host}/v1/chat/completions?x=1`, {
     method: "POST",
     body,
     headers: {
@@ -278,13 +279,26 @@ describe("Worker and hibernating Durable Object", () => {
     ).toBe(403);
   });
   it("keeps the rate counter across reconnects", async () => {
-    const c = await register();
-    (await socket(c)).ws.close();
-    await new Promise((resolve) => setTimeout(resolve, 30));
-    for (let i = 0; i < 60; i++) expect((await post(c)).status).toBe(503);
-    await socket(c);
-    expect((await post(c)).status).toBe(429);
-  });
+    // A separate Worker clock keeps all 61 real storage transactions in one rate window.
+    const runtime = new Miniflare(convertV4MiniflareOptions({
+      ...workerOptions,
+      scriptPath: undefined,
+      script: `Date.now = () => 0;\n${readFileSync("dist/index.js", "utf8")}`,
+    }));
+    try {
+      const c = await register(undefined, runtime), s = await socket(c);
+      // The server's close reply follows disconnect(); elapsed time cannot prove that.
+      const closed = new Promise((resolve) => s.ws.addEventListener("close", resolve, { once: true }));
+      s.ws.close();
+      await closed;
+      for (let i = 0; i < 60; i++) expect((await post(c)).status).toBe(503);
+      await socket(c);
+      expect((await post(c)).status).toBe(429);
+    } finally {
+      await runtime.dispose();
+    }
+    // Includes isolated workerd startup, 61 persisted admissions and disposal on shared CI.
+  }, 30_000);
   it("settles disconnected requests without replay on reconnect", async () => {
     const c = await register(),
       s = await socket(c),

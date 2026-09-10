@@ -45,6 +45,7 @@ describe('shipped host capabilities', () => {
     expect(hostAudio(me, 'speech')).toBeNull();
     expect(logsPrompts({ ...me, host: { ...me.host, log_prompts: undefined } })).toBe(false);
   });
+  // Building the full TypeScript program and resolving types is compiler work, not a unit lookup.
   it('keeps capability property reads inside the API accessor boundary', () => {
     const configPath = new URL('../tsconfig.json', import.meta.url).pathname;
     const config = ts.readConfigFile(configPath, ts.sys.readFile);
@@ -62,5 +63,5 @@ describe('shipped host capabilities', () => {
       }
       visit(tree);
     }
-  });
+  }, 30_000);
 });
