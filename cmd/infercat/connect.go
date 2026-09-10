@@ -68,7 +68,7 @@ func (s tunnelSession) Redial(ctx context.Context) (session, error) {
 
 func (e *env) cmdConnect(ctx context.Context, pre string, args []string) (retErr error) {
 	fs := flag.NewFlagSet("connect", flag.ContinueOnError)
-	configure := fs.String("configure", "", "register opencode,dsh providers; selection remains yours")
+	configure := fs.String("configure", "", "register opencode,dsh,codex providers; selection remains yours")
 	unconfigure := fs.Bool("unconfigure", false, "remove checksum-verified managed providers without connecting")
 	listen := fs.String("listen", connectListen, "loopback address to serve the API on")
 	verbose := fs.Bool("verbose", false, "print the tunnel engine's log on the terminal")
@@ -761,7 +761,7 @@ found each other — and is re-checked every 30s. When the host stops answering,
 reconnects on its own.
 
 Flags:
-  --configure LIST register opencode,dsh from /me; prints selection instructions; removed on exit
+  --configure LIST register opencode,dsh,codex from /me; prints selection instructions; removed on exit
   --unconfigure    remove unchanged managed blocks (no invite); edited blocks are preserved
   --listen ADDR    loopback address to serve on (default 127.0.0.1:11435); other addresses are refused
   --log-requests   print one line per request: when, what, how long, how it ended — never the prompt

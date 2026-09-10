@@ -38,7 +38,7 @@ func mustRead(t *testing.T, p string) []byte {
 func TestManagedLifecycle(t *testing.T) {
 	original := "# person\nagent-default-model:\n  provider: retained\nllm-pi-ai:\n  providers:\n    retained: {}\n"
 	c := fixture(t, original)
-	lines, err := c.Configure(names, "owner", "http://127.0.0.1:14000/v1", models())
+	lines, err := c.Configure([]string{"opencode", "dsh"}, "owner", "http://127.0.0.1:14000/v1", models())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -49,7 +49,7 @@ func TestManagedLifecycle(t *testing.T) {
 	if !bytes.Contains(installed, []byte("provider: retained")) {
 		t.Fatal("selection changed")
 	}
-	_, err = c.Configure(names, "owner", "http://127.0.0.1:14000/v1", models())
+	_, err = c.Configure([]string{"opencode", "dsh"}, "owner", "http://127.0.0.1:14000/v1", models())
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -59,7 +59,7 @@ func TestManagedLifecycle(t *testing.T) {
 	if list, err := c.List(); err != nil || strings.Join(list, ",") != "opencode,dsh" {
 		t.Fatal(list, err)
 	}
-	if _, err = c.Configure(names, "other", "http://127.0.0.1:14001/v1", models()); err == nil {
+	if _, err = c.Configure([]string{"opencode", "dsh"}, "other", "http://127.0.0.1:14001/v1", models()); err == nil {
 		t.Fatal("foreign owner accepted")
 	}
 	if err = c.Remove("other"); err != nil {
@@ -89,7 +89,7 @@ func TestManagedLifecycle(t *testing.T) {
 	if fi, _ := os.Stat(c.DSH); fi.Mode().Perm() != 0640 {
 		t.Fatal("mode changed")
 	}
-	if _, err = c.Configure(names, "new", "http://127.0.0.1:14002/v1", models()); err != nil {
+	if _, err = c.Configure([]string{"opencode", "dsh"}, "new", "http://127.0.0.1:14002/v1", models()); err != nil {
 		t.Fatal(err)
 	}
 	if string(mustRead(t, filepath.Join(c.Dir, "dsh-"+digest([]byte(c.DSH))+".original"))) != original {
@@ -198,14 +198,11 @@ func TestReceiptCorruptionAndLock(t *testing.T) {
 		t.Fatal(err)
 	}
 }
-func TestCodexAndUnknownAreAllOrNothing(t *testing.T) {
-	for _, s := range []string{"opencode,codex", "dsh,bad", ""} {
+func TestUnknownAgentsAreAllOrNothing(t *testing.T) {
+	for _, s := range []string{"opencode,bad", "dsh,bad", ""} {
 		if a, err := Parse(s); err == nil || a != nil {
 			t.Fatal(s, a, err)
 		}
-	}
-	if _, err := Parse("codex"); err.Error() != "Codex needs the Responses API; not yet supported" {
-		t.Fatal(err)
 	}
 	a, err := Parse("opencode,dsh,opencode")
 	if err != nil || len(a) != 2 {

@@ -15,6 +15,7 @@ License of each typeface are reproduced verbatim at the end of this file.
 | Package | Version | Licence | Text |
 |---|---|---|---|
 | filippo.io/edwards25519 | v1.2.0 | BSD-3-Clause | https://github.com/FiloSottile/edwards25519/blob/v1.2.0/LICENSE |
+| github.com/BurntSushi/toml | v1.6.0 | MIT | https://github.com/BurntSushi/toml/blob/v1.6.0/COPYING |
 | github.com/anmitsu/go-shlex | v0.0.0-20200514113438-38f4b401e2be | MIT | https://github.com/anmitsu/go-shlex/blob/38f4b401e2be/LICENSE |
 | github.com/coder/websocket | v1.8.14 | ISC | https://github.com/coder/websocket/blob/v1.8.14/LICENSE.txt |
 | github.com/creachadair/msync/trigger | v0.8.1 | BSD-3-Clause | https://github.com/creachadair/msync/blob/v0.8.1/LICENSE |

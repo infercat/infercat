@@ -50,7 +50,7 @@ func TestSymlinkedAncestors(t *testing.T) {
 			}
 			original := []byte("# original\n")
 			os.WriteFile(c.DSH, original, 0600)
-			if _, err := c.Configure(names, "owner", "http://127.0.0.1:14700/v1", models()); err != nil {
+			if _, err := c.Configure([]string{"opencode", "dsh"}, "owner", "http://127.0.0.1:14700/v1", models()); err != nil {
 				t.Fatal(err)
 			}
 			r, ok, err := c.load("dsh")

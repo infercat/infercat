@@ -217,10 +217,15 @@ local     http://127.0.0.1:11435
 
 The invite's key is added to every request; the app's own API key is ignored. `/v1/*` and `/me` are forwarded, nothing else. Errors keep the host's status and code and say what to do in your words (paused, revoked, asleep, rate limited with `Retry-After`, busy); when the host stops answering, `connect` says so and reconnects on its own.
 
-For OpenCode or DeepSeek Harness, run `infercat connect <invite> --configure opencode,dsh`.
+For coding agents, run `infercat connect <invite> --configure opencode,dsh,codex` (or choose a subset).
 It registers the models from `/me` at the actual local port and prints how to select them:
 OpenCode uses the printed `OPENCODE_CONFIG=… opencode --model …` line; Harness uses
-`INFERCAT_API_KEY=unused dsh`, then its `/model` picker. Your default selection stays yours.
+`INFERCAT_API_KEY=unused dsh`, then its `/model` picker. Codex uses `codex --profile infercat`.
+Your default selection stays yours. Codex 0.154.0 reads the generated profile from
+`$CODEX_HOME/infercat.config.toml` (normally `~/.codex/infercat.config.toml`). It selects the
+first `/me` model and disables hosted web search for that profile because the gateway does
+not serve hosted tools. Your base `config.toml` is never changed; an existing unowned profile
+or legacy `[profiles.infercat]` configuration is refused. The profile contains no API key.
 If `OPENCODE_CONFIG` already names another file, configuration refuses without writing; unset
 it for the run, or merge the provider into your own file. OpenCode uses one custom path.
 The OpenCode extra file is merged with your configuration; Harness inserts a marked provider
@@ -229,8 +234,7 @@ managed blocks; `infercat connect --unconfigure` also removes them without an in
 a bridge. Edited blocks are preserved with an error. `infercat status` lists local registrations
 even without a running bridge. Original backups and ownership receipts live in the OS user
 config directory under `infercat/agents` (or `XDG_CONFIG_HOME` on Unix). YAML flow maps, aliases
-and custom Harness settings locations require manual configuration. Codex needs the Responses
-API and is explicitly refused. Windows paths use the native user config directory and
+and custom Harness settings locations require manual configuration. Windows paths use the native user config directory and
 `DSH_HOME`; the printed launch lines use POSIX shell syntax. Windows: compiles, untested.
 
 ```

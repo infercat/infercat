@@ -25,7 +25,7 @@ type receipt struct {
 	Existed                                 bool
 }
 
-var names = []string{"opencode", "dsh"}
+var names = []string{"opencode", "dsh", "codex"}
 
 func Default() (Config, error) {
 	dir := os.Getenv("XDG_CONFIG_HOME")
@@ -49,11 +49,8 @@ func Default() (Config, error) {
 func Parse(s string) ([]string, error) {
 	var out []string
 	for _, name := range strings.Split(s, ",") {
-		if name == "codex" {
-			return nil, errors.New("Codex needs the Responses API; not yet supported")
-		}
-		if name != "opencode" && name != "dsh" {
-			return nil, fmt.Errorf("unknown agent %q (opencode,dsh)", name)
+		if name != "opencode" && name != "dsh" && name != "codex" {
+			return nil, fmt.Errorf("unknown agent %q (opencode,dsh,codex)", name)
 		}
 		if !strings.Contains(","+strings.Join(out, ",")+",", ","+name+",") {
 			out = append(out, name)
@@ -198,6 +195,28 @@ func (c Config) load(name string) (receipt, bool, error) {
 // Check before a connection or cleanup owner exists: refusal writes nothing.
 func (c Config) Check(selected []string) error {
 	for _, name := range selected {
+		if name == "codex" {
+			target, err := codexPath()
+			if err != nil {
+				return err
+			}
+			if err = checkCodexBase(target); err != nil {
+				return err
+			}
+			raw, exists, err := read(target)
+			if err != nil {
+				return err
+			}
+			if exists {
+				r, owned, err := c.load(name)
+				if err != nil {
+					return err
+				}
+				if !owned || r.Target != target || !bytes.Equal(raw, []byte(r.Block)) {
+					return errors.New("Codex infercat.config.toml already exists or was edited; file preserved")
+				}
+			}
+		}
 		current := os.Getenv("OPENCODE_CONFIG")
 		if name != "opencode" || current == "" {
 			continue
@@ -226,6 +245,13 @@ func (c Config) Configure(selected []string, owner, url string, m Models) (lines
 			target := filepath.Join(c.Dir, "opencode.jsonc")
 			if name == "dsh" {
 				target = c.DSH
+			}
+			if name == "codex" {
+				var e error
+				target, e = codexPath()
+				if e != nil {
+					return e
+				}
 			}
 			target, e := safe(target)
 			if e != nil {
@@ -272,6 +298,11 @@ func (c Config) Configure(selected []string, owner, url string, m Models) (lines
 				at := len(raw)
 				if name == "dsh" {
 					block, at, e = dshBlock(raw, pb)
+				} else if name == "codex" {
+					if was {
+						return errors.New("unowned Codex profile exists")
+					}
+					block, e = codexBlock(url, m)
 				} else {
 					if was {
 						return errors.New("unowned OpenCode extra file exists")
@@ -309,6 +340,8 @@ func (c Config) Configure(selected []string, owner, url string, m Models) (lines
 			}
 			if name == "opencode" {
 				lines = append(lines, "OPENCODE_CONFIG="+quote(target)+" opencode --model "+quote("infercat/"+m.IDs[0]))
+			} else if name == "codex" {
+				lines = append(lines, "codex --profile infercat")
 			} else {
 				lines = append(lines, "INFERCAT_API_KEY=unused dsh # then /model → infercat → "+fmt.Sprintf("%q", m.IDs[0]))
 			}
