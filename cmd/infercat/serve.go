@@ -282,7 +282,7 @@ func (e *env) cmdServe(ctx context.Context, pre string, args []string) error {
 			}
 		}
 		return err
-	}, events, admin.WithRuns(e.consoleAPI(store, tun.Addr(), up, state.value, state), runStore.List))
+	}, events, admin.WithStored(admin.WithRuns(e.consoleAPI(store, tun.Addr(), up, state.value, state), runStore.List), runStore.Stored, runs.ClearTerminal))
 	if err != nil {
 		return fmt.Errorf("admin API: %w", err)
 	}

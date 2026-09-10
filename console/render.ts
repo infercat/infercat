@@ -1,3 +1,4 @@
+import { storedSection } from './stored';
 import { text, type CopyKey, type Lang } from './copy';
 import { emptyStats, type Snapshot, type Key, type Stats, type LiveKey, type ViaStats } from './types';
 
@@ -97,7 +98,7 @@ export function render(data: Snapshot | null, lang: Lang, selected: string | nul
   <p class="meta">${escape(k.id)} · <b>${t(`s_${k.status}`)}</b> · ${t('created')} ${escape(k.created_at.slice(0, 10))}</p>
   <div class="dsec"><span class="field-label">${label('d_now')}</span><p class="nowline">${!reported(k) && l.in_flight ? '<span class="live" aria-hidden="true">■</span> ' : ''}${nowLine(k)} · ${t('tpm', compact(l.tpm_used), limit(k.limits.tpm))}<br>${t('tokens_today', compact(l.today_tokens), limit(k.limits.daily_tokens))} · ${[a.seconds?t('audio_s',n(a.seconds)):'',a.characters?t('audio_chars',n(a.characters)):''].filter(Boolean).map(v=>v+' · ').join('')}${t('u_lastcall')} ${ago(k.last_seen)}</p></div>
   ${limitsForm(data, lang, ui, k, pending)}
-  <div class="dsec"><span class="field-label">${label('d_usage')}</span>${usageTable(a,b,true,k.last_seen)}</div>${keyActions(lang, ui, k, pending)}<p class="dfoot">${t('hash_only')}</p></aside>`;
+  <div class="dsec"><span class="field-label">${label('d_usage')}</span>${usageTable(a,b,true,k.last_seen)}</div>${storedSection(ui?.stored,lang,pending,now)}${keyActions(lang, ui, k, pending)}<p class="dfoot">${t('hash_only')}</p></aside>`;
  }
  if (ui?.mode === 'mint' || ui?.mode === 'admin' || ui?.once) drawer = specialDrawer(data, lang, ui, pending);
  return `<div class="${stale !== null ? 'stale' : ''}"><div id="page" ${drawer ? 'inert' : ''}>${header}

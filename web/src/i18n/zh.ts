@@ -354,6 +354,7 @@ export const zh = {
   app_the_host_sets_a_daily_cap_per_invite_it: '主机给每个邀请码都设了每日限额。额度会自动重置，主机也可以调高。',
   app_host_is_busy: '{host} 正忙',
   app_every_slot_was_taken_your_message_is_still_here: '处理位都被占满了——你的消息还在。',
+  app_agent_unavailable: "主机的智能体运行环境暂时不可用，请稍后再试。",
   app_the_host_s_engine_is_offline: '主机的引擎已离线',
   app_their_machine_is_reachable_but_the_model_server_is: '对方的电脑能连上，但模型服务没在运行。这不是你这边能解决的问题。',
   app_the_host_s_engine_returned_an_error: '主机引擎返回错误',

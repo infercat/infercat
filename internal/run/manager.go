@@ -494,13 +494,10 @@ func (m *Manager) Sweep() error {
 				continue
 			}
 			next := clone(v)
-			var paths []string
 			changed := false
 			for rid, r := range next.Runs {
 				if terminal(r.State) && !r.Expires.After(s.now()) {
-					if _, ok := imageOutput(r); ok {
-						paths = append(paths, s.artifactPath(key, rid))
-					}
+					next.Cleanup = append(next.Cleanup, rid)
 					delete(next.Runs, rid)
 					changed = true
 				}
@@ -509,9 +506,6 @@ func (m *Manager) Sweep() error {
 				err = s.commit(key, next, nil)
 			}
 			if err == nil {
-				for _, path := range paths {
-					s.unlinkImage(path)
-				}
 				err = s.sweepImages(key, next)
 			}
 		}

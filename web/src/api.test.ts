@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { NEW_REPLY, reduceReply } from './stream';
 import { tr } from './i18n/text';
+import { KEYS } from './storage';
 import {
   chatEvents,
   DEFAULT_DEADLINES,
@@ -738,3 +739,15 @@ describe('cold-load first-byte patience', () => {
     } finally { vi.useRealTimers(); }
   });
 });
+
+ it('gives agent_unavailable the approved bilingual copy and normal retry affordance', () => {
+  const previous=globalThis.localStorage;
+  try {
+   for(const [lang,copy] of [['en',"The host's agent runtime is not available right now. Try again in a moment."],['zh','主机的智能体运行环境暂时不可用，请稍后再试。']]) {
+    vi.stubGlobal('localStorage',{getItem:(key:string)=>key===KEYS.language?JSON.stringify(lang):null});
+    const error=describeError(new GatewayError(503,'agent_unavailable','upstream_error','runtime diagnostic'));
+    expect(error.title).toBe(copy);expect(error.retryAfterS).toBe(5);expect(error.fatal).toBeUndefined();
+    expect(describeError(new GatewayError(503,'agent_unavailable','upstream_error','runtime diagnostic',12)).retryAfterS).toBe(12);
+   }
+  } finally {vi.stubGlobal('localStorage',previous);}
+ });

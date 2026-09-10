@@ -273,7 +273,8 @@ func Test157EmptyScanAndEveryEvictedArtifactEvent(t *testing.T) {
 		t.Fatal(seen)
 	}
 	s.mu.Lock()
-	err = s.sweepImages("key", &snapshot{})
+	s.data["key"] = &snapshot{} // The working snapshot is authoritative after cleanup drains.
+	err = s.sweepImages("key", s.data["key"])
 	s.mu.Unlock()
 	if err != nil || logs == 0 {
 		t.Fatal("empty scan not refused and logged", err)

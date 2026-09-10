@@ -50,6 +50,9 @@ func Console(store *adminkey.Store, address string, token func() string, rec usa
 	return &consoleGateway{now: time.Now, auth: store.Authenticate, logf: logf, failures: make(map[netip.Addr]*consoleFailure), store: store, address: address, token: token, rec: rec, client: &http.Client{Timeout: 10 * time.Second, CheckRedirect: func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }}}
 }
 func consolePath(method, path string) bool {
+	if path == "/stored" {
+		return method == "GET" || method == "DELETE"
+	}
 	if method == "GET" {
 		switch path {
 		case "/status", "/keys", "/engine", "/usage", "/settings", "/runs":
@@ -163,7 +166,7 @@ func (h *consoleGateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		switch {
 		case path == "/usage" && len(q) == 1 && len(q["window"]) == 1 && (v == "today" || v == "week"):
 			query = "?window=" + v
-		case path == "/runs" && len(q) == 1 && len(q["key_id"]) == 1 && consolePath("GET", "/keys/"+q.Get("key_id")):
+		case (path == "/runs" || path == "/stored") && len(q) == 1 && len(q["key_id"]) == 1 && consolePath("GET", "/keys/"+q.Get("key_id")):
 			query = "?key_id=" + q.Get("key_id")
 		default:
 			fail(400)

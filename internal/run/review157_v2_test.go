@@ -139,13 +139,13 @@ func Test157V2EmptyImagesLogOnlyChanges(t *testing.T) {
 	if _, err := os.Stat(filepath.Join(dir, "orphan")); err != nil {
 		t.Fatal("orphan deleted", err)
 	}
-	// Later live rows and repeated sweeps do not turn observation into permission.
+	// 158 v4 narrows report-only handling to empty snapshots; live rows restore normal collection.
 	r := create(t, s, "key")
 	if err := s.sweepImages("key", s.data[r.KeyID]); err != nil {
 		t.Fatal(err)
 	}
-	if _, err := os.Stat(filepath.Join(dir, "orphan")); err != nil {
-		t.Fatal("observation authorized deletion", err)
+	if _, err := os.Stat(filepath.Join(dir, "orphan")); !os.IsNotExist(err) {
+		t.Fatal("nonempty snapshot did not collect unnamed file", err)
 	}
 	if err := os.RemoveAll(dir); err != nil {
 		t.Fatal(err)

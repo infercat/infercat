@@ -1,0 +1,59 @@
+{
+  "key_id": "k_a",
+  "total": 3,
+  "terminal": 2,
+  "bytes": 3145728,
+  "budget": 67108864,
+  "images": 2,
+  "image_bytes": 14680064,
+  "image_budget": 268435456,
+  "clear_images": 2,
+  "kinds": {
+    "image": {
+      "stored": 2,
+      "live": 0
+    },
+    "agent": {
+      "stored": 1,
+      "live": 1
+    }
+  },
+  "expires_first": "2026-09-08T12:00:00Z",
+  "expires_last": "2026-09-13T12:00:00Z",
+  "pending_cleanup": 1,
+  "runs": [
+    {
+      "id": "r_fixture_1",
+      "kind": "image",
+      "state": "done",
+      "bytes": 1048576,
+      "expires": "2026-09-08T12:00:00Z",
+      "image": {
+        "bytes": 7340032,
+        "expires": "2026-09-08T12:00:00Z"
+      }
+    },
+    {
+      "id": "r_fixture_2",
+      "kind": "image",
+      "state": "done",
+      "bytes": 1048576,
+      "expires": "2026-09-13T12:00:00Z",
+      "image": {
+        "bytes": 7340032,
+        "expires": "2026-09-13T12:00:00Z"
+      }
+    },
+    {
+      "id": "r_fixture_3",
+      "kind": "agent",
+      "state": "running",
+      "bytes": 1048576,
+      "expires": "2026-09-13T12:00:00Z"
+    }
+  ],
+  "truncated": false,
+  "cursor": "e_fixture:12",
+  "reserved": 2048,
+  "retry_cleanup": 1
+}

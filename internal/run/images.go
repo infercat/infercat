@@ -135,7 +135,7 @@ func (s *Store) PutImage(key, rid string, raw []byte, mime string, w, h int) (js
 	old.Output = result
 	next.Runs[rid] = old
 	if err = s.commit(key, next, &Event{RunID: rid, State: old.State, Time: s.now().UTC()}); err != nil {
-		_ = os.Remove(path)
+		s.unlinkImage(path)
 		return nil, err
 	}
 	for _, id := range evict {
@@ -206,20 +206,28 @@ func (s *Store) DiscardImage(key, rid string) error {
 	return nil
 }
 
-// Called under the store lock after expiry. Removes orphaned files after an interrupted commit too.
+// Under the store lock: drain proven cleanup intents, reclaim artifacts named by records,
+// and report untracked files without granting them deletion authority.
 func (s *Store) sweepImages(key string, v *snapshot) error {
+	s.cleanStateTemps(key)
+	if err := s.drainCleanup(key); err != nil {
+		return err
+	}
+	v = s.data[key]
 	dir := filepath.Join(s.root, key, "images")
-	for path, proven := range s.imageCleanup {
+	for path := range s.imageCleanup {
 		if filepath.Dir(path) == dir {
-			if proven {
-				s.unlinkImage(path)
-			} else if _, err := os.Lstat(path); errors.Is(err, os.ErrNotExist) {
-				delete(s.imageCleanup, path)
-			}
+			s.unlinkImage(path)
 		}
 	}
 	info, e := os.Lstat(dir)
 	if errors.Is(e, os.ErrNotExist) {
+		for path := range s.imageOrphans {
+			if filepath.Dir(path) == dir {
+				delete(s.imageOrphans, path)
+			}
+		}
+
 		for path := range s.imageCleanup {
 			if filepath.Dir(path) == dir {
 				delete(s.imageCleanup, path)
@@ -232,37 +240,40 @@ func (s *Store) sweepImages(key string, v *snapshot) error {
 		return ErrInvalid
 	}
 	entries, err := os.ReadDir(dir)
-	if errors.Is(err, os.ErrNotExist) {
-		return nil
-	}
-	if err != nil {
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return err
 	}
+	for path := range s.imageOrphans {
+		if filepath.Dir(path) == dir {
+			delete(s.imageOrphans, path)
+		}
+	}
+	if s.imageOrphans == nil {
+		s.imageOrphans = map[string]bool{}
+	}
+	observed := false
+	for _, entry := range entries {
+		path := filepath.Join(dir, entry.Name())
+		if strings.HasPrefix(entry.Name(), ".run-") {
+			s.unlinkImage(path)
+			continue
+		}
+		if (v == nil || len(v.Runs) == 0) && !s.imageCleanup[path] {
+			s.imageOrphans[path] = true
+			observed = true
+		}
+	}
 	if v == nil || len(v.Runs) == 0 {
-		if s.imageCleanup == nil {
-			s.imageCleanup = map[string]bool{}
-		}
-		for _, entry := range entries {
-			path := filepath.Join(dir, entry.Name())
-			if _, tracked := s.imageCleanup[path]; !tracked {
-				s.imageCleanup[path] = false
-			}
-		}
 		if s.emptyImageStamp == nil {
 			s.emptyImageStamp = map[string]time.Time{}
 		}
-		if len(entries) > 0 && !s.emptyImageStamp[key].Equal(info.ModTime()) {
+		if observed && !s.emptyImageStamp[key].Equal(info.ModTime()) {
 			s.log("image scan skipped for empty snapshot: %s", key)
 			s.emptyImageStamp[key] = info.ModTime()
 		}
 		return nil
 	}
 	delete(s.emptyImageStamp, key)
-	for path, proven := range s.imageCleanup {
-		if filepath.Dir(path) == dir && proven {
-			delete(s.imageCleanup, path)
-		}
-	}
 	next := clone(v)
 	changed := false
 	for id, r := range next.Runs {
@@ -279,10 +290,6 @@ func (s *Store) sweepImages(key string, v *snapshot) error {
 		}
 	}
 	for _, e := range entries {
-		path := filepath.Join(dir, e.Name())
-		if proven, tracked := s.imageCleanup[path]; tracked && !proven {
-			continue
-		}
 		r, exists := next.Runs[e.Name()]
 		o, ok := imageOutput(r)
 		if !exists || !ok || o.Gone {
@@ -316,12 +323,10 @@ func (s *Store) ImageCleanupPending() int {
 func (s *Store) ImageCleanupCounts() (proven, review int) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	for _, retry := range s.imageCleanup {
-		if retry {
-			proven++
-		} else {
+	for path := range s.imageOrphans {
+		if !s.imageCleanup[path] {
 			review++
 		}
 	}
-	return
+	return len(s.imageCleanup), review
 }

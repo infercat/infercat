@@ -1,3 +1,4 @@
+import type { StoredData } from './stored';
 import type { RemoteState } from './remote';
 import { render } from './render';
 import { text, type Lang } from './copy';
@@ -12,6 +13,7 @@ export function createConsole(root: HTMLElement, token: string | null, request: 
  let lastAnswer = now(), stopped = false, authorized = !!token, pending = false;
  const settingsUI:SettingsUI={draft:{}};
  let ui: DrawerState | undefined, generation = 0, revision = 0;
+ let storedRequest: AbortController | undefined, storedReading:Promise<void>|undefined;
  let activeRequest: AbortController | undefined, mutation: AbortController | undefined;
  let reading: Promise<boolean> | undefined, copyTimer: ReturnType<typeof setTimeout> | undefined;
  const headers: Record<string,string> = token ? { Authorization: `Bearer ${token}` } : {};
@@ -27,6 +29,7 @@ export function createConsole(root: HTMLElement, token: string | null, request: 
  };
  const errorLine=(response:Response,value:{error?:unknown})=>response.status===429&&remote?text(lang,'remote_budget',Math.max(1,Math.ceil(((remote.retryAt||now())-now())/1000))):typeof value.error==='string'?value.error:'HTTP '+response.status;
  function draw(focusClose = false) {
+  const storedDetails=root.querySelector<HTMLDetailsElement>('#stored-details');if(storedDetails&&ui?.stored)ui.stored.open=storedDetails.open;
   const scroll = root.querySelector('.drawer')?.scrollTop || 0;
   const open = root.querySelector('details')?.open || false;
   const focused = (root.getRootNode() instanceof ShadowRoot ? (root.getRootNode() as ShadowRoot).activeElement : document.activeElement) as HTMLElement|null;
@@ -49,14 +52,37 @@ export function createConsole(root: HTMLElement, token: string | null, request: 
   next?.focus({ preventScroll: true });
   if (selection && next instanceof HTMLInputElement) next.setSelectionRange(selection[0], selection[1]);
  }
- function discard() { generation++; if (ui) { ui.once = undefined; ui.qr = undefined; } ui = undefined; clearTimeout(copyTimer); }
+ function discard() { generation++; storedRequest?.abort(); if (ui) { ui.once = undefined; ui.qr = undefined; } ui = undefined; clearTimeout(copyTimer); }
  function closeDrawer() {
   const id = selected; discard(); selected = null; draw();
   ([...root.querySelectorAll<HTMLElement>('[data-key]')].find(el => el.dataset.key === id) || root.querySelector<HTMLElement>('[data-action="new"]'))?.focus({ preventScroll: true });
  }
  function openKey(id: string) {
   const key = data?.keys.find(k => k.id === id); if (!key) return;
-  discard(); selected = id; ui = draft(key); draw(true);
+  discard(); selected = id; ui = draft(key); ui.stored = {}; draw(true); void readStoredAfterSnapshot();
+ }
+ async function readStoredAfterSnapshot(){await reading;if(!pending)await readStored();}
+ function readStored():Promise<void>{return storedReading ||= fetchStored().finally(()=>{storedReading=undefined;});}
+ async function fetchStored() {
+  const id=selected, version=generation, readRevision=revision, held=ui;
+  if(!id||!held||held.mode!=='key'||held.once||!authorized||stopped||remote?.retryAt&&remote.retryAt>now())return;
+  storedRequest?.abort();const controller=new AbortController(), timeout=setTimeout(()=>controller.abort(),5000);storedRequest=controller;
+  try {
+   const response=await request('/api/stored?key_id='+encodeURIComponent(id),{headers,signal:controller.signal,cache:'no-store'});
+   if(response.status===401){authorized=false;discard();selected=null;draw();return;}
+   if(!response.ok){const raw=await response.text();let value;try{value=JSON.parse(raw);}catch{value={error:raw.trim()};}if(version===generation&&readRevision===revision&&ui===held)held.stored={...held.stored,error:errorLine(response,value)};return;}
+   const value=await response.json() as StoredData;
+   if(version===generation&&readRevision===revision&&ui===held&&!stopped)held.stored={...held.stored,value,error:undefined};
+  }catch{if(version===generation&&readRevision===revision&&ui===held&&!stopped)held.stored={...held.stored,error:text(lang,controller.signal.aborted?'stored_timeout':'stored_read_failed')};}
+  finally{clearTimeout(timeout);if(version===generation&&!stopped)draw();}
+ }
+ async function clearStored() {
+  if(!ui?.stored?.confirm||!selected||pending||!authorized||stopped)return;
+  const version=generation, expected={...ui.stored.confirm}; pending=true;revision++;activeRequest?.abort();storedRequest?.abort();draw();
+  const controller=new AbortController();mutation=controller;const timeout=setTimeout(()=>controller.abort(),10000);
+  try { const response=await request('/api/stored?key_id='+encodeURIComponent(selected),{method:'DELETE',headers:{...headers,'Content-Type':'application/json'},body:JSON.stringify(expected),signal:controller.signal,cache:'no-store'});const raw=await response.text();let value:{error?:unknown;warning?:string;cleared?:number;skipped?:number;retried_cleanup?:number};try{value=JSON.parse(raw);}catch{value={error:raw.trim()};}if(version===generation&&ui?.stored){ui.stored.error=response.ok?value.warning:errorLine(response,value);ui.stored.message=response.ok&&value.cleared!==undefined?text(lang,value.cleared===1?'stored_cleared_one':'stored_cleared',value.cleared,value.skipped||0)+(value.retried_cleanup?' '+text(lang,value.retried_cleanup===1?'stored_retried_one':'stored_retried',value.retried_cleanup):''):undefined;} }
+  catch {if(version===generation&&ui?.stored)ui.stored.error=text(lang,'stored_unknown');}
+  finally {clearTimeout(timeout);mutation=undefined;if(version===generation&&ui?.stored){ui.stored.confirm=undefined;const error=ui.stored.error;await reading;await storedReading;await readStored();if(error&&ui?.stored)ui.stored.error=error;}pending=false;if(!stopped)draw();}
  }
  const input = (event: Event) => {
   const el = event.target;
@@ -104,6 +130,9 @@ export function createConsole(root: HTMLElement, token: string | null, request: 
    draw(true); return;
   }
   if (!authorized || pending) return;
+  if(action==='stored-confirm'&&ui?.stored?.value){const s=ui.stored.value;ui.stored.confirm={cursor:s.cursor,terminal:s.terminal,images:s.clear_images,cleanup:s.retry_cleanup};draw();return;}
+  if(action==='stored-keep'&&ui?.stored){ui.stored.confirm=undefined;draw();return;}
+  if(action==='stored-clear'){void clearStored();return;}
   if(action==='remote-confirm'){settingsUI.confirm=true;draw();return;}
   if(action==='remote-keep'){settingsUI.confirm=false;draw();return;}
   if(action==='remote-off'){if(settingsUI.confirm)void saveSettings(true);return;}
@@ -133,17 +162,19 @@ export function createConsole(root: HTMLElement, token: string | null, request: 
   } else if ((event.key === 'Enter' || event.key === ' ') && (event.target as HTMLElement)?.dataset.key) { event.preventDefault(); click(event); }
  };
  async function readSnapshot(): Promise<boolean> {
+  await storedReading;
   if(remote?.retryAt&&remote.retryAt>now())return false;
   const controller = new AbortController(), readRevision = revision; activeRequest = controller;
   const timeout = setTimeout(() => controller.abort(), 5000);
   try {
    const paths = ['status', 'keys', 'engine', 'settings', 'usage?window=today', 'usage?window=week'];
-   const values = await Promise.all(paths.map(async path => {
+   const responses = await Promise.allSettled(paths.map(async path => {
     const response = await request('/api/' + path, { headers, signal: controller.signal, cache: 'no-store' });
     if (response.status === 401) { authorized = false; discard(); selected = null; }
     if (!response.ok) throw new Error('host did not answer');
     return response.json();
    }));
+   const values=responses.map(result=>{if(result.status==='rejected')throw result.reason;return result.value;});
    if (stopped || readRevision !== revision || !authorized) return false;
    data = { status: values[0], keys: values[1], engine: values[2], settings: values[3], today: values[4], week: values[5] };
    const key = data.keys.find(k => k.id === selected);
@@ -156,7 +187,7 @@ export function createConsole(root: HTMLElement, token: string | null, request: 
  }
  function refresh(): Promise<boolean> {
   if (!authorized || stopped || pending || remote?.retryAt && remote.retryAt>now()) return Promise.resolve(false);
-  return reading ||= readSnapshot().finally(() => { reading = undefined; });
+  return reading ||= readSnapshot().then(async good=>{if(selected&&!pending)await readStored();return good;}).finally(() => { reading = undefined; });
  }
  async function mutate(action: string) {
   if (!ui || !authorized || pending || stopped || !data) return;
@@ -220,9 +251,10 @@ export function createConsole(root: HTMLElement, token: string | null, request: 
  }
  root.addEventListener('click', click); root.addEventListener('keydown', keydown); root.addEventListener('input',input); root.addEventListener('submit',submit);
  draw(); void refresh();
+ let drawerTick=false;
  const timer = setInterval(() => {
   if (stale !== null) { stale = Math.max(1, Math.floor((now() - lastAnswer) / 1000)); draw(); }
-  void refresh();
+  drawerTick=!drawerTick;if(!(ui?.mode==='key'&&!ui.once&&selected)||drawerTick)void refresh();
  }, 2000);
  return { refresh, stop() { stopped = true; discard(); activeRequest?.abort(); mutation?.abort(); clearInterval(timer); root.innerHTML = ''; root.removeEventListener('click', click); root.removeEventListener('keydown', keydown); root.removeEventListener('input',input); root.removeEventListener('submit',submit); } };
 }

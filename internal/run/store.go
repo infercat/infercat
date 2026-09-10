@@ -18,6 +18,7 @@ import (
 )
 
 type snapshot struct {
+	Cleanup        []string `json:"image_cleanup,omitempty"`
 	encodedBytes   int
 	ExceptionBytes map[string]int      `json:"exception_bytes,omitempty"`
 	Epoch          string              `json:"epoch"`
@@ -36,7 +37,8 @@ type Store struct {
 	write           func(string, []byte) error
 	reserved        map[string]map[string]*reservation
 	imageBudget     int
-	imageCleanup    map[string]bool // true: proven retry path; false: observed orphan, report only.
+	imageCleanup    map[string]bool
+	imageOrphans    map[string]bool
 	emptyImageStamp map[string]time.Time
 	known           map[string]bool
 	accessed        map[string]time.Time
@@ -130,6 +132,7 @@ func (s *Store) load(key string) (*snapshot, error) {
 	} else if err != nil && !errors.Is(err, os.ErrNotExist) {
 		return nil, err
 	}
+	s.cleanStateTemps(key)
 	v := &snapshot{Epoch: id("e_"), Runs: map[string]Run{}}
 	path := filepath.Join(dir, "state.json")
 	info, err := os.Lstat(path)
@@ -209,6 +212,15 @@ func (s *Store) load(key string) (*snapshot, error) {
 			return nil, ErrNeedsAttention
 		}
 	}
+	for _, rid := range v.Cleanup {
+		if !safeID.MatchString(rid) {
+			return nil, ErrInvalid
+		}
+		if _, exists := v.Runs[rid]; exists {
+			return nil, ErrInvalid
+		}
+	}
+	s.restoreCleanup(key, v)
 	s.data[key] = v
 	if s.recovery && !s.recovered[key] {
 		if err := s.recoverKey(key); err != nil {
@@ -367,14 +379,7 @@ func (s *Store) commitFor(key string, v *snapshot, event *Event, rid string) err
 		}
 	}
 	for _, event := range events {
-		for ch := range s.subs[key] {
-			select {
-			case ch <- event:
-			default:
-				close(ch)
-				delete(s.subs[key], ch)
-			}
-		}
+		s.publish(key, event)
 	}
 	return nil
 }
@@ -626,4 +631,16 @@ func (s *Store) Subscribe(key, cursor string) ([]Event, <-chan Event, func(), er
 		}
 	}
 	return replay, ch, stop, nil
+}
+
+// Called under the store lock after a successful commit.
+func (s *Store) publish(key string, event Event) {
+	for ch := range s.subs[key] {
+		select {
+		case ch <- event:
+		default:
+			close(ch)
+			delete(s.subs[key], ch)
+		}
+	}
 }

@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
@@ -181,8 +182,21 @@ func TestConfiguredMediaRefreshRecoversLateEngine(t *testing.T) {
 
 func TestStatusReportsPendingImageCleanup(t *testing.T) {
 	var out strings.Builder
-	writeStatus(&out, admin.Status{ImageCleanupPending: 2, ImageOrphansForReview: 3})
-	if !strings.Contains(out.String(), "2 awaiting cleanup, 3 for review") {
+	st := admin.Status{ImageCleanupPending: 2, ImageOrphansForReview: 1}
+	writeStatus(&out, st)
+	raw, _ := json.Marshal(st)
+	if !strings.Contains(string(raw), `"image_cleanup_pending":2`) || !strings.Contains(string(raw), `"image_orphans_for_review":1`) || strings.Contains(string(raw), `"image_cleanup_review"`) {
+		t.Fatal(string(raw))
+	}
+	if !strings.Contains(out.String(), "2 awaiting cleanup, 1 for review") {
+		t.Fatal(out.String())
+	}
+}
+
+func TestStatusShowsReviewOnlyImageFiles(t *testing.T) {
+	var out strings.Builder
+	writeStatus(&out, admin.Status{ImageOrphansForReview: 2})
+	if !strings.Contains(out.String(), "0 awaiting cleanup, 2 for review") {
 		t.Fatal(out.String())
 	}
 }

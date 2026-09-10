@@ -1,9 +1,11 @@
+import type { StoredUI } from './stored';
 import { text, type CopyKey, type Lang } from './copy';
 import { escape } from './html';
 import type { Key, Limits, Snapshot } from './types';
 
 export interface Invite { key_id: string; name: string; invite: string; link?: string }
 export interface DrawerState {
+ stored?: StoredUI;
  mode: 'mint' | 'key' | 'admin'; name: string; limits: Limits; dirty: boolean; duplicateId?: string;
  confirm?: boolean; rotated?: boolean; once?: Invite; qr?: string; qrFailed?: boolean;
  error?: string; message?: CopyKey; copied?: 'link' | 'code';

@@ -311,7 +311,7 @@ failure after a committed write is logged without reporting the write as a refus
 
 085 adds one opt-in exception to Protection 1: while remote access is enabled, the existing
 port-80 gateway accepts `/console/` (authenticated status) and an explicit `/console/api/*`
-whitelist. A separate `ia1.<address>.<secret>` bearer controls keys and settings, never `/v1`.
+whitelist. A separate `ia1.<address>.<secret>` bearer controls keys, settings and stored data, never `/v1`.
 Its SHA-256 hash and enabled-since timestamp live in mode-0600 `admin.json`, separate from
 friend keys. The switch persists across restarts; enabling requires the loopback console on.
 Off returns 404; a wrong bearer while on returns 401. Rotation invalidates the old bearer.
@@ -443,6 +443,13 @@ holding the new step's key/engine admission. SSE has two subscribers per key,
 write deadlines and keepalives; slow readers disconnect and replay on reconnect.
 Admin `GET /runs?key_id=` stays behind admin authentication and returns metadata
 only, at most 100 entries with `truncated` if an all-key list exceeds that bound.
+Admin `GET /stored?key_id=` reports one key’s storage metadata; `DELETE` takes
+`{cursor,terminal,images,cleanup}` from the confirmation and refuses changed counts
+or cursor with 409. GET counts persisted terminal records under the store lock only.
+Clear skips manager-owned workers and returns actual cleared/skipped counts; after
+a committed clear, cleanup/read failures return 200 with a warning. It commits terminal removal,
+validated image cleanup intents and an epoch reset together, then publishes Reset
+with remaining summaries. Cleanup intents survive restart in the same snapshot.
 
 The injected gateway `ExecuteStep` adapter resolves the current key by ID, creates
 the existing request owner and uses its normal pipeline. It currently accepts JSON

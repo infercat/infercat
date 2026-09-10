@@ -90,7 +90,8 @@ func Test157V4CloseDoesNotQuarantineAcceptedRows(t *testing.T) {
 }
 func Test157V4CleanupPopulationsStayDistinct(t *testing.T) {
 	s := store(t)
-	s.imageCleanup = map[string]bool{"proven": true, "observed": false}
+	s.imageCleanup = map[string]bool{"proven": true}
+	s.imageOrphans = map[string]bool{"observed": true}
 	proven, review := s.ImageCleanupCounts()
 	if proven != 1 || review != 1 || s.ImageCleanupPending() != 2 {
 		t.Fatal(proven, review)

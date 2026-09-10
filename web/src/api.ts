@@ -559,6 +559,7 @@ const COPY: Record<
   // own sentence (how long, how many) is in Details, and the countdown is the banner's.
   queue_timeout: { retry: true, get title() { return tr('app_host_is_busy'); },
     get detail() { return tr('app_every_slot_was_taken_your_message_is_still_here'); } },
+  agent_unavailable: { retry: true, get title() { return tr('app_agent_unavailable'); }, detail: '' },
   upstream_down: { retry: true, get title() { return tr('app_the_host_s_engine_is_offline'); },
     get detail() { return tr('app_their_machine_is_reachable_but_the_model_server_is'); } },
   upstream_error: { get title() { return tr('app_the_host_s_engine_returned_an_error'); },

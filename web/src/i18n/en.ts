@@ -473,6 +473,7 @@ export const en = {
   // api.ts:546 — PropertyAssignment
   app_every_slot_was_taken_your_message_is_still_here: "Every slot was taken — your message is still here.",
   // api.ts:547 — PropertyAssignment
+  app_agent_unavailable: "The host's agent runtime is not available right now. Try again in a moment.",
   app_the_host_s_engine_is_offline: "The host's engine is offline",
   // api.ts:548 — PropertyAssignment
   app_their_machine_is_reachable_but_the_model_server_is: "Their machine is reachable but the model server is not running. Nothing you can fix.",
