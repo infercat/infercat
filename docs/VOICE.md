@@ -45,7 +45,38 @@ USE_GPU=false DEVICE_TYPE=cpu DEFAULT_VOICE=af_heart \
   --host 127.0.0.1 --port 18079
 ```
 
-`af_heart` is English. For a Mandarin default, restart that command with `DEFAULT_VOICE=zf_xiaobei`; its `z` prefix selects the Mandarin pipeline. This pin includes `misaki[zh]`, the required pronunciation frontend. The no-voice-field app request uses that default. A previously played reply may remain in the app's memory cache; test a new reply after changing voices. Kokoro-FastAPI and the [Kokoro weights](https://huggingface.co/hexgrad/Kokoro-82M) are Apache-2.0. Mandarin output was generated successfully on this Mac; this is not a claim that it matches a larger model's quality.
+Voice ids belong to their checkpoint. For an engine configured with
+[hexgrad/Kokoro-82M-v1.1-zh](https://huggingface.co/hexgrad/Kokoro-82M-v1.1-zh), use a current
+Infercat source build (shipping in 0.1.3) with:
+
+```sh
+--upstream-speech-voices zh=zf_001,en=af_maple,default=af_maple
+```
+
+That checkpoint has 103 voices: English `af_maple`, `af_sol`, `bf_vale`, and numbered Chinese
+`zf_*`/`zm_*` voices such as `zf_001`. Its [English](https://huggingface.co/hexgrad/Kokoro-82M-v1.1-zh/blob/main/samples/make_en.py)
+and [Chinese](https://huggingface.co/hexgrad/Kokoro-82M-v1.1-zh/blob/main/samples/make_zh.py) examples
+use those ids. They are not interchangeable with the v1.0 voice packs in the pinned recipe above;
+that recipe uses `zh=zf_xiaoxiao,en=af_heart` instead. The host accepts the configured voice ids
+without tying them to a particular checkpoint.
+
+Han characters count against all letters and ideographs; digits, punctuation and whitespace do
+not dilute the ratio. A Han share of at least 30% selects `zh`; otherwise it selects `en`.
+The detected tag's entry is used first, then `default` if that entry is missing. With neither
+mapping, no voice is added.
+This is a script heuristic, not general language detection. A supplied `voice` field—including an
+empty string or null—is left for the engine to validate. The flag accepts comma-separated
+`lang=voice` pairs (`zh`, `en`, `default`); malformed or duplicate entries are refused before startup.
+Pass `--upstream-speech-voices ''` to clear a remembered mapping.
+
+The pinned v1.0 recipe's Mandarin voices include `zf_xiaoxiao`, `zf_xiaobei`, `zf_xiaoni`, `zf_xiaoyi`,
+`zm_yunjian`, `zm_yunxi`, `zm_yunxia` and `zm_yunyang`; the `z` prefix selects its Mandarin pipeline.
+This pin includes `misaki[zh]`, the required pronunciation frontend. On Infercat 0.1.2, omit the
+voice-map flag and choose one engine default instead, for example `DEFAULT_VOICE=zf_xiaobei`.
+A previously played reply may remain in the app's memory cache; test a new reply after changing
+voices. Kokoro-FastAPI and the [Kokoro weights](https://huggingface.co/hexgrad/Kokoro-82M) are
+Apache-2.0. Mandarin output was generated successfully on this Mac; this is not a claim that it
+matches a larger model's quality.
 
 In another terminal, check both servers before starting Infercat:
 
@@ -57,17 +88,18 @@ curl -fsS http://127.0.0.1:18079/v1/audio/voices
 
 ## Connect the engines to your host
 
-Keep your chat engine running. For Ollama on its usual port:
+Keep your chat engine running. For Ollama on its usual port and the pinned v1.0 speech recipe above:
 
 ```sh
 infercat serve --upstream http://127.0.0.1:11434 \
   --upstream-transcribe http://127.0.0.1:18085 \
   --upstream-transcribe-model deepdml/faster-whisper-large-v3-turbo-ct2 \
   --upstream-speech http://127.0.0.1:18079 --upstream-speech-model kokoro \
+  --upstream-speech-voices zh=zf_xiaoxiao,en=af_heart \
   --max-transcription-seconds 300 --web-url https://infercat.ai
 ```
 
-Use your existing data directory to retain invites; for a separate host, use `--data-dir` consistently on `serve` and `keys` commands. These audio flags are remembered. URL, key and model changes take effect on the next `serve`; reload re-probes the configured engines. Authenticated upstreams use `--upstream-transcribe-key` and `--upstream-speech-key`. Supply service base URLs without `/v1`.
+Use your existing data directory to retain invites; for a separate host, use `--data-dir` consistently on `serve` and `keys` commands. These audio flags are remembered. URL, key, model and voice-map changes take effect on the next `serve`; reload re-probes the configured engines. Authenticated upstreams use `--upstream-transcribe-key` and `--upstream-speech-key`. Supply service base URLs without `/v1`.
 
 If you use `--models` on the host or a friend key, include the two audio ids as well as the chat model. An omitted or unknown client audio model is replaced with the host's chosen id, then the allowlist still applies. `/me.host.audio` contains that id for an available route and `null` for an unavailable one. A healthy chat server alone does not enable audio.
 

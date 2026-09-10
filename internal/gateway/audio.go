@@ -16,6 +16,7 @@ import (
 	"strconv"
 	"sync/atomic"
 	"time"
+	"unicode"
 	"unicode/utf8"
 
 	"github.com/infercat/infercat/internal/upstream"
@@ -96,6 +97,19 @@ func (q *request) readAudio() *gwError {
 		input, ok := body["input"].(string)
 		if !ok || input == "" {
 			return errf(CodeInvalidRequest, 0, "speech input must be a nonempty string")
+		}
+		if _, named := body["voice"]; !named {
+			lang := "en"
+			if speechIsChinese(input) {
+				lang = "zh"
+			}
+			voice := q.g.cfg.SpeechVoices[lang]
+			if voice == "" {
+				voice = q.g.cfg.SpeechVoices["default"]
+			}
+			if voice != "" {
+				body["voice"] = voice
+			}
 		}
 		q.audio.chars = utf8.RuneCountInString(input)
 		q.audio.raw, _ = json.Marshal(body)
@@ -363,4 +377,18 @@ func (q *request) settleAudio() {
 	}
 	q.ev.OverrunSeconds = math.Max(0, q.ev.Seconds-q.ev.ReservedSeconds)
 	st.meter("audio").today += q.ev.Seconds
+}
+
+// Count letters, not bytes or punctuation, so formatting cannot dilute a Chinese reply.
+func speechIsChinese(text string) bool {
+	han, letters := 0, 0
+	for _, r := range text {
+		if unicode.Is(unicode.Han, r) {
+			han++
+			letters++
+		} else if unicode.IsLetter(r) {
+			letters++
+		}
+	}
+	return letters > 0 && han*10 >= letters*3
 }

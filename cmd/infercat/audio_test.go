@@ -43,7 +43,7 @@ func TestAudioFlagsReloadAndStatus(t *testing.T) {
 	var audio upstream.AudioEngine
 	plat.newGateway = func(o gatewayOptions, _ upstream.Upstream, _ keys.Store, _ usage.Recorder, _ func(string, ...any)) (gatewayServer, error) {
 		audio = o.Transcribe
-		if o.Speech == nil || o.MaxTranscriptionSeconds != 45 || o.TranscribeModel != "asr-model" || o.SpeechModel != "tts-model" {
+		if o.SpeechVoices["zh"] != "zf_xiaoxiao" || o.Speech == nil || o.MaxTranscriptionSeconds != 45 || o.TranscribeModel != "asr-model" || o.SpeechModel != "tts-model" {
 			t.Error("audio config did not reach gateway")
 		}
 		return gw, nil
@@ -53,7 +53,7 @@ func TestAudioFlagsReloadAndStatus(t *testing.T) {
 	var out, errw lockedBuffer
 	done := make(chan int, 1)
 	go func() {
-		done <- run(ctx, []string{"serve", "--console", "off", "--data-dir", dir, "--upstream", engine.URL, "--upstream-transcribe", engine.URL, "--upstream-transcribe-key", "asr-key", "--upstream-speech", engine.URL, "--upstream-speech-key", "tts-key", "--max-transcription-seconds", "45", "--upstream-transcribe-model", "asr-model", "--upstream-speech-model", "tts-model"}, &out, &errw, nil, false, plat)
+		done <- run(ctx, []string{"serve", "--console", "off", "--data-dir", dir, "--upstream", engine.URL, "--upstream-transcribe", engine.URL, "--upstream-transcribe-key", "asr-key", "--upstream-speech", engine.URL, "--upstream-speech-key", "tts-key", "--max-transcription-seconds", "45", "--upstream-transcribe-model", "asr-model", "--upstream-speech-model", "tts-model", "--upstream-speech-voices", "zh=zf_xiaoxiao,default=af_heart"}, &out, &errw, nil, false, plat)
 	}()
 	select {
 	case <-gw.serving:
@@ -61,7 +61,7 @@ func TestAudioFlagsReloadAndStatus(t *testing.T) {
 		t.Fatalf("serve not ready: %s", errw.String())
 	}
 	cfg, err := loadConfig(dir)
-	if err != nil || cfg.UpstreamTranscribe != engine.URL || cfg.UpstreamSpeechKey != "tts-key" || cfg.MaxTranscriptionSeconds != 45 || cfg.UpstreamTranscribeModel != "asr-model" || cfg.UpstreamSpeechModel != "tts-model" {
+	if err != nil || cfg.UpstreamTranscribe != engine.URL || cfg.UpstreamSpeechKey != "tts-key" || cfg.MaxTranscriptionSeconds != 45 || cfg.UpstreamTranscribeModel != "asr-model" || cfg.UpstreamSpeechModel != "tts-model" || cfg.UpstreamSpeechVoices != "zh=zf_xiaoxiao,default=af_heart" {
 		t.Fatalf("remembered config %+v %v", cfg, err)
 	}
 	fi, _ := os.Stat(configPath(dir))

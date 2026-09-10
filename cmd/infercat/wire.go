@@ -44,6 +44,7 @@ func newPlatform() platform {
 			return gateway.New(gateway.Config{
 				RemoteConsole: o.RemoteConsole, LiveHostName: o.LiveHostName,
 				ModelsPinned:    o.ModelsPinned,
+				SpeechVoices:    o.SpeechVoices,
 				TranscribeModel: o.TranscribeModel, SpeechModel: o.SpeechModel,
 				Transcribe: o.Transcribe, Speech: o.Speech, MaxTranscriptionSeconds: o.MaxTranscriptionSeconds,
 				LogPrompts:  o.LogPrompts,
