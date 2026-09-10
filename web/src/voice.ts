@@ -45,8 +45,10 @@ export class VoiceRecorder {
   private tick: ReturnType<typeof setInterval> | undefined;
   private cap: ReturnType<typeof setTimeout> | undefined;
   private frame: number | undefined;
-  private started = 0;
+  private started: number | null = null;
+  private streamDelivered = false;
   private stoppedSeconds: number | null = null;
+  private stopPending = false;
   constructor(private readonly upload: (clip: Blob, signal: AbortSignal) => Promise<string>, private readonly changed: (state: RecordingState) => void) {}
   private emit(state: RecordingState): void { this.state = state; this.changed(state); }
   async start(): Promise<void> {
@@ -70,7 +72,14 @@ export class VoiceRecorder {
       const recorder = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
       this.recorder = recorder;
       const chunks: Blob[] = [];
-      recorder.ondataavailable = (event) => { if (!controller.signal.aborted && event.data.size) chunks.push(event.data); };
+      let publish = () => {};
+      recorder.ondataavailable = (event) => {
+        if (controller.signal.aborted || !event.data.size) return;
+        chunks.push(event.data); this.streamDelivered = true;
+        if (this.started === null && recorder.state === 'recording') {
+          this.started = performance.now(); publish();
+        }
+      };
       recorder.onerror = () => {
         if (!controller.signal.aborted) { this.cancel(); this.emit({ kind: 'error', seconds: this.elapsed(), error: new Error('Microphone recording failed.') }); }
       };
@@ -79,6 +88,7 @@ export class VoiceRecorder {
         const seconds = this.stoppedSeconds ?? this.elapsed(); this.finishTake();
         const clip = new Blob(chunks, { type: recorder.mimeType || mimeType });
         chunks.length = 0;
+        if (!clip.size) { this.emit({ kind: 'idle' }); return; }
         this.emit({ kind: 'transcribing', seconds });
         void this.upload(clip, controller.signal).then((text) => {
           if (!controller.signal.aborted) this.emit({ kind: 'done', seconds, text });
@@ -86,7 +96,7 @@ export class VoiceRecorder {
           if (!controller.signal.aborted) this.emit(error instanceof Error && error.name === 'AbortError' ? { kind: 'idle' } : { kind: 'error', seconds, error });
         });
       };
-      this.started = performance.now(); this.stoppedSeconds = null;
+      this.started = this.streamDelivered ? performance.now() : null; this.stoppedSeconds = null;
       recorder.start(250);
       this.cap = setTimeout(() => this.stop(), RECORDING_LIMIT_SECONDS * 1000);
       if (!this.analyser) {
@@ -94,19 +104,22 @@ export class VoiceRecorder {
         context.createMediaStreamSource(stream).connect(this.analyser);
       }
       const analyser = this.analyser;
+      // A Stop before stream resolution cannot contain audio; honour it before a take escapes.
+      if (this.stopPending) { this.cancel(); return; }
       // Capture already owns the stream; keep the waiting line while audio wakes up.
       await resumed;
       if (controller.signal.aborted || recorder.state !== 'recording') return;
       const samples = new Float32Array(analyser.fftSize);
       const waveform: number[] = Array(60).fill(0);
       const sample = () => {
+        if (this.started === null) return;
         analyser.getFloatTimeDomainData(samples);
         const rms = Math.sqrt(samples.reduce((sum, n) => sum + n * n, 0) / samples.length);
         const level = Math.min(1, rms * 4); waveform.push(level); waveform.shift();
         this.emit({ kind: 'recording', seconds: this.elapsed(), level, waveform: [...waveform] });
       };
-      // Read immediately, then on the first paint; no empty interval before feedback.
-      sample();
+      // Cold capture stays waiting until bytes arrive; a proven warm stream has no extra wait.
+      publish = sample; sample();
       this.frame = requestAnimationFrame(() => {
         if (controller.signal.aborted || recorder.state !== 'recording') return;
         sample();
@@ -119,13 +132,19 @@ export class VoiceRecorder {
       this.emit(name === 'NotAllowedError' || name === 'SecurityError' ? { kind: 'blocked' } : name === 'NotFoundError' || name === 'NotSupportedError' ? { kind: 'missing' } : { kind: 'error', seconds: 0, error });
     }
   }
-  private elapsed(): number { return Math.min(RECORDING_LIMIT_SECONDS, Math.max(0, (performance.now() - this.started) / 1000)); }
+  private elapsed(): number { return Math.min(RECORDING_LIMIT_SECONDS, this.started === null ? 0 : Math.max(0, (performance.now() - this.started) / 1000)); }
+  toggle(): void {
+    if (this.state.kind === 'requesting' || this.state.kind === 'recording') this.stop();
+    else if (this.state.kind !== 'transcribing') void this.start();
+  }
   stop(): void {
     clearInterval(this.tick); clearTimeout(this.cap);
     if (this.frame !== undefined) cancelAnimationFrame(this.frame);
     if (this.recorder?.state === 'recording') { this.stoppedSeconds = this.elapsed(); this.recorder.stop(); this.finishTake(); }
+    else if (this.state.kind === 'requesting') this.stopPending = true;
   }
   cancel(): void {
+    this.stopPending = false;
     this.controller?.abort(); this.controller = null;
     if (this.recorder?.state === 'recording') this.recorder.stop();
     this.finishTake(); this.emit({ kind: 'idle' });
@@ -134,7 +153,7 @@ export class VoiceRecorder {
   /** Hide, unmount, or loss of access ends the permission-owned warm stream. */
   release(): void {
     this.cancel();
-    this.stream?.getTracks().forEach((track) => track.stop()); this.stream = null;
+    this.stream?.getTracks().forEach((track) => track.stop()); this.stream = null; this.streamDelivered = false;
     void this.context?.close().catch(() => {}); this.context = null; this.analyser = null;
   }
   private finishTake(): void {
