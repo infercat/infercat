@@ -60,7 +60,9 @@ func (r *run) record(rec reqRecord) {
 }
 
 // noRead: with --noread, friend 0's first turn is the friend who never reads its stream.
-func (r *run) noRead(s *session) bool { return r.noReadOne && s.friend == 0 && s.idx == 0 && s.turn == 1 }
+func (r *run) noRead(s *session) bool {
+	return r.noReadOne && s.friend == 0 && s.idx == 0 && s.turn == 1
+}
 
 type hook struct {
 	at  time.Duration
@@ -105,9 +107,23 @@ func main() {
 		out        = flag.String("out", "hack/load/out", "output root")
 		name       = flag.String("name", "", "run name (default: mode-nN-time)")
 		at         hooks
+		preview    = flag.Bool("bridge-preview", false, "bounded authenticated benchmark of this host's registered preview bridge")
+		earlyClose = flag.Bool("early-close", false, "preview only: close one stream after its first token, then complete a request")
 	)
 	flag.Var(&at, "at", "DURATION=COMMAND to run mid-run via sh -c (repeatable)")
 	flag.Parse()
+	if *preview {
+		if *mode != "chat" || *bodyBytes != 0 || *noRead || len(at) != 0 || *perFriend != 1 || *relaySSH != "" || *relayOnly {
+			log.Fatal("bridge-preview supports authenticated normal chat only")
+		}
+		if err := previewRun(previewOptions{hostDir: *hostDir, bin: *bin, pid: *hostPid, n: *n, duration: time.Duration(*minutes * float64(time.Minute)), model: *model, out: *out, name: *name, earlyClose: *earlyClose}); err != nil {
+			log.Fatal(err)
+		}
+		return
+	}
+	if *earlyClose {
+		log.Fatal("early-close requires bridge-preview")
+	}
 	if *hostDir == "" {
 		log.Fatal("--host-dir is required")
 	}
@@ -414,7 +430,7 @@ func summary(r *run, sessions []*session, events []usage.Event, before, after *h
 
 	// Host view, by prompt size.
 	type bucket struct {
-		lo, hi int
+		lo, hi                                     int
 		queued, prefill, ttft, toks, total, prompt []float64
 	}
 	buckets := []*bucket{{0, 1000, nil, nil, nil, nil, nil, nil}, {1000, 4000, nil, nil, nil, nil, nil, nil}, {4000, 8000, nil, nil, nil, nil, nil, nil}, {8000, 16000, nil, nil, nil, nil, nil, nil}, {16000, 1 << 30, nil, nil, nil, nil, nil, nil}}

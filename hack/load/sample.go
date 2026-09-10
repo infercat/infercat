@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/infercat/infercat/internal/admin"
+	"github.com/infercat/infercat/internal/bridge"
 )
 
 // One line of samples.jsonl per second: the instrument's own counters, the host (admin socket +
@@ -32,6 +33,8 @@ type loadCounters struct {
 }
 
 type hostSample struct {
+	CPUPercent                                       float64
+	Bridge                                           *bridge.Status `json:",omitempty"`
 	InFlight, Waiting, Clients, Goroutines, Sessions int
 	HeapBytes, Sys                                   uint64
 	RSSKB                                            int64
@@ -50,6 +53,16 @@ func sampleHost(ctx context.Context, dir string, pid int) *hostSample {
 	h.InFlight, h.Waiting, h.Clients, h.Sessions = st.Queue.InFlight, st.Queue.Waiting, st.Tunnel.Clients, len(st.Tunnel.Sessions)
 	h.Goroutines, h.HeapBytes, h.Sys = st.Process.Goroutines, st.Process.HeapBytes, st.Process.SysBytes
 	h.RSSKB = rssKB(pid)
+	h.Bridge = st.Bridge
+	if pid > 0 {
+		out, err := exec.Command("ps", "-o", "%cpu=", "-p", strconv.Itoa(pid)).Output()
+		if err == nil {
+			h.CPUPercent, err = strconv.ParseFloat(strings.TrimSpace(string(out)), 64)
+		}
+		if err != nil {
+			h.Err += " host CPU sample unavailable"
+		}
+	}
 	return h
 }
 
