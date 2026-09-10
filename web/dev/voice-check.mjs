@@ -15,8 +15,9 @@ async function connected(width, lang, extra = '&transcriptions&speech') {
   const context = await browser.newContext({ viewport: { width, height: width === 390 ? 844 : 800 }, locale: lang === 'zh' ? 'zh-CN' : 'en-US', isMobile: width === 390, hasTouch: width === 390 });
   await context.addInitScript((language) => {
     window.localStorage.setItem('bn.language', JSON.stringify(language));
-    window.__level = .13; window.__micError = ''; window.__tracksStopped = 0;
+    window.__level = .13; window.__micError = ''; window.__tracksStopped = 0; window.__micRequests = 0; window.__takes = 0;
     Object.defineProperty(window.navigator, 'mediaDevices', { configurable: true, value: { getUserMedia: async () => {
+      window.__micRequests++;
       if (window.__holdMic) await new Promise((resolve) => { window.__permitMic = resolve; });
       if (window.__micError) throw new window.DOMException('microphone unavailable', window.__micError);
       return { getTracks: () => [{ stop: () => window.__tracksStopped++ }] };
@@ -24,7 +25,7 @@ async function connected(width, lang, extra = '&transcriptions&speech') {
     window.MediaRecorder = class {
       static isTypeSupported(type) { return type.includes('webm'); }
       state = 'inactive'; mimeType = 'audio/webm;codecs=opus';
-      start() { this.state = 'recording'; }
+      start() { this.state = 'recording'; window.__takes++; }
       stop() { this.state = 'inactive'; window.queueMicrotask(() => { this.ondataavailable?.({ data: new window.Blob(['test recording']) }); this.onstop?.(); }); }
     };
     window.AudioContext = class {
@@ -72,6 +73,11 @@ try {
       await page.waitForTimeout(30);
       check(await page.locator('.composer .spoken').count() === 0, 'late permission stays cancelled');
 
+      await mic.focus(); await mic.press('Space');
+      await page.waitForFunction(() => document.querySelector('.mic')?.getAttribute('aria-pressed') === 'true');
+      check(await page.evaluate(() => window.__takes) === 1, 'keyboard activation starts exactly one take');
+      await page.locator('.composer .spoken button').click();
+      const acquired = await page.evaluate(() => window.__micRequests);
       await page.getByRole('button', { name: lang === 'zh' ? '设置' : 'Settings', exact: true }).click();
       check((await page.locator('.sheet').innerText()).includes('whisper-large-v3') && (await page.locator('.sheet').innerText()).includes('kokoro'), 'Settings names both audio models');
       await page.locator('.sheet .small-print').first().scrollIntoViewIfNeeded(); await shot(page, `settings-${tag}`);
@@ -84,6 +90,7 @@ try {
       await page.waitForFunction(() => document.querySelector('.mic')?.getAttribute('aria-pressed') === 'true');
       await page.waitForTimeout(3100);
       check((await posts(page, '/v1/audio/transcriptions')).length === 0, 'recording stays local');
+      check(await page.evaluate(() => window.__micRequests) === acquired, 'repeat pointerdown reuses the warm stream');
       check(await page.locator('.waveform').count() === 1 && await page.locator('.level').count() === 0, 'waveform replaces rail');
       await shot(page, `recording-${tag}`);
       const wave = await page.locator('.waveform').boundingBox(), cancel = await page.locator('.composer .spoken button').boundingBox();
@@ -124,6 +131,12 @@ try {
       await mic.click(); await page.waitForTimeout(100); await mic.click();
       await page.locator('.composer .spoken button').click(); await page.waitForTimeout(750);
       check(await field.inputValue() === '' && await page.locator('.composer .spoken').count() === 0, 'Cancel discards a late transcription');
+      const stopped = await page.evaluate(() => window.__tracksStopped);
+      await page.evaluate(() => { Object.defineProperty(document, 'hidden', { configurable: true, value: true }); document.dispatchEvent(new window.Event('visibilitychange')); });
+      check(await page.evaluate(() => window.__tracksStopped) > stopped, 'hide releases the granted microphone');
+      const takes = await page.evaluate(() => window.__takes);
+      await page.evaluate(() => { Object.defineProperty(document, 'hidden', { configurable: true, value: false }); document.dispatchEvent(new window.Event('visibilitychange')); });
+      check(await page.evaluate(() => window.__takes) === takes, 'becoming visible never starts a take');
       await page.evaluate(() => { window.__micError = 'NotAllowedError'; }); await mic.click();
       await page.locator('.composer .hint').filter({ hasText: lang === 'zh' ? '麦克风' : 'Microphone blocked' }).waitFor(); await shot(page, `denied-${tag}`);
       await page.evaluate(() => { window.__micError = 'NotFoundError'; }); await mic.click();

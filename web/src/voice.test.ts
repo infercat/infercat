@@ -37,7 +37,7 @@ describe('voice recorder ownership', () => {
     stopTrack.mockClear();
   });
   afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); });
-  it('records level/time, stops at five minutes, transcribes once and releases media', async () => {
+  it('records level/time, stops at five minutes and retains the granted stream until release', async () => {
     const upload = vi.fn(async () => 'hello');
     const states: RecordingState[] = [];
     const recorder = new VoiceRecorder(upload, (s) => states.push(s));
@@ -51,7 +51,8 @@ describe('voice recorder ownership', () => {
     expect(upload).toHaveBeenCalledTimes(1);
     expect(recorder.state).toEqual({ kind: 'done', seconds: 300, text: 'hello' });
     expect(states).toContainEqual({ kind: 'transcribing', seconds: 300 });
-    expect(stopTrack).toHaveBeenCalled();
+    expect(stopTrack).not.toHaveBeenCalled();
+    recorder.release(); expect(stopTrack).toHaveBeenCalled();
     recorder.clear(); expect(recorder.state.kind).toBe('idle');
   });
   it('activates audio on the gesture and starts capture before showing recording', async () => {
@@ -73,8 +74,32 @@ describe('voice recorder ownership', () => {
     expect(recorder.state.kind).toBe('requesting');
     permit(stream); await pending;
     expect(recorder.state.kind).toBe('recording');
-    recorder.cancel();
-    expect(stopTrack).toHaveBeenCalledTimes(1);
+    recorder.cancel(); expect(stopTrack).not.toHaveBeenCalled();
+    recorder.release(); expect(stopTrack).toHaveBeenCalledTimes(1);
+  });
+  it('keeps one granted stream across stopped/cancelled takes, releases on hide, and never starts on return', async () => {
+    const acquire = vi.mocked(navigator.mediaDevices.getUserMedia);
+    const upload = vi.fn(async () => 'hello');
+    const recorder = new VoiceRecorder(upload, () => {});
+    expect(acquire).not.toHaveBeenCalled();
+    await recorder.start(); recorder.stop(); await flush();
+    expect(acquire).toHaveBeenCalledTimes(1); expect(stopTrack).not.toHaveBeenCalled();
+    await recorder.start(); recorder.cancel(); await flush();
+    expect(acquire).toHaveBeenCalledTimes(1); expect(upload).toHaveBeenCalledTimes(1);
+    recorder.release(); expect(stopTrack).toHaveBeenCalledTimes(1);
+    const takes = FakeRecorder.instances.length;
+    await vi.advanceTimersByTimeAsync(1000);
+    expect(FakeRecorder.instances).toHaveLength(takes); expect(recorder.state.kind).toBe('idle');
+    await recorder.start(); expect(acquire).toHaveBeenCalledTimes(2);
+    recorder.release();
+  });
+  it('hiding during a pending permission grant closes the late stream without a take', async () => {
+    let grant!: (value: unknown) => void;
+    vi.stubGlobal('navigator', { mediaDevices: { getUserMedia: () => new Promise((resolve) => { grant = resolve; }) } });
+    const recorder = new VoiceRecorder(vi.fn(), () => {});
+    const pending = recorder.start(); recorder.release(); grant(stream); await pending;
+    expect(FakeRecorder.instances).toHaveLength(0); expect(stopTrack).toHaveBeenCalledTimes(1);
+    expect(recorder.state.kind).toBe('idle');
   });
   it('cancel never uploads and a delayed old stop cannot stop a new take', async () => {
     const upload = vi.fn(async () => 'hello');

@@ -1,0 +1,53 @@
+<!doctype html><meta charset="utf-8"><title>101 local real-microphone timing</title>
+<label><input id="warm" type="checkbox"> Keep stream warm between takes</label>
+<button id="record">Record 2 seconds</button><button id="release">Release microphone</button><pre id="result">No microphone requested yet.</pre>
+<script type="module">
+let stream, context, analyser, recorder, frame;
+const out = document.querySelector('#result');
+function release() { cancelAnimationFrame(frame); stream?.getTracks().forEach(t => t.stop()); stream = null; void context?.close(); context = null; }
+document.querySelector('#release').onclick = release;
+document.addEventListener('visibilitychange', () => { if (document.hidden) release(); });
+window.addEventListener('pagehide', release);
+document.querySelector('#record').onpointerdown = async () => {
+  const start = performance.now(); const times = {}; const mark = k => times[k] ??= Math.round((performance.now() - start) * 10) / 10;
+  try {
+    if (!context) { context = new AudioContext(); void context.resume(); }
+    if (!stream) { stream = await navigator.mediaDevices.getUserMedia({audio:true}); analyser = context.createAnalyser(); context.createMediaStreamSource(stream).connect(analyser); }
+    mark('streamReady');
+    recorder = new MediaRecorder(stream); recorder.ondataavailable = () => mark('encodedChunk'); recorder.start(100);
+    mark('recorderStarted'); const samples = new Float32Array(analyser.fftSize);
+    const sample = () => { analyser.getFloatTimeDomainData(samples); mark('firstRead'); if (samples.some(n => n !== 0)) mark('signal'); frame = requestAnimationFrame(sample); };
+    sample();
+    await new Promise(resolve => setTimeout(resolve, 2000));
+    recorder.stop(); cancelAnimationFrame(frame);
+    const result = {userAgent:navigator.userAgent, device:stream.getAudioTracks()[0].label, warm:document.querySelector('#warm').checked, times};
+    if (!result.warm) release();
+    window.result = result; out.textContent = JSON.stringify(result, null, 2);
+  } catch (error) { release(); window.result = {error:error.name, message:error.message}; out.textContent = JSON.stringify(window.result); }
+};
+if (new URLSearchParams(location.search).has('product')) {
+  const { VoiceRecorder } = await import('/src/voice.ts');
+  let times, start, device = '';
+  const mark = key => { if (times) times[key] ??= Math.round((performance.now() - start) * 10) / 10; };
+  const gum = navigator.mediaDevices.getUserMedia.bind(navigator.mediaDevices);
+  navigator.mediaDevices.getUserMedia = async options => { const value = await gum(options); device = value.getAudioTracks()[0].label; mark('streamReady'); return value; };
+  const NativeRecorder = window.MediaRecorder;
+  window.MediaRecorder = class extends NativeRecorder { start(...args) { mark('recorderStarted'); this.addEventListener('dataavailable', () => mark('encodedChunk')); super.start(...args); } };
+  const read = AnalyserNode.prototype.getFloatTimeDomainData;
+  AnalyserNode.prototype.getFloatTimeDomainData = function (samples) { read.call(this, samples); mark('firstRead'); if (samples.some(n => n !== 0)) mark('signal'); };
+  const owned = new VoiceRecorder(async () => '', () => {});
+  const close = () => owned.release();
+  document.querySelector('#release').onclick = close;
+  document.addEventListener('visibilitychange', () => { if (document.hidden) close(); });
+  window.addEventListener('pagehide', close);
+  document.querySelector('#record').onpointerdown = async () => {
+    start = performance.now(); times = {};
+    await owned.start();
+    if (owned.state.kind !== 'recording') { window.result = {error:owned.state.kind}; out.textContent = JSON.stringify(window.result); close(); return; }
+    await new Promise(resolve => setTimeout(resolve, 2000)); owned.stop();
+    const result = {product:true,userAgent:navigator.userAgent,device,warm:document.querySelector('#warm').checked,times};
+    if (!result.warm) close();
+    window.result = result; out.textContent = JSON.stringify(result, null, 2);
+  };
+}
+</script>

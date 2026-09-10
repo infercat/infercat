@@ -41,6 +41,7 @@ export class VoiceRecorder {
   private recorder: MediaRecorder | null = null;
   private stream: MediaStream | null = null;
   private context: AudioContext | null = null;
+  private analyser: AnalyserNode | null = null;
   private tick: ReturnType<typeof setInterval> | undefined;
   private cap: ReturnType<typeof setTimeout> | undefined;
   private frame: number | undefined;
@@ -50,16 +51,19 @@ export class VoiceRecorder {
   private emit(state: RecordingState): void { this.state = state; this.changed(state); }
   async start(): Promise<void> {
     this.cancel();
+    if (this.stream?.getTracks().some((track) => track.readyState === 'ended')) this.release();
     const controller = new AbortController(); this.controller = controller;
     this.emit({ kind: 'requesting' });
     try {
       if (!navigator.mediaDevices?.getUserMedia || typeof MediaRecorder === 'undefined') {
         this.emit({ kind: 'missing' }); return;
       }
-      // Activate audio on the click, before awaiting the permission prompt.
-      const context = new AudioContext(); this.context = context;
-      void context.resume().catch(() => {});
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      // The visible chat retains its granted stream; no take exists until this gesture.
+      const context = this.context ?? new AudioContext(); this.context = context;
+      const resumed = context.resume();
+      // Attach a rejection handler now, even while a permission prompt is pending.
+      void resumed.catch(() => {});
+      const stream = this.stream ?? await navigator.mediaDevices.getUserMedia({ audio: true });
       if (controller.signal.aborted) { stream.getTracks().forEach((track) => track.stop()); return; }
       this.stream = stream;
       const mimeType = recordingMime();
@@ -72,7 +76,7 @@ export class VoiceRecorder {
       };
       recorder.onstop = () => {
         if (controller.signal.aborted) { chunks.length = 0; return; }
-        const seconds = this.stoppedSeconds ?? this.elapsed(); this.releaseMedia();
+        const seconds = this.stoppedSeconds ?? this.elapsed(); this.finishTake();
         const clip = new Blob(chunks, { type: recorder.mimeType || mimeType });
         chunks.length = 0;
         this.emit({ kind: 'transcribing', seconds });
@@ -84,8 +88,15 @@ export class VoiceRecorder {
       };
       this.started = performance.now(); this.stoppedSeconds = null;
       recorder.start(250);
-      const analyser = context.createAnalyser(); analyser.fftSize = 1024;
-      context.createMediaStreamSource(stream).connect(analyser);
+      this.cap = setTimeout(() => this.stop(), RECORDING_LIMIT_SECONDS * 1000);
+      if (!this.analyser) {
+        this.analyser = context.createAnalyser(); this.analyser.fftSize = 1024;
+        context.createMediaStreamSource(stream).connect(this.analyser);
+      }
+      const analyser = this.analyser;
+      // Capture already owns the stream; keep the waiting line while audio wakes up.
+      await resumed;
+      if (controller.signal.aborted || recorder.state !== 'recording') return;
       const samples = new Float32Array(analyser.fftSize);
       const waveform: number[] = Array(60).fill(0);
       const sample = () => {
@@ -101,10 +112,9 @@ export class VoiceRecorder {
         sample();
         this.tick = setInterval(sample, 50);
       });
-      this.cap = setTimeout(() => this.stop(), RECORDING_LIMIT_SECONDS * 1000);
     } catch (error) {
       if (controller.signal.aborted) return;
-      this.releaseMedia();
+      this.release();
       const name = error instanceof Error ? error.name : '';
       this.emit(name === 'NotAllowedError' || name === 'SecurityError' ? { kind: 'blocked' } : name === 'NotFoundError' || name === 'NotSupportedError' ? { kind: 'missing' } : { kind: 'error', seconds: 0, error });
     }
@@ -113,19 +123,24 @@ export class VoiceRecorder {
   stop(): void {
     clearInterval(this.tick); clearTimeout(this.cap);
     if (this.frame !== undefined) cancelAnimationFrame(this.frame);
-    if (this.recorder?.state === 'recording') { this.stoppedSeconds = this.elapsed(); this.recorder.stop(); this.releaseMedia(); }
+    if (this.recorder?.state === 'recording') { this.stoppedSeconds = this.elapsed(); this.recorder.stop(); this.finishTake(); }
   }
   cancel(): void {
     this.controller?.abort(); this.controller = null;
     if (this.recorder?.state === 'recording') this.recorder.stop();
-    this.releaseMedia(); this.emit({ kind: 'idle' });
+    this.finishTake(); this.emit({ kind: 'idle' });
   }
   clear(): void { if (this.state.kind === 'done' || this.state.kind === 'error' || this.state.kind === 'blocked' || this.state.kind === 'missing') this.emit({ kind: 'idle' }); }
-  private releaseMedia(): void {
+  /** Hide, unmount, or loss of access ends the permission-owned warm stream. */
+  release(): void {
+    this.cancel();
+    this.stream?.getTracks().forEach((track) => track.stop()); this.stream = null;
+    void this.context?.close().catch(() => {}); this.context = null; this.analyser = null;
+  }
+  private finishTake(): void {
     clearInterval(this.tick); clearTimeout(this.cap);
     if (this.frame !== undefined) cancelAnimationFrame(this.frame);
-    this.stream?.getTracks().forEach((track) => track.stop()); this.stream = null;
-    void this.context?.close().catch(() => {}); this.context = null; this.recorder = null;
+    this.recorder = null;
   }
 }
 

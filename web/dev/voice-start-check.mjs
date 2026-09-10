@@ -46,7 +46,7 @@ for (const [name, type] of Object.entries({ chromium, firefox, webkit })) {
       console.log(name,browser.version(),name === 'webkit' ? 'oscillator-stream' : 'native-fake-device',i===0?'first':'repeat',JSON.stringify(await page.evaluate(()=>({times:window.times,state:window.recorder.state.kind}))));
       assert.equal(await page.evaluate(()=>window.recorder.state.kind), 'recording');
       assert.equal(await page.evaluate(()=>window.times.captureStart <= window.times.recordingUI), true);
-      await page.evaluate(()=>{window.recorder.cancel();window.closeSource?.();});
+      await page.evaluate(()=>{window.recorder.release?.();window.recorder.cancel();window.closeSource?.();});
       if(await page.evaluate(()=>window.stream?.getTracks().some(t=>t.readyState!=='ended')))throw Error('microphone retained');
     }
   }finally{await browser.close();}

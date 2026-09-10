@@ -967,12 +967,19 @@ function Composer({
   }));
   const hasVoice = Boolean(voice);
   useEffect(() => {
-    const leave = () => recorder.cancel(); window.addEventListener('pagehide', leave);
-    return () => { window.removeEventListener('pagehide', leave); recorder.cancel(); };
+    const leave = () => recorder.release();
+    const visibility = () => { if (document.hidden) leave(); };
+    window.addEventListener('pagehide', leave); document.addEventListener('visibilitychange', visibility);
+    return () => { window.removeEventListener('pagehide', leave); document.removeEventListener('visibilitychange', visibility); recorder.release(); };
   }, [recorder]);
   useEffect(() => {
-    if ((disabled || sendBlocked || streaming || !hasVoice) && ['requesting', 'recording', 'transcribing'].includes(recorder.state.kind)) recorder.cancel();
+    if (disabled || !hasVoice) recorder.release();
+    else if ((sendBlocked || streaming) && ['requesting', 'recording', 'transcribing'].includes(recorder.state.kind)) recorder.cancel();
   }, [disabled, sendBlocked, streaming, hasVoice, recorder]);
+  const toggleRecording = () => {
+    if (disabled || sendBlocked || streaming || document.hidden) return;
+    if (recorder.state.kind === 'recording') recorder.stop(); else void recorder.start();
+  };
   const editText = (value: string) => { recorder.clear(); onText(value); };
   const sendText = () => { recorder.cancel(); onSend(text); };
   const voiceHint = voice && (recording.kind === 'blocked' ? tr('app_mic_blocked') : recording.kind === 'missing' ? tr('app_no_microphone') : null);
@@ -1067,10 +1074,10 @@ function Composer({
           }}
         />
         {voice && <button className={`attach mic ${recording.kind === 'recording' ? 'on' : ''}`} aria-pressed={recording.kind === 'recording'} aria-label={tr(recording.kind === 'recording' ? 'app_mic_stop' : 'app_mic')}
-          disabled={disabled || sendBlocked || streaming || recording.kind === 'transcribing' || recording.kind === 'requesting'} onClick={() => {
-            if (disabled || sendBlocked || streaming) return;
-            if (recording.kind === 'recording') recorder.stop(); else void recorder.start();
-          }}><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="square" aria-hidden="true"><rect x="7" y="2" width="6" height="10" rx="3" /><path d="M4 9.5a6 6 0 0 0 12 0M10 15.5V18M7 18h6" /></svg></button>}
+          disabled={disabled || sendBlocked || streaming || recording.kind === 'transcribing' || recording.kind === 'requesting'}
+          onPointerDown={(event) => { if (event.button === 0) toggleRecording(); }}
+          onPointerCancel={() => recorder.cancel()}
+          onClick={(event) => { if (event.detail === 0) toggleRecording(); }}><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="square" aria-hidden="true"><rect x="7" y="2" width="6" height="10" rx="3" /><path d="M4 9.5a6 6 0 0 0 12 0M10 15.5V18M7 18h6" /></svg></button>}
         {streaming ? (
           <button className="primary small" onClick={onStop}>
             {tr('app_stop')}
