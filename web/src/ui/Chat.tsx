@@ -1,3 +1,6 @@
+import RunItemView from './RunItem';
+import { useRuns } from './useRuns';
+import { fitsRunInput } from '../runs';
 import { VoiceRecorder, VoicePlayer, transcribe, requestSpeech, voiceTime, voiceWords, type RecordingState, type SpeechState } from '../voice';
 import { useInstall, noteCompletedReply, acceptInstall, dismissInstall } from '../install';
 import { encodeInvite } from '../invite';
@@ -213,6 +216,12 @@ export default function Chat({ state, live, dispatch, onRedial, reconnecting = f
         return false;
       });
   }, [live.transport, live.secret, dispatch, host, keys.me]);
+  const agentRuns = useRuns(live, !readOnly && !reconnecting, convs, setConvs, dispatch, refreshMe);
+  const runSaved = useRef(new Map<string, Conversation>());
+  useEffect(() => {
+    if (readOnly) return;
+    for (const c of convs) if (c.messages.some((m) => m.kind === 'run') && runSaved.current.get(c.id) !== c) { persist(c); runSaved.current.set(c.id, c); }
+  }, [convs, readOnly, persist]);
   voiceFault.current = (error) => {
     const friendly = describeError(error, host);
     if (error instanceof GatewayError) dispatch({ t: 'streamError', code: error.code, error: friendly });
@@ -347,7 +356,7 @@ export default function Chat({ state, live, dispatch, onRedial, reconnecting = f
   }, [conv.messages]);
 
   const run = useCallback(
-    async (convId: string, history: Message[], previous?: string, fresh: ImageData = {}) => {
+    async (convId: string, history: Message[], previous?: string, fresh: ImageData = {}, retryId?: string) => {
       if (model === '') {
         setStreaming(false);
         setBanner({
@@ -373,9 +382,15 @@ export default function Chat({ state, live, dispatch, onRedial, reconnecting = f
         setMissingChats((seen) => new Set(seen).add(convId));
       }
       const request = { model, messages, temperature: settings.temperature, ...thinkingFields(settings.thinking) };
+      if (me.agent && history.some((m) => !leftOut.includes(m) && m.images?.some((image) => !data[image.id]))) { setImageNotice(rejectionNotice({ reason: 'missing_image', message: tr('app_image_missing') })); setStreaming(false); abort.current = null; return; }
       if (!fitsRequest(request)) {
         setImageNotice(rejectionNotice({ reason: 'body_too_large', message: tr('app_over_message_size', { size: '4 MB' }) }));
         setStreaming(false); abort.current = null; return;
+      }
+      if (me.agent) {
+        setStreaming(false); abort.current = null;
+        if (!fitsRunInput(request)) { setImageNotice(rejectionNotice({ reason: 'body_too_large', message: tr('app_over_message_size', { size: '1 MiB' }) })); return; }
+        await agentRuns.submit(convId, request, history, retryId); return;
       }
       const note =
         leftOut.length === 0
@@ -428,7 +443,7 @@ export default function Chat({ state, live, dispatch, onRedial, reconnecting = f
       }
       void refreshMe();
     },
-    [live.transport, live.secret, model, settings, patch, dispatch, refreshMe, host, me.host.upstream.model_context, scope],
+    [live.transport, live.secret, model, settings, patch, dispatch, refreshMe, host, me.host.upstream.model_context, me.agent, scope, agentRuns],
   );
 
   async function send(text: string): Promise<void> {
@@ -442,6 +457,9 @@ export default function Chat({ state, live, dispatch, onRedial, reconnecting = f
     const history = [...conv.messages, message];
     if (!fitsRequest({ model, messages: carried(history, settings, me.host.upstream.model_context, message, { ...imageData, ...fresh }).messages, temperature: settings.temperature, ...thinkingFields(settings.thinking) })) {
       setImageNotice(rejectionNotice({ reason: 'body_too_large', message: tr('app_over_message_size', { size: '4 MB' }) })); return;
+    }
+    if (me.agent && !fitsRunInput({ model, messages: carried(history, settings, me.host.upstream.model_context, message, { ...imageData, ...fresh }).messages, temperature: settings.temperature, ...thinkingFields(settings.thinking) })) {
+      setImageNotice(rejectionNotice({ reason: 'body_too_large', message: tr('app_over_message_size', { size: '1 MiB' }) })); return;
     }
     setStreaming(true);
     const next: Conversation = {
@@ -471,7 +489,8 @@ export default function Chat({ state, live, dispatch, onRedial, reconnecting = f
     const idx = lastIndexOfRole(conv.messages, 'user');
     if (idx < 0) return;
     const replaced = conv.messages.slice(idx + 1).find((m) => m.content.trim() !== '')?.content;
-    const asked = text === undefined ? (conv.messages[idx] as Message) : { ...(conv.messages[idx] as Message), content: text.trim(), ...(attachments ? attachmentFields(attachments) : {}) };
+    const original = conv.messages[idx] as Message;
+    const asked = { ...original, ...(me.agent ? { id: newId() } : {}), ...(text === undefined ? {} : { content: text.trim() }), ...(attachments ? attachmentFields(attachments) : {}) };
     const history: Message[] = [...conv.messages.slice(0, idx), asked];
     if (attachments) {
       setStreaming(true);
@@ -481,7 +500,7 @@ export default function Chat({ state, live, dispatch, onRedial, reconnecting = f
       ...c,
       // An edited first message is what this chat is now about; a title from the old one is stale.
       title: idx === 0 ? titleFrom(asked.content) : c.title,
-      messages: history,
+      messages: me.agent ? [...c.messages, asked] : history,
     }));
     void run(conv.id, history, replaced);
   }
@@ -658,7 +677,11 @@ export default function Chat({ state, live, dispatch, onRedial, reconnecting = f
                 onPick={send}
               />
             ) : (
-              conv.messages.map((m, i) => (
+              conv.messages.map((m, i) => m.kind === 'run' ? (
+                <RunItemView key={m.id} item={m} live={live} connected={agentRuns.connected && !sendBlocked && Boolean(m.run && agentRuns.observed.has(m.run.id))} disabled={readOnly || locked || sendBlocked} pending={agentRuns.pending.has(m.id)}
+                  onCancel={() => { void agentRuns.act(m); }} onAnswer={(id, allow) => { void agentRuns.act(m, { id, allow }); }}
+                  onRetry={() => { const at = lastIndexOfRole(conv.messages.slice(0, i), 'user'); if (at >= 0) void run(conv.id, conv.messages.slice(0, at + 1), undefined, {}, m.id); }} />
+              ) : (
                 <MessageView
                   key={m.id}
                   message={m}
@@ -669,7 +692,7 @@ export default function Chat({ state, live, dispatch, onRedial, reconnecting = f
                   host={host}
                   live={streaming && i === conv.messages.length - 1}
                   busy={streaming}
-                  answering={conv.messages[i + 1]?.role === 'assistant' && conv.messages[i + 1]?.status === undefined}
+                  answering={conv.messages[i + 1]?.role === 'assistant' && (conv.messages[i + 1]?.kind === 'run' || conv.messages[i + 1]?.status === undefined)}
                   undelivered={lost.has(m.id)}
                   carried={softened.has(m.id)}
                   readOnly={readOnly}
@@ -842,6 +865,7 @@ function LimitsSheet({ live, messages, onClose }: { live: Live; messages: readon
         <p>{tr('app_limits_images')}</p>
         {ACCEPT(false) && <p>{tr('app_limits_files')}</p>}
         {(hostAudio(me, 'transcriptions') || hostAudio(me, 'speech')) && <p>{tr('app_limits_voice', { host: hostName(me) || tr('app_the_host_lowercase') })}</p>}
+        {me.agent && <p>{tr('app_limits_runs', { host: hostName(me) || tr('app_the_host_lowercase') })}</p>}
         {/* Speed, from where the reader sits (032): this chat's medians and what is inside them. The
             relay round trip is quoted only when there is one: direct mode has no hop. */}
         {pace.n > 0 && (

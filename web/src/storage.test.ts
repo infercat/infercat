@@ -294,8 +294,8 @@ describe('multi-tab conversation storage', () => {
     });
 
     it('ignores the flag an older release stored on the turn', () => {
-      const marked = { ...turn('u1'), pending: true } as Message;
-      saveChat(S, { ...chat('c1', 10, msg('m1', 'x')), messages: [marked, answer('a1', 'complete'), { ...turn('u2'), pending: true } as Message, answer('a2', 'complete')] });
+      const marked = { ...turn('u1'), pending: true } as unknown as Message;
+      saveChat(S, { ...chat('c1', 10, msg('m1', 'x')), messages: [marked, answer('a1', 'complete'), { ...turn('u2'), pending: true } as unknown as Message, answer('a2', 'complete')] });
       expect(undelivered(loadChats(S)[0]?.messages ?? [])).toEqual(new Set());
     });
   });

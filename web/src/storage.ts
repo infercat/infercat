@@ -1,3 +1,4 @@
+import type { RunRecord } from './api';
 import type { AttachedFile, AttachmentRef } from './attachments';
 import type { ImageMeta } from './images';
 import { tr } from './i18n/text';
@@ -14,10 +15,21 @@ export type MessageStatus = 'complete' | 'stopped' | 'interrupted' | 'no_answer'
 
 /** A turn that did not produce an answer is not context for the next one. */
 export function isAnswer(m: Message): boolean {
+  if (m.kind === 'run') return m.run?.state === 'done';
   return m.role !== 'assistant' || (m.status !== 'interrupted' && m.status !== 'no_answer');
 }
 
-export interface Message {
+export interface ChatItem extends MessageFields { kind?: 'message' }
+export interface RunItem extends MessageFields {
+  kind: 'run'; role: 'assistant';
+  run?: RunRecord;
+  remoteId?: string;
+  clientRequestId?: string;
+  keyId?: string;
+  submission?: 'pending' | 'uncertain' | 'refused';
+}
+export type Message = ChatItem | RunItem;
+interface MessageFields {
   id: string;
   role: 'user' | 'assistant';
   content: string;
@@ -316,6 +328,7 @@ export function carriedAfter(messages: readonly Message[]): Set<string> {
  * or the host cut short is not a delivery.
  */
 export function delivered(m: Message | undefined): boolean {
+  if (m?.kind === 'run') return Boolean(m.run);
   return m?.role === 'assistant' && m.status !== undefined && m.status !== 'interrupted';
 }
 
@@ -376,7 +389,8 @@ export function chatsChanged(scope: string, key: string | null): boolean {
  * looks finished, and it is not sent as context.
  */
 export function reopenChats(convs: Conversation[]): Conversation[] {
-  return convs.map((c) =>
+  const recovered = convs.map((c) => ({ ...c, messages: c.messages.map((m) => m.kind === 'run' && m.submission === 'pending' ? { ...m, submission: 'uncertain' as const } : m) }));
+  return recovered.map((c) =>
     c.messages.some(unfinished)
       ? {
           ...c,
@@ -397,6 +411,7 @@ export function reopenChats(convs: Conversation[]): Conversation[] {
 }
 
 function unfinished(m: Message): boolean {
+  if (m.kind === 'run') return false;
   return m.role === 'assistant' && m.status === undefined;
 }
 

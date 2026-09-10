@@ -1159,3 +1159,48 @@ body { overscroll-behavior-y: none; }
 /* Three seconds of live microphone amplitude, same line and 96 px footprint at 390. */
 .waveform { width:96px; height:16px; flex:none; color:var(--text); }
 .waveform path { stroke:currentColor; stroke-width:1.2; fill:none; }
+
+/* ================= NEW: runs in the chat (design record docs/brand/chat-runs/design.md) ================= */
+
+/* A run is a reply-side row: the host's side of the exchange, no bubble. Its first line is the
+   frozen voice line (.spoken) — mono, muted, the live square while something is happening on the
+   host — and since it is the row's first thing it needs no top margin. */
+.row.run > .spoken:first-child { margin-top: 0; }
+
+/* Outputs sit above the words, as attachments do in the bubble, in the frozen .shots row — but a
+   made image is read, not checked, so it is drawn larger than a sent thumbnail: 240 px tall
+   on desktop, 180 px on the phone (the thumbnail is 120 / 80). Pressing it opens the frozen image sheet at full size. */
+.row.run .shots { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 6px; margin: 10px 0 9px; }
+.row.run .shot { display: block; padding: 0; border: 1px solid var(--rule); background: var(--paper); }
+.row.run .shot img { display: block; height: 240px; width: auto; max-width: 100%; object-fit: contain; }
+@media (max-width: 760px) { .row.run .shot img { height: 180px; } }
+.row.run .shots .chip { min-height: 0; padding: 7px 10px; font: inherit; }
+.row.run .shots .chip:hover { background: var(--surface); }
+
+/* The agent's question, only when the harness raises one: the app's own sentence in the
+   .waiting register, the harness's words under it in the Details mono, then two ghost actions.
+   Nothing is cobalt; a question is not the screen's primary control. */
+.row.run .ask { margin: 6px 0 0; font-family: var(--mono); font-size: 12px; color: var(--text); overflow-wrap: anywhere; }
+.row.run .ask + .actions { margin-top: 4px; }
+.app.zh .row.run .ask { font-family: var(--mono-cjk); }
+
+/* The steps: the frozen Details control (details.host-said) under the line, collapsed by default.
+   Inside, one mono line per step in the order it happened — elapsed, the step's name, an arrow and
+   the host's one-line result; the current step carries the live square and no result yet. A
+   thinking step is the reply's own Thinking block, collapsed, with its words hint. (Founder,
+   2026-09-11: do not hide the agent's running state.) */
+.row.run .steps { margin: 4px 0 6px; }
+.row.run .steps summary { font-size: 12.5px; }
+.row.run .step { display: flex; gap: 10px; align-items: baseline; margin: 0; padding: 3px 0; font-family: var(--mono); font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+.row.run .step .at { flex: none; width: 3.4rem; }
+.row.run .step.now { color: var(--text); }
+.row.run .step .live { margin-right: 6px; position: relative; top: -1px; }
+.row.run .step .r { color: var(--muted); }
+.row.run .step button.r { background: none; border: 0; padding: 0; font: inherit; color: var(--muted); cursor: pointer; text-align: left; }
+.row.run .step button.r:hover { color: var(--text); text-decoration: underline; }
+.row.run .steps .thinking { margin: 4px 0 6px 3.4rem; }
+.row.run .steps .thinking .thinking-body { max-height: none; }
+.app.zh .row.run .step { font-family: var(--mono-cjk); }
+
+/* A host-reported path or diagnostic must still fit the frozen step column. */
+.row.run .step > span:last-child { min-width: 0; overflow-wrap: anywhere; }
