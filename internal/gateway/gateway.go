@@ -19,6 +19,7 @@ import (
 	"time"
 
 	"github.com/infercat/infercat/internal/keys"
+	runstate "github.com/infercat/infercat/internal/run"
 	"github.com/infercat/infercat/internal/upstream"
 	"github.com/infercat/infercat/internal/usage"
 )
@@ -60,6 +61,7 @@ const (
 // Gateway serves the API on any number of listeners (the tunnel, and loopback in dev mode) and
 // implements usage.Snapshot for the admin status API.
 type Gateway struct {
+	runs            *runstate.Manager
 	audioHistoryErr error
 	cfg             Config
 	router          *Router
@@ -260,6 +262,10 @@ func cors(h http.Handler) http.Handler {
 		hd.Set("Access-Control-Allow-Origin", "*")
 		hd.Set("Access-Control-Allow-Headers", "authorization, content-type")
 		hd.Set("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+		if isRunRoute(r.URL.Path) {
+			hd.Set("Access-Control-Allow-Headers", "authorization, content-type, last-event-id")
+			hd.Set("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
+		}
 		hd.Set("Access-Control-Expose-Headers", "Retry-After")
 		if r.Method == http.MethodOptions {
 			hd.Set("Access-Control-Max-Age", "600")

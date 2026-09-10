@@ -52,7 +52,7 @@ func Console(store *adminkey.Store, address string, token func() string, rec usa
 func consolePath(method, path string) bool {
 	if method == "GET" {
 		switch path {
-		case "/status", "/keys", "/engine", "/usage", "/settings":
+		case "/status", "/keys", "/engine", "/usage", "/settings", "/runs":
 			return true
 		}
 	}
@@ -155,16 +155,20 @@ func (h *consoleGateway) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		fail(413)
 		return
 	}
-	// Only usage has a query; all other query strings are refused, never relayed or logged.
+	// Only the known usage window and run owner filter are relayed; queries are never logged.
 	query := ""
 	if r.URL.RawQuery != "" {
 		q := r.URL.Query()
 		v := q.Get("window")
-		if path != "/usage" || len(q) != 1 || len(q["window"]) != 1 || (v != "today" && v != "week") {
+		switch {
+		case path == "/usage" && len(q) == 1 && len(q["window"]) == 1 && (v == "today" || v == "week"):
+			query = "?window=" + v
+		case path == "/runs" && len(q) == 1 && len(q["key_id"]) == 1 && consolePath("GET", "/keys/"+q.Get("key_id")):
+			query = "?key_id=" + q.Get("key_id")
+		default:
 			fail(400)
 			return
 		}
-		query = "?window=" + v
 	}
 	req, err := http.NewRequestWithContext(r.Context(), r.Method, "http://"+h.address+"/api"+path+query, strings.NewReader(string(body)))
 	if err != nil {

@@ -21,6 +21,7 @@ import (
 	"github.com/infercat/infercat/internal/gateway"
 	"github.com/infercat/infercat/internal/keys"
 	"github.com/infercat/infercat/internal/product"
+	runstate "github.com/infercat/infercat/internal/run"
 	"github.com/infercat/infercat/internal/upstream"
 	"github.com/infercat/infercat/internal/usage"
 )
@@ -53,6 +54,8 @@ type tunnelOptions struct {
 }
 
 type gatewayServer interface {
+	ExecuteStep(context.Context, string, runstate.Step, func() error) (runstate.StepResult, error)
+	SetRuns(*runstate.Manager)
 	Destinations() []gateway.DestinationStatus
 	Sessions() map[string]int
 	Handler() http.Handler

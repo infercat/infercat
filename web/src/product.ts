@@ -25,9 +25,9 @@ export const VERSION: string = import.meta.env.VITE_APP_VERSION ?? '0.0.1-dev';
 export function privacyLine(hostName: string, logging: boolean): string {
   const whose = hostsComputer(hostName);
   if (logging) {
-    return `Encrypted end-to-end from your device to ${whose} — but this host has prompt logging on, so everything you send and everything the model answers is written to a log on their machine.`;
+    return `Encrypted end-to-end from your device to ${whose} — but this host has prompt logging on, so everything you send and everything the model answers is written to a log on their machine. Chat history stays on your device. The host stores job and run inputs, outputs and trajectories under your key until they expire.`;
   }
-  return `Encrypted end-to-end from your device to ${whose} — the relay in between can’t read it. ${PRODUCT_NAME} records counts, never text. The model runs on their machine.`;
+  return `Encrypted end-to-end from your device to ${whose} — the relay in between can’t read it. ${PRODUCT_NAME} records counts, never text. The model runs on their machine. Chat history stays on your device. The host stores job and run inputs, outputs and trajectories under your key until they expire.`;
 }
 
 /**

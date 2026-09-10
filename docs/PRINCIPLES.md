@@ -39,6 +39,7 @@ goes to the backlog.
 2. **Invite secrets.** Stored hashed on the host; shown once at creation; never logged.
 3. **Friends' usage data.** Counts and timings only; no prompt or completion content unless the host
    opted in with `--log-prompts`, which the app discloses.
+   Chat history stays on your device. The host stores job and run inputs, outputs and trajectories under your key until they expire.
 4. **The upstream engine.** Concurrency and queue caps sized to its slots, so a burst degrades to
    429/503 with Retry-After rather than an out-of-memory engine.
 

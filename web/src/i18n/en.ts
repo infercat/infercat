@@ -621,9 +621,9 @@ export const en = {
   // Parser: prefix and format example unchanged.
   app_invite_part_count: "An invite has three dot-separated parts ({prefix}.address.secret); this one has {count}.",
   // Dynamic privacy line used in Chat/Connect; computer phrase localized, name unchanged.
-  app_privacy_normal: "Encrypted end-to-end from your device to {computer} — the relay in between can’t read it. {product} records counts, never text. The model runs on their machine.",
+  app_privacy_normal: "Encrypted end-to-end from your device to {computer} — the relay in between can’t read it. {product} records counts, never text. The model runs on their machine. Chat history stays on your device. The host stores job and run inputs, outputs and trajectories under your key until they expire.",
   // Dynamic logging privacy line; computer phrase localized.
-  app_privacy_logging: "Encrypted end-to-end from your device to {computer} — but this host has prompt logging on, so everything you send and everything the model answers is written to a log on their machine.",
+  app_privacy_logging: "Encrypted end-to-end from your device to {computer} — but this host has prompt logging on, so everything you send and everything the model answers is written to a log on their machine. Chat history stays on your device. The host stores job and run inputs, outputs and trajectories under your key until they expire.",
   // Computer-name formatter: empty host name.
   app_host_computer_unnamed: "your host’s computer",
   // Computer-name formatter: name already describes a device or possessive.

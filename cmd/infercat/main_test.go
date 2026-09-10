@@ -24,6 +24,7 @@ import (
 	"github.com/infercat/infercat/internal/gateway"
 	"github.com/infercat/infercat/internal/keys"
 	"github.com/infercat/infercat/internal/product"
+	runstate "github.com/infercat/infercat/internal/run"
 	"github.com/infercat/infercat/internal/upstream"
 	"github.com/infercat/infercat/internal/usage"
 )
@@ -1130,4 +1131,9 @@ func TestServeRemembersModelPinAndAllClearsIt(t *testing.T) {
 			t.Fatal("all left a remembered pin")
 		}
 	}
+}
+
+func (g *fakeGateway) SetRuns(*runstate.Manager) {}
+func (g *fakeGateway) ExecuteStep(context.Context, string, runstate.Step, func() error) (runstate.StepResult, error) {
+	return runstate.StepResult{}, nil
 }
