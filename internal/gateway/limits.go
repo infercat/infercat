@@ -37,24 +37,45 @@ import (
 const window = 60 * time.Second
 
 type logEntry struct {
+	t   time.Time
+	req int    // 1 for an admission, 0 for a token charge
+	seq uint64 // admissions: which admission wrote it, so settle removes exactly its own
+}
+
+type meterCharge struct {
 	t      time.Time
-	req    int    // 1 for an admission, 0 for a token charge
-	seq    uint64 // admissions: which admission wrote it, so settle removes exactly its own
-	tokens int
+	amount float64
+}
+
+type meterState struct {
+	today, reserved float64
+	log             []meterCharge
 }
 
 type keyState struct {
-	audioSeconds, audioReserved float64
-	speechChars, speechReserved int
-	mu                          sync.Mutex
-	log                         []logEntry
-	seq                         uint64 // the last admission seq handed out
-	inFlight                    int
-	reserved                    int       // prompt + max_tokens of requests in flight, counted by TPM and daily until settled
-	day                         time.Time // UTC midnight of the day `today` counts
-	today                       int
-	lastSeen                    time.Time
+	mu       sync.Mutex
+	log      []logEntry
+	seq      uint64
+	inFlight int
+	day      time.Time
+	lastSeen time.Time
+	meters   map[string]*meterState
 }
+
+// Caller holds the key lock; all classes share its admission/settlement boundary.
+func (st *keyState) meter(class string) *meterState {
+	if st.meters == nil {
+		st.meters = map[string]*meterState{}
+	}
+	if st.meters[class] == nil {
+		st.meters[class] = &meterState{}
+	}
+	return st.meters[class]
+}
+
+// Caller holds the key lock, as for other meter reads.
+func (st *keyState) tokensToday() int    { return int(st.meter("tokens").today) }
+func (st *keyState) tokensReserved() int { return int(st.meter("tokens").reserved) }
 
 // admission is what admit hands out and settle takes back: the key, the RPM entry this admission
 // wrote (by seq), and the tokens reserve later put on it. The request record holds it; nothing
@@ -79,7 +100,7 @@ func newLimiter() *limiter {
 }
 
 // seedToday restores each key's day from history at start: `today` is what that key was charged
-// since UTC midnight (prompt+completion, the same sum settle charges) and `lastSeen` is its last
+// since UTC midnight (the recorded charge for each class) and `lastSeen` is its last
 // recorded request. day must be the UTC midnight the report was filtered from, so prune keeps the
 // seeded totals until the day actually rolls. Nothing else is restored: reservations and the
 // sliding minute belong to requests that died with the old process.
@@ -90,8 +111,10 @@ func (l *limiter) seedToday(rep *usage.Report, day time.Time) {
 		}
 		st := l.state(s.KeyID)
 		st.mu.Lock()
-		st.day, st.today, st.lastSeen = day, s.PromptTokens+s.CompletionTokens, s.LastSeen
-		st.audioSeconds, st.speechChars = s.Seconds, s.Characters
+		st.day, st.lastSeen = day, s.LastSeen
+		for _, m := range s.Meters {
+			st.meter(m.Class).today = m.Charged
+		}
 		st.mu.Unlock()
 	}
 }
@@ -118,17 +141,26 @@ func (st *keyState) prune(now time.Time) {
 		st.log = append(st.log[:0], st.log[i:]...)
 	}
 	day := now.UTC().Truncate(24 * time.Hour)
-	if !day.Equal(st.day) {
-		st.day, st.today = day, 0
-		st.audioSeconds, st.speechChars = 0, 0
+	for _, m := range st.meters {
+		i := 0
+		for i < len(m.log) && !m.log[i].t.After(cutoff) {
+			i++
+		}
+		m.log = m.log[i:]
+		if !day.Equal(st.day) {
+			m.today = 0
+		}
 	}
+	st.day = day
 }
 
 // used returns (requests, tokens) in the window. Caller holds st.mu after prune.
 func (st *keyState) used() (reqs, tokens int) {
 	for _, e := range st.log {
 		reqs += e.req
-		tokens += e.tokens
+	}
+	for _, e := range st.meter("tokens").log {
+		tokens += int(e.amount)
 	}
 	return
 }
@@ -234,34 +266,37 @@ func (l *limiter) reserve(a *admission, lim keys.Limits, prompt, out int) (int, 
 	now := l.now()
 	st.prune(now)
 	_, charged := st.used()
-	live := charged + st.reserved
+	m := st.meter("tokens")
+	budgets := lim.Budgets()
+	minute, daily := budgets.Amount("tokens", "minute"), budgets.Amount("tokens", "day")
+	live := charged + int(m.reserved)
 	need := prompt + floorFor(out)
-	fitted, ok := fitBudget(lim.TPM, live, prompt, out)
+	fitted, ok := fitBudget(minute, live, prompt, out)
 	if !ok {
 		// Walk the log oldest-first until enough tokens have expired for the least this request
 		// can take to fit; a reservation never expires by time, so it may not fit before the window.
 		retry := 1
 		remaining := live
-		for _, e := range st.log {
-			remaining -= e.tokens
-			if remaining+need <= lim.TPM {
+		for _, e := range m.log {
+			remaining -= int(e.amount)
+			if remaining+need <= minute {
 				retry = secondsUntil(e.t.Add(window), now)
 				break
 			}
 		}
-		if remaining+need > lim.TPM {
+		if remaining+need > minute {
 			retry = secondsUntil(now.Add(window), now)
 		}
-		return 0, errf(CodeRateLimited, retry, "token limit: %d tokens per minute; %d used, this request needs at least %d", lim.TPM, live, need)
+		return 0, errf(CodeRateLimited, retry, "token limit: %d tokens per minute; %d used, this request needs at least %d", minute, live, need)
 	}
 	out = fitted
-	if fitted, ok = fitBudget(lim.DailyTokens, st.today+st.reserved, prompt, out); !ok {
+	if fitted, ok = fitBudget(daily, int(m.today+m.reserved), prompt, out); !ok {
 		midnight := st.day.Add(24 * time.Hour)
-		return 0, errf(CodeBudgetExhausted, secondsUntil(midnight, now), "daily budget: %d tokens per day (UTC); %d used, this request needs at least %d", lim.DailyTokens, st.today+st.reserved, need)
+		return 0, errf(CodeBudgetExhausted, secondsUntil(midnight, now), "daily budget: %d tokens per day (UTC); %d used, this request needs at least %d", daily, int(m.today+m.reserved), need)
 	}
 	out = fitted
 	a.reserved = prompt + max(out, 0)
-	st.reserved += a.reserved
+	m.reserved += float64(a.reserved)
 	return out, nil
 }
 
@@ -269,14 +304,15 @@ func (l *limiter) reserve(a *admission, lim keys.Limits, prompt, out int) (int, 
 // per-key slot, drops the reservation, removes the admission's own RPM entry when the request did
 // not count, and charges what the request cost against the window and the day. Nothing is
 // clamped at zero on purpose: a second settle would show up as a negative counter (I1).
-func (l *limiter) settle(a *admission, counted bool, charged int) {
+func (l *limiter) settle(a *admission, counted bool, charged int) time.Time {
 	st := l.state(a.key)
 	st.mu.Lock()
 	defer st.mu.Unlock()
 	now := l.now()
 	st.prune(now)
 	st.inFlight--
-	st.reserved -= a.reserved
+	m := st.meter("tokens")
+	m.reserved -= float64(a.reserved)
 	if !counted {
 		for i, e := range st.log {
 			if e.req == 1 && e.seq == a.seq {
@@ -286,9 +322,10 @@ func (l *limiter) settle(a *admission, counted bool, charged int) {
 		}
 	}
 	if charged > 0 {
-		st.log = append(st.log, logEntry{t: now, tokens: charged})
-		st.today += charged
+		m.log = append(m.log, meterCharge{t: now, amount: float64(charged)})
+		m.today += float64(charged)
 	}
+	return now
 }
 
 func (l *limiter) counters(id string) usage.KeyCounters {
@@ -302,7 +339,8 @@ func (l *limiter) counters(id string) usage.KeyCounters {
 	defer st.mu.Unlock()
 	st.prune(l.now())
 	reqs, tokens := st.used()
-	return usage.KeyCounters{TodayAudioSeconds: st.audioSeconds + st.audioReserved, TodaySpeechChars: st.speechChars + st.speechReserved, InFlight: st.inFlight, RPMUsed: reqs, TPMUsed: tokens + st.reserved, TodayTokens: st.today + st.reserved, LastSeen: st.lastSeen}
+	text, audio, speech := st.meter("tokens"), st.meter("audio"), st.meter("speech")
+	return usage.KeyCounters{TodayAudioSeconds: audio.today + audio.reserved, TodaySpeechChars: int(speech.today + speech.reserved), InFlight: st.inFlight, RPMUsed: reqs, TPMUsed: tokens + int(text.reserved), TodayTokens: int(text.today + text.reserved), LastSeen: st.lastSeen}
 }
 
 func (l *limiter) allCounters() map[string]usage.KeyCounters {

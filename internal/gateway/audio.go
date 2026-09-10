@@ -18,7 +18,6 @@ import (
 	"time"
 	"unicode/utf8"
 
-	"github.com/infercat/infercat/internal/keys"
 	"github.com/infercat/infercat/internal/upstream"
 )
 
@@ -223,22 +222,26 @@ func (q *request) reserveAudio() *gwError {
 	defer st.mu.Unlock()
 	now := q.g.lim.now()
 	st.prune(now)
-	lim := keys.AudioDefaults(q.key.Limits)
+	budgets := q.key.Limits.Budgets()
 	retry := secondsUntil(st.day.Add(24*time.Hour), now)
 	if q.kind == transcribeEndpoint {
+		m := st.meter("audio")
+		limit := float64(budgets.Amount("audio", "day"))
 		need := q.ev.ReservedSeconds
-		if lim.DailyAudioSeconds > 0 && st.audioSeconds+st.audioReserved+need > float64(lim.DailyAudioSeconds) {
-			return errf(CodeAudioBudgetExhausted, retry, "daily audio budget: %.3g seconds remaining; this request reserves %.3g", math.Max(0, float64(lim.DailyAudioSeconds)-st.audioSeconds-st.audioReserved), need)
+		if limit > 0 && m.today+m.reserved+need > limit {
+			return errf(CodeAudioBudgetExhausted, retry, "daily audio budget: %.3g seconds remaining; this request reserves %.3g", math.Max(0, limit-m.today-m.reserved), need)
 		}
 		q.adm.audioSeconds = need
-		st.audioReserved += need
+		m.reserved += need
 	} else {
-		need := q.audio.chars
-		if lim.DailySpeechChars > 0 && st.speechChars+st.speechReserved+need > lim.DailySpeechChars {
+		m := st.meter("speech")
+		limit := float64(budgets.Amount("speech", "day"))
+		need := float64(q.audio.chars)
+		if limit > 0 && m.today+m.reserved+need > limit {
 			return errf(CodeSpeechBudgetExhausted, retry, "daily speech character budget is exhausted")
 		}
-		q.adm.speechChars = need
-		st.speechReserved += need
+		q.adm.speechChars = q.audio.chars
+		m.reserved += need
 	}
 	return nil
 }
@@ -341,15 +344,15 @@ func (q *request) settleAudio() {
 	defer st.mu.Unlock()
 	now := q.g.lim.now()
 	st.prune(now)
-	st.audioReserved -= q.adm.audioSeconds
-	st.speechReserved -= q.adm.speechChars
+	st.meter("audio").reserved -= q.adm.audioSeconds
+	st.meter("speech").reserved -= float64(q.adm.speechChars)
+	q.ev.SettledAt = now // charge and replay belong to the UTC day the call settles on.
 	if !q.audio.dispatched.Load() {
 		return
 	}
-	q.ev.TS = now // charge and replay belong to the UTC day the call settles on.
 	if q.kind == speechEndpoint {
 		q.ev.Characters = q.adm.speechChars
-		st.speechChars += q.ev.Characters
+		st.meter("speech").today += float64(q.ev.Characters)
 		return
 	}
 	q.ev.Seconds = q.adm.audioSeconds
@@ -359,5 +362,5 @@ func (q *request) settleAudio() {
 		q.ev.SecondsEstimated = false
 	}
 	q.ev.OverrunSeconds = math.Max(0, q.ev.Seconds-q.ev.ReservedSeconds)
-	st.audioSeconds += q.ev.Seconds
+	st.meter("audio").today += q.ev.Seconds
 }

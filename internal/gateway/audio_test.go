@@ -365,7 +365,7 @@ func TestAudioBudgetRollsAtUTCMidnight(t *testing.T) {
 	if r.header.Get("Retry-After") != "5" {
 		t.Fatalf("UTC retry: %s", r.header.Get("Retry-After"))
 	}
-	if ev := h.rec.waitFor(t, 2)[0]; !ev.TS.Equal(now) {
+	if ev := h.rec.waitFor(t, 2)[0]; !ev.SettledAt.Equal(now) {
 		t.Fatal("event and charge use different UTC days")
 	}
 	now = now.Add(6 * time.Second)

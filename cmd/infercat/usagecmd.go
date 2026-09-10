@@ -72,12 +72,13 @@ func (e *env) writeUsage(rep *usage.Report, since, keyID string, names map[strin
 	}
 	t := rep.Total
 	fmt.Fprintf(e.out, "usage · last %s · %s\n\n", since, scope)
-	if t.Requests == 0 {
+	if t.Requests == 0 && len(t.Meters) == 0 {
 		fmt.Fprintln(e.out, "nothing yet")
 		return
 	}
 	fmt.Fprintf(e.out, "requests  %s%s%s\n", calls(t.ModelCalls), polls(t.AppPolls), errs(t.Errors, t.ErrorsByCode))
-	fmt.Fprintf(e.out, "tokens    %s prompt  %s completion\n", comma(t.PromptTokens), comma(t.CompletionTokens))
+	fmt.Fprintf(e.out, "charged   %s\n", meterTotals(t))
+	fmt.Fprintf(e.out, "observed  %s prompt  %s completion\n", comma(t.PromptTokens), comma(t.CompletionTokens))
 	fmt.Fprintf(e.out, "ttft      median %s  p95 %s\n", ms(t.TTFTMedianMS), ms(t.TTFTP95MS))
 	fmt.Fprintf(e.out, "total     median %s  p95 %s   (successful model calls only)\n", ms(t.TotalMedianMS), ms(t.TotalP95MS))
 	fmt.Fprintf(e.out, "counts    %s\n", countsLine)
@@ -85,6 +86,7 @@ func (e *env) writeUsage(rep *usage.Report, since, keyID string, names map[strin
 		s := rep.ByVia[via]
 		fmt.Fprintf(e.out, "via %-6s %s%s%s · %s prompt  %s completion\n", via,
 			calls(s.ModelCalls), polls(s.AppPolls), errs(s.Errors, s.ErrorsByCode), comma(s.PromptTokens), comma(s.CompletionTokens))
+		fmt.Fprintf(e.out, "           charged %s\n", meterTotals(*s))
 	}
 	if rep.Malformed > 0 {
 		fmt.Fprintf(e.out, "\n%d unreadable line(s) in the log were skipped\n", rep.Malformed)
@@ -94,17 +96,26 @@ func (e *env) writeUsage(rep *usage.Report, since, keyID string, names map[strin
 	}
 	fmt.Fprintln(e.out)
 	tw := tabwriter.NewWriter(e.out, 0, 0, 2, ' ', 0)
-	fmt.Fprintln(tw, "ID\tNAME\tVIA\tCALLS\tPOLLS\tERR\tPROMPT\tCOMPLETION\tTTFT p50\tTOTAL p50\tLAST SEEN")
+	fmt.Fprintln(tw, "ID\tNAME\tVIA\tCALLS\tPOLLS\tERR\tPROMPT\tCOMPLETION\tTTFT p50\tTOTAL p50\tLAST SEEN\tCHARGED")
 	for _, k := range rep.Keys {
 		for _, via := range sortedVias(k.ByVia) {
 			s := k.ByVia[via]
-			fmt.Fprintf(tw, "%s\t%s\t%s\t%d\t%d\t%d\t%s\t%s\t%s\t%s\t%s\n",
+			fmt.Fprintf(tw, "%s\t%s\t%s\t%d\t%d\t%d\t%s\t%s\t%s\t%s\t%s\t%s\n",
 				orDash(k.KeyID), orDash(names[k.KeyID]), via, s.ModelCalls, s.AppPolls, s.Errors,
 				comma(s.PromptTokens), comma(s.CompletionTokens),
-				ms(s.TTFTMedianMS), ms(s.TotalMedianMS), ago(s.LastSeen))
+				ms(s.TTFTMedianMS), ms(s.TotalMedianMS), ago(s.LastSeen), meterTotals(*s))
 		}
 	}
 	tw.Flush()
+}
+
+// Keep unknown classes visible without teaching the CLI about each capability.
+func meterTotals(s usage.Stats) string {
+	parts := make([]string, 0, len(s.Meters))
+	for _, m := range s.Meters {
+		parts = append(parts, fmt.Sprintf("%s %s (%s)", strconv.FormatFloat(m.Charged, 'f', -1, 64), m.Unit, m.Class))
+	}
+	return strings.Join(parts, " · ")
 }
 
 func sortedVias(by map[string]*usage.Stats) []string {
