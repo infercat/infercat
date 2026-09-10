@@ -403,6 +403,9 @@ func (s *Store) change(key, rid string, fn func(*Run) error, retain ...func(*Ret
 	return committed, nil
 }
 func (s *Store) CreateBatch(key, kind, priority string, inputs []json.RawMessage, cap int, admit ...func([]Run) (func(), error)) ([]Run, error) {
+	if kind == "image" && len(inputs) > MaxLiveKey {
+		return nil, ErrQueueLimit
+	}
 	if len(inputs) == 0 || len(inputs) > MaxLiveKey {
 		return nil, ErrLimit
 	}
@@ -420,24 +423,22 @@ func (s *Store) CreateBatch(key, kind, priority string, inputs []json.RawMessage
 	if err != nil {
 		return nil, err
 	}
-	keyLive, total, queued := 0, 0, 0
-	for k, d := range s.data {
-		if s.broken[k] != nil {
-			continue
-		}
-		for _, r := range d.Runs {
-			if !terminal(r.State) {
-				total++
-				if k == key {
-					keyLive++
-					if r.Kind == kind && r.State == Queued {
-						queued++
-					}
-				}
+	keyLive, imageLive, queued := 0, 0, 0
+	for _, r := range v.Runs {
+		if !terminal(r.State) {
+			keyLive++
+			if r.Kind == "image" {
+				imageLive++
+			}
+			if r.Kind == kind && r.State == Queued {
+				queued++
 			}
 		}
 	}
-	if keyLive+len(inputs) > MaxLiveKey || total+len(inputs) > MaxLiveHost || len(v.Runs)+len(inputs) > MaxRuns {
+	if (kind == "image" && imageLive+len(inputs) > MaxLiveKey) || (kind == "image" && cap >= 0 && queued+len(inputs) > cap) {
+		return nil, ErrQueueLimit
+	}
+	if keyLive+len(inputs) > MaxLiveKey || len(v.Runs)+len(inputs) > MaxRuns {
 		return nil, ErrLimit
 	}
 	if cap >= 0 && queued+len(inputs) > cap {
@@ -462,13 +463,30 @@ func (s *Store) CreateBatch(key, kind, priority string, inputs []json.RawMessage
 			return nil, err
 		}
 	}
-	// A batch has one durable admission point. Its event prompts the image list to refresh all siblings.
-	if err = s.commit(key, next, &Event{RunID: rows[0].ID, State: Queued, Time: now}); err != nil {
-		if rollback != nil {
+	committed := false
+	defer func() {
+		if !committed && rollback != nil {
 			rollback()
 		}
+	}()
+	total := 0
+	for k, data := range s.data {
+		if s.broken[k] == nil {
+			for _, r := range data.Runs {
+				if !terminal(r.State) {
+					total++
+				}
+			}
+		}
+	}
+	if total+len(inputs) > MaxLiveHost {
+		return nil, ErrLimit
+	}
+	// A batch has one durable admission point. Its event prompts the image list to refresh all siblings.
+	if err = s.commit(key, next, &Event{RunID: rows[0].ID, State: Queued, Time: now}); err != nil {
 		return nil, err
 	}
+	committed = true
 	for i := range rows {
 		rows[i] = clone(next).Runs[rows[i].ID]
 	}

@@ -54,6 +54,7 @@ type meterState struct {
 
 type keyState struct {
 	imageHolds map[string]bool
+	imageReads int
 	mu         sync.Mutex
 	log        []logEntry
 	seq        uint64
@@ -82,7 +83,6 @@ func (st *keyState) tokensReserved() int { return int(st.meter("tokens").reserve
 // wrote (by seq), and the tokens reserve later put on it. The request record holds it; nothing
 // else ends it.
 type admission struct {
-	images       int
 	detached     bool
 	audioSeconds float64
 	speechChars  int

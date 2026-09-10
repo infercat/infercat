@@ -380,7 +380,8 @@ func (q *request) me() {
 	var m meResponse
 	m.Key.ID, m.Key.Name, m.Key.Status = q.key.ID, q.key.Name, q.key.Status
 	m.Limits = keys.AudioDefaults(q.key.Limits)
-	m.Host.Images = q.g.imageOffer(q.key)
+	m.Host.Images, _ = q.g.imageOffer(q.key)
+	m.Limits.MaxQueuedImages = ImageQueueCap(q.key.Limits)
 	cnt := q.g.lim.counters(q.key.ID)
 	m.Usage.TodayImages = cnt.TodayImages
 	m.Usage.RPMUsed, m.Usage.TPMUsed, m.Usage.TodayTokens, m.Usage.InFlight = cnt.RPMUsed, cnt.TPMUsed, cnt.TodayTokens, cnt.InFlight

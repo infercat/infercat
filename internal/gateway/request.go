@@ -36,7 +36,7 @@ const (
 // ruling; measured on the real stack, 014 Log).
 func (e endpoint) countsAgainstRPM() bool {
 	_, class := usage.ModelEndpoint(string(e))
-	return class != "" || e == "/v1/images/jobs" || strings.HasPrefix(string(e), "/v1/images/outputs/")
+	return class != "" || e == "/v1/images/jobs" || strings.HasPrefix(string(e), "/v1/images/outputs/") || strings.HasPrefix(string(e), "/v1/runs/")
 }
 
 // outcome is how a request ended, set by the stage that ended it (DESIGN §1.4). finish reads it
@@ -72,6 +72,8 @@ type normalized struct {
 // rejection, client abort, timeout, and panic all leave through it; no stage releases anything
 // itself (ticket 006 design ruling).
 type request struct {
+	readRelease func()
+
 	onAcquired     func() error
 	dispatched     atomic.Bool
 	destination    *Destination
@@ -452,6 +454,9 @@ func (q *request) relay() *gwError {
 // admission by the settle table, and records the usage event. It is deferred by serveHTTP and is
 // the only way out.
 func (q *request) finish() {
+	if q.readRelease != nil {
+		q.readRelease()
+	}
 	if q.idle != nil {
 		q.idle.Stop()
 	}
@@ -553,6 +558,22 @@ func (q *request) settleRow() (counted bool, charged int) {
 // fail writes e as the response: a full error response if nothing was written yet, an SSE error
 // event if a stream is under way, or nothing if the friend has already gone (recorded as 499).
 func (q *request) fail(e *gwError) {
+	if q.image != nil {
+		if q.r.Context().Err() != nil && !q.dispatched.Load() {
+			q.ev.Status, q.ev.Code = 503, "interrupted" // Run reason, never an HTTP response.
+			return
+		}
+		if q.r.Context().Err() != nil && !q.image.definitiveFailure {
+			q.image.abandoned = true
+			e = q.imageAbandoned("the host stopped while the engine was working")
+		}
+		q.image.failure = errorJSON(e, true)
+		if q.r.Context().Err() != nil {
+			q.ev.Status, q.ev.Code = e.Status(), string(e.Code)
+			return
+		}
+	}
+
 	if q.wroteHeader {
 		q.ev.Code = string(e.Code)
 		if q.audio != nil {

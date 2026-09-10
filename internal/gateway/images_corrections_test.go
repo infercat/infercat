@@ -54,6 +54,7 @@ func TestAbandonedImageWaitsForFreshProbe(t *testing.T) {
 		}
 		_ = json.NewEncoder(w).Encode(map[string]any{"data": []map[string]string{{"b64_json": tinyImage()}}})
 	})
+	h.gw.imageProbeEvery = 200 * time.Millisecond
 	response := h.post("/v1/images/generations", `{"prompt":"reset"}`)
 	h.expectErr(response, CodeImageAbandoned)
 	if !strings.Contains(string(response.body), "connection") || strings.Contains(string(response.body), "in time") {
@@ -72,9 +73,7 @@ func TestAbandonedImageWaitsForFreshProbe(t *testing.T) {
 	if calls.Load() != 1 {
 		t.Fatal("dispatched before a fresh successful probe")
 	}
-	if e := h.gw.cfg.Images.Refresh(context.Background()); e != nil {
-		t.Fatal(e)
-	}
+	// No external prober: the recovery gate refreshes the actual engine itself.
 	waitImageJob(t, h, row.ID, runstate.Done)
 	if calls.Load() != 2 {
 		t.Fatal(calls.Load())
@@ -123,10 +122,15 @@ func TestImageReadsAdmitAndSpendRPM(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	h.expectErr(h.get("/v1/images/outputs/"+r.ID), CodeConcurrencyLimited)
+	if response := h.get("/v1/images/outputs/" + r.ID); response.status != 200 {
+		t.Fatal("chat blocked image read", response.status)
+	}
 	h.gw.lim.settle(a, false, 0)
-	if h.get("/v1/images/jobs").status != 200 || h.get("/v1/images/outputs/"+r.ID).status != 200 {
+	if h.get("/v1/images/jobs").status != 200 {
 		t.Fatal("read failed")
+	}
+	if h.get("/v1/images/jobs").status != 200 {
+		t.Fatal("second rated list failed")
 	}
 	h.expectErr(h.get("/v1/images/jobs"), CodeRateLimited)
 	if h.gw.Counters(h.key.ID).RPMUsed != 2 {
@@ -145,7 +149,7 @@ func TestImagePinAndPromptLogging(t *testing.T) {
 		h.gw.cfg.ModelsPinned = []string{"m1"}
 		h.gw.router.pinned = []string{"m1"}
 		h.gw.cfg.LogPrompts = enabled
-		if h.gw.imageOffer(h.key) == nil {
+		if offer, _ := h.gw.imageOffer(h.key); offer == nil {
 			t.Fatal("text pin hid images")
 		}
 		row := submittedImages(t, h.post("/v1/images/jobs", `{"prompts":["retained prompt"]}`))[0]
@@ -158,7 +162,7 @@ func TestImagePinAndPromptLogging(t *testing.T) {
 			t.Fatal("log opt-in not honored")
 		}
 		h.setKey(func(k *keys.Key) { k.Limits.Models = []string{"m1"} })
-		if h.gw.imageOffer(h.key) != nil {
+		if offer, _ := h.gw.imageOffer(h.key); offer != nil {
 			t.Fatal("key allowlist ignored")
 		}
 	}
@@ -261,7 +265,7 @@ func TestImageUnlimitedEffectiveValues(t *testing.T) {
 	if e := json.Unmarshal(h.get("/me").body, &me); e != nil {
 		t.Fatal(e)
 	}
-	if me.Limits.DailyImages != -1 || me.Limits.MaxQueuedImages != -1 || me.Host.Images.QueueCap != -1 {
+	if me.Limits.DailyImages != -1 || me.Limits.MaxQueuedImages != 16 || me.Host.Images.QueueCap != 16 {
 		t.Fatal(me.Limits, me.Host.Images)
 	}
 	rows := submittedImages(t, h.post("/v1/images/jobs", `{"prompts":["a","b"]}`))

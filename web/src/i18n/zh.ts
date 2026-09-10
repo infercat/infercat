@@ -107,6 +107,8 @@ export const zh = {
   app_limits_files: "文件以其文字发送。网页版在你的设备上把文字取出来——PDF 的文本层、Word 文件的段落、代码原样——按打字的文字计数，进度条已经把它们算在内。本对话里的每个文件都会随每次提问再发一遍。",
 
   app_attachment_reading: '读取中…',
+  app_image_storage_failed: '主机无法保存这张图片，没有扣除额度。',
+  app_image_storage_retry: '请重试。如果仍然失败，主机的磁盘需要检查。',
   app_image_limit: '每条消息最多 4 张图片。',
   app_attach_an_image: "添加图片",
   app_remove_image: "移除图片",

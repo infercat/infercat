@@ -244,6 +244,18 @@ func writeStatus(w io.Writer, st admin.Status) {
 	fmt.Fprintf(w, "queue     %d in flight, %d waiting  (peak %d in flight, sampled)\n", st.Queue.InFlight, st.Queue.Waiting, st.Engine.SlotsPeak)
 	fmt.Fprintf(w, "engine    %s\n", engineWords(st.Engine))
 	fmt.Fprintf(w, "process   %s\n", processWords(st.Process))
+	for _, d := range st.Destinations {
+		if d.ImageAbandons == 1 {
+			fmt.Fprintln(w, "images    1 failed generation; the next counted failure makes the engine suspect")
+		}
+		if d.ImageAbandons >= 2 {
+			retry := "retry wait elapsed"
+			if at := time.Unix(0, d.ImageRetryAt); time.Until(at) > 0 {
+				retry = "next retry " + at.Format(time.RFC3339)
+			}
+			fmt.Fprintf(w, "images    suspect: %d failed generations; %s (further failures do not count)\n", d.ImageAbandons, retry)
+		}
+	}
 	if st.ImageCleanupPending > 0 {
 		fmt.Fprintf(w, "images    %d stale output files awaiting cleanup\n", st.ImageCleanupPending)
 	}

@@ -521,6 +521,8 @@ const COPY: Record<
   string,
   { title: string; detail: string; fatal?: boolean; retry?: boolean; paused?: boolean }
 > = {
+  storage_failed: { get title() { return tr('app_image_storage_failed'); },
+    get detail() { return tr('app_image_storage_retry'); } },
   invalid_request: { get title() { return tr('app_the_host_could_not_read_that_request'); },
     get detail() { return tr('app_this_is_the_app_s_fault_not_yours_start'); } },
   not_found: { get title() { return tr('app_the_host_has_no_such_endpoint'); },

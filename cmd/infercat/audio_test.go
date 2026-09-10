@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/infercat/infercat/internal/admin"
+	"github.com/infercat/infercat/internal/gateway"
 	"github.com/infercat/infercat/internal/keys"
 	"github.com/infercat/infercat/internal/upstream"
 	"github.com/infercat/infercat/internal/usage"
@@ -183,5 +184,42 @@ func TestStatusReportsPendingImageCleanup(t *testing.T) {
 	writeStatus(&out, admin.Status{ImageCleanupPending: 2})
 	if !strings.Contains(out.String(), "2 stale output files awaiting cleanup") {
 		t.Fatal(out.String())
+	}
+}
+
+func TestImageQueueCLIShowsEffectiveCapAndSuspectStatus(t *testing.T) {
+	dir := t.TempDir()
+	plat := testPlatform(fakeAddr, nil)
+	for _, value := range []string{"-1", "32"} {
+		name := "q" + strings.TrimPrefix(value, "-")
+		if r := exec(t, plat, "keys", "add", name, "--max-queued-images", value, "--data-dir", dir); r.code != 0 {
+			t.Fatal(r.err)
+		}
+	}
+	listed := exec(t, plat, "keys", "list", "--data-dir", dir)
+	lines := strings.Split(strings.TrimSpace(listed.out), "\n")
+	for _, line := range lines[1:] {
+		fields := strings.Fields(line)
+		if len(fields) < 11 || fields[9] != "16" {
+			t.Fatal(line)
+		}
+	}
+	var out strings.Builder
+	writeStatus(&out, admin.Status{Destinations: []gateway.DestinationStatus{{ID: "images", ImageAbandons: 3, ImageRetryAt: time.Now().Add(time.Minute).UnixNano()}}})
+	if !strings.Contains(out.String(), "suspect: 3") || !strings.Contains(out.String(), "further failures do not count") {
+		t.Fatal(out.String())
+	}
+}
+
+func TestImageStatusSingleFailureAndElapsedRetry(t *testing.T) {
+	for _, n := range []int64{1, 2} {
+		var out strings.Builder
+		writeStatus(&out, admin.Status{Destinations: []gateway.DestinationStatus{{ID: "images", ImageAbandons: n, ImageRetryAt: time.Now().Add(-time.Minute).UnixNano()}}})
+		if n == 1 && !strings.Contains(out.String(), "1 failed generation") {
+			t.Fatal(out.String())
+		}
+		if n == 2 && (!strings.Contains(out.String(), "retry wait elapsed") || strings.Contains(out.String(), "next retry 20")) {
+			t.Fatal(out.String())
+		}
 	}
 }

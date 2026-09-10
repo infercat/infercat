@@ -141,9 +141,9 @@ Auth: `Authorization: Bearer <secret>` on every route except `/healthz`.
 
 Error format (OpenAI-shaped, MUST):
 ```json
-{"error":{"message":"human sentence","type":"invalid_request_error|authentication_error|permission_error|rate_limit_error|upstream_error","code":"invalid_request|invalid_key|key_paused|key_revoked|model_not_allowed|not_found|body_too_large|context_too_long|rate_limited|concurrency_limited|budget_exhausted|queue_timeout|upstream_down|upstream_error"}}
+{"error":{"message":"human sentence","type":"invalid_request_error|authentication_error|permission_error|rate_limit_error|upstream_error|server_error","code":"invalid_request|invalid_key|key_paused|key_revoked|model_not_allowed|not_found|body_too_large|context_too_long|rate_limited|concurrency_limited|budget_exhausted|queue_timeout|upstream_down|upstream_error|storage_failed"}}
 ```
-Statuses: 400 invalid_request (malformed JSON/body) · 404 not_found · 401 invalid_key · 403 key_paused/key_revoked/model_not_allowed · 413 body_too_large · 422 context_too_long · 429 rate_limited/concurrency_limited/budget_exhausted (+ `Retry-After` seconds) · 503 queue_timeout/upstream_down (+ `Retry-After`) · 502 upstream_error.
+Statuses: 400 invalid_request (malformed JSON/body) · 404 not_found · 401 invalid_key · 403 key_paused/key_revoked/model_not_allowed · 413 body_too_large · 422 context_too_long · 429 rate_limited/concurrency_limited/budget_exhausted (+ `Retry-After` seconds) · 503 queue_timeout/upstream_down (+ `Retry-After`) · 502 upstream_error · 500 storage_failed (server_error: the host could not store the image; no charge).
 
 Dev mode: `serve --dev-listen 127.0.0.1:9090` additionally serves the gateway on loopback with permissive CORS
 (`Access-Control-Allow-Origin: *`, headers `authorization, content-type`) so the web app can be developed
@@ -574,7 +574,7 @@ clients refresh the whole image list on any run event and after reconnect, so
 all siblings, current positions and evictions are observed together.
 
 
-### Image admission and failure boundaries (156)
+### Image admission and failure boundaries (156, 159)
 
 The batch's daily image reservation and queued cap now admit together, before any
 run is committed. A refused batch (including the synchronous route) creates no
@@ -582,19 +582,50 @@ failed rows. Commit failure rolls the reservation back; queued cancellation and
 pre-dispatch failure release unused holds. The gateway request owner alone charges
 completed or ambiguous dispatched work. Outstanding holds carry over UTC midnight;
 charges belong to the settlement day. Restart interrupts queued work without replay.
-Zero image limits mean defaults, negative values mean unlimited (reported as -1).
+Zero image limits mean defaults. Negative daily limits mean unlimited (-1); negative
+queue limits use the live-run bound (16), reported effectively in `/me`.
 
 One owned HTTP image request runs at a time, with a 15-minute complete-response
 ceiling. Successful request-body write establishes dispatch. Sent-but-lost work
 uses `image_abandoned` with cause-specific, charged wording; the next dispatch waits
-for a fresh successful health probe. A remote server may keep computing after a
-lost connection; health does not prove remote work stopped. A valid empty data
-array is a definitive no-output failure and releases the hold.
+at most 60 seconds for a fresh successful health probe. The next unstarted job keeps
+its original hold during that one recovery window; expiry fails it with
+`upstream_down` and Retry-After, releases the hold, and frees the worker. Further
+jobs fail fast until recovery. Recovery drives bounded Refresh every 3 seconds. A failed probe overlapping an
+owned request within max(3 minutes, twice the maximum successfully stored generation duration in this process),
+capped at the 15-minute ceiling, is unknown; afterward it marks health down.
+Only a valid decoded and successfully stored image trains that duration; faster
+successes never shrink it, and restart resets the grace to 3 minutes. Sync completion polls separately
+at 100 ms, not at the probe cadence. A remote server may keep computing after a lost connection;
+health does not prove remote work stopped. Host shutdown after dispatch records
+charged `image_abandoned` (unless suspect); before dispatch it records released
+`interrupted` as a run reason only, never an HTTP error code.
+After two dispatched charge-eligible failures with no measured success, the
+destination becomes suspect. Invalid nonempty output counts too. The first two
+charge; further such failures release. Only these breaker-counted outcomes advance
+backoff from 1 minute to a 15-minute cap; definitive no-output does not, except
+≥12 MiB unparsed responses: released, logged, and breaker-counted. Successful
+generation clears it. Process-local abandon
+count and retry timestamp are logged and exposed in admin destination status;
+restart resets this protection, not usage. The offered `/me.host.images` includes
+optional future RFC3339 `retry_at` while suspect (omitted after the wait elapses).
+Gateway-authored failure text and retry seconds persist in attempt error output;
+upstream-authored snippets do not. Host storage faults produce `storage_failed` (HTTP 500 / server_error),
+release the hold, and neither train the grace nor alter the engine breaker. No nonempty b64_json candidate (including URL-only) is definitive no-output and
+releases the hold, including responses reaching the 12 MiB parse boundary;
+malformed nonempty candidates or invalid image bytes are charge-eligible.
 
 Each configured upstream is re-probed periodically. The host model pin applies to
-text only; key allowlists still apply to image/audio models. List and output GETs
-use request admission and RPM; list positions come from one queued snapshot, and
-artifact reads release the store mutex before reading bytes. Clients coalesce
+text only; key allowlists still apply to image/audio models. The friend's HTTP
+submissions spend RPM once per batch or synchronous call; internal SubmitBatch and
+worker dispatch spend none. Refused submissions refund RPM; per-key caps/reservation
+precede any host-wide walk. Output GETs are RPM-exempt; list/per-run reads/cancels
+and output DELETE spend RPM,
+without taking text/audio MaxConcurrent slots; missing run reads/cancels refund
+RPM. Output GETs hold a dedicated per-key read slot through delivery: 4 concurrent,
+then 429 with Retry-After 1. List positions use one snapshot;
+per-run positions use the scheduler's cached snapshot. Artifact reads release the
+store mutex before reading bytes. Clients coalesce
 refreshes and respect 429. The 256 MiB image budget counts retained, servable bytes;
 unlinkable stale files are logged and retried, never marking a key broken. Status
 reports `image_cleanup_pending` and prints a pending-cleanup line when nonzero.

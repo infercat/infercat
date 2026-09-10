@@ -13,6 +13,9 @@ import (
 // Destination owns capacity; transports retain their own bearer, address and deadlines.
 // Text and Audio are alternatives. Audio never needs a pretend tokenizer or Refresh method.
 type Destination struct {
+	imageAbandons   atomic.Int64
+	imageRetryAt    atomic.Int64
+	imageBackoff    atomic.Int64
 	imageProbeAfter atomic.Int64 // After an abandoned request, require a fresh successful probe.
 	ID              string
 	Kind            string
@@ -49,12 +52,14 @@ func (d *Destination) Offers() Offers {
 
 // DestinationStatus is admin-only: friends receive capability offers, not engine structure.
 type DestinationStatus struct {
-	ID       string   `json:"id"`
-	Kind     string   `json:"kind"`
-	Models   []string `json:"models"`
-	Slots    int      `json:"slots"`
-	InFlight int      `json:"in_flight"`
-	Waiting  int      `json:"waiting"`
+	ID            string   `json:"id"`
+	Kind          string   `json:"kind"`
+	Models        []string `json:"models"`
+	Slots         int      `json:"slots"`
+	InFlight      int      `json:"in_flight"`
+	Waiting       int      `json:"waiting"`
+	ImageAbandons int64    `json:"image_abandons,omitempty"`
+	ImageRetryAt  int64    `json:"image_retry_at,omitempty"`
 }
 
 type Router struct {
@@ -136,7 +141,7 @@ func (r *Router) snapshots() []DestinationStatus {
 			models = append(models, model)
 		}
 		inFlight, waiting := d.Queue.counts()
-		out = append(out, DestinationStatus{d.ID, d.Kind, models, max(1, d.Up.Info().Slots), inFlight, waiting})
+		out = append(out, DestinationStatus{d.ID, d.Kind, models, max(1, d.Up.Info().Slots), inFlight, waiting, d.imageAbandons.Load(), d.imageRetryAt.Load()})
 	}
 	return out
 }

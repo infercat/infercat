@@ -230,6 +230,21 @@ describe('getMe', () => {
 });
 
 describe('describeError', () => {
+  it.each([
+    ['en', 'The host could not store this image; it did not count.', 'Try again. If it keeps failing, the host’s disk needs attention.'],
+    ['zh', '主机无法保存这张图片，没有扣除额度。', '请重试。如果仍然失败，主机的磁盘需要检查。'],
+  ])('gives a storage failure its no-charge next step in %s', (language, title, detail) => {
+    vi.stubGlobal('localStorage', { getItem: () => JSON.stringify(language) });
+    try {
+      const error = describeError(new GatewayError(500, 'storage_failed', 'server_error', 'host storage fault'));
+      expect(error.title).toBe(title);
+      expect(error.detail).toBe(detail);
+      expect(error.hostSaid).toBe('host storage fault');
+      expect(error.retryAfterS).toBeUndefined(); // A retry is the friend's choice, never an automatic replay.
+      expect(error.fatal).toBeUndefined();
+    } finally { vi.unstubAllGlobals(); }
+  });
+
   it('shows our copy and the host diagnostic, never one instead of the other', () => {
     const f = describeError(
       new GatewayError(429, 'rate_limited', 'rate_limit_error', 'You have used 20 of 20 requests this minute.'),

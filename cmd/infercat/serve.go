@@ -299,10 +299,14 @@ func (e *env) cmdServe(ctx context.Context, pre string, args []string) error {
 	})
 
 	go refreshLoop(ctx, up, e.logf, refreshEvery)
-	for _, engine := range []probeEngine{transcribe, speech, images} {
+	for _, engine := range []probeEngine{transcribe, speech} {
 		if engine != nil {
 			go refreshLoop(ctx, engine, e.logf, refreshEvery)
 		}
+	}
+
+	if images != nil {
+		go refreshLoop(ctx, images, e.logf, 3*time.Second)
 	}
 
 	errc := make(chan error, 2)

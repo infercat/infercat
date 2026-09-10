@@ -42,7 +42,8 @@ func (a *audioClient) Info() Info {
 
 // Explicit endpoint configuration asserts the route. A successful /v1/models or /health probe
 // asserts reachability only; it does not infer ASR/TTS from model names or generate any content.
-func (a *audioClient) Refresh(ctx context.Context) error {
+func (a *audioClient) Refresh(ctx context.Context) error { return a.refresh(ctx, nil) }
+func (a *audioClient) refresh(ctx context.Context, acceptFailure func() bool) error {
 	var models modelsResponse
 	err := a.c.getJSON(ctx, "/v1/models", &models)
 	if err != nil {
@@ -50,18 +51,24 @@ func (a *audioClient) Refresh(ctx context.Context) error {
 	}
 	a.mu.Lock()
 	defer a.mu.Unlock()
+	if err != nil && acceptFailure != nil && !acceptFailure() {
+		return err
+	}
 	now := time.Now()
 	a.info.ProbedAt = now
 	if a.info.Health.Since.IsZero() || a.info.Health.OK != (err == nil) {
 		a.info.Health.Since = now
 	}
 	a.info.Health.OK = err == nil
-	a.info.Models = nil
 	if err != nil {
+		if acceptFailure == nil {
+			a.info.Models = nil
+		}
 		a.info.Health.Err = err.Error()
 		return err
 	}
 	a.info.Health.Err = ""
+	a.info.Models = nil
 	for _, m := range models.Data {
 		a.info.Models = append(a.info.Models, m.ID)
 	}

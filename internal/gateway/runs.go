@@ -35,6 +35,9 @@ func (g *Gateway) ExecuteStep(ctx context.Context, keyID string, step runstate.S
 	r, _ := http.NewRequestWithContext(ctx, http.MethodPost, "http://host"+step.Route, bytes.NewReader(step.Input))
 	q := g.newRequest(sink, r)
 	q.onAcquired = acquired
+	if step.Route == string(imagesEndpoint) {
+		q.image = &imageRequest{runID: step.RunID}
+	}
 	defer func() {
 		if recover() != nil {
 			err = errors.New("run step pipeline failed")
@@ -52,8 +55,8 @@ func (g *Gateway) ExecuteStep(ctx context.Context, keyID string, step runstate.S
 		if err == nil && q.outcome != outcomeServed {
 			err = errors.New("run step ended: " + q.ev.Code + ": " + sink.String())
 		}
-		if q.image != nil && q.ev.Code == string(CodeImageAbandoned) {
-			result.Output = append(json.RawMessage(nil), sink.Bytes()...) // bounded gateway-authored failure detail
+		if q.image != nil && len(q.image.failure) > 0 {
+			result.Output = append(json.RawMessage(nil), q.image.failure...)
 		}
 		if err == nil {
 			result.Output = append(json.RawMessage(nil), sink.Bytes()...)
@@ -190,6 +193,13 @@ func (q *request) runRoute() {
 		status = http.StatusAccepted
 	case strings.HasPrefix(q.r.URL.Path, "/v1/runs/"):
 		id := strings.TrimPrefix(q.r.URL.Path, "/v1/runs/")
+		if q.r.Method == http.MethodGet || q.r.Method == http.MethodDelete {
+			q.kind = endpoint(q.r.URL.Path)
+			if e := q.admitImageHTTP(); e != nil {
+				q.fail(e)
+				return
+			}
+		}
 		switch q.r.Method {
 		case http.MethodGet:
 			value, err = m.Store.Get(q.key.ID, id)
@@ -217,8 +227,13 @@ func (q *request) runRoute() {
 		q.fail(runError(err))
 		return
 	}
+	q.outcome = outcomeServed
 	if r, ok := value.(runstate.Run); ok && r.Kind == "image" {
-		value = imageJob{r, q.g.runs.Position("image", r.ID)}
+		position := 0
+		if r.State == runstate.Queued {
+			position = q.g.runs.Position("image", r.ID)
+		}
+		value = imageJob{r, position}
 	}
 	q.w.Header().Set("Content-Type", "application/json")
 	q.writeHeader(status)

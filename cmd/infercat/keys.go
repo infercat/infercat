@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/infercat/infercat/internal/admin"
+	"github.com/infercat/infercat/internal/gateway"
 	"github.com/infercat/infercat/internal/keys"
 	"github.com/infercat/infercat/internal/product"
 	"github.com/infercat/infercat/internal/usage"
@@ -291,7 +292,7 @@ func (e *env) keysList(ctx context.Context, pre string, args []string) error {
 	for _, k := range list {
 		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",
 			k.ID, k.Name, k.Status,
-			limitNum(k.Limits.RPM), limitNum(k.Limits.TPM), limitNum(k.Limits.DailyTokens), limitNum(k.Limits.DailyAudioSeconds), limitNum(k.Limits.DailySpeechChars), limitNum(k.Limits.DailyImages), limitNum(k.Limits.MaxQueuedImages),
+			limitNum(k.Limits.RPM), limitNum(k.Limits.TPM), limitNum(k.Limits.DailyTokens), limitNum(k.Limits.DailyAudioSeconds), limitNum(k.Limits.DailySpeechChars), limitNum(k.Limits.DailyImages), limitNum(gateway.ImageQueueCap(k.Limits)),
 			k.CreatedAt.Local().Format("2006-01-02"), ago(seen[k.ID]))
 	}
 	return tw.Flush()

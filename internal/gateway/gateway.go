@@ -64,15 +64,19 @@ const (
 // Gateway serves the API on any number of listeners (the tunnel, and loopback in dev mode) and
 // implements usage.Snapshot for the admin status API.
 type Gateway struct {
-	runs            *runstate.Manager
-	audioHistoryErr error
-	cfg             Config
-	router          *Router
-	store           keys.Store
-	rec             usage.Recorder
-	logf            func(string, ...any)
-	lim             *limiter
-	bodies          atomic.Int32 // request bodies held in memory (per-key slots bound it; tests read it)
+	runs                 *runstate.Manager
+	imageRecoveryTimeout time.Duration // Tests may shorten fixed timing windows.
+	imageProbeEvery      time.Duration
+	imagePollEvery       time.Duration
+	imageBackoffBase     time.Duration
+	audioHistoryErr      error
+	cfg                  Config
+	router               *Router
+	store                keys.Store
+	rec                  usage.Recorder
+	logf                 func(string, ...any)
+	lim                  *limiter
+	bodies               atomic.Int32 // request bodies held in memory (per-key slots bound it; tests read it)
 
 	// The deadlines, the keepalive and the body cap, unexported: tests shorten them, hosts get the constants.
 	queueTimeout, readTimeout, writeTimeout, idleTimeout, queuedEvery time.Duration

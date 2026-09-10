@@ -107,6 +107,8 @@ export const en = {
   app_limits_files: "A file is sent as its text. The web app takes the words out on your device — a PDF’s text layer, a Word file’s paragraphs, code as it is — and they count like typed text, so the meter already includes them. Every file in this chat is sent again with each question.",
 
   app_attachment_reading: 'reading…',
+  app_image_storage_failed: 'The host could not store this image; it did not count.',
+  app_image_storage_retry: 'Try again. If it keeps failing, the host’s disk needs attention.',
   app_image_limit: 'Up to 4 images per message.',
   app_attach_an_image: "Attach an image",
   app_remove_image: "Remove image",

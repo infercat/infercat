@@ -26,7 +26,7 @@ export interface Me {
     models: string[];
     /** Per-model capability; null means the engine did not report it. */
     vision?: Record<string, boolean | null>;
-    images?: { model: string; retention_days: number; queue_cap: number; queued: number };
+    images?: { model: string; retention_days: number; queue_cap: number; queued: number; retry_at?: string };
     audio?: { transcriptions: string | null; speech: string | null };
     relay: { region: string };
     /** The host runs with --log-prompts. Absent on a gateway older than ticket 006: absent = false. */
@@ -38,7 +38,7 @@ export type GatewayErrorCode =
   | 'invalid_key' | 'key_paused' | 'key_revoked' | 'model_not_allowed'
   | 'body_too_large' | 'context_too_long' | 'rate_limited' | 'concurrency_limited'
   | 'budget_exhausted' | 'queue_timeout' | 'upstream_down' | 'upstream_error'
-  | 'image_queue_full' | 'image_budget_exhausted' | 'image_abandoned'
+  | 'image_queue_full' | 'image_budget_exhausted' | 'image_abandoned' | 'storage_failed'
   | 'audio_budget_exhausted' | 'speech_budget_exhausted' | 'images_not_supported'
   | 'invalid_request' | 'not_found' | 'client_closed';
 

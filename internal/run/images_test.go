@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"os"
 	"sync"
 	"testing"
@@ -317,12 +318,16 @@ func TestImageAdmissionRollsBackFailedCommit(t *testing.T) {
 		t.Fatal("failed commit retained image reservations", e, held)
 	}
 }
-func TestQueueLimitResolvesOutsideManagerLock(t *testing.T) {
+func TestAdmissionResolvesOutsideManagerLock(t *testing.T) {
 	s, _ := NewStore(t.TempDir())
 	m, _ := New(s, nil, nil)
 	defer m.Close()
 	entered, release := make(chan struct{}), make(chan struct{})
-	_ = m.Register("image", ImageKind, Policy{QueueLimit: func(string) (int, error) { close(entered); <-release; return 0, errors.New("refused") }})
+	_ = m.Register("image", ImageKind, Policy{Admission: func(context.Context, string) (BatchAdmission, error) {
+		close(entered)
+		<-release
+		return BatchAdmission{}, errors.New("refused")
+	}})
 	done := make(chan struct{})
 	go func() { defer close(done); _, _ = m.Submit("key", "image", "interactive", imageIn("one")) }()
 	<-entered
@@ -333,6 +338,96 @@ func TestQueueLimitResolvesOutsideManagerLock(t *testing.T) {
 	close(release)
 	<-done
 	if !free {
-		t.Fatal("queue lookup held the manager mutex")
+		t.Fatal("admission lookup held the manager mutex")
+	}
+}
+
+func TestImagePositionIsCachedAndTracksQueueChanges(t *testing.T) {
+	s, _ := NewStore(t.TempDir())
+	entered := make(chan struct{}, 3)
+	release := make(chan struct{})
+	defer close(release)
+	m, _ := New(s, func(ctx context.Context, _ string, step Step, acquired func() error) (StepResult, error) {
+		if e := acquired(); e != nil {
+			return StepResult{}, e
+		}
+		entered <- struct{}{}
+		select {
+		case <-release:
+		case <-ctx.Done():
+			return StepResult{}, ctx.Err()
+		}
+		return StepResult{Output: json.RawMessage(`{}`), Settled: true}, nil
+	}, nil)
+	defer m.Close()
+	m.Register("image", ImageKind, Policy{Serial: true, DeferredCancel: true})
+	first, _ := m.Submit("key", "image", "interactive", imageIn("first"))
+	<-entered
+	second, _ := m.Submit("key", "image", "interactive", imageIn("second"))
+	third, _ := m.Submit("key", "image", "interactive", imageIn("third"))
+	s.mu.Lock()
+	result := make(chan int, 1)
+	go func() { result <- m.Position("image", second.ID) }()
+	var rank int
+	select {
+	case rank = <-result:
+	case <-time.After(time.Second):
+		s.mu.Unlock()
+		t.Fatal("Position read the store")
+	}
+	s.mu.Unlock()
+	if rank != 1 || m.Position("image", first.ID) != 0 || m.Position("image", third.ID) != 2 {
+		t.Fatal("wrong queue snapshot", rank)
+	}
+	m.Cancel("key", second.ID)
+	if m.Position("image", second.ID) != 0 || m.Position("image", third.ID) != 1 {
+		t.Fatal("cancel did not refresh ranks")
+	}
+	release <- struct{}{}
+	<-entered
+	if m.Position("image", third.ID) != 0 {
+		t.Fatal("running image kept a queue rank")
+	}
+	release <- struct{}{}
+	untilImage(t, s, "key", third.ID, Done)
+}
+
+func TestImageKeyChecksAndDailyReservePrecedeHostCapacity(t *testing.T) {
+	s, _ := NewStore(t.TempDir())
+	own, e := s.Create("key", "image", "interactive", imageIn("existing"))
+	if e != nil {
+		t.Fatal(e)
+	}
+	// Other hosts' retained state is full; per-key refusals must still win.
+	s.data["other"] = &snapshot{Runs: map[string]Run{}}
+	for i := 0; i < MaxLiveHost; i++ {
+		s.data["other"].Runs[fmt.Sprint(i)] = Run{State: Queued}
+	}
+	daily := errors.New("daily budget exhausted")
+	calls, refunds := 0, 0
+	reserve := func([]Run) (func(), error) { calls++; return nil, daily }
+	if _, e = s.CreateBatch("key", "image", "interactive", []json.RawMessage{imageIn("refused")}, 1, reserve); !errors.Is(e, ErrQueueLimit) || calls != 0 {
+		t.Fatal(e, calls)
+	}
+	if _, e = s.CreateBatch("key", "image", "interactive", []json.RawMessage{imageIn("refused")}, 8, reserve); !errors.Is(e, daily) || calls != 1 {
+		t.Fatal(e, calls)
+	}
+	reserve = func([]Run) (func(), error) { calls++; return func() { refunds++ }, nil }
+	if _, e = s.CreateBatch("key", "image", "interactive", []json.RawMessage{imageIn("host full")}, 8, reserve); !errors.Is(e, ErrLimit) || refunds != 1 {
+		t.Fatal(e, refunds)
+	}
+	if len(s.data["key"].Runs) != 1 || s.data["key"].Runs[own.ID].State != Queued {
+		t.Fatal("refusal mutated key")
+	}
+}
+func TestImageQueueLimitDoesNotCountOtherKinds(t *testing.T) {
+	s, _ := NewStore(t.TempDir())
+	for range 15 {
+		if _, e := s.Create("key", "agent", "interactive", json.RawMessage(`{}`)); e != nil {
+			t.Fatal(e)
+		}
+	}
+	if _, e := s.CreateBatch("key", "image", "interactive", []json.RawMessage{imageIn("one"), imageIn("two")}, 8); !errors.Is(e, ErrLimit) || errors.Is(e, ErrQueueLimit) {
+		t.Fatal(e)
 	}
 }

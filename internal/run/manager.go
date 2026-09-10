@@ -28,6 +28,7 @@ type Manager struct {
 	blocked     map[string]int
 	quarantined map[string]bool
 	releases    map[string]func()
+	positions   map[string]map[string]int
 }
 
 type execution struct {
@@ -159,24 +160,43 @@ func (m *Manager) schedule(kind string) {
 	if m.ctx.Err() != nil || m.unavailable(kind) {
 		return
 	}
-	for _, a := range m.active {
-		if a.kind == kind {
+	rows := m.queued(kind)
+	if m.positions == nil {
+		m.positions = map[string]map[string]int{}
+	}
+	positions := map[string]int{}
+	for i, r := range rows {
+		positions[r.ID] = i + 1
+	}
+	m.positions[kind] = positions
+	for _, active := range m.active {
+		if active.kind == kind {
 			return
 		}
 	}
-	if rows := m.queued(kind); len(rows) > 0 {
+	if len(rows) > 0 {
 		m.start(rows[0])
 	}
 }
 func (m *Manager) Position(kind, rid string) int {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	for i, r := range m.queued(kind) {
-		if r.ID == rid {
-			return i + 1
+	return m.positions[kind][rid]
+}
+func (m *Manager) acquiredPosition(kind, rid string) {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	positions := m.positions[kind]
+	rank := positions[rid]
+	if rank == 0 {
+		return
+	}
+	delete(positions, rid)
+	for id, p := range positions {
+		if p > rank {
+			positions[id] = p - 1
 		}
 	}
-	return 0
 }
 func (m *Manager) start(r Run) {
 	ctx, cancel := context.WithCancel(m.ctx)
@@ -247,6 +267,9 @@ func (m *Manager) Cancel(key, rid string) (Run, error) {
 	if err == nil || committedTerminal(err) {
 		if terminal(r.State) {
 			m.stopTerminal(r)
+			if m.Policies[r.Kind].Serial {
+				m.schedule(r.Kind)
+			}
 			return r, err
 		}
 		if worker := m.active[rid]; worker != nil && !(r.State == Running && m.Policies[r.Kind].DeferredCancel) {
@@ -255,6 +278,9 @@ func (m *Manager) Cancel(key, rid string) (Run, error) {
 				m.boundJoin(r, worker)
 			}
 		}
+	}
+	if err == nil && m.Policies[r.Kind].Serial {
+		m.schedule(r.Kind)
 	}
 	return r, err
 }
@@ -365,6 +391,9 @@ func (m *Manager) attempt(ctx context.Context, r Run, step Step, live bool) (Run
 			v.Started = &now
 			return nil
 		})
+		if e == nil {
+			m.acquiredPosition(r.Kind, r.ID)
+		}
 		return e
 	})
 	r, err = m.Store.change(r.KeyID, r.ID, func(v *Run) error {

@@ -142,9 +142,14 @@ func TestImageSettlementFailureAndAmbiguity(t *testing.T) {
 	}{
 		{"complete", 200, `{"data":[{"b64_json":"` + tinyImage() + `"}]}`, 1, 1},
 		{"empty", 200, `{"data":[]}`, 0, 0},
+		{"null", 200, `{"data":null}`, 0, 0},
+		{"absent", 200, `{}`, 0, 0},
+		{"filter", 200, `{"error":{"message":"content filter"}}`, 0, 0},
+		{"empty-body", 200, ``, 0, 0},
+		{"empty-base64", 200, `{"data":[{"b64_json":""}]}`, 0, 0},
 		{"definitive", 500, `{"error":{"message":"could not make it"}}`, 0, 0},
 		{"invalid", 200, `{"data":[{"b64_json":"bad"}]}`, 1, 0},
-		{"url-only", 200, `{"data":[{"url":"https://invalid.example/PRIVATE"}]}`, 1, 0},
+		{"url-only", 200, `{"data":[{"url":"https://invalid.example/PRIVATE"}]}`, 0, 0},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			var calls atomic.Int32
