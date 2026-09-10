@@ -1236,3 +1236,34 @@ func TestHostModelPinIntersectsEverySurface(t *testing.T) {
 		t.Fatalf("unreported pin default: %v", got)
 	}
 }
+
+// Tool-only work remains chargeable when the engine dies before reporting usage.
+func TestToolArgumentsCountOnCut(t *testing.T) {
+	h := newHarness(t, Config{}, nil)
+	h.gw.idleTimeout = 100 * time.Millisecond
+	h.up.set("sse",
+		`{"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call_1","function":{"name":"lookup","arguments":""}}]}}]}`,
+		`{"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":"{\"id\":"}}]}}]}`,
+		`{"choices":[{"delta":{"tool_calls":[{"index":0,"function":{"arguments":"1}"}}]}}]}`,
+		`{"choices":[],"usage":{"prompt_tokens":99,"completion_tokens":99}}`,
+	)
+	h.up.mu.Lock()
+	h.up.stallAfter = 3
+	h.up.mu.Unlock()
+	res, err := h.streamReq(context.Background(), chatBody("m1", 4, `"stream":true`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, _ := io.ReadAll(res.Body)
+	res.Body.Close()
+	if !strings.HasPrefix(string(got), h.up.written()) {
+		t.Fatal("chat stream was rewritten")
+	}
+	ev := h.rec.last(t)
+	if ev.Code != "upstream_error" || ev.PromptTokens != 4 || ev.CompletionTokens != 2 {
+		t.Fatalf("cut before usage: %+v", ev)
+	}
+	if m := ev.Meters[0]; m.Charged != 6 {
+		t.Fatalf("cut charge: %+v", m)
+	}
+}
