@@ -10,6 +10,7 @@ import (
 	_ "image/jpeg"
 	_ "image/png"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptrace"
 	"sort"
@@ -47,7 +48,7 @@ func (g *Gateway) imageOffer(key *keys.Key) *imageOffer {
 			}
 		}
 	}
-	if model == "" || !allowsModel(key, g.cfg.ModelsPinned, model) {
+	if model == "" || !allowsModel(key, nil, model) {
 		return nil
 	}
 	queued := 0
@@ -75,6 +76,32 @@ func (q *request) imageJobs() ([]imageJob, error) {
 	if e != nil {
 		return nil, e
 	}
+	positions := map[string]int{}
+	all, e := q.g.runs.Store.List("")
+	if e != nil {
+		return nil, e
+	}
+	var queued []runstate.Run
+	for _, v := range all {
+		if v.Kind == "image" && v.State == runstate.Queued {
+			if r, e := q.g.runs.Store.Get(v.KeyID, v.ID); e == nil {
+				queued = append(queued, r)
+			}
+		}
+	}
+	sort.Slice(queued, func(i, j int) bool {
+		a, b := queued[i], queued[j]
+		if a.Priority != b.Priority {
+			return a.Priority == "interactive"
+		}
+		if a.Created.Equal(b.Created) {
+			return a.ID < b.ID
+		}
+		return a.Created.Before(b.Created)
+	})
+	for i, r := range queued {
+		positions[r.ID] = i + 1
+	}
 	out := []imageJob{}
 	for _, v := range rows {
 		if v.Kind != "image" {
@@ -84,7 +111,7 @@ func (q *request) imageJobs() ([]imageJob, error) {
 		if e != nil {
 			return nil, e
 		}
-		out = append(out, imageJob{r, q.g.runs.Position("image", r.ID)})
+		out = append(out, imageJob{r, positions[r.ID]})
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Created.After(out[j].Created) })
 	return out, nil
@@ -95,6 +122,14 @@ func (q *request) imageRoute() {
 		return
 	}
 	q.w.Header().Set("Cache-Control", "no-store")
+	if q.r.Method == http.MethodGet {
+		q.kind = endpoint(q.r.URL.Path)
+		if e := q.admitKey(); e != nil {
+			q.fail(e)
+			return
+		}
+		q.outcome = outcomeServed // The admitted list/read itself spends RPM, even if the output is gone.
+	}
 	if strings.HasPrefix(q.r.URL.Path, "/v1/images/outputs/") {
 		id := strings.TrimPrefix(q.r.URL.Path, "/v1/images/outputs/")
 		if q.r.Method == http.MethodDelete {
@@ -234,14 +269,30 @@ func (q *request) imageRoute() {
 			if v.State == runstate.Failed || v.State == runstate.Cancelled {
 				tick.Stop()
 				code := CodeUpstreamError
-				if len(v.Attempts) > 0 && v.Attempts[len(v.Attempts)-1].Usage.Code == string(CodeImageBudgetExhausted) {
-					code = CodeImageBudgetExhausted
+				message := "image run " + v.ID + " ended: " + v.Reason
+				if len(v.Attempts) > 0 {
+					a := v.Attempts[len(v.Attempts)-1]
+					if a.Usage.Code == string(CodeImageBudgetExhausted) {
+						code = CodeImageBudgetExhausted
+					}
+					if a.Usage.Code == string(CodeImageAbandoned) {
+						code = CodeImageAbandoned
+						message = "the engine connection ended before the image finished; this one counted"
+						var detail struct {
+							Error struct {
+								Message string `json:"message"`
+							} `json:"error"`
+						}
+						if json.Unmarshal(a.Output, &detail) == nil && detail.Error.Message != "" {
+							message = detail.Error.Message
+						}
+					}
 				}
 				retry := 0
 				if code == CodeImageBudgetExhausted {
 					retry = secondsUntil(q.g.lim.now().UTC().Truncate(24*time.Hour).Add(24*time.Hour), q.g.lim.now())
 				}
-				q.fail(errf(code, retry, "image run %s ended: %s", v.ID, v.Reason))
+				q.fail(errf(code, retry, "%s", message))
 				return
 			}
 			select {
@@ -267,6 +318,26 @@ func (q *request) proxyImage(rid string, input json.RawMessage) {
 		q.fail(runError(runstate.ErrInvalid))
 		return
 	}
+	if q.g.cfg.LogPrompts {
+		q.ev.Prompt = in.Prompt
+	}
+	d := q.g.router.route(string(imagesEndpoint))
+	if d != nil && d.imageProbeAfter.Load() != 0 {
+		tick := time.NewTicker(100 * time.Millisecond)
+		defer tick.Stop()
+		for {
+			info := d.Up.Info()
+			if info.Health.OK && info.ProbedAt.UnixNano() > d.imageProbeAfter.Load() {
+				break
+			}
+			select {
+			case <-q.r.Context().Done():
+				q.fail(errf(CodeClientClosed, 0, "host stopped while waiting for the image engine"))
+				return
+			case <-tick.C:
+			}
+		}
+	}
 	offer := q.g.imageOffer(q.key)
 	if offer == nil {
 		q.fail(errf(CodeUpstreamDown, 1, "image engine unavailable"))
@@ -290,17 +361,21 @@ func (q *request) proxyImage(rid string, input json.RawMessage) {
 	body, _ := json.Marshal(map[string]any{"model": offer.Model, "prompt": in.Prompt, "n": 1, "size": "1024x1024", "response_format": "b64_json"})
 	ctx, cancel := context.WithCancel(q.r.Context())
 	q.cancelUpstream = cancel
-	ctx = httptrace.WithClientTrace(ctx, &httptrace.ClientTrace{WroteHeaders: func() { q.dispatched.Store(true) }})
+	ctx = httptrace.WithClientTrace(ctx, &httptrace.ClientTrace{WroteRequest: func(i httptrace.WroteRequestInfo) { q.dispatched.Store(i.Err == nil) }})
 	resp, err := q.destination.Images.ImageDo(ctx, body)
 	if err != nil {
 		q.outcome = outcomeEngineErr
-		q.fail(q.upstreamErr(err))
+		q.fail(q.imageTransportError(err))
 		return
 	}
 	q.resp = resp
-	q.idle = time.AfterFunc(q.g.idleTimeout, cancel)
-	raw, err := io.ReadAll(io.LimitReader(idleReader{r: resp.Body, t: q.idle, d: q.g.idleTimeout}, 12<<20))
-	if err != nil || len(raw) >= 12<<20 {
+	raw, err := io.ReadAll(io.LimitReader(resp.Body, 12<<20))
+	if err != nil {
+		q.outcome = outcomeCut
+		q.fail(q.imageTransportError(err))
+		return
+	}
+	if len(raw) >= 12<<20 {
 		q.outcome = outcomeCut
 		q.fail(errf(CodeUpstreamError, 0, "image response incomplete or too large"))
 		return
@@ -311,7 +386,7 @@ func (q *request) proxyImage(rid string, input json.RawMessage) {
 		} `json:"data"`
 	}
 	parseErr := json.Unmarshal(raw, &result)
-	q.image.definitiveFailure = resp.StatusCode/100 != 2 && len(result.Data) == 0
+	q.image.definitiveFailure = (resp.StatusCode/100 != 2 && len(result.Data) == 0) || (parseErr == nil && result.Data != nil && len(result.Data) == 0)
 	if parseErr != nil || len(result.Data) != 1 || result.Data[0].Base64 == "" {
 		q.outcome = outcomeEngineErr
 		detail := "expected one b64_json image; URL-only or malformed image results are unsupported"
@@ -350,18 +425,72 @@ func (q *request) proxyImage(rid string, input json.RawMessage) {
 	q.writeHeader(200)
 	_, _ = q.w.Write(meta)
 }
+func (g *Gateway) prepareImageBatch(ctx context.Context, key string) (runstate.BatchAdmission, error) {
+	all, err := g.store.List(ctx)
+	if err != nil {
+		return runstate.BatchAdmission{}, err
+	}
+	for _, k := range all {
+		if k.ID != key {
+			continue
+		}
+		if k.Status != keys.Active {
+			code := CodeKeyPaused
+			if k.Status == keys.Revoked {
+				code = CodeKeyRevoked
+			}
+			return runstate.BatchAdmission{}, errf(code, 0, "key is not active")
+		}
+		if g.audioHistoryErr != nil {
+			return runstate.BatchAdmission{}, errf(CodeUpstreamDown, 1, "resource usage history unavailable")
+		}
+		if g.imageOffer(k) == nil {
+			return runstate.BatchAdmission{}, errf(CodeNotFound, 0, "this key has no image model")
+		}
+		limits := keys.ImageDefaults(k.Limits)
+		return runstate.BatchAdmission{QueueLimit: limits.MaxQueuedImages, Reserve: func(rows []runstate.Run) (func(), error) {
+			st := g.lim.state(key)
+			st.mu.Lock()
+			now := g.lim.now()
+			st.prune(now)
+			meter := st.meter("images")
+			if limits.DailyImages > 0 && meter.today+meter.reserved+float64(len(rows)) > float64(limits.DailyImages) {
+				st.mu.Unlock()
+				return nil, errf(CodeImageBudgetExhausted, secondsUntil(now.UTC().Truncate(24*time.Hour).Add(24*time.Hour), now), "daily image budget exhausted")
+			}
+			if st.imageHolds == nil {
+				st.imageHolds = map[string]bool{}
+			}
+			for _, r := range rows {
+				st.imageHolds[r.ID] = true
+			}
+			meter.reserved += float64(len(rows))
+			st.mu.Unlock()
+			return func() {
+				for _, r := range rows {
+					g.releaseImageReservation(key, r.ID)
+				}
+			}, nil
+		}}, nil
+	}
+	return runstate.BatchAdmission{}, runstate.ErrNotFound
+}
+func (g *Gateway) releaseImageReservation(key, rid string) {
+	st := g.lim.state(key)
+	st.mu.Lock()
+	defer st.mu.Unlock()
+	if st.imageHolds[rid] {
+		delete(st.imageHolds, rid)
+		st.meter("images").reserved--
+	}
+}
 func (q *request) reserveImage() *gwError {
 	st := q.g.lim.state(q.key.ID)
 	st.mu.Lock()
 	defer st.mu.Unlock()
-	now := q.g.lim.now()
-	st.prune(now)
-	m := st.meter("images")
-	limit := keys.ImageDefaults(q.key.Limits).DailyImages
-	if limit > 0 && m.today+m.reserved+1 > float64(limit) {
-		return errf(CodeImageBudgetExhausted, secondsUntil(st.day.Add(24*time.Hour), now), "daily image budget exhausted")
+	if !st.imageHolds[q.image.runID] {
+		return errf(CodeInvalidRequest, 0, "image job has no reservation")
 	}
-	m.reserved++
 	q.adm.images = 1
 	return nil
 }
@@ -372,8 +501,11 @@ func (q *request) settleImage() {
 	now := q.g.lim.now()
 	st.prune(now)
 	m := st.meter("images")
-	m.reserved -= float64(q.adm.images)
-	if (q.dispatched.Load() || q.resp != nil) && !q.image.definitiveFailure {
+	if st.imageHolds[q.image.runID] {
+		delete(st.imageHolds, q.image.runID)
+		m.reserved--
+	}
+	if q.dispatched.Load() && !q.image.definitiveFailure {
 		q.image.charged = 1
 		m.today++
 	}
@@ -391,4 +523,17 @@ func (q *request) admitImageKey() *gwError {
 		q.adm = a
 	}
 	return e
+}
+
+func (q *request) imageTransportError(err error) *gwError {
+	if !q.dispatched.Load() {
+		return q.upstreamErr(err)
+	}
+	q.destination.imageProbeAfter.Store(time.Now().UnixNano())
+	q.g.logf("image request abandoned: %v", err)
+	var timeout net.Error
+	if errors.Is(err, context.DeadlineExceeded) || (errors.As(err, &timeout) && timeout.Timeout()) {
+		return errf(CodeImageAbandoned, 0, "the engine did not finish in time; this one counted")
+	}
+	return errf(CodeImageAbandoned, 0, "the connection to the engine was lost before the image finished; this one counted")
 }

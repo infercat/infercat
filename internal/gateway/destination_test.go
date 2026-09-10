@@ -24,7 +24,7 @@ func TestDestinationRouterTable(t *testing.T) {
 		{string(chatEndpoint), "m1", "text", ""}, {string(embeddingsEndpoint), "m1", "text", ""},
 		{string(modelsEndpoint), "", "text", ""}, {string(transcribeEndpoint), "m1", "transcribe", ""},
 		{string(speechEndpoint), "m1", "speech", ""}, {string(chatEndpoint), "unloaded", "text", ""},
-		{string(chatEndpoint), "private", "", CodeModelNotAllowed}, {string(speechEndpoint), "private", "", CodeModelNotAllowed},
+		{string(chatEndpoint), "private", "", CodeModelNotAllowed}, {string(speechEndpoint), "private", "speech", ""},
 		{"/v1/completions", "m1", "", CodeNotFound},
 	} {
 		t.Run(tc.route+tc.model, func(t *testing.T) {

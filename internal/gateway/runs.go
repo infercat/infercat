@@ -18,18 +18,7 @@ import (
 func (g *Gateway) SetRuns(m *runstate.Manager) {
 	g.runs = m
 	if g.cfg.Images != nil {
-		m.Register("image", runstate.ImageKind, runstate.Policy{Serial: true, DeferredCancel: true, Validate: runstate.ValidateImage, QueueLimit: func(key string) (int, error) {
-			all, e := g.store.List(context.Background())
-			if e != nil {
-				return 0, e
-			}
-			for _, k := range all {
-				if k.ID == key {
-					return keys.ImageDefaults(k.Limits).MaxQueuedImages, nil
-				}
-			}
-			return 0, runstate.ErrNotFound
-		}})
+		_ = m.Register("image", runstate.ImageKind, runstate.Policy{Serial: true, DeferredCancel: true, Validate: runstate.ValidateImage, Admission: g.prepareImageBatch, Release: g.releaseImageReservation})
 	}
 }
 
@@ -53,11 +42,17 @@ func (g *Gateway) ExecuteStep(ctx context.Context, keyID string, step runstate.S
 		result.Usage = q.ev
 		result.Settled = true
 		result.Dispatched = q.dispatched.Load() || q.resp != nil
+		if q.image != nil {
+			result.Dispatched = q.dispatched.Load()
+		}
 		if sink.err != nil {
 			err = sink.err
 		}
 		if err == nil && q.outcome != outcomeServed {
 			err = errors.New("run step ended: " + q.ev.Code + ": " + sink.String())
+		}
+		if q.image != nil && q.ev.Code == string(CodeImageAbandoned) {
+			result.Output = append(json.RawMessage(nil), sink.Bytes()...) // bounded gateway-authored failure detail
 		}
 		if err == nil {
 			result.Output = append(json.RawMessage(nil), sink.Bytes()...)
@@ -128,6 +123,10 @@ func (s *runSink) Write(p []byte) (int, error) {
 	return s.Buffer.Write(p)
 }
 func runError(err error) *gwError {
+	var gatewayError *gwError
+	if errors.As(err, &gatewayError) {
+		return gatewayError
+	}
 	switch {
 	case errors.Is(err, runstate.ErrQueueLimit):
 		return errf(CodeImageQueueFull, 1, "image queue is full")

@@ -83,3 +83,5 @@ first, independently of the 64 MiB state ceiling. Outputs expire after seven day
 Discard removes an output immediately. The run metadata remains with an output-gone
 marker until the run record expires. Startup sweeps remove orphaned artifacts;
 interrupted work is never automatically replayed.
+
+The image budget counts retained, servable outputs. Stale files that cannot be unlinked are logged and retried on the next sweep; they may temporarily add disk usage outside that budget. `infercat status` reports their pending-cleanup count.

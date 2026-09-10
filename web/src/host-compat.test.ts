@@ -30,6 +30,7 @@ describe('shipped host capabilities', () => {
       }
     }
     collect(current);
+    expect(current.usage.today_images).toBeGreaterThan(0); // omitempty cannot capture an explicit zero
     for (const name of names) expect(fields.has(name!), `capture current /me field ${name}`).toBe(true);
   });
   it('defaults absent capabilities honestly, retaining explicit false and unknown', () => {
@@ -37,7 +38,7 @@ describe('shipped host capabilities', () => {
     expect(hostAudio(old as Me, 'transcriptions')).toBeNull();
     expect(hostAudio(old as Me, 'speech')).toBeNull();
     expect(hostImages(old as Me)).toBeNull();
-    expect(hostImages(current as Me)?.model).toBe('image-model');
+    expect(hostImages(current as Me)?.model).toBe('FLUX.2-klein-4B-Q8_0');
     expect(modelVision(current as Me, 'compat-model')).toBe(true);
     expect(modelVision(current as Me, 'missing')).toBeNull();
     const me = { ...current, host: { ...current.host, vision: { text: false, unknown: null }, audio: { transcriptions: 'asr-model', speech: null } } } as Me;

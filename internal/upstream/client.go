@@ -58,8 +58,12 @@ func (b bearer) RoundTrip(r *http.Request) (*http.Response, error) {
 
 // newClient is the Unknown state: nothing has answered yet, one slot, not OK since now.
 func newClient(base *url.URL, apiKey string) *client {
+	return newClientWithHeaderTimeout(base, apiKey, FirstByteTimeout)
+}
+
+func newClientWithHeaderTimeout(base *url.URL, apiKey string, timeout time.Duration) *client {
 	rt := http.DefaultTransport.(*http.Transport).Clone()
-	rt.ResponseHeaderTimeout = FirstByteTimeout
+	rt.ResponseHeaderTimeout = timeout
 	var tr http.RoundTripper = rt
 	if apiKey != "" {
 		tr = bearer{rt: tr, key: apiKey}

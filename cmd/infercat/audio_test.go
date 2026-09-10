@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"io"
 	"net/http"
 	"net/http/httptest"
@@ -116,5 +117,71 @@ func TestAudioKeyFlags(t *testing.T) {
 	r = exec(t, plat, "keys", "list", "--data-dir", dir)
 	if !strings.Contains(r.out, "AUDIO S/DAY") || !strings.Contains(r.out, "SPEECH CHARS/DAY") || !strings.Contains(r.out, "IMAGES/DAY") || !strings.Contains(r.out, "IMAGE QUEUE") {
 		t.Fatal("keys list lacks audio limits")
+	}
+}
+
+func TestImageLimitsPersistEffectiveCLIValues(t *testing.T) {
+	dir := t.TempDir()
+	plat := testPlatform(fakeAddr, nil)
+	if r := exec(t, plat, "keys", "add", "images", "--data-dir", dir); r.code != 0 {
+		t.Fatal(r.err)
+	}
+	for _, tc := range []struct{ day, queue, wantDay, wantQueue string }{
+		{"-99", "-2", "-1", "-1"}, {"0", "0", "20", "8"},
+	} {
+		r := exec(t, plat, "keys", "limits", "images", "--daily-images", tc.day, "--max-queued-images", tc.queue, "--data-dir", dir)
+		if r.code != 0 {
+			t.Fatal(r.err)
+		}
+		store, e := keys.NewFileStore(dir)
+		if e != nil {
+			t.Fatal(e)
+		}
+		k, e := store.Find(context.Background(), "images")
+		if e != nil {
+			t.Fatal(e)
+		}
+		if fmt.Sprint(k.Limits.DailyImages) != tc.wantDay || fmt.Sprint(k.Limits.MaxQueuedImages) != tc.wantQueue {
+			t.Fatal(k.Limits)
+		}
+	}
+	if r := exec(t, plat, "keys", "limits", "images", "--daily-images", "1.5", "--data-dir", dir); r.code == 0 {
+		t.Fatal("accepted a fractional image limit")
+	}
+}
+
+func TestConfiguredMediaRefreshRecoversLateEngine(t *testing.T) {
+	var healthy atomic.Bool
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if !healthy.Load() {
+			w.WriteHeader(503)
+			return
+		}
+		io.WriteString(w, `{"data":[{"id":"media-model"}]}`)
+	}))
+	defer server.Close()
+	image, _ := upstream.OpenImages(context.Background(), server.URL, "")
+	audio, _ := upstream.OpenAudio(context.Background(), server.URL, "")
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	for _, engine := range []probeEngine{image, audio} {
+		go refreshLoop(ctx, engine, func(string, ...any) {}, 5*time.Millisecond)
+	}
+	healthy.Store(true)
+	deadline := time.Now().Add(time.Second)
+	for time.Now().Before(deadline) {
+		if image.Info().Health.OK && audio.Info().Health.OK {
+			return
+		}
+		time.Sleep(time.Millisecond)
+	}
+	t.Fatal("configured media engine remained unavailable after startup")
+}
+
+func TestStatusReportsPendingImageCleanup(t *testing.T) {
+	var out strings.Builder
+	writeStatus(&out, admin.Status{ImageCleanupPending: 2})
+	if !strings.Contains(out.String(), "2 stale output files awaiting cleanup") {
+		t.Fatal(out.String())
 	}
 }

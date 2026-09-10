@@ -102,9 +102,9 @@ infercat serve --upstream http://127.0.0.1:11434 \
   --upstream-images-model FLUX.2-klein-4B-Q8_0 --web-url https://infercat.ai
 ```
 
-The three image flags are `--upstream-images` (base URL, without `/v1`), `--upstream-images-model` (otherwise the first probed id), and `--upstream-images-key` (bearer for an authenticated upstream). This loopback sd.cpp recipe needs no upstream key. Flags are remembered in `config.json`; URL/key/model changes take effect on the next `serve`, while reload re-probes the configured engine. Keep using your existing data directory to retain invites; for a separate host, pass the same `--data-dir DIR` to every host/key/status command.
+The three image flags are `--upstream-images` (base URL, without `/v1`), `--upstream-images-model` (otherwise the first probed id), and `--upstream-images-key` (bearer for an authenticated upstream). This loopback sd.cpp recipe needs no upstream key. Flags are remembered in `config.json`; URL/key/model changes take effect on the next `serve`, and each configured engine is re-probed periodically as well as on reload. Keep using your existing data directory to retain invites; for a separate host, pass the same `--data-dir DIR` to every host/key/status command.
 
-If the host or friend key has a model allowlist, include `FLUX.2-klein-4B-Q8_0` as well as the chat model. A healthy image engine whose model is not shared with this key does not appear in its `/me.host.images`.
+The host’s `--models` pin applies only to text. If a friend key has a model allowlist, include `FLUX.2-klein-4B-Q8_0` as well as the chat model. A healthy image engine whose model is not shared with this key does not appear in its `/me.host.images`.
 
 ```sh
 infercat keys add alice --max-queued-images 8 --daily-images 20
@@ -113,11 +113,13 @@ infercat keys list
 infercat status
 ```
 
-Defaults are **8 queued images** and **20 images per key per UTC day**; absent/zero legacy fields use those defaults. The example changes Alice to 4 queued and 10 a day. `keys list` shows IMAGES/DAY and IMAGE QUEUE. Image jobs use RPM and their own worker/day reservation; they do not occupy the key's text/audio concurrency counter or spend chat tokens. Interactive asks go before planted batches; a running image is never preempted.
+Defaults are **8 queued images** and **20 images per key per UTC day**; absent/zero fields use those defaults; any negative value means unlimited and is reported as `-1`. The example changes Alice to 4 queued and 10 a day. `keys list` shows IMAGES/DAY and IMAGE QUEUE. Image jobs use RPM and their own worker/day reservation; they do not occupy the key's text/audio concurrency counter or spend chat tokens. Interactive asks go before planted batches; a running image is never preempted.
 
-A queued cancellation costs no image. Cancel during generation lets that image finish, keeps it and charges one. A definitive engine failure with no output releases the reservation; an ambiguous dispatched outcome charges one. A lost response never causes automatic resubmission.
+The daily budget is reserved for the whole batch at admission: either every prompt is queued, or a 429 refuses the whole batch before any row exists. Pending reservations count across UTC midnight; dispatched work charges its settlement day. Restart interrupts unfinished jobs without replaying queued work.
 
-Outputs are PNG/JPEG, at most **8 MiB each**, stored privately at `runs/<key-id>/images/<run-id>` under the [data directory](DATA-DIRECTORY.md). Retention is **7 days**, subject to a separate **256 MiB per-key image budget**, oldest evicted first. Save downloads a copy; Discard removes the host's output. Gone markers remain until the run record expires. The existing run bounds also apply: 16 live per key, 64 live per host and 100 retained records per key.
+A queued cancellation costs no image. Cancel during generation lets that image finish, keeps it and charges one. A definitive engine failure with no output releases the reservation; an ambiguous dispatched outcome charges one. A lost response never causes automatic resubmission. The host sends one image-generation request at a time and waits up to 15 minutes for its complete HTTP response. A sent-but-lost request returns `image_abandoned` and counts; the host waits for a fresh successful health probe before the next dispatch. A remote server may still be computing after the connection is lost; a health probe cannot prove it stopped.
+
+Outputs are PNG/JPEG, at most **8 MiB each**, stored privately at `runs/<key-id>/images/<run-id>` under the [data directory](DATA-DIRECTORY.md). Retention is **7 days**, subject to a separate **256 MiB per-key budget for retained, servable images**, oldest evicted first. Files that the operating system refuses to unlink may remain outside that servable budget: the host logs them, retries each sweep, and reports the pending-cleanup count in status. Save downloads a copy; Discard removes the host's output. Gone markers remain until the run record expires. The existing run bounds also apply: 16 live per key, 64 live per host and 100 retained records per key.
 
 ## Check the complete flow
 
@@ -159,7 +161,7 @@ These are complete-response times over native loopback, not first-preview times 
 
 ## If something fails
 
-- **Engine not answering or image control absent:** check `/v1/models`, the engine terminal, the base URL and both model allowlists. Restart `serve` after changing saved flags; restarting also re-probes the engine. `/me.host.images` is absent until a healthy, shared model is available. A text-only host/app build cannot provide the control.
+- **Engine not answering or image control absent:** check `/v1/models`, the engine terminal, the base URL and both model allowlists. Restart `serve` after changing saved flags; the periodic probe recovers an engine that starts late. `/me.host.images` is absent until a healthy, shared model is available. A text-only host/app build cannot provide the control. List and output reads spend RPM too; coalesce refreshes and honor `Retry-After` on 429.
 - **URL-only result refused:** the server must return `data[0].b64_json`; Infercat never fetches remote output URLs. Use the pinned native route above.
 - **Output too large or malformed:** each decoded PNG/JPEG must fit 8 MiB and 4096 pixels per side; the route requests 1024×1024. URL-only, malformed and over-limit dispatched results are ambiguous and can still cost one daily image.
 - **Day's budget exhausted (`image_budget_exhausted`):** wait for the next UTC day or change the friend's `--daily-images` limit. **Queue full (`image_queue_full`):** let queued work finish, cancel a queued row, submit fewer prompts or change `--max-queued-images`. A batch is admitted whole or refused whole; never retry an uncertain submission automatically.

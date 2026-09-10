@@ -130,7 +130,7 @@ infercat serve --upstream http://127.0.0.1:11434 \
 
 Use your existing data directory to retain invites; for a separate host, use `--data-dir` consistently on `serve` and `keys` commands. These audio flags are remembered. URL, key, model and voice-map changes take effect on the next `serve`; reload re-probes the configured engines. Authenticated upstreams use `--upstream-transcribe-key` and `--upstream-speech-key`. Supply service base URLs without `/v1`.
 
-If you use `--models` on the host or a friend key, include the two audio ids as well as the chat model. An omitted or unknown client audio model is replaced with the host's chosen id, then the allowlist still applies. `/me.host.audio` contains that id for an available route and `null` for an unavailable one. A healthy chat server alone does not enable audio.
+The host’s `--models` pin applies only to text. If a friend key uses a model allowlist, include the two audio ids as well as the chat model. An omitted or unknown client audio model is replaced with the host's chosen id, then the allowlist still applies. `/me.host.audio` contains that id for an available route and `null` for an unavailable one. A healthy chat server alone does not enable audio.
 
 ```sh
 infercat keys add alice --daily-audio-seconds 3600 --daily-speech-chars 200000

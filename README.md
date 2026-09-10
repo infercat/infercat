@@ -14,7 +14,7 @@ English · [简体中文](README.zh-CN.md)
 
 ---
 
-Share the model on your machine with friends. You run one binary in front of the inference server you already have — llama.cpp, llama-swap, vLLM, Ollama or LM Studio — and give each friend one invite code. They paste it into a web page and chat with your model: no account, no VPN, nothing to install. The connection is encrypted end to end; the relay in between sees ciphertext. You set limits per friend and see counts, never their conversations.
+Share the model on your machine with friends. You run one binary in front of the inference server you already have — llama.cpp, llama-swap, vLLM, Ollama or LM Studio — and give each friend one invite code. They paste it into a web page and chat with your model: no account, no VPN, nothing to install. The connection is encrypted end to end; the relay in between sees ciphertext. You set limits per friend. Chat logs contain counts unless you opt into logging text; image jobs keep prompts and pictures under the friend’s key for up to 7 days.
 
 ![Share a local model with a friend in a browser or terminal](docs/media/demo.gif)
 
@@ -138,7 +138,7 @@ xattr -d com.apple.quarantine ./infercat
 | `--name NAME` | the host name your friends see (default: this machine's hostname) |
 | `--web-url URL` | where friends open the web app; invites then print as a link |
 | `--slots N` | parallel requests the engine can serve (0 = ask the engine) |
-| `--models a,b` | pin models for every key, intersected with each key’s allowlist; `--models all` forgets the pin |
+| `--models a,b` | pin text models for every key, intersected with each key’s allowlist; image/audio routes use only the key allowlist; `--models all` forgets the pin |
 | `--region NAME` / `--derpmap-url URL` | preferred relay region / a self-hosted relay map |
 | `--dev-listen ADDR` | also serve on loopback with permissive CORS, for web development |
 | `--log-prompts`, `--ephemeral`, `--verbose` | per-run: log message content; throwaway host identity; tunnel log on the terminal |
@@ -165,7 +165,7 @@ Exactly `/v1/models`, `/v1/chat/completions` and `/v1/responses` through the gat
 
 ## Privacy
 
-- The host sees **counts, never text**: one line per request in `usage.jsonl` with the key, endpoint, status, token counts and timings. Prompt and completion text are recorded only when the host runs `serve --log-prompts`, which the web app discloses to the friend before their first message.
+- **Chat logs contain counts and timings** unless the host runs `serve --log-prompts`, which the web app discloses. Image jobs keep the friend’s image prompts and pictures under their key for 7 days, subject to retention/storage limits, independently of that flag. With `--log-prompts`, image prompts also enter `usage.jsonl`.
 - The relay sees **ciphertext**: traffic is WireGuard-encrypted from the friend's browser to the host's machine. Browser traffic is always relayed for now (a browser cannot hole-punch); the direct path arrives with the tunnel library's WebRTC transport.
 - Invite secrets are shown once and stored **hashed**. A leaked invite is one `keys rotate` away from useless.
 

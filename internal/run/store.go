@@ -25,20 +25,21 @@ type snapshot struct {
 	Retained map[string]Retained `json:"retained,omitempty"`
 }
 type Store struct {
-	mu          sync.Mutex
-	root        string
-	data        map[string]*snapshot
-	broken      map[string]error
-	subs        map[string]map[chan Event]bool
-	now         func() time.Time
-	write       func(string, []byte) error
-	reserved    map[string]map[string]*reservation
-	imageBudget int
-	known       map[string]bool
-	accessed    map[string]time.Time
-	recovered   map[string]bool
-	recovery    bool
-	Log         func(string, ...any)
+	mu           sync.Mutex
+	root         string
+	data         map[string]*snapshot
+	broken       map[string]error
+	subs         map[string]map[chan Event]bool
+	now          func() time.Time
+	write        func(string, []byte) error
+	reserved     map[string]map[string]*reservation
+	imageBudget  int
+	imageCleanup map[string]bool
+	known        map[string]bool
+	accessed     map[string]time.Time
+	recovered    map[string]bool
+	recovery     bool
+	Log          func(string, ...any)
 }
 
 var safeID = regexp.MustCompile(`^[a-zA-Z0-9_-]{1,80}$`)
@@ -320,7 +321,7 @@ func (s *Store) change(key, rid string, fn func(*Run) error, retain ...func(*Ret
 	err = s.commitFor(key, v, event, rid)
 	return copyRun(v.Runs[rid]), err
 }
-func (s *Store) CreateBatch(key, kind, priority string, inputs []json.RawMessage, cap int) ([]Run, error) {
+func (s *Store) CreateBatch(key, kind, priority string, inputs []json.RawMessage, cap int, admit ...func([]Run) (func(), error)) ([]Run, error) {
 	if len(inputs) == 0 || len(inputs) > MaxLiveKey {
 		return nil, ErrLimit
 	}
@@ -358,7 +359,7 @@ func (s *Store) CreateBatch(key, kind, priority string, inputs []json.RawMessage
 	if keyLive+len(inputs) > MaxLiveKey || total+len(inputs) > MaxLiveHost || len(v.Runs)+len(inputs) > MaxRuns {
 		return nil, ErrLimit
 	}
-	if queued+len(inputs) > cap {
+	if cap >= 0 && queued+len(inputs) > cap {
 		return nil, ErrQueueLimit
 	}
 	next := clone(v)
@@ -373,8 +374,18 @@ func (s *Store) CreateBatch(key, kind, priority string, inputs []json.RawMessage
 		next.Runs[r.ID] = r
 		rows = append(rows, r)
 	}
+	var rollback func()
+	if len(admit) > 0 && admit[0] != nil {
+		rollback, err = admit[0](rows)
+		if err != nil {
+			return nil, err
+		}
+	}
 	// A batch has one durable admission point. Its event prompts the image list to refresh all siblings.
 	if err = s.commit(key, next, &Event{RunID: rows[0].ID, State: Queued, Time: now}); err != nil {
+		if rollback != nil {
+			rollback()
+		}
 		return nil, err
 	}
 	for i := range rows {

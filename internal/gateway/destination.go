@@ -3,6 +3,7 @@ package gateway
 import (
 	"slices"
 	"sort"
+	"sync/atomic"
 
 	"github.com/infercat/infercat/internal/keys"
 	"github.com/infercat/infercat/internal/upstream"
@@ -11,15 +12,16 @@ import (
 // Destination owns capacity; transports retain their own bearer, address and deadlines.
 // Text and Audio are alternatives. Audio never needs a pretend tokenizer or Refresh method.
 type Destination struct {
-	ID     string
-	Kind   string
-	Origin string
-	Up     interface{ Info() upstream.Info }
-	Text   upstream.Engine
-	Audio  upstream.AudioEngine
-	Images upstream.ImageEngine
-	Queue  slotQueue
-	model  string
+	imageProbeAfter atomic.Int64 // After an abandoned request, require a fresh successful probe.
+	ID              string
+	Kind            string
+	Origin          string
+	Up              interface{ Info() upstream.Info }
+	Text            upstream.Engine
+	Audio           upstream.AudioEngine
+	Images          upstream.ImageEngine
+	Queue           slotQueue
+	model           string
 }
 
 type Offers struct {
@@ -102,7 +104,11 @@ func (r *Router) Resolve(key *keys.Key, route, model string) (*Destination, *gwE
 	if d == nil {
 		return nil, errf(CodeNotFound, 0, "no route for POST %s", route)
 	}
-	if model != "" && !allowsModel(key, r.pinned, model) {
+	pin := r.pinned
+	if d.Text == nil {
+		pin = nil
+	}
+	if model != "" && !allowsModel(key, pin, model) {
 		if d.Audio != nil {
 			return nil, errf(CodeModelNotAllowed, 0, "model is not shared with this invite")
 		}
