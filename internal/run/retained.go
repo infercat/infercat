@@ -29,6 +29,7 @@ type Approval struct {
 	Allow   *bool  `json:"allow,omitempty"`
 }
 type reservation struct {
+	late  bool // Only the returning in-process owner may release this lease.
 	bytes int
 }
 

@@ -91,6 +91,18 @@ func (m *Manager) boundJoin(r Run, w *execution) {
 				m.mu.Unlock()
 				return
 			}
+			if m.Policies[w.kind].InProcess {
+				// The friend stops waiting, but the live owner still owes settlement.
+				m.Store.mu.Lock()
+				if lease := m.Store.reserved[r.KeyID][r.ID]; lease != nil {
+					lease.late = true
+				}
+				m.Store.mu.Unlock()
+				m.mu.Unlock()
+				m.Store.log("in-process consumer late: run %s kind %s", r.ID, w.kind)
+				m.finish(r.KeyID, r.ID, Cancelled, "cancelled", nil)
+				return
+			}
 			w.expired = true
 			m.blocked[w.kind]++
 			stop := m.Policies[w.kind].ForceStop

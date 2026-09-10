@@ -32,11 +32,17 @@ func (f Filter) match(e *Event, at time.Time) bool {
 	return true
 }
 
+// RunHandoff records the control request that durably admitted a chat run.
+const RunHandoff = "run_handoff"
+
 // ModelCall reports whether e is a call that asks the engine to generate — the thing a friend
 // actually did. Everything else a connected app sends (`/me` for the usage bar, `/v1/models` on
 // connect) is a poll, and counting the two together is what made `usage` read as 58 requests for
 // one conversation and put a 3 ms poll in the latency percentiles (ticket 009 promise 6).
 func ModelCall(e *Event) bool {
+	if e.Code == RunHandoff {
+		return false
+	}
 	_, class := ModelEndpoint(e.Endpoint)
 	return class != ""
 }

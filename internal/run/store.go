@@ -374,9 +374,9 @@ func (s *Store) commitFor(key string, v *snapshot, event *Event, rid string) err
 	v.encodedBytes = len(raw)
 	s.data[key] = v
 	s.known[key] = true
-	// Reservations belong to live run identities, never expired retained files.
-	for rid := range s.reserved[key] {
-		if r, ok := v.Runs[rid]; !ok || terminal(r.State) {
+	// A late in-process owner keeps its lease through the visible terminal state.
+	for rid, lease := range s.reserved[key] {
+		if r, ok := v.Runs[rid]; (!ok || terminal(r.State)) && !lease.late {
 			delete(s.reserved[key], rid)
 		}
 	}

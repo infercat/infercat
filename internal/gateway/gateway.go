@@ -82,10 +82,11 @@ type Gateway struct {
 	queueTimeout, readTimeout, writeTimeout, idleTimeout, queuedEvery time.Duration
 	maxBody                                                           int64
 
-	mu       sync.Mutex
-	sessions map[netip.Addr]sessionSeen
-	servers  []*http.Server
-	closed   bool
+	chatDeliveries sync.Map
+	mu             sync.Mutex
+	sessions       map[netip.Addr]sessionSeen
+	servers        []*http.Server
+	closed         bool
 }
 
 // The CLI (cmd/infercat, ticket 003) wires the gateway through exactly this interface.
@@ -249,8 +250,13 @@ func (g *Gateway) serveHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	q := g.newRequest(w, r)
-	defer q.finish() // the one exit: releases whatever the request took, records the event
-	q.serve()
+	func() {
+		defer q.finish() // the one exit for this owner, before a chat-run handoff
+		q.serve()
+	}()
+	if q.continueChat != nil {
+		q.continueChat()
+	}
 }
 
 func bearer(h string) (string, bool) {

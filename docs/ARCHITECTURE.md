@@ -754,3 +754,52 @@ record source revisions, binary hashes and the voice-list hash, with archive che
 alongside them.
 The helper production pin remains absent from setup until publication; no CI snapshot
 URL substitutes for it. Publication follows the founder's release decision.
+
+## Host tools in chat (148)
+
+Only `POST /v1/chat/completions` with `host_tools:["make_image"]` opts into
+host execution. An absent/empty array keeps ordinary chat; malformed or unknown
+names, or nonempty opt-in with caller `tools`/`tool_choice`, are refused. No client
+is detected and no tools are injected into third-party requests without this field.
+The offer is exactly the key-filtered image capability in `/me`; without it the
+request stays ordinary chat. `conversation` and `client_request_id` are optional
+128-byte correlation strings on the chat/image records, removed from the model
+input. They confer neither authority nor deduplication.
+
+Early admission and body reading are unchanged. Validated body routing durably
+creates a `chat` run, then the outer owner finishes before opening the consumer's
+gate. That request records one zero-charge `run_handoff` app row; each inner
+model attempt has its own normal admission, RPM, meter and `q.finish`. No outer
+text slot is held while an inner attempt acquires one, including at concurrency 1.
+Streaming starts with `event: run` and `{"run_id":...}`, followed by ordinary chat
+text/reasoning deltas. Non-streamed replies carry `run_id` too. The shared
+`Step.Observe` borrows bytes into a bounded forwarder; a slow/disconnected reader
+ends the attempt through its normal settlement owner. Final success follows the
+durable run terminal state, never just the model's last delta.
+
+The first call may request one `make_image` execution with a bounded prompt and
+integer count 1..the effective image queue cap (also subject to the existing live
+run bounds). Before submitting, the host rechecks the key and image offer and
+commits the executing `StepEvent` within a retained-space reservation. One atomic
+`SubmitBatch` creates interactive image jobs carrying `parent_run_id` and
+`tool_call_id` (each at most 80 bytes). The second model call receives the job ids
+or a tool-error result and `tool_choice:none`. Multiple first calls execute none;
+invalid arguments and capacity races likewise become tool-error results. A second
+call asking for tools records a refused step, preserves already streamed prose,
+and ends with the existing error shape; there is no third model call. An unfinished
+or truncated tool call cannot submit images.
+
+HTTP disconnect and DELETE request Stop for the chat; committed image jobs remain
+independently owned. The originating delivery is tied to the durable run id and
+cannot be claimed by copying its input. Restart never replays a chat. If image
+submission committed before the parent result, recovery marks its executing step
+interrupted with an unconfirmed outcome; the child associations allow inspection,
+not automatic resubmission. Shared retained steps and GET/SSE replacement semantics
+remain the single run representation.
+
+`chat` registers `InProcess` with non-serial `JoinCancel`: it has no shared external
+runtime to force-stop. Cancel cooperatively joins the consumer within the existing
+bound. On expiry, the friend sees `cancelled` and the host logs the late consumer,
+but its retained lease and settlement stay owned until it actually returns. New
+chats continue; no kind-wide quarantine applies. Each model attempt's own deadlines
+still bound its return. External-runtime Serial/ForceStop/quarantine rules are unchanged.

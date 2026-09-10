@@ -18,6 +18,9 @@ import (
 // SetRuns is startup wiring only, before any gateway listener is exposed.
 func (g *Gateway) SetRuns(m *runstate.Manager) error {
 	g.runs = m
+	if err := m.Register("chat", m.Consumer(g.chatRun), runstate.Policy{JoinCancel: true, InProcess: true}); err != nil {
+		return err
+	}
 	if g.cfg.Images != nil {
 		return m.Register("image", runstate.ImageKind, runstate.Policy{Serial: true, DeferredCancel: true, Validate: runstate.ValidateImage, Admission: g.prepareImageBatch, Release: g.releaseImageReservation})
 	}
