@@ -59,3 +59,10 @@ it('evicts oldest complete turns only until the 20 MB host cap fits', () => {
   expect(evictedTurns([{ key: 'new', at: 3, bytes: 8 * 1024 * 1024 }, { key: 'old', at: 1, bytes: 8 * 1024 * 1024 }, { key: 'middle', at: 2, bytes: 8 * 1024 * 1024 }])).toEqual(['old']);
   expect(evictedTurns([{ key: 'exact', at: 1, bytes: IMAGE_STORE_BYTES }])).toEqual([]);
 });
+
+it('bounds SVG source bytes before parsing or decoding', async () => {
+  const { MAX_SVG_BYTES } = await import('./images');
+  const parser = vi.fn(); vi.stubGlobal('DOMParser', parser);
+  await expect(prepareImage(new Blob([' '.repeat(MAX_SVG_BYTES + 1)], { type: 'image/svg+xml' }))).rejects.toThrow('SVG exceeds 4 MiB');
+  expect(parser).not.toHaveBeenCalled();
+});

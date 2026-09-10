@@ -27,7 +27,7 @@ export class FileError extends Error {
 }
 const TEXT_EXTENSIONS = 'txt md markdown csv tsv json jsonl yaml yml toml ini cfg log js jsx ts tsx mjs cjs py go rs rb java c cpp h hpp cs swift kt kts sh bash zsh sql css scss html xml vue svelte r tex'.split(' ');
 const EXTENSIONS = ['pdf', 'docx', ...TEXT_EXTENSIONS];
-export const FILE_ACCEPT = EXTENSIONS.map((ext) => `.${ext}`).join(',');
+export const FILE_ACCEPT = ['text/plain', ...EXTENSIONS.map((ext) => `.${ext}`)].join(',');
 export const MAX_FILES = 4;
 export const MAX_STORED_TEXT_BYTES = 512 * 1024;
 export const PASTE_THRESHOLD = 4000;
@@ -36,7 +36,7 @@ const extension = (name: string) => name.split('.').length > 1 ? name.split('.')
 
 export function acceptsFile(file: Pick<File, 'name' | 'type'>): boolean {
   const ext = extension(file.name);
-  return EXTENSIONS.includes(ext) || (!ext && file.type === 'text/plain');
+  return EXTENSIONS.includes(ext) || file.type === 'text/plain';
 }
 export function storedFileBytes(files: readonly AttachedFile[] = []): number {
   return files.reduce((sum, file) => sum + encoder.encode(file.text).length, 0);
@@ -91,7 +91,8 @@ export async function extractFile(file: File, opts: FileOptions = {}): Promise<A
   opts.signal?.throwIfAborted();
   if (!acceptsFile(file)) throw new FileError('cant_read', file.name);
   if ((opts.files?.length ?? 0) >= MAX_FILES) throw new FileError('count', file.name);
-  const kind = (extension(file.name) || 'txt').toUpperCase();
+  const ext = extension(file.name);
+  const kind = (EXTENSIONS.includes(ext) ? ext : 'txt').toUpperCase();
   try {
     const data = await abortable(file.arrayBuffer(), opts.signal);
     let text: string, pages: number | undefined;

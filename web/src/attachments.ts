@@ -1,5 +1,5 @@
 import { FILE_ACCEPT, extractFile, pastedFile, fileBlocks, fileLine, FileError, fileErrorMessage } from './files';
-import { IMAGE_ACCEPT, ImageError, imageLine, prepareImage, MAX_IMAGES, type ImageData, type ImageMeta, type PreparedImage } from './images';
+import { IMAGE_ACCEPT, imageKind, imageKindLabel, ImageError, imageLine, prepareImage, MAX_IMAGES, type ImageData, type ImageMeta, type PreparedImage } from './images';
 import type { ChatMessage } from './api';
 import { tr } from './i18n/text';
 
@@ -31,16 +31,18 @@ export async function admit(input: File[] | DataTransfer | ClipboardData, signal
   if (!files.length && !Array.isArray(input)) await addFile(() => pastedFile(input.getData('text/plain'), fileOptions()));
   for (const file of files) {
     signal?.throwIfAborted();
-    if (file.type.startsWith('image/')) {
+    const kind = imageKind(file);
+    if (kind || file.type.startsWith('image/')) {
       if (!options.vision) throw new ImageError('no_vision', tr('app_model_cant_see_images', { model: options.model ?? '' }));
       if (attachments.filter((a) => a.kind === 'image').length >= MAX_IMAGES) throw new ImageError('count', tr('app_image_limit'));
       try {
-        const image = await prepareImage(file, signal);
+        if (!kind) throw new Error('Unsupported image kind');
+        const image = await prepareImage(file.slice(0, file.size, kind.mime), signal);
         const next: Attachment = { kind: 'image', id: image.id, image };
         attachments.push(next); result.push(next);
       } catch (error) {
         if (signal?.aborted) throw signal.reason;
-        throw new ImageError('cant_read', tr('app_could_not_read_that_image'), { cause: error });
+        throw new ImageError('cant_read', tr('app_could_not_read_image_kind', { kind: imageKindLabel(file) }), { cause: error });
       }
     } else {
       await addFile(() => extractFile(file, fileOptions()));

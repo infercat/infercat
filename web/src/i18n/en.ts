@@ -47,6 +47,7 @@ export const en = {
   app_hint_enter_sends_images: "Enter sends · Shift+Enter makes a new line · paste or drop an image",
   app_drop_to_attach: "Drop to attach",
   app_model_cant_see_images: "{model} can’t see images — text only.",
+  app_could_not_read_image_kind: "Couldn’t read this {kind} image.",
   app_could_not_read_that_image: "Couldn’t read that image.",
   app_over_message_size: "Over the {size} one message can carry — remove an image.",
   app_meter_context_images: "{used}/{limit} context + {count} images",
