@@ -1,8 +1,8 @@
 # Agent runtime
 
 The runtime foundation is installed and supervised by Infercat. Agent run routes,
-key opt-in, approval answers, retained outputs, and gateway metering are the next
-integration slice (116b); this extraction does not expose an agent route to friends.
+key opt-in and native event/model integration belong to 116c; the 116b shared run
+mechanism does not expose an agent route to friends.
 
 ```sh
 infercat agent install --data-dir /path/to/host
@@ -28,7 +28,7 @@ upstream safety notice unchanged; it is not a verified per-friend isolation boun
 Files live below the host's `agent/` directory:
 
 - `runtime-0.1.5-alpha.1-node22.23.2/`: pinned Node and integrity-locked packages.
-- `host/`: our adapter plugin and native composition patch, harness state, and
+- `host/`: our adapter plugin and native composition patch, harness configuration, and
   `runtime.log` (at most 1 MiB, replaced on restart).
 - `npm-cache/`: installer cache, outside retained run data.
 
@@ -65,7 +65,7 @@ and ask policy remains intact: ordinary workspace writes do not ask; genuine
 approval requests are not automatically allowed. The three description strings
 proven in 129 are applied verbatim, with a check that schema semantics are unchanged.
 The intended scope is “confined to your workspace and temporary files,” not
-isolation from other friends' data. The 116b retained-data bound is not a hard
+isolation from other friends' data. The retained-data bound is not a hard
 quota on a live workspace or temporary files.
 
 ## Verification
@@ -82,5 +82,40 @@ INFERCAT_AGENT_TEST_INSTALL=/path/to/installed/host \
 That fixture creates a separate temporary host, checks native readiness and model
 IPC, cancels the native run, sends a late model reply, and completes a successor
 on the same process with a fixture model response. It does not call an inference
-engine. The E4B baseline proof through real routes belongs to 116b; E2B remains
+engine. The E4B baseline proof through real routes belongs to 116c; E2B remains
 promising pending the separate profile proof.
+
+## Shared run mechanism (116b)
+
+Host code registers a pull `Kind` or `Manager.Consumer` through the same registry.
+The same durable attempt executor records each model call before dispatch and its
+settlement/accounting before returning. A consumer owns its child work and must
+join it before returning. Its registered `Policy.JoinCancel` keeps cancellation
+requested but nonterminal through cleanup, including approval waiting. The shared
+`Policy.DeferredCancel` supports work such as an already-generating image that
+finishes successfully as Done. Ordinary pull kinds retain their default behavior.
+
+`Work.Approval` persists a pending question and waits without reconstructing the
+consumer. `Manager.Answer` commits the identified answer once before waking it;
+stale, duplicate, cross-key and cancelled answers refuse. The consumer forwards
+that committed answer once; an ambiguous IPC send fails the run, never resends.
+Restart recovery fails interrupted runs and keeps accumulated evidence.
+
+The Go run store owns retained state, exact raw native trajectory events, and
+immutable captured output bytes in `runs/<key>/state.json`. The existing 64 MiB
+per-key limit includes their encoded JSON/base64 bytes, the run ledger and its
+event ring. `Admit` reserves encoded capacity before a model/tool step; concurrent
+admissions and all ledger commits share that budget. Payload ingestion is capped
+at 1 MiB per call and requires an active reservation, with control-record headroom.
+Unused reservation capacity is released after the step; expiry removes the run,
+its retained payload and any reservation together. Reads return detached data;
+failed writes publish no event. A corrupt or ambiguous store fails closed.
+
+The native JSONL backend and its backend-dependent checkpoint row are disabled
+through supported composition. The harness retains execution and its in-memory
+trajectory, but **native checkpointing is not active**. The pre-dispatch durability
+duty moves to the Go owner's admission acknowledgement in 116c, and no real route
+enables before that acknowledgement exists. 116b tests the owner and native
+in-memory composition separately; it does not claim the IPC acknowledgement is
+already connected to model/tool dispatch. Existing 116a JSONL artifacts are not
+imported or deleted by this extraction.

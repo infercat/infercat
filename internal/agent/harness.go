@@ -29,6 +29,8 @@ func HarnessOptions(dataDir string) (RuntimeOptions, error) {
 	rows := []any{
 		map[string]any{"id": "headless-startup", "disabled": true},
 		map[string]any{"id": "headless-runner", "disabled": true},
+		map[string]any{"id": "session-persistence-jsonl", "disabled": true},
+		map[string]any{"id": "session-checkpoint-policy", "disabled": true},
 		map[string]any{"id": "llm-deepseek", "disabled": true},
 		map[string]any{"id": "llm-pi-ai", "disabled": true},
 		map[string]any{"id": "agent-default-model", "config": map[string]any{"provider": "infercat", "model": "run-model"}},

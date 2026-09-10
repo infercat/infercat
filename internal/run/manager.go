@@ -10,17 +10,21 @@ import (
 
 // Manager serializes control operations; engine work runs outside its mutex and the store lock.
 type Manager struct {
-	Store   *Store
-	Execute Executor
-	Kinds   map[string]Kind
-	mu      sync.Mutex
-	active  map[string]*execution
-	ctx     context.Context
-	cancel  context.CancelFunc
-	wg      sync.WaitGroup
+	Store    *Store
+	Execute  Executor
+	Kinds    map[string]Kind
+	Policies map[string]Policy
+	mu       sync.Mutex
+	active   map[string]*execution
+	ctx      context.Context
+	cancel   context.CancelFunc
+	wg       sync.WaitGroup
 }
 
-type execution struct{ cancel context.CancelFunc }
+type execution struct {
+	cancel context.CancelFunc
+	answer chan struct{}
+}
 
 func New(s *Store, exec Executor, kinds map[string]Kind) (*Manager, error) {
 	ctx, cancel := context.WithCancel(context.Background())
@@ -66,7 +70,7 @@ func (m *Manager) Submit(key, kind, priority string, input json.RawMessage) (Run
 }
 func (m *Manager) start(r Run) {
 	ctx, cancel := context.WithCancel(m.ctx)
-	worker := &execution{cancel: cancel}
+	worker := &execution{cancel: cancel, answer: make(chan struct{}, 1)}
 	m.active[r.ID] = worker
 	m.wg.Add(1)
 	go func() {
@@ -113,13 +117,13 @@ func (m *Manager) Cancel(key, rid string) (Run, error) {
 			return ErrConflict
 		}
 		v.CancelRequested = true
-		if m.active[rid] == nil || v.State != Running {
+		if m.active[rid] == nil || (v.State != Running && !m.Policies[v.Kind].JoinCancel) {
 			v.State = Cancelled
 		}
 		return nil
 	})
 	if err == nil {
-		if worker := m.active[rid]; worker != nil {
+		if worker := m.active[rid]; worker != nil && !(old.State == Running && m.Policies[old.Kind].DeferredCancel) {
 			worker.cancel()
 		}
 	}
@@ -136,7 +140,7 @@ func (m *Manager) finish(key, rid string, st State, reason string, output json.R
 		if terminal(v.State) {
 			return ErrConflict
 		}
-		if v.CancelRequested {
+		if v.CancelRequested && !(m.Policies[v.Kind].DeferredCancel && st == Done) {
 			st = Cancelled
 		}
 		v.State = st
@@ -169,58 +173,72 @@ func (m *Manager) drive(ctx context.Context, r Run) {
 			}
 			return
 		}
-		if len(d.Step.Input) > MaxInput || !json.Valid(d.Step.Input) {
-			m.finish(r.KeyID, r.ID, Failed, "step input limit or format", nil)
-			return
-		}
-		aid := id("a_")
-		r, err = m.Store.change(r.KeyID, r.ID, func(v *Run) error {
-			if v.State != Queued || v.CancelRequested {
-				return ErrConflict
-			}
-			v.Attempts = append(v.Attempts, Attempt{ID: aid, AccountingUncertain: true})
-			return nil
-		})
-		if err != nil {
-			return
-		}
-		result, stepErr := m.Execute(ctx, r.KeyID, *d.Step, func() error {
-			_, e := m.Store.change(r.KeyID, r.ID, func(v *Run) error {
-				if v.State != Queued || v.CancelRequested {
-					return ErrConflict
-				}
-				v.State = Running
-				return nil
-			})
-			return e
-		})
-		r, err = m.Store.change(r.KeyID, r.ID, func(v *Run) error {
-			a := &v.Attempts[len(v.Attempts)-1]
-			if a.ID != aid {
-				return ErrConflict
-			}
-			a.Dispatched = result.Dispatched
-			a.Settled = result.Settled
-			a.AccountingUncertain = !result.Settled
-			a.Usage = result.Usage
-			if len(result.Output) <= MaxOutput && json.Valid(result.Output) {
-				a.Output = result.Output
-			}
-			if v.CancelRequested || errors.Is(stepErr, context.Canceled) {
-				v.State = Cancelled
-			} else if stepErr != nil || len(result.Output) > MaxOutput || !json.Valid(result.Output) {
-				v.State = Failed
-				v.Reason = "step failed"
-			} else {
-				v.State = Queued
-			}
-			return nil
-		})
+		r, _, err = m.attempt(ctx, r, *d.Step, false)
 		if err != nil || terminal(r.State) {
 			return
 		}
 	}
 	m.finish(r.KeyID, r.ID, Cancelled, "cancelled", nil)
+}
+
+// attempt is the single durable model-attempt path for pull kinds and live consumers.
+func (m *Manager) attempt(ctx context.Context, r Run, step Step, live bool) (Run, StepResult, error) {
+	if len(step.Input) > MaxInput || !json.Valid(step.Input) {
+		if !live {
+			m.finish(r.KeyID, r.ID, Failed, "step input limit or format", nil)
+		}
+		return r, StepResult{}, ErrInvalid
+	}
+	aid := id("a_")
+	r, err := m.Store.change(r.KeyID, r.ID, func(v *Run) error {
+		if (v.State != Queued && !(live && v.State == Running)) || v.CancelRequested {
+			return ErrConflict
+		}
+		v.State = Queued
+		v.Attempts = append(v.Attempts, Attempt{ID: aid, AccountingUncertain: true})
+		return nil
+	})
+	if err != nil {
+		return r, StepResult{}, err
+	}
+	result, stepErr := m.Execute(ctx, r.KeyID, step, func() error {
+		_, e := m.Store.change(r.KeyID, r.ID, func(v *Run) error {
+			if v.State != Queued || v.CancelRequested {
+				return ErrConflict
+			}
+			v.State = Running
+			return nil
+		})
+		return e
+	})
+	r, err = m.Store.change(r.KeyID, r.ID, func(v *Run) error {
+		a := &v.Attempts[len(v.Attempts)-1]
+		if a.ID != aid {
+			return ErrConflict
+		}
+		a.Dispatched = result.Dispatched
+		a.Settled = result.Settled
+		a.AccountingUncertain = !result.Settled
+		a.Usage = result.Usage
+		if len(result.Output) <= MaxOutput && json.Valid(result.Output) {
+			a.Output = result.Output
+		}
+		if live {
+			v.State = Running
+		} else if (v.CancelRequested && !m.Policies[v.Kind].DeferredCancel) || errors.Is(stepErr, context.Canceled) {
+			v.State = Cancelled
+		} else if stepErr != nil || len(result.Output) > MaxOutput || !json.Valid(result.Output) {
+			v.State = Failed
+			v.Reason = "step failed"
+		} else {
+			v.State = Queued
+		}
+		return nil
+	})
+	if err == nil && (stepErr != nil || len(result.Output) > MaxOutput || !json.Valid(result.Output)) {
+		err = ErrInvalid
+	}
+	return r, result, err
 }
 
 // Sweep cancels abandoned live work; terminal expiry deletes content without trimming live runs.

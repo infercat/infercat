@@ -18,19 +18,21 @@ import (
 )
 
 type snapshot struct {
-	Epoch  string         `json:"epoch"`
-	Seq    uint64         `json:"seq"`
-	Runs   map[string]Run `json:"runs"`
-	Events []Event        `json:"events"`
+	Epoch    string              `json:"epoch"`
+	Seq      uint64              `json:"seq"`
+	Runs     map[string]Run      `json:"runs"`
+	Events   []Event             `json:"events"`
+	Retained map[string]Retained `json:"retained,omitempty"`
 }
 type Store struct {
-	mu     sync.Mutex
-	root   string
-	data   map[string]*snapshot
-	broken map[string]error
-	subs   map[string]map[chan Event]bool
-	now    func() time.Time
-	write  func(string, []byte) error
+	mu       sync.Mutex
+	root     string
+	data     map[string]*snapshot
+	broken   map[string]error
+	subs     map[string]map[chan Event]bool
+	now      func() time.Time
+	write    func(string, []byte) error
+	reserved map[string]map[string]*reservation
 }
 
 var safeID = regexp.MustCompile(`^[a-zA-Z0-9_-]{1,80}$`)
@@ -156,6 +158,11 @@ func (s *Store) load(key string) (*snapshot, error) {
 				return nil, ErrInvalid
 			}
 		}
+		for rid := range v.Retained {
+			if _, ok := v.Runs[rid]; !ok {
+				return nil, ErrInvalid
+			}
+		}
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return nil, err
 	}
@@ -173,6 +180,11 @@ func (s *Store) commit(key string, v *snapshot, event *Event) error {
 	if err := s.broken[key]; err != nil {
 		return err
 	}
+	for rid := range v.Retained {
+		if _, ok := v.Runs[rid]; !ok {
+			delete(v.Retained, rid)
+		}
+	}
 	if event != nil {
 		v.Seq++
 		event.Cursor = fmt.Sprintf("%s:%d", v.Epoch, v.Seq)
@@ -185,9 +197,15 @@ func (s *Store) commit(key string, v *snapshot, event *Event) error {
 	if err != nil {
 		return err
 	}
-	if len(raw) > MaxStored {
-		return ErrLimit
+	undo, err := s.retainedBudget(key, v, event, len(raw))
+	if err != nil {
+		return err
 	}
+	defer func() {
+		if s.data[key] != v {
+			undo()
+		}
+	}()
 	if err = privateDir(filepath.Join(s.root, key)); err != nil {
 		return err
 	}
@@ -196,6 +214,12 @@ func (s *Store) commit(key string, v *snapshot, event *Event) error {
 		return err
 	}
 	s.data[key] = v
+	// Reservations belong to live run identities, never expired retained files.
+	for rid := range s.reserved[key] {
+		if _, ok := v.Runs[rid]; !ok {
+			delete(s.reserved[key], rid)
+		}
+	}
 	if event != nil {
 		for ch := range s.subs[key] {
 			select {
@@ -208,7 +232,7 @@ func (s *Store) commit(key string, v *snapshot, event *Event) error {
 	}
 	return nil
 }
-func (s *Store) change(key, rid string, fn func(*Run) error) (Run, error) {
+func (s *Store) change(key, rid string, fn func(*Run) error, retain ...func(*Retained) error) (Run, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	v, err := s.load(key)
@@ -222,6 +246,16 @@ func (s *Store) change(key, rid string, fn func(*Run) error) (Run, error) {
 	}
 	if err = fn(&r); err != nil {
 		return Run{}, err
+	}
+	for _, update := range retain {
+		if v.Retained == nil {
+			v.Retained = map[string]Retained{}
+		}
+		data := v.Retained[rid]
+		if err = update(&data); err != nil {
+			return Run{}, err
+		}
+		v.Retained[rid] = data
 	}
 	r.Updated = s.now().UTC()
 	if terminal(r.State) && !terminal(v.Runs[rid].State) {
