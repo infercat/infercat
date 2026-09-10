@@ -435,3 +435,44 @@ func TestNameResolvesToTheLiveKey(t *testing.T) {
 		t.Fatalf("two live namesakes = %v; want the ambiguity error", err)
 	}
 }
+
+func TestAgentCapabilityAndLimitsCommitTogether(t *testing.T) {
+	ctx := context.Background()
+	s, dir := newStore(t)
+	k, _, err := s.Add(ctx, "agent", Limits{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ch := s.Changes()
+	enabled := true
+	l := k.Limits
+	l.RPM = 37
+	if err = s.SetLimitsAndAgent(ctx, k.ID, l, &enabled); err != nil {
+		t.Fatal(err)
+	}
+	<-ch
+	reopened, err := NewFileStore(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := reopened.Find(ctx, k.ID)
+	if err != nil || !got.Agent || got.Limits.RPM != 37 {
+		t.Fatal(got, err)
+	}
+	l.RPM = 38
+	if err = s.SetLimits(ctx, k.ID, l); err != nil {
+		t.Fatal(err)
+	}
+	got, _ = s.Find(ctx, k.ID)
+	if !got.Agent || got.Limits.RPM != 38 {
+		t.Fatal("ordinary limit change lost capability", got)
+	}
+	enabled = false
+	if err = s.SetLimitsAndAgent(ctx, k.ID, l, &enabled); err != nil {
+		t.Fatal(err)
+	}
+	got, _ = s.Find(ctx, k.ID)
+	if got.Agent {
+		t.Fatal("explicit opt-out ignored")
+	}
+}

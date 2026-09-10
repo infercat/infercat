@@ -52,7 +52,7 @@ func TestPinnedCompositionDisablesBothOwnersWithoutLiveInstall(t *testing.T) {
 	if json.Unmarshal(raw, &rows) != nil {
 		t.Fatal("bad composed config")
 	}
-	for _, id := range []string{"session-persistence-jsonl", "session-checkpoint-policy"} {
+	for _, id := range []string{"session-persistence-jsonl", "session-checkpoint-policy", "session-projection-cache"} {
 		if !bytes.Contains(baseComposition, []byte("id: "+id+"\n")) {
 			t.Fatal("disabled id absent from pinned manifest", id)
 		}

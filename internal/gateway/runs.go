@@ -7,6 +7,7 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"sort"
 	"strings"
 	"time"
 
@@ -26,12 +27,12 @@ func (g *Gateway) SetRuns(m *runstate.Manager) error {
 // ExecuteStep reuses the request owner; finish settles once before the result is observed.
 func (g *Gateway) ExecuteStep(ctx context.Context, keyID string, step runstate.Step, acquired func() error) (result runstate.StepResult, err error) {
 	if len(step.Input) > runstate.MaxInput || !json.Valid(step.Input) {
-		return result, runstate.ErrInvalid
+		return result, runstate.Failure("key_revoked")
 	}
 	if step.Route != string(chatEndpoint) && step.Route != string(embeddingsEndpoint) && step.Route != string(imagesEndpoint) {
 		return result, runstate.ErrInvalid
 	}
-	sink := &runSink{ctx: ctx, header: make(http.Header)}
+	sink := &runSink{ctx: ctx, header: make(http.Header), observe: step.Observe}
 	r, _ := http.NewRequestWithContext(ctx, http.MethodPost, "http://host"+step.Route, bytes.NewReader(step.Input))
 	q := g.newRequest(sink, r)
 	q.onAcquired = acquired
@@ -61,7 +62,11 @@ func (g *Gateway) ExecuteStep(ctx context.Context, keyID string, step runstate.S
 		if err == nil {
 			result.Output = append(json.RawMessage(nil), sink.Bytes()...)
 			if q.n.stream {
-				result.Output, _ = json.Marshal(string(result.Output))
+				if step.RequireAgent {
+					result.Output = agentRecord(result.Output)
+				} else {
+					result.Output, _ = json.Marshal(string(result.Output))
+				}
 			}
 			if len(result.Output) > runstate.MaxOutput {
 				result.Output = nil
@@ -84,16 +89,20 @@ func (g *Gateway) ExecuteStep(ctx context.Context, keyID string, step runstate.S
 	}
 	if q.key == nil {
 		q.noEvent = true
-		return result, runstate.ErrNotFound
+		return result, runstate.Failure("key_revoked")
 	}
 	q.ev.KeyID = keyID
+	if step.RequireAgent && !q.key.Agent {
+		q.fail(errf(CodeInvalidRequest, 0, "agent capability is off for this key"))
+		return result, runstate.Failure("key_revoked")
+	}
 	if q.key.Status != keys.Active {
 		code := CodeKeyPaused
 		if q.key.Status == keys.Revoked {
 			code = CodeKeyRevoked
 		}
 		q.fail(errf(code, 0, "key is not active"))
-		return result, runstate.ErrInvalid
+		return result, runstate.Failure("key_revoked")
 	}
 	if step.Route == string(imagesEndpoint) {
 		q.proxyImage(step.RunID, step.Input)
@@ -104,6 +113,7 @@ func (g *Gateway) ExecuteStep(ctx context.Context, keyID string, step runstate.S
 }
 
 type runSink struct {
+	observe func([]byte) error
 	bytes.Buffer
 	ctx    context.Context
 	header http.Header
@@ -124,6 +134,12 @@ func (s *runSink) Write(p []byte) (int, error) {
 	if s.err != nil {
 		return 0, s.err
 	}
+	if s.observe != nil {
+		if err := s.observe(p); err != nil {
+			s.err = err
+			return 0, err
+		}
+	}
 	return s.Buffer.Write(p)
 }
 func runError(err error) *gwError {
@@ -138,6 +154,8 @@ func runError(err error) *gwError {
 		return errf(CodeUpstreamDown, retryAfterUpstreamDown, "runtime stopping; retry shortly")
 	case errors.Is(err, runstate.ErrQuarantined):
 		return errf(CodeUpstreamDown, retryAfterUpstreamDown, "runtime quarantined; retry after recovery")
+	case errors.Is(err, runstate.ErrAgentUnavailable):
+		return errf(CodeAgentUnavailable, 0, "agent runtime unavailable; ask the host to check agent status before submitting again")
 	case errors.Is(err, runstate.ErrQueueLimit):
 		return errf(CodeImageQueueFull, 1, "image queue is full")
 	case errors.Is(err, runstate.ErrNotFound):
@@ -173,9 +191,10 @@ func (q *request) runRoute() {
 			return
 		}
 		var input struct {
-			Kind     string          `json:"kind"`
-			Priority string          `json:"priority"`
-			Input    json.RawMessage `json:"input"`
+			Kind            string          `json:"kind"`
+			ClientRequestID *string         `json:"client_request_id,omitempty"`
+			Priority        string          `json:"priority"`
+			Input           json.RawMessage `json:"input"`
 		}
 		dec := json.NewDecoder(http.MaxBytesReader(q.w, q.r.Body, runstate.MaxInput+1024))
 		dec.DisallowUnknownFields()
@@ -189,22 +208,51 @@ func (q *request) runRoute() {
 			q.fail(errf(CodeInvalidRequest, 0, "expected one bounded run request"))
 			return
 		}
+		if input.Kind == "agent" && !q.key.Agent {
+			q.fail(errf(CodeInvalidRequest, 0, "agent capability is off for this key"))
+			return
+		}
+		if input.Kind == "agent" && m.Kinds["agent"] == nil {
+			q.fail(runError(runstate.ErrAgentUnavailable))
+			return
+		}
 		var r runstate.Run
-		r, err = m.Submit(q.key.ID, input.Kind, input.Priority, input.Input)
+		var correlation []string
+		if input.ClientRequestID != nil {
+			correlation = []string{*input.ClientRequestID}
+		}
+		r, err = m.Submit(q.key.ID, input.Kind, input.Priority, input.Input, correlation...)
 		value = map[string]string{"id": r.ID}
 		status = http.StatusAccepted
+	case q.r.Method == http.MethodGet && q.r.URL.Path == "/v1/runs":
+		q.kind = endpoint(q.r.URL.Path)
+		if e := q.admitImageHTTP(); e != nil {
+			q.fail(e)
+			return
+		}
+		rows, e := m.Store.List(q.key.ID)
+		sort.SliceStable(rows, func(i, j int) bool { return rows[i].Created.After(rows[j].Created) })
+		value, err = map[string]any{"runs": rows}, e
 	case strings.HasPrefix(q.r.URL.Path, "/v1/runs/"):
 		id := strings.TrimPrefix(q.r.URL.Path, "/v1/runs/")
-		if q.r.Method == http.MethodGet || q.r.Method == http.MethodDelete {
+		if q.r.Method == http.MethodGet || q.r.Method == http.MethodDelete || strings.HasSuffix(q.r.URL.Path, "/approval") {
 			q.kind = endpoint(q.r.URL.Path)
 			if e := q.admitImageHTTP(); e != nil {
 				q.fail(e)
 				return
 			}
 		}
+		parts := strings.Split(id, "/")
+		if len(parts) > 1 {
+			q.runDetail(parts)
+			return
+		}
 		switch q.r.Method {
 		case http.MethodGet:
-			value, err = m.Store.Get(q.key.ID, id)
+			value, err = runView(m.Store, q.key.ID, id)
+			if d, ok := value.(runstate.Detail); ok && d.Kind == "image" {
+				value = d.Run
+			}
 		case http.MethodDelete:
 			value, err = m.Cancel(q.key.ID, id)
 			if errors.Is(err, runstate.ErrConflict) {

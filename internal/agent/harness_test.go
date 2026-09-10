@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 )
@@ -55,7 +56,7 @@ func TestPinnedHarnessIPC(t *testing.T) {
 		log, _ := os.ReadFile(filepath.Join(options.Dir, "runtime.log"))
 		t.Fatalf("native readiness: %+v\n%s", s, log)
 	}
-	start, _ := json.Marshal(map[string]any{"type": "start", "id": "fixture-run", "cwd": options.Dir, "model": "fixture", "text": "Say hello."})
+	start, _ := json.Marshal(map[string]any{"type": "start", "id": "fixture-run", "cwd": options.Dir, "input": json.RawMessage(`{"model":"fixture","messages":[{"role":"user","content":"Say hello."}]}`)})
 	if err = r.Send(start); err != nil {
 		t.Fatal(err)
 	}
@@ -69,8 +70,13 @@ func TestPinnedHarnessIPC(t *testing.T) {
 			switch frame["type"] {
 			case "error":
 				t.Logf("native error: %v", frame["message"])
-			case "event":
-				events++
+			case "checkpoint":
+				evs, _ := frame["events"].([]any)
+				events += len(evs)
+				reply, _ := json.Marshal(map[string]any{"type": "reply", "id": frame["id"]})
+				if e := r.Send(reply); e != nil {
+					t.Fatal(e)
+				}
 			case "model":
 				model = true
 				cancelledCall = frame["id"]
@@ -97,7 +103,7 @@ func TestPinnedHarnessIPC(t *testing.T) {
 	if err = r.Send(late); err != nil {
 		t.Fatal(err)
 	}
-	start, _ = json.Marshal(map[string]any{"type": "start", "id": "next-run", "cwd": options.Dir, "model": "fixture", "text": "Say hello."})
+	start, _ = json.Marshal(map[string]any{"type": "start", "id": "next-run", "cwd": options.Dir, "input": json.RawMessage(`{"model":"fixture","messages":[{"role":"user","content":"Say hello."}]}`)})
 	if err = r.Send(start); err != nil {
 		t.Fatal(err)
 	}
@@ -106,28 +112,34 @@ func TestPinnedHarnessIPC(t *testing.T) {
 	for !settled {
 		select {
 		case frame := <-output:
-			if frame["type"] == "event" && frame["run_id"] == "next-run" {
-				event, _ := frame["event"].(map[string]any)
-				if event["type"] == "assistant/message" {
-					data, _ := event["data"].(map[string]any)
-					message, _ := data["message"].(map[string]any)
-					content, _ := message["content"].([]any)
-					for _, part := range content {
-						block, _ := part.(map[string]any)
-						if block["type"] == "text" && block["text"] == "Hello." {
-							hello = true
+			if frame["type"] == "checkpoint" && frame["run_id"] == "next-run" {
+				reply, _ := json.Marshal(map[string]any{"type": "reply", "id": frame["id"]})
+				if e := r.Send(reply); e != nil {
+					t.Fatal(e)
+				}
+				evs, _ := frame["events"].([]any)
+				for _, rawEvent := range evs {
+					event, _ := rawEvent.(map[string]any)
+					if event["type"] == "assistant/message" {
+						data, _ := event["data"].(map[string]any)
+						message, _ := data["message"].(map[string]any)
+						content, _ := message["content"].([]any)
+						for _, part := range content {
+							block, _ := part.(map[string]any)
+							if block["type"] == "text" && block["text"] == "Hello." {
+								hello = true
+							}
 						}
 					}
 				}
 			}
 			if frame["type"] == "model" {
 				model = true
-				reply, _ := json.Marshal(map[string]any{"type": "model_result", "id": frame["id"], "chunks": []any{
-					map[string]any{"type": "block-start", "index": 0, "blockType": "text"},
-					map[string]any{"type": "text-delta", "index": 0, "text": "Hello."},
-					map[string]any{"type": "block-end", "index": 0, "block": map[string]any{"type": "text", "text": "Hello."}},
-					map[string]any{"type": "finish", "reason": map[string]any{"kind": "stop"}},
-				}})
+				data, _ := json.Marshal(map[string]any{"type": "model_data", "id": frame["id"], "data": "data: {\"choices\":[{\"delta\":{\"content\":\"Hello.\"},\"finish_reason\":\"stop\"}]}\n\ndata: [DONE]\n\n"})
+				if err = r.Send(data); err != nil {
+					t.Fatal(err)
+				}
+				reply, _ := json.Marshal(map[string]any{"type": "model_result", "id": frame["id"]})
 				if err = r.Send(reply); err != nil {
 					t.Fatal(err)
 				}
@@ -146,6 +158,19 @@ func TestPinnedHarnessIPC(t *testing.T) {
 		t.Fatal("runtime not reused", r.Status())
 	}
 	t.Log("late cancelled reply ignored; successor model call and settlement on the same process")
+	r.Close()
+	err = filepath.WalkDir(filepath.Join(options.Dir, "harness"), func(path string, d os.DirEntry, e error) error {
+		if e != nil {
+			return e
+		}
+		if !d.IsDir() && strings.Contains(path, "session_projcache") {
+			t.Errorf("projection cache persisted: %s", path)
+		}
+		return nil
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
 	entries, err := os.ReadDir(filepath.Join(options.Dir, "harness", "sessions"))
 	if err != nil || len(entries) != 0 {
 		t.Fatal("adapter created a second trajectory owner", err, entries)

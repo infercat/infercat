@@ -342,7 +342,8 @@ func (q *request) models() {
 }
 
 type meResponse struct {
-	Key struct {
+	Agent *bool `json:"agent,omitempty"`
+	Key   struct {
 		ID     string      `json:"id"`
 		Name   string      `json:"name"`
 		Status keys.Status `json:"status"`
@@ -378,6 +379,10 @@ type meResponse struct {
 
 func (q *request) me() {
 	var m meResponse
+	if q.g.runs != nil && q.g.runs.Kinds["agent"] != nil {
+		enabled := q.key.Agent
+		m.Agent = &enabled
+	}
 	m.Key.ID, m.Key.Name, m.Key.Status = q.key.ID, q.key.Name, q.key.Status
 	m.Limits = keys.AudioDefaults(q.key.Limits)
 	m.Host.Images, _ = q.g.imageOffer(q.key)

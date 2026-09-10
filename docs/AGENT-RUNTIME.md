@@ -1,12 +1,14 @@
 # Agent runtime
 
-The runtime foundation is installed and supervised by Infercat. Agent run routes,
-key opt-in and native event/model integration belong to 116c; the 116b shared run
-mechanism does not expose an agent route to friends.
+Infercat runs the pinned native harness as a supervised child. A host enables it
+with `serve --agent`, then opts each friend in with `keys limits ID --agent=true`.
+Model calls, including helper calls, use the run key through the gateway request
+owner; their tokens count against the same limits as chat.
 
 ```sh
 infercat agent install --data-dir /path/to/host
 infercat serve --data-dir /path/to/host --agent
+infercat keys limits alice --agent=true --data-dir /path/to/host
 ```
 
 Installation is one command on Darwin and Linux (arm64 or x64). It installs a
@@ -32,6 +34,12 @@ Files live below the host's `agent/` directory:
   `runtime.log` (at most 1 MiB, replaced on restart).
 - `npm-cache/`: installer cache, outside retained run data.
 
+Workspaces live at `<dataDir>/agent/workspaces/<key>/`, including for home-less
+service accounts and volume-backed containers. Admission checks the directory is
+writable before creating a run; failure is `agent_unavailable`. Captured copies live in the
+capped run store and are independent of later workspace edits. Existing workspaces
+from the earlier preview are not automatically migrated or deleted.
+
 `--agent` is off by default and is not remembered. `/status.agent` is absent when
 off; when enabled it contains `state`, optional `pid` and `last_error`, and
 `restarts`. States are `starting`, `healthy`, `backoff`, `failed`, and `stopped`.
@@ -54,7 +62,9 @@ adapter, and cancellation services. It is separate from the vendor packages.
 The private newline-JSON protocol carries start/cancel, session and streaming
 events, model requests/results, and a settled notification. Frames are bounded to
 2 MiB; overload ends the generation rather than silently truncating an event.
-At most 64 sessions are live in the process. Late model results after cancellation
+The native transport has a 64-session bound; the host registers the agent kind
+with Serial, so only one agent run is active per host. Accepted queued runs wait
+for a healthy generation before their first native dispatch. Late model results after cancellation
 are ignored; settlement is emitted only after native session flush and disposal.
 A restarted process does not reconstruct or replay prior runs.
 
@@ -64,9 +74,13 @@ host, is passed only for the native search provider. The harness's workspace-wri
 and ask policy remains intact: ordinary workspace writes do not ask; genuine
 approval requests are not automatically allowed. The three description strings
 proven in 129 are applied verbatim, with a check that schema semantics are unchanged.
-The intended scope is “confined to your workspace and temporary files,” not
-isolation from other friends' data. The retained-data bound is not a hard
-quota on a live workspace or temporary files.
+The shipped sandbox provides write confinement: “confined to your workspace and
+temporary files; not isolated from the host's other data.” **An agent can read the host's data directory; host reads are not confined.** The pinned Seatbelt profile allows reads by default, the Landlock
+profile grants read access to `/`, and the in-process file service fences writes
+only. There is no complete read-deny composition setting for these capabilities.
+Use `--agent` only on a single-friend host until a complete read boundary exists.
+Keeping workspaces in the data volume does not establish read isolation. The retained-data bound is not
+a hard quota on a live workspace or temporary files.
 
 ## Verification
 
@@ -82,8 +96,8 @@ INFERCAT_AGENT_TEST_INSTALL=/path/to/installed/host \
 That fixture creates a separate temporary host, checks native readiness and model
 IPC, cancels the native run, sends a late model reply, and completes a successor
 on the same process with a fixture model response. It does not call an inference
-engine. The E4B baseline proof through real routes belongs to 116c; E2B remains
-promising pending the separate profile proof.
+engine. E4B is the baseline model; E2B remains promising pending the separate profile
+proof. The live E4B route evidence is in `docs/spikes/116c-agent-route.md`.
 
 ## Shared run mechanism (116b)
 
@@ -169,22 +183,64 @@ Per-key recovery and Sweep failures are logged and isolated. Unfinished recovere
 runs fail without replay, while the host serves healthy keys. Snapshots load lazily;
 inactive terminal-only keys without subscribers leave memory after five minutes.
 Whole-snapshot commits still cost more as retained data grows: the 116c probe on
-this Mac measured 12–13 ms at 1.4 MiB encoded, 36–37 ms at 11.2 MiB and 175–183 ms
-at 65.7 MiB. 116c must coalesce thinking updates to at most one durable update per
-second and flush admission/approval/output/terminal boundaries; this slice does
-not claim incremental storage or eliminate that measured cost.
+this Mac initially measured 12–13 ms at 1.4 MB encoded, 36–37 ms at 11.2 MB and 175–183 ms
+at 65.7 MB (decimal bytes). Thinking updates coalesce to at most one durable
+update per second per run; admission/approval/output/terminal boundaries force a
+flush. The corrected-base rerun measured up to 186 ms near the cap (see the route
+proof). This does not eliminate the measured whole-snapshot cost.
 
-The native JSONL backend and its backend-dependent checkpoint row are disabled
+The native JSONL backend, its backend-dependent checkpoint row, and the persisted
+session projection-cache row are disabled
 through supported composition. The harness retains execution and its in-memory
 trajectory, but **native checkpointing is not active**. The pre-dispatch durability
-duty moves to the Go owner's admission acknowledgement in 116c, and no real route
-enables before that acknowledgement exists. 116b tests the owner and native
-in-memory composition separately; it does not claim the IPC acknowledgement is
-already connected to model/tool dispatch. Existing 116a JSONL artifacts are not
-imported or deleted by this extraction.
-An offline test in `make check` checks both disabling rows against the vendored
+duty belongs to the Go owner's admission acknowledgement. Native model/tool
+dispatch waits for the raw prefix to be committed; a tool also reserves capacity
+through result capture. A failed acknowledgement refuses dispatch. Cancellation
+retains only a bounded final turn note from the existing lease, then joins native
+disposal. Existing 116a JSONL artifacts are not imported or deleted.
+An offline test in `make check` checks all three disabling rows against the vendored
 pinned base composition. Startup refuses a missing or changed installed manifest;
 the live test requires the expected sessions directory to exist and remain empty.
+
+## Agent route contract
+
+`/me.agent` is an additive boolean. The host must have the agent kind registered
+and the key must have `agent: true`. A missing/unhealthy runtime refuses run
+creation using the existing typed availability error; other host routes keep serving.
+
+`POST /v1/runs` accepts `kind: "agent"`, optional `priority`, optional
+`client_request_id`, and an `input` containing `model`, `messages`, optional
+`temperature`, and optional `chat_template_kwargs.enable_thinking`. Message roles
+are system/user/assistant; content is text or text/data-image parts. Other input
+settings and unsupported parts refuse before creation. The encoded input limit is
+1 MiB. Original history and supported settings are passed through to model calls.
+`client_request_id` is 1–128 ASCII letters/digits/underscore/hyphen, scoped to the
+key and echoed on Run/Summary. It is metadata: identical values create separate
+runs. Never automatically resubmit an ambiguous creation or approval answer.
+
+`GET /v1/runs` returns at most MaxRuns (100) summaries for the key, newest-created
+first, with additive `created` and correlation metadata. List, detail, output and
+approval routes take detached admission and spend RPM; they do not consume the
+key's model-concurrency slot. Failed control mutations are never replayed.
+
+`GET /v1/runs/{id}` returns ordered `steps`, output descriptors, optional pending
+`approval`, and final `text` alongside the existing run. The existing `event: run`
+SSE envelope gains `type: "step"` and nested `step`. `StepEvent` lives in
+`internal/run/steps.go`: immutable `id` and original `at`, `type: "step"`, `kind`,
+`status`, optional `name`, `tool`, one-line `result`, bounded `text`, and `output_id`.
+An update replaces the whole step by ID; GET uses the same objects. Raw storage
+writes remain silent. Cursor replay reconstructs updates; reset recovery uses
+summaries plus GET. Queue position may be absent; elapsed means run age including
+waits, never an estimate.
+
+`GET /v1/runs/{id}/outputs/{output_id}` returns immutable captured bytes, scoped
+to the requesting key. `POST /v1/runs/{id}/approval` accepts `{id, allow}` and
+returns the authoritative snapshot after a commit-once answer. Cancellation stays
+pending until the native consumer joins, subject to the shared 30-second bound.
+Restart fails live runs; an old waiting approval cannot resume a lost generation.
+`Step.Observe` exposes borrowed, callback-scoped model bytes to host consumers;
+errors settle through the existing request owner, and no callback follows its
+return. These live deltas are not authoritative state or meters.
 
 Round-two storage behavior: single-key List refreshes access time; all-key
 enumeration does not. Idle terminal keys with no subscriber leave memory after
@@ -195,8 +251,8 @@ resident. All-key enumeration re-reads and re-parses each nonresident idle key
 on every call, then releases it again. It is not amortized across calls. On this
 Mac, 8 idle keys with 1 MiB each took 6.37–6.59 ms per repeated enumeration with
 filesystem pages warm; the first already-resident call took 7.83 µs. Measurement:
-/tmp/infercat-157-v3-outcomes.log. Scheduling and position reads currently pay this
-tradeoff; the separately dispatched position-cache work is not included here. Every run write advances Updated. Retain is explicitly silent on the
+/tmp/infercat-157-v3-outcomes.log. Scheduling enumeration pays this tradeoff; the landed platform position cache
+serves repeated position reads. Every run write advances Updated. Retain is explicitly silent on the
 lifecycle stream, while artifact creation, discard and each eviction publish their
 own notifications. A valid cursor from an unknown epoch returns Reset.
 
@@ -245,5 +301,43 @@ The allowance-exhausted 67,043,328-byte fixture enters the new load check and to
 assertions: /tmp/infercat-157-v5-focused.log. Failed recovery is marked complete
 only after success and is retried on the next load. Needs-attention responses use
 503 upstream_down with Retry-After: 60 and direct the friend to the host.
-Resume, Answer and StopGeneration still have no production caller before 116c;
-these lifecycle behaviours are fixture-proven here, and route proof belongs there.
+The agent route uses the landed Answer and generation-stop contracts. Runtime
+loss ends the active native session without replay; restart restores availability.
+
+Detail and approval responses use a detached projection: run metadata, steps,
+approval, output descriptors, and attempt identity/settlement/meters. Bulk attempt
+outputs and prompt/completion text are excluded. Output reads copy only one
+selected payload. There is one snapshot and one retained-data owner, with no new
+file or secondary ledger. Agent attempt output is a bounded final
+assistant message with tool calls (up to 1 MiB encoded), rather than the raw SSE
+transcript. Native trajectory and thinking records remain separately accounted
+under the same per-key cap; helpers also produce metered attempt records. A raw
+SSE response remains transiently capped at 1 MiB during conversion. If compaction
+cannot interpret it, the paid call stays successful and records a flagged raw
+fallback containing only the last 64 KiB, with a diagnostic log. CRLF result lines
+are normalised; unsupported step formatting produces a bounded failed note, not
+a run abort. Adapter failures carry bounded causes such as `runtime_lost`,
+`retention_refused`, `key_revoked`, `approval_invalid`, or `workspace_unavailable`.
+
+Helpers are classified by the pinned `GenerateOptions.purpose` (`compaction` or
+`session-title`, dsh-llm/lib/types/types.d.ts). They use native settings/budgets,
+with thinking off, rather than the friend's temperature/thinking settings. Their
+purpose is recorded on each attempt. Tool-call id/type/name use the first nonempty
+delta; only arguments concatenate.
+
+The pinned approval counterpart is `dsh-user-approval/src/types.ts`:
+`ApprovalRequestEvent` supplies agent, toolName, optional reason and optional
+AbortSignal. `sandbox/src/escalation.ts` supplies the exact question and grants
+only `allowed-once`; `rejected` throws a tool refusal. Invalid shapes fail visibly,
+and the waiting step preserves the verbatim question. A permitted out-of-workspace
+write can succeed without capture: its step records a capture-refusal note.
+`agent_unavailable` (503) identifies an unready runtime with an operator-action
+hint; it is not a run-store failure. A registered kind with a key opted out emits
+`/me.agent: false` explicitly.
+
+Current 116c v3 measurements on the fat run: at 68 outputs × 700 KiB and 1 MiB of
+step text (66,436,469 encoded bytes), detail mean 2.074 µs, selected-output copy
+13.393 µs, response encoding 460.570 µs outside the store lock. At 64,994,268 bytes,
+small native-event commits still cost 150.1–161.9 ms plus 17.3–27.2 ms for admission.
+These are warm non-race measurements, not timing assertions; see the retained
+116c route report and its test fixtures.

@@ -54,14 +54,14 @@ func New(s *Store, exec Executor, kinds map[string]Kind) (*Manager, error) {
 	s.mu.Unlock()
 	return m, nil
 }
-func (m *Manager) Submit(key, kind, priority string, input json.RawMessage) (Run, error) {
-	rows, err := m.SubmitBatch(key, kind, priority, []json.RawMessage{input})
+func (m *Manager) Submit(key, kind, priority string, input json.RawMessage, correlation ...string) (Run, error) {
+	rows, err := m.SubmitBatch(key, kind, priority, []json.RawMessage{input}, correlation...)
 	if err != nil {
 		return Run{}, err
 	}
 	return rows[0], nil
 }
-func (m *Manager) SubmitBatch(key, kind, priority string, inputs []json.RawMessage) ([]Run, error) {
+func (m *Manager) SubmitBatch(key, kind, priority string, inputs []json.RawMessage, correlation ...string) ([]Run, error) {
 	m.mu.Lock()
 	if err := m.availability(kind); err != nil {
 		m.mu.Unlock()
@@ -107,7 +107,7 @@ func (m *Manager) SubmitBatch(key, kind, priority string, inputs []json.RawMessa
 	if m.ctx.Err() != nil {
 		return nil, ErrConflict
 	}
-	rows, err := m.Store.CreateBatch(key, kind, priority, inputs, admission.QueueLimit, admission.Reserve)
+	rows, err := m.Store.createBatch(key, kind, priority, inputs, admission.QueueLimit, correlation, admission.Reserve)
 	if err != nil {
 		return nil, err
 	}
@@ -333,7 +333,7 @@ func (m *Manager) drive(ctx context.Context, r Run) {
 	for ctx.Err() == nil {
 		d, err := m.Kinds[r.Kind](ctx, r)
 		if err != nil {
-			m.finish(r.KeyID, r.ID, Failed, "kind failed", nil)
+			m.finish(r.KeyID, r.ID, Failed, failureReason(err), nil)
 			return
 		}
 		if d.Step == nil {
@@ -379,7 +379,7 @@ func (m *Manager) attempt(ctx context.Context, r Run, step Step, live bool) (Run
 		} else {
 			v.State = Queued
 		}
-		v.Attempts = append(v.Attempts, Attempt{ID: aid, AccountingUncertain: true})
+		v.Attempts = append(v.Attempts, Attempt{ID: aid, AccountingUncertain: true, Purpose: step.Purpose})
 		return nil
 	})
 	if err != nil {

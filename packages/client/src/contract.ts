@@ -35,6 +35,7 @@ export interface Me {
 }
 
 export type GatewayErrorCode =
+  | "agent_unavailable"
   | 'invalid_key' | 'key_paused' | 'key_revoked' | 'model_not_allowed'
   | 'body_too_large' | 'context_too_long' | 'rate_limited' | 'concurrency_limited'
   | 'budget_exhausted' | 'queue_timeout' | 'upstream_down' | 'upstream_error'
