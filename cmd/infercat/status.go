@@ -33,20 +33,17 @@ func (e *env) cmdStatus(ctx context.Context, pre string, args []string) error {
 	if err != nil {
 		return err
 	}
-	cfg, err := agentconfig.Default()
+	var agentsOut io.Writer = io.Discard
+	if !*watch {
+		agentsOut = e.out
+	}
+	agentCount, err := writeAgents(agentsOut)
 	if err != nil {
 		return err
-	}
-	agents, err := cfg.List()
-	if err != nil {
-		return err
-	}
-	if len(agents) > 0 && !*watch {
-		fmt.Fprintf(e.out, "agents    %s\n", strings.Join(agents, ", "))
 	}
 	st, err := admin.Fetch(ctx, dataDir)
 	if errors.Is(err, admin.ErrNoDaemon) {
-		if len(agents) > 0 && !*watch {
+		if agentCount > 0 && !*watch {
 			fmt.Fprintln(e.out, "no running host or bridge for this data directory")
 			return nil
 		}
@@ -60,6 +57,22 @@ func (e *env) cmdStatus(ctx context.Context, pre string, args []string) error {
 		return nil
 	}
 	return e.watchStatus(ctx, dataDir, st, max(*interval, 100*time.Millisecond))
+}
+
+func writeAgents(w io.Writer) (int, error) {
+	cfg, err := agentconfig.Default()
+	if err != nil {
+		fmt.Fprintln(w, "agents: unknown (no config dir)")
+		return 0, nil
+	}
+	agents, err := cfg.List()
+	if err != nil {
+		return 0, err
+	}
+	if len(agents) > 0 {
+		fmt.Fprintf(w, "agents    %s\n", strings.Join(agents, ", "))
+	}
+	return len(agents), nil
 }
 
 // watchStatus is `status --watch`: the block redrawn in place each interval — a plain ANSI clear,
@@ -84,11 +97,7 @@ func (e *env) watchStatus(ctx context.Context, dataDir string, st admin.Status, 
 	var lines []string
 	refresh := func(st admin.Status, err error) {
 		var b strings.Builder
-		if cfg, e := agentconfig.Default(); e == nil {
-			if a, e := cfg.List(); e == nil && len(a) > 0 {
-				fmt.Fprintf(&b, "agents    %s\n", strings.Join(a, ", "))
-			}
-		}
+		_, _ = writeAgents(&b)
 		if err != nil {
 			fmt.Fprintf(&b, "%s %s — no answer from the host for %s (%v); still watching\n", product.Name, product.Version, dataDir, err)
 		} else {

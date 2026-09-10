@@ -62,22 +62,52 @@ func Parse(s string) ([]string, error) {
 	return out, nil
 }
 func digest(b []byte) string { h := sha256.Sum256(b); return hex.EncodeToString(h[:]) }
-func safe(path string) error {
-	for p := filepath.Clean(path); ; p = filepath.Dir(p) {
-		fi, err := os.Lstat(p)
-		if err != nil && !errors.Is(err, os.ErrNotExist) {
-			return err
-		}
-		if err == nil && fi.Mode()&os.ModeSymlink != 0 {
-			return fmt.Errorf("symlink refused: %s", p)
-		}
-		if filepath.Dir(p) == p {
-			return nil
-		}
+
+// Resolve a directory once, including a not-yet-created suffix. A dangling link
+// is an error; an existing directory link (home, dotfiles or /tmp) is allowed.
+func directory(path string) (string, error) {
+	path, err := filepath.Abs(path)
+	if err != nil {
+		return "", err
 	}
+	resolved, err := filepath.EvalSymlinks(path)
+	if err == nil {
+		return resolved, nil
+	}
+	if !errors.Is(err, os.ErrNotExist) {
+		return "", err
+	}
+	if filepath.Dir(path) == path {
+		return "", err
+	}
+	if _, e := os.Lstat(path); e == nil {
+		return "", err
+	}
+	parent, err := directory(filepath.Dir(path))
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(parent, filepath.Base(path)), nil
+}
+func safe(path string) (string, error) {
+	parent, err := directory(filepath.Dir(path))
+	if err != nil {
+		return "", err
+	}
+	path = filepath.Join(parent, filepath.Base(path))
+	fi, err := os.Lstat(path)
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return "", err
+	}
+	if err == nil && fi.Mode()&os.ModeSymlink != 0 {
+		return "", fmt.Errorf("symlink refused: %s", path)
+	}
+	return path, nil
 }
 func read(path string) ([]byte, bool, error) {
-	if err := safe(path); err != nil {
+	var err error
+	path, err = safe(path)
+	if err != nil {
 		return nil, false, err
 	}
 	fi, err := os.Stat(path)
@@ -97,7 +127,9 @@ func write(path string, raw []byte) error {
 	if len(raw) > 2<<20 {
 		return errors.New("managed configuration exceeds 2 MiB")
 	}
-	if err := safe(path); err != nil {
+	var err error
+	path, err = safe(path)
+	if err != nil {
 		return err
 	}
 	if err := os.MkdirAll(filepath.Dir(path), 0700); err != nil {
@@ -127,15 +159,18 @@ func write(path string, raw []byte) error {
 	}
 	return err
 }
-func (c Config) locked(fn func() error) error {
-	if err := safe(c.Dir); err != nil {
+func (c *Config) locked(fn func() error) error {
+	var err error
+	c.Dir, err = directory(c.Dir)
+	if err != nil {
 		return err
 	}
 	if err := os.MkdirAll(c.Dir, 0700); err != nil {
 		return err
 	}
 	p := filepath.Join(c.Dir, "lock")
-	if err := safe(p); err != nil {
+	p, err = safe(p)
+	if err != nil {
 		return err
 	}
 	f, err := os.OpenFile(p, os.O_CREATE|os.O_RDWR, 0600)
@@ -159,7 +194,30 @@ func (c Config) load(name string) (receipt, bool, error) {
 	}
 	return r, exists, err
 }
+
+// Check before a connection or cleanup owner exists: refusal writes nothing.
+func (c Config) Check(selected []string) error {
+	for _, name := range selected {
+		current := os.Getenv("OPENCODE_CONFIG")
+		if name != "opencode" || current == "" {
+			continue
+		}
+		target, err := safe(filepath.Join(c.Dir, "opencode.jsonc"))
+		if err != nil {
+			return err
+		}
+		existing, err := safe(current)
+		if err != nil || existing != target {
+			return fmt.Errorf("OPENCODE_CONFIG is already set to %q; managed provider path would be %q (not written): unset OPENCODE_CONFIG for the run, or add this provider to your file", current, target)
+		}
+	}
+	return nil
+}
+
 func (c Config) Configure(selected []string, owner, url string, m Models) (lines []string, err error) {
+	if err := c.Check(selected); err != nil {
+		return nil, err
+	}
 	if len(m.IDs) == 0 {
 		return nil, errors.New("host advertised no models")
 	}
@@ -168,6 +226,10 @@ func (c Config) Configure(selected []string, owner, url string, m Models) (lines
 			target := filepath.Join(c.Dir, "opencode.jsonc")
 			if name == "dsh" {
 				target = c.DSH
+			}
+			target, e := safe(target)
+			if e != nil {
+				return e
 			}
 			old, exists, e := c.load(name)
 			if e != nil {

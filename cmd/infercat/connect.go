@@ -99,6 +99,9 @@ func (e *env) cmdConnect(ctx context.Context, pre string, args []string) (retErr
 		}
 		return ac.Remove("")
 	}
+	if err := ac.Check(agents); err != nil {
+		return err
+	}
 	if fs.NArg() != 1 {
 		fmt.Fprint(e.errw, "connect takes exactly one invite\n\n", connectHelp)
 		return errUsage
