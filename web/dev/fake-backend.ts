@@ -1,3 +1,5 @@
+import type { Me } from '../../packages/client/src/contract';
+
 // A stand-in for the real gateway (ticket 002), shaped exactly by docs/ARCHITECTURE.md §Gateway
 // HTTP API. One implementation feeds two adapters: dev/fake-gateway.ts (a Node http server, for
 // Direct mode) and dev/fake-infercat-tunnel.ts (an in-page fake of window.InfercatTunnel, for Tunnel
@@ -110,6 +112,24 @@ const FAILURES: Record<string, { status: number; type: string; code: string; mes
   },
 };
 
+export function fakeMe(opts: FakeOptions = {}) {
+  const models = opts.models ?? ['gemma-4-e2b-it', 'deepseek-v4-flash'];
+  return {
+    key: { id: 'k_7f3a2b', name: 'alice', status: opts.keyPaused && pauseBit ? 'paused' : 'active' },
+    limits: LIMITS,
+    usage: { ...counters },
+    host: {
+      name: opts.hostName ?? "Max's workstation",
+      upstream: { kind: 'llama.cpp', healthy: !opts.upstreamDown, model_context: 8192 },
+      models,
+      audio: { transcriptions: opts.transcriptions ? 'whisper-large-v3' : null, speech: opts.speech ? 'kokoro' : null },
+      vision: Object.fromEntries(models.map((id) => [id, opts.vision ?? null])),
+      relay: { region: opts.region ?? 'sfo' },
+      ...(opts.logPrompts ? { log_prompts: true } : {}),
+    },
+  } satisfies Me;
+}
+
 export function handleFake(req: FakeRequest, opts: FakeOptions = {}): FakeResponse {
   const models = opts.models ?? ['gemma-4-e2b-it', 'deepseek-v4-flash'];
   const path = req.path.split('?')[0] ?? '/';
@@ -126,20 +146,7 @@ export function handleFake(req: FakeRequest, opts: FakeOptions = {}): FakeRespon
     if (opts.meFailsAfter !== undefined && meCalls++ >= opts.meFailsAfter) {
       return error(503, 'upstream_error', 'upstream_down', 'The host is not answering right now.');
     }
-    return json(200, {
-      key: { id: 'k_7f3a2b', name: 'alice', status: opts.keyPaused && pauseBit ? 'paused' : 'active' },
-      limits: LIMITS,
-      usage: { ...counters },
-      host: {
-        name: opts.hostName ?? "Max's workstation",
-        upstream: { kind: 'llama.cpp', healthy: !opts.upstreamDown, model_context: 8192 },
-        models,
-        audio: { transcriptions: opts.transcriptions ? 'whisper-large-v3' : null, speech: opts.speech ? 'kokoro' : null },
-        vision: Object.fromEntries(models.map((id) => [id, opts.vision ?? null])),
-        relay: { region: opts.region ?? 'sfo' },
-        ...(opts.logPrompts ? { log_prompts: true } : {}),
-      },
-    });
+    return json(200, fakeMe(opts));
   }
 
   if (path === '/v1/models') {

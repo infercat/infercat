@@ -4,34 +4,8 @@ import { tr } from './i18n/text';
 import { PRODUCT_NAME } from './product';
 import type { Transport } from './transport';
 
-export interface Limits {
-  rpm: number;
-  tpm: number;
-  max_concurrent: number;
-  max_output_tokens: number;
-  max_context: number;
-  daily_tokens: number;
-  daily_audio_seconds?: number;
-  daily_speech_chars?: number;
-  models?: string[];
-}
-
-export interface Me {
-  key: { id: string; name: string; status: 'active' | 'paused' | 'revoked' };
-  limits: Limits;
-  usage: { rpm_used: number; tpm_used: number; today_tokens: number; in_flight: number };
-  host: {
-    name: string;
-    upstream: { kind: string; healthy: boolean; model_context: number };
-    models: string[];
-    /** Per-model capability; null means the engine did not report it. */
-    vision?: Record<string, boolean | null>;
-    audio?: { transcriptions: string | null; speech: string | null };
-    relay: { region: string };
-    /** The host runs with --log-prompts. Absent on a gateway older than ticket 006: absent = false. */
-    log_prompts?: boolean;
-  };
-}
+import type { Me, GatewayErrorBody } from '../../packages/client/src/contract';
+export type { Limits, Me, GatewayErrorCode, GatewayErrorBody, GatewayErrorPayload } from '../../packages/client/src/contract';
 
 /** Capabilities are additive: a host that predates a field makes no promise about it. */
 export function modelVision(me: Me, model: string): boolean | null {
@@ -108,7 +82,7 @@ async function gatewayError(res: Response): Promise<GatewayError> {
   let rawBody = '';
   try {
     rawBody = await res.text();
-    const parsed = JSON.parse(rawBody) as { error?: { message?: string; code?: string; type?: string; limit?: number; in_flight?: number } };
+    const parsed = JSON.parse(rawBody) as Partial<GatewayErrorBody>;
     if (parsed?.error) {
       message = parsed.error.message ?? message;
       code = parsed.error.code ?? '';

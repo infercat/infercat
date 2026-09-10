@@ -83,7 +83,10 @@ clean:
 # Publish the web app to Cloudflare Pages (hosting/README.md): the built app minus the raw wasm,
 # plus the headers, routes and the first-party counter. Needs `wrangler login` (OAuth).
 deploy-web: web
+	test "$(PRODUCT_VERSION)" = "$$(node -p "require('./packages/client/package.json').version")"
 	rm -rf web/deploy && mkdir -p web/deploy && cp -R web/dist/. web/deploy/ && rm -f web/deploy/infercat.wasm
+	mkdir -p "web/deploy/v/$(PRODUCT_VERSION)"
+	cp web/deploy/infercat.wasm.gz web/deploy/wasm_exec.js "web/deploy/v/$(PRODUCT_VERSION)/"
 	cp hack/install.sh web/deploy/install.sh
 	cp docs/media/demo.mp4 docs/media/demo.zh.mp4 docs/media/demo-poster.png docs/media/demo-poster.zh.png web/deploy/
 	cp hosting/cloudflare/_headers hosting/cloudflare/_redirects hosting/cloudflare/_routes.json hosting/cloudflare/404.html hosting/cloudflare/derpmap.json web/deploy/ && cp -R hosting/cloudflare/functions web/deploy/
@@ -100,6 +103,7 @@ bridge-check:
 
 .PHONY: client-check
 client-check:
+	test "$(PRODUCT_VERSION)" = "$$(node -p "require('./packages/client/package.json').version")"
 	cd web && pnpm install --frozen-lockfile
 	cd web && pnpm --filter @infercat/client build && pnpm --filter @infercat/client typecheck && pnpm --filter @infercat/client lint && pnpm --filter @infercat/client test
 

@@ -35,6 +35,8 @@ v0.1.0 formula is the template: download `infercat_<version>_checksums.txt` from
 regenerate `Formula/infercat.rb` in `infercat/homebrew-tap` (the writer script lives in the private
 PM repo under `docs/release/`), commit, push. Then:
 
+Attach `infercat.wasm.gz` and its matching Go `wasm_exec.js`, built from the tag, as assets of that GitHub Release before publishing; these are the archived pair for production clients.
+
 1. Open the draft. Paste the `CHANGELOG.md` entry above the generated notes. Publish.
 2. `brew install infercat/tap/infercat` on a machine that has never had it; `infercat
    version` prints the tag.

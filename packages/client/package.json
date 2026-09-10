@@ -1,6 +1,6 @@
 {
   "name": "@infercat/client",
-  "version": "0.0.1",
+  "version": "0.1.2-dev",
   "private": true,
   "type": "module",
   "license": "MIT",

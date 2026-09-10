@@ -1,3 +1,4 @@
+import { version } from '../package.json';
 import { TunnelTransport } from './transport/index';
 import { raceAbort } from './transport/http1';
 import { loadInfercatTunnel } from './transport/wasm';
@@ -5,7 +6,7 @@ import type { PingResult } from './transport/types';
 import { decodeInvite } from './invite';
 import { gatewayError, type Me } from './gateway';
 export { GatewayError, gatewayError } from './gateway';
-export type { GatewayErrorCode, Me, Limits } from './gateway';
+export type { GatewayErrorCode, GatewayErrorBody, GatewayErrorPayload, Me, Limits } from './gateway';
 
 export interface ConnectOptions {
   /** Exact .wasm or .wasm.gz URL. The matching wasm_exec.js must live beside it. */
@@ -37,7 +38,7 @@ export async function connect(invite: string, opts: ConnectOptions = {}): Promis
   if (typeof document === 'undefined') {
     throw new Error('@infercat/client v0 requires a browser; the current Go wasm bridge cannot fetch its DERP map in Node.');
   }
-  const wasmURL = new URL(opts.wasmURL ?? 'https://infercat.ai/infercat.wasm.gz', document.baseURI);
+  const wasmURL = new URL(opts.wasmURL ?? `https://infercat.ai/v/${encodeURIComponent(version)}/infercat.wasm.gz`, document.baseURI);
   const bridge = await loadInfercatTunnel(
     (p) => opts.onWasmProgress?.(p.pct), new URL('.', wasmURL).href, wasmURL.href,
   );

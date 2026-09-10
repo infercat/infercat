@@ -5,7 +5,7 @@ import { hostAudio, logsPrompts, modelVision, type Me } from './api';
 import old from './fixtures/me/0.1.0.json';
 import current from './fixtures/me/current.json';
 
-const source = ts.createSourceFile('api.ts', readFileSync(new URL('./api.ts', import.meta.url), 'utf8'), ts.ScriptTarget.Latest, true);
+const source = ts.createSourceFile('contract.ts', readFileSync(new URL('../../packages/client/src/contract.ts', import.meta.url), 'utf8'), ts.ScriptTarget.Latest, true);
 const me = source.statements.find((s): s is ts.InterfaceDeclaration => ts.isInterfaceDeclaration(s) && s.name.text === 'Me')!;
 const host = (me.members.find((m) => m.name?.getText(source) === 'host') as ts.PropertySignature).type as ts.TypeLiteralNode;
 // Explicit extension inventory (082's size-1 alternative to a generated Go schema).

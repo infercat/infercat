@@ -84,7 +84,10 @@ Tailcat needs that path to fetch its DERP map. The app loader also needs a docum
 Go runtime script. v0 refuses Node before starting the bridge; it installs no polyfills and
 never disguises the runtime. Supporting Node requires a separately tested bridge/runtime change.
 
-By default, `connect` loads `https://infercat.ai/infercat.wasm.gz` and its sibling `wasm_exec.js`.
+By default, `connect` loads `https://infercat.ai/v/<package-version>/infercat.wasm.gz`
+and its sibling `wasm_exec.js`. The version comes from this package's own metadata
+and is bundled into the client; it does not follow the mutable root URL. The site's
+`/v/` directory mirrors the current version only; it is not a release archive.
 Pass `{ wasmURL: 'https://your-assets.example/v0/infercat.wasm.gz' }` (or a raw `.wasm` URL) to
 choose an exact artifact; put its matching Go `wasm_exec.js` beside it. Serve wasm with CORS access
 for your app, and allow the runtime script and wasm compilation in your CSP. A response already
@@ -93,8 +96,17 @@ different version. One bridge boots per page; later sessions reuse it, so choose
 before the first connection (including any existing app connection).
 
 The library depends on the `ic1` invite format and `InfercatTunnel` contract from the same Infercat
-checkout. **The default hosted artifact is mutable and is not a version pin.** For reproducibility,
-build with `make wasm` and host `infercat.wasm[.gz]` and `wasm_exec.js` together from that checkout.
+checkout. `make deploy-web` stages the matching pair at `/v/<product-version>/`
+and keeps the root paths and the app's `/runtime/<product-version>/` paths.
+`make check` and deployment refuse mismatched client/product versions. Development
+versions such as `0.1.2-dev` can be rebuilt; a version-addressed development URL is
+not an immutable content pin. The GitHub release is the immutable home for a tagged
+release's `infercat.wasm.gz` and matching `wasm_exec.js`. Production clients should
+set `wasmURL` to that release's asset URL, for example
+`https://github.com/infercat/infercat/releases/download/v<VERSION>/infercat.wasm.gz`,
+or download and self-host the pair with CORS enabled for their app.
+For an archived checkout, build with `make wasm` and
+host `infercat.wasm[.gz]` and `wasm_exec.js` together, then pass its exact `wasmURL`.
 `derpMapURL`, `onLog`, and `onWasmProgress` are optional connection settings; progress is a percent
 or null when the download total is unknown.
 
@@ -127,3 +139,14 @@ Use your own `infercat serve --data-dir <temporary-directory>` and a key minted 
 directory. The test never discovers a default host or reads its keys. Keep the invite out of
 committed files and shell history. A deterministic fixture engine behind that real host verifies
 the transport; it does not claim to validate model inference quality.
+
+## Gateway contract
+
+`src/contract.ts` is the shared, type-only wire contract consumed by this package
+and the web app. The public exports include `Me`, `Limits`, `GatewayErrorBody`,
+`GatewayErrorPayload`, and `GatewayErrorCode`. Audio budgets and `host.audio` are
+included. `host.audio` and `host.vision` remain optional for older hosts; a vision
+map value of `null` means unknown, and an audio model of `null` means unavailable.
+The web fake backend checks its actual `/me` constructor against the same type.
+The app keeps localized error text and raw-body diagnostics; this package keeps
+native HTTP status behavior in `fetch` and typed gateway errors in `me()`.
