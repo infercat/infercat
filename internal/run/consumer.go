@@ -15,6 +15,7 @@ type BatchAdmission struct {
 }
 
 type Policy struct {
+	InProcess bool // Cooperative consumer: no shared external generation to stop.
 	Admission func(context.Context, string) (BatchAdmission, error)
 	Release   func(string, string) // Idempotently release any unspent per-job reservation.
 
@@ -23,14 +24,17 @@ type Policy struct {
 	QueueLimit     func(string) (int, error) // Resolved outside the manager mutex.
 	Validate       func(json.RawMessage) error
 	DeferredCancel bool // A running attempt finishes; successful completion remains Done.
-	JoinCancel     bool // An active consumer must return before cancellation becomes terminal.
+	JoinCancel     bool // Wait for the consumer up to the join bound; late in-process settlement remains owned.
 }
 
 // Register is startup wiring, before submitting any work.
 func (m *Manager) Register(name string, kind Kind, policy Policy) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
-	if policy.JoinCancel && (policy.ForceStop == nil || !policy.Serial) {
+	if policy.InProcess && (!policy.JoinCancel || policy.Serial || policy.ForceStop != nil) {
+		return ErrInvalid
+	}
+	if !policy.InProcess && policy.JoinCancel && (policy.ForceStop == nil || !policy.Serial) {
 		return ErrInvalid
 	}
 	if m.started || m.ctx.Err() != nil {

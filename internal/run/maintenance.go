@@ -36,6 +36,17 @@ func (s *Store) recoverKey(key string) error {
 				r.Attempts[i].AccountingUncertain = true
 			}
 		}
+		if r.Kind == "chat" {
+			data := next.Retained[id]
+			for i := range data.Steps {
+				step := &data.Steps[i]
+				if step.Status == "running" || step.Status == "waiting" {
+					step.Status = "failed"
+					step.Result = "interrupted; image submission outcome not confirmed; not submitted again"
+				}
+			}
+			next.Retained[id] = data
+		}
 		next.Runs[id] = r
 		if err := s.commit(key, next, &Event{RunID: id, State: Failed, Time: r.Updated}); err != nil {
 			s.markBroken(key, err)

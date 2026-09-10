@@ -74,6 +74,7 @@ type normalized struct {
 type request struct {
 	readRelease func()
 
+	continueChat   func()
 	onAcquired     func() error
 	dispatched     atomic.Bool
 	destination    *Destination
@@ -166,21 +167,25 @@ func (q *request) serve() {
 func (q *request) proxy(kind endpoint) {
 	q.kind = kind
 	for _, stage := range []func() *gwError{
-		q.checkHealth,  // the engine is up (cheapest; consumes nothing when it is not)
-		q.admitKey,     // per-key concurrency + RPM
-		q.readBody,     // under the read deadline, into the record
-		q.normalize,    // strip override aliases, fill model, clamp max_tokens, stream_options
-		q.count,        // tokenize the prompt: an engine call, bounded by the per-key slot
-		q.checkBudgets, // context, TPM, daily: shrink max_tokens to fit or reject; reserve the worst case
-		q.acquireSlot,  // destination slot: FIFO, bounded wait, bounded waiting set
-		q.callUpstream, // the engine, no redirects, under the first-byte deadline; 4xx is the friend's
-		q.relay,        // stream or body to the friend under the idle and write deadlines
+		q.checkHealth,    // the engine is up (cheapest; consumes nothing when it is not)
+		q.admitKey,       // per-key concurrency + RPM
+		q.readBody,       // under the read deadline, into the record
+		q.routeHostTools, // explicit app opt-in, after early admission and body read
+		q.normalize,      // strip override aliases, fill model, clamp max_tokens, stream_options
+		q.count,          // tokenize the prompt: an engine call, bounded by the per-key slot
+		q.checkBudgets,   // context, TPM, daily: shrink max_tokens to fit or reject; reserve the worst case
+		q.acquireSlot,    // destination slot: FIFO, bounded wait, bounded waiting set
+		q.callUpstream,   // the engine, no redirects, under the first-byte deadline; 4xx is the friend's
+		q.relay,          // stream or body to the friend under the idle and write deadlines
 	} {
 		if err := stage(); err != nil {
 			if q.outcome == outcomeNone {
 				q.outcome = outcomeRejected
 			}
 			q.fail(err)
+			return
+		}
+		if q.continueChat != nil {
 			return
 		}
 	}

@@ -22,6 +22,8 @@ type Batch struct {
 	Count int    `json:"count"`
 }
 type ImageInput struct {
+	ParentRunID     string `json:"parent_run_id,omitempty"`
+	ToolCallID      string `json:"tool_call_id,omitempty"`
 	ClientRequestID string `json:"client_request_id,omitempty"`
 	Prompt          string `json:"prompt"`
 	Conversation    string `json:"conversation,omitempty"`
@@ -38,7 +40,7 @@ type ImageOutput struct {
 
 func ValidateImage(input json.RawMessage) error {
 	var in ImageInput
-	if json.Unmarshal(input, &in) != nil || strings.TrimSpace(in.Prompt) == "" || len(input) > MaxInput || len(in.Conversation) > 128 || len(in.ClientRequestID) > 128 || strings.Contains(in.Prompt, "<sd_cpp_extra_args>") {
+	if json.Unmarshal(input, &in) != nil || strings.TrimSpace(in.Prompt) == "" || len(input) > MaxInput || len(in.ParentRunID) > 80 || len(in.ToolCallID) > 80 || len(in.Conversation) > 128 || len(in.ClientRequestID) > 128 || strings.Contains(in.Prompt, "<sd_cpp_extra_args>") {
 		return ErrInvalid
 	}
 	return nil
