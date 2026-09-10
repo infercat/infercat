@@ -134,6 +134,7 @@ Auth: `Authorization: Bearer <secret>` on every route except `/healthz`.
 | `GET /healthz` | `{"ok":true}` always; no auth; no other info |
 | `GET /me` | `{key:{id,name,status}, limits:Limits, usage:{rpm_used, tpm_used, today_tokens, in_flight}, host:{name, upstream:{kind,healthy,model_context}, models:[ids], vision:{id:true|false|null}, audio:{transcriptions:model-id|null,speech:model-id|null}, relay:{region}, log_prompts:bool}}`. `kind` is `"unknown"` until an engine answered a signature probe; `healthy` reflects the last probe; the client discloses `log_prompts`. `vision` contains only invite-visible model ids and is refreshed with every probe (null = unknown); the app reads the selected model’s entry. llama.cpp reports `/props` modalities.vision, Ollama `/api/show` capabilities, LM Studio `/api/v0/models` type (`vlm`); vLLM assumes true on a successful model probe. Failed engine refreshes preserve prior state. Image-bearing requests refused by a 4xx naming images/multimodal input return `images_not_supported` (400, no retry) with the engine’s message, except context overflow retains its existing mapping. |
 | `GET /v1/models` | engine list filtered by the intersection of the host pin and the key's allowed models; per-key concurrency applies; **not counted against RPM** (ruled 2026-09-02, ticket 014: the friend's meter counts messages) |
+| `POST /v1/responses` | Stateless translation to the chat pipeline, streamed or non-streamed; same auth, limits, text queue and settlement. See Responses below. |
 | `POST /v1/chat/completions` | stream and non-stream. Gateway MUST: flush every SSE chunk immediately; inject `stream_options.include_usage=true` when streaming; normalize the body once (strip engine-override aliases such as `n_predict`/`n`/`best_of`/`priority`, fill `model`, clamp `max_tokens` to the key's cap and shrink it to fit the context and the TPM/daily windows, floor 16); pass `reasoning_content` through untouched. An engine 400/422 caused by the request maps to 400 `invalid_request` with the engine's message — except a context overflow (llama.cpp `exceed_context_size_error`, vLLM "maximum context length"), which maps to 422 `context_too_long` so clients never retry it (036); 5xx → 502 |
 | `POST /v1/embeddings` | pass-through with auth + limits |
 | anything else | 404 in error format |
@@ -227,7 +228,7 @@ source, the existing typed text `Engine` or `AudioEngine` transport, live offers
 audio kinds), and one instance of the bounded FIFO `slotQueue`. Capacity is its own engine's
 `Info().Slots`, at least one; `--slots` continues to affect text only, with no new flags. Transports
 keep addresses, bearers and deadlines; audio gains no artificial tokenizer or refresh method.
-Text routes remain chat, embeddings and models; absent audio routes remain `not_found`, unloaded
+Text routes are chat, Responses (translated to chat), embeddings and models; absent audio routes remain `not_found`, unloaded
 allowed text models remain valid, and audio still falls back to its configured/default model.
 The request releases the resolved destination's slot through its existing single `finish` exit;
 the settle table is unchanged. `Queue()` and the existing `/status.queue` now describe text only;
@@ -248,7 +249,7 @@ is the single deferred exit; it settles by the **outcome** table: rejected befor
 reservation released · queue timeout → counted, 0 charged · client gone while waiting, or before any request byte reached the engine (`httptrace.WroteRequest` never fired) → not counted, 0 charged ·
 engine error → counted, 0 · served → charged as the engine's usage (or pre-check prompt + deltas seen when
 no usage object) · cut (client stopped reading / gone / engine stalled) → charged the reservation for a
-non-stream cut, deltas seen for a stream. RPM counts model calls (`/v1/chat/completions`,
+non-stream cut, deltas seen for a stream. RPM counts model calls (`/v1/chat/completions`, `/v1/responses`,
 `/v1/embeddings`) only.
 
 Each destination queue: FIFO; cap read live from its own `Info().Slots`; waiting set capped at max(2, 2×cap) with an immediate
@@ -463,3 +464,52 @@ synced temporary files and rename, preserving existing permissions; external edi
 share our lock, so simultaneous edits during replacement are not a transactional collaboration
 protocol. No invite or gateway bearer is written into agent settings. Windows locking is
 compiled separately; native Windows paths/shell invocation remain unproved.
+
+## Responses (142)
+
+`POST /v1/responses` is a request-local, stateless adapter over chat completions.
+After authentication, health, early key admission and the bounded body read, it
+maps instructions, messages (text/images), function calls and their outputs into
+chat messages. The engine sees `/v1/chat/completions`; usage keeps the friend's
+`/v1/responses` endpoint. The existing tokenizer, model policy, output clamp,
+context/TPM/daily fitting and text queue apply; `q.finish` alone settles/releases.
+Stream estimates count original content, reasoning or tool-argument delta chunks,
+never the Responses envelopes. Reported chat usage remains authoritative.
+
+Client reasoning items, including `encrypted_content`, are accepted as opaque
+bookkeeping but never decoded, inserted into chat messages, or fabricated. The
+client carries its own history; the host stores no response chain. Only reasoning
+actually streamed by the backend produces a reasoning output item (its summary
+is that text, with no encrypted content). Non-stream chat reasoning is not exposed
+as a Responses reasoning item.
+
+Client function tools are translated mechanically. Namespace functions receive
+deterministic chat-safe aliases derived from namespace and function name, with
+collision/duplicate checks; output calls recover both original names. This is a
+mapping guarantee, not a multi-agent compatibility claim. Instructions or schemas
+inside tool definitions remain data. Hosted tools cause a whole-request 400
+`invalid_request`, even if the model might not have chosen them. For Codex 0.154.0,
+set `web_search = "disabled"` (config_toml.rs `web_search`, WebSearchMode::Disabled,
+core/src/tools/hosted_spec.rs in tag `rust-v0.154.0`). Non-null chaining identifiers,
+`store:true`, background mode, WebSockets, item references and unsupported input
+or tool types are also refused with the existing gateway error shape.
+
+Output ids and indices stay stable for the request. Streaming follows the
+[Responses function-call lifecycle](https://developers.openai.com/api/docs/guides/function-calling#streaming):
+created/in-progress, added items/parts, deltas, part/argument done, item done, then
+completed with usage. Length truncation or a content-filter finish ends with `response.incomplete`; engine
+failure or a disconnected client cannot produce `response.completed`. Stream
+source and encoded response/event assembly use the existing 64 MiB output bound.
+Non-stream output uses the same item mapping. No `/responses/compact` or WebSocket
+service is added; Codex's non-OpenAI provider mode compacts locally through the
+same stateless route.
+
+| Compatibility path | Evidence |
+|---|---|
+| Existing chat clients → current host | Original chat stream bytes, accounting invariants and host compatibility suite unchanged; route matrix tests exercise the shared clamp and auth. |
+| Codex 0.154.0 → current host via native connect | Two turns, a plain function call, persisted item history and terminal usage; no hosted search. |
+| Original 133 requests → current host | Verbatim refusal fixtures: both advertise hosted web search. Supported projections are labelled derived, not captured. |
+| Item-finalisation omissions | 133 captured event fixtures and generated streams: missing completed fails the turn; missing item-done loses client history. |
+
+The current web client does not consume Responses; its versioned `/me` fixtures
+and strict shape guards remain unchanged. Older hosts have no Responses route.

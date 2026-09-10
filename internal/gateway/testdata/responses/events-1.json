@@ -1,0 +1,179 @@
+[
+  {
+    "type": "response.created",
+    "sequence_number": 0,
+    "response": {
+      "id": "resp_capture_133_1",
+      "object": "response",
+      "created_at": 1789057505,
+      "model": "spike-133",
+      "status": "in_progress",
+      "output": []
+    }
+  },
+  {
+    "type": "response.in_progress",
+    "sequence_number": 1,
+    "response": {
+      "id": "resp_capture_133_1",
+      "object": "response",
+      "created_at": 1789057505,
+      "model": "spike-133",
+      "status": "in_progress",
+      "output": []
+    }
+  },
+  {
+    "type": "response.output_item.added",
+    "sequence_number": 2,
+    "output_index": 0,
+    "item": {
+      "id": "rs_capture_133_1",
+      "type": "reasoning",
+      "summary": [
+        {
+          "type": "summary_text",
+          "text": "Synthetic fixture summary."
+        }
+      ],
+      "encrypted_content": "spike-133-opaque-fixture-1"
+    }
+  },
+  {
+    "type": "response.output_item.done",
+    "sequence_number": 3,
+    "output_index": 0,
+    "item": {
+      "id": "rs_capture_133_1",
+      "type": "reasoning",
+      "summary": [
+        {
+          "type": "summary_text",
+          "text": "Synthetic fixture summary."
+        }
+      ],
+      "encrypted_content": "spike-133-opaque-fixture-1"
+    }
+  },
+  {
+    "type": "response.output_item.added",
+    "sequence_number": 4,
+    "output_index": 1,
+    "item": {
+      "id": "msg_capture_133_1",
+      "type": "message",
+      "role": "assistant",
+      "status": "in_progress",
+      "phase": "final_answer",
+      "content": []
+    }
+  },
+  {
+    "type": "response.content_part.added",
+    "sequence_number": 5,
+    "item_id": "msg_capture_133_1",
+    "output_index": 1,
+    "content_index": 0,
+    "part": {
+      "type": "output_text",
+      "text": "",
+      "annotations": []
+    }
+  },
+  {
+    "type": "response.output_text.delta",
+    "sequence_number": 6,
+    "item_id": "msg_capture_133_1",
+    "output_index": 1,
+    "content_index": 0,
+    "delta": "CAPTURE_OK_1"
+  },
+  {
+    "type": "response.output_text.done",
+    "sequence_number": 7,
+    "item_id": "msg_capture_133_1",
+    "output_index": 1,
+    "content_index": 0,
+    "text": "CAPTURE_OK_1"
+  },
+  {
+    "type": "response.content_part.done",
+    "sequence_number": 8,
+    "item_id": "msg_capture_133_1",
+    "output_index": 1,
+    "content_index": 0,
+    "part": {
+      "type": "output_text",
+      "text": "CAPTURE_OK_1",
+      "annotations": []
+    }
+  },
+  {
+    "type": "response.output_item.done",
+    "sequence_number": 9,
+    "output_index": 1,
+    "item": {
+      "id": "msg_capture_133_1",
+      "type": "message",
+      "role": "assistant",
+      "status": "completed",
+      "phase": "final_answer",
+      "content": [
+        {
+          "type": "output_text",
+          "text": "CAPTURE_OK_1",
+          "annotations": []
+        }
+      ]
+    }
+  },
+  {
+    "type": "response.completed",
+    "sequence_number": 10,
+    "response": {
+      "id": "resp_capture_133_1",
+      "object": "response",
+      "created_at": 1789057505,
+      "model": "spike-133",
+      "status": "completed",
+      "output": [
+        {
+          "id": "rs_capture_133_1",
+          "type": "reasoning",
+          "summary": [
+            {
+              "type": "summary_text",
+              "text": "Synthetic fixture summary."
+            }
+          ],
+          "encrypted_content": "spike-133-opaque-fixture-1"
+        },
+        {
+          "id": "msg_capture_133_1",
+          "type": "message",
+          "role": "assistant",
+          "status": "completed",
+          "phase": "final_answer",
+          "content": [
+            {
+              "type": "output_text",
+              "text": "CAPTURE_OK_1",
+              "annotations": []
+            }
+          ]
+        }
+      ],
+      "usage": {
+        "input_tokens": 10,
+        "output_tokens": 5,
+        "total_tokens": 15,
+        "input_tokens_details": {
+          "cached_tokens": 0
+        },
+        "output_tokens_details": {
+          "reasoning_tokens": 1
+        }
+      }
+    }
+  }
+]

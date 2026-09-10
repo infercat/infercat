@@ -73,6 +73,7 @@ type request struct {
 	dispatched  atomic.Bool
 	destination *Destination
 	audio       *audioRequest
+	responses   *responsesAdapter
 	g           *Gateway
 	w           http.ResponseWriter
 	r           *http.Request
@@ -132,6 +133,12 @@ func (q *request) serve() {
 		q.proxyAudio(transcribeEndpoint)
 	case r.Method == http.MethodPost && r.URL.Path == string(speechEndpoint) && q.destination != nil:
 		q.proxyAudio(speechEndpoint)
+	case r.URL.Path == string(responsesEndpoint):
+		if r.Method != http.MethodPost || r.Header.Get("Upgrade") != "" {
+			q.fail(errf(CodeInvalidRequest, 0, "Responses requires POST over HTTP; WebSockets are not supported"))
+		} else {
+			q.proxy(chatEndpoint)
+		}
 	case r.Method == http.MethodPost && r.URL.Path == string(chatEndpoint):
 		q.proxy(chatEndpoint)
 	case r.Method == http.MethodPost && r.URL.Path == string(embeddingsEndpoint):
@@ -261,6 +268,13 @@ func (q *request) readBody() *gwError {
 // returns a value; the stage puts it on the record and the event. Shrink-to-fit (005) needs the
 // token count and so runs in checkBudgets.
 func (q *request) normalize() *gwError {
+	if q.r.URL.Path == string(responsesEndpoint) {
+		body, adapter, err := translateResponses(q.n.body)
+		if err != nil {
+			return err
+		}
+		q.n.body, q.responses = body, adapter
+	}
 	n, err := normalize(q.kind, q.n.body, q.key, q.destination.Up.Info().Models, q.g.cfg.ModelsPinned)
 	if err != nil {
 		return err
@@ -413,6 +427,12 @@ func (q *request) relay() *gwError {
 		q.cancelUpstream()
 	})
 	body := idleReader{r: q.resp.Body, t: q.idle, d: q.g.idleTimeout}
+	if q.responses != nil {
+		if q.n.stream {
+			return q.pipeResponsesStream(body)
+		}
+		return q.pipeResponsesBody(body)
+	}
 	if q.n.stream {
 		return q.pipeStream(body)
 	}

@@ -60,7 +60,7 @@ func newRouter(text upstream.Engine, cfg Config) *Router {
 	d := &Destination{ID: "text", Kind: "engine", Origin: "local", Up: text, Text: text}
 	d.Queue.cap = func() int { return d.Up.Info().Slots }
 	r := &Router{text: d, destinations: []*Destination{d}, pinned: cfg.ModelsPinned, routes: map[string]*Destination{}}
-	for _, route := range []endpoint{chatEndpoint, embeddingsEndpoint, modelsEndpoint} {
+	for _, route := range []endpoint{responsesEndpoint, chatEndpoint, embeddingsEndpoint, modelsEndpoint} {
 		r.routes[string(route)] = d
 	}
 	for _, audio := range []struct {
