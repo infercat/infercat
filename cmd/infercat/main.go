@@ -68,6 +68,7 @@ type gatewayServer interface {
 type gatewayOptions struct {
 	RemoteConsole                http.Handler
 	LiveHostName                 func() string
+	SpeechVoices                 map[string]string
 	Transcribe, Speech           upstream.AudioEngine
 	TranscribeModel, SpeechModel string
 	MaxTranscriptionSeconds      float64

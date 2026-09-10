@@ -64,6 +64,7 @@ func (e *env) cmdServe(ctx context.Context, pre string, args []string) error {
 	upKey := fs.String("upstream-key", cfg.UpstreamKey, "bearer token for the inference server")
 	transcribeModel := fs.String("upstream-transcribe-model", cfg.UpstreamTranscribeModel, "host's default transcription model")
 	speechModel := fs.String("upstream-speech-model", cfg.UpstreamSpeechModel, "host's default speech model")
+	speechVoices := fs.String("upstream-speech-voices", cfg.UpstreamSpeechVoices, "voice mapping: zh=VOICE,en=VOICE,default=VOICE")
 	transcribeURL := fs.String("upstream-transcribe", cfg.UpstreamTranscribe, "explicit OpenAI transcription engine URL")
 	transcribeKey := fs.String("upstream-transcribe-key", cfg.UpstreamTranscribeKey, "transcription engine bearer")
 	speechURL := fs.String("upstream-speech", cfg.UpstreamSpeech, "explicit OpenAI speech engine URL")
@@ -84,6 +85,10 @@ func (e *env) cmdServe(ctx context.Context, pre string, args []string) error {
 		return err
 	}
 
+	voices, err := parseSpeechVoices(*speechVoices)
+	if err != nil {
+		return err
+	}
 	if *maxAudio <= 0 {
 		return errors.New("--max-transcription-seconds must be positive")
 	}
@@ -112,7 +117,8 @@ func (e *env) cmdServe(ctx context.Context, pre string, args []string) error {
 	if err := saveConfig(dataDir, config{
 		Upstream: *upURL, UpstreamKey: *upKey, Slots: *slots, Models: strings.Join(pinned, ","),
 		UpstreamTranscribeModel: *transcribeModel, UpstreamSpeechModel: *speechModel,
-		UpstreamTranscribe: *transcribeURL, UpstreamTranscribeKey: *transcribeKey, UpstreamSpeech: *speechURL, UpstreamSpeechKey: *speechKey, MaxTranscriptionSeconds: *maxAudio,
+		UpstreamSpeechVoices: *speechVoices,
+		UpstreamTranscribe:   *transcribeURL, UpstreamTranscribeKey: *transcribeKey, UpstreamSpeech: *speechURL, UpstreamSpeechKey: *speechKey, MaxTranscriptionSeconds: *maxAudio,
 		DevListen: *devListen, DERPMapURL: *derpMapURL,
 		Region: *region, Name: *name, WebURL: *webURLFlag, Console: *consoleAddr,
 	}); err != nil {
@@ -184,7 +190,8 @@ func (e *env) cmdServe(ctx context.Context, pre string, args []string) error {
 		RemoteConsole: remoteHandler, LiveHostName: state.name,
 		ModelsPinned:    pinned,
 		TranscribeModel: *transcribeModel, SpeechModel: *speechModel,
-		Transcribe: transcribe, Speech: speech, MaxTranscriptionSeconds: float64(*maxAudio),
+		SpeechVoices: voices,
+		Transcribe:   transcribe, Speech: speech, MaxTranscriptionSeconds: float64(*maxAudio),
 		LogPrompts:  *logPrompts,
 		HostName:    hostName,
 		RelayRegion: func() string { return tun.Status().Region },
@@ -684,6 +691,7 @@ Flags:
   --upstream-transcribe URL  explicit OpenAI transcription engine base URL
   --upstream-transcribe-model ID  default model (otherwise first probed id)
   --upstream-speech-model ID default model (otherwise first probed id)
+  --upstream-speech-voices MAP zh=VOICE,en=VOICE,default=VOICE; fills only an absent voice
   --upstream-transcribe-key TOKEN  transcription engine bearer
   --upstream-speech URL      explicit OpenAI speech engine base URL
   --upstream-speech-key TOKEN speech engine bearer
@@ -730,4 +738,23 @@ func audioStatus(transcribe, speech upstream.AudioEngine) map[string]admin.Upstr
 		}
 	}
 	return out
+}
+
+func parseSpeechVoices(raw string) (map[string]string, error) {
+	if strings.TrimSpace(raw) == "" {
+		return nil, nil
+	}
+	voices := map[string]string{}
+	for _, entry := range strings.Split(raw, ",") {
+		lang, voice, ok := strings.Cut(entry, "=")
+		lang, voice = strings.TrimSpace(lang), strings.TrimSpace(voice)
+		if !ok || (lang != "zh" && lang != "en" && lang != "default") || voice == "" {
+			return nil, fmt.Errorf("--upstream-speech-voices: invalid entry %q; want zh=VOICE,en=VOICE,default=VOICE", entry)
+		}
+		if _, exists := voices[lang]; exists {
+			return nil, fmt.Errorf("--upstream-speech-voices: duplicate language %q", lang)
+		}
+		voices[lang] = voice
+	}
+	return voices, nil
 }
