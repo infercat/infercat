@@ -181,8 +181,8 @@ func TestConfiguredMediaRefreshRecoversLateEngine(t *testing.T) {
 
 func TestStatusReportsPendingImageCleanup(t *testing.T) {
 	var out strings.Builder
-	writeStatus(&out, admin.Status{ImageCleanupPending: 2})
-	if !strings.Contains(out.String(), "2 stale output files awaiting cleanup") {
+	writeStatus(&out, admin.Status{ImageCleanupPending: 2, ImageOrphansForReview: 3})
+	if !strings.Contains(out.String(), "2 awaiting cleanup, 3 for review") {
 		t.Fatal(out.String())
 	}
 }

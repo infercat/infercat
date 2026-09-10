@@ -307,8 +307,21 @@ func (s *Store) unlinkImage(path string) {
 		delete(s.imageCleanup, path)
 	}
 }
+
+// ImageCleanupPending is the aggregate of proven retries and report-only observations, not the proven-only wire field.
 func (s *Store) ImageCleanupPending() int {
+	proven, review := s.ImageCleanupCounts()
+	return proven + review
+}
+func (s *Store) ImageCleanupCounts() (proven, review int) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	return len(s.imageCleanup)
+	for _, retry := range s.imageCleanup {
+		if retry {
+			proven++
+		} else {
+			review++
+		}
+	}
+	return
 }

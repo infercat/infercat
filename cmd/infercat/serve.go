@@ -263,7 +263,7 @@ func (e *env) cmdServe(ctx context.Context, pre string, args []string) error {
 			s := harness.Status()
 			st.Agent = &s
 		}
-		st.ImageCleanupPending = runStore.ImageCleanupPending()
+		st.ImageCleanupPending, st.ImageOrphansForReview = runStore.ImageCleanupCounts()
 		st.Console = consoleAddress
 		st.Name = state.name()
 		remoteState := remoteStore.State()

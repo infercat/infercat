@@ -3,6 +3,7 @@ package gateway
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	runstate "github.com/infercat/infercat/internal/run"
 	"github.com/infercat/infercat/internal/usage"
 	"net/http"
@@ -113,5 +114,13 @@ func Test157CommittedTerminalHTTPResponse(t *testing.T) {
 	after, err := manager.Store.List(h.key.ID)
 	if err != nil || len(after) != 2 {
 		t.Fatal("refusal mutated runs", len(after), err)
+	}
+}
+
+func Test157V5RunStoreAttentionIsExplicit(t *testing.T) {
+	w := httptest.NewRecorder()
+	writeError(w, runError(fmt.Errorf("wrapped: %w", runstate.ErrNeedsAttention)))
+	if w.Code != 503 || w.Header().Get("Retry-After") != "60" || !strings.Contains(w.Body.String(), "this key's run store needs the host's attention") || !strings.Contains(w.Body.String(), `"code":"upstream_down"`) {
+		t.Fatal(w.Code, w.Header(), w.Body.String())
 	}
 }

@@ -80,7 +80,9 @@ func TestAdv4ConsumerStepFlipsStateToQueued(t *testing.T) {
 		stop()
 		<-done
 		return json.RawMessage(`{"done":1}`), nil
-	}), Policy{Serial: true, JoinCancel: true, ForceStop: func(string) {}})
+	}), Policy{Serial: true, JoinCancel: true, ForceStop: func(string) error {
+		return nil
+	}})
 	r := submit(t, m)
 	await(t, func() bool { return state(s, r) == Done })
 	t.Log("states published to the key's SSE during two model calls:", seen)
@@ -92,7 +94,9 @@ func TestAdv4AnswerExistenceOracle(t *testing.T) {
 	m := manager(t, s, nil, nil)
 	m.Register("test", m.Consumer(func(ctx context.Context, w *Work) (json.RawMessage, error) {
 		return nil, func() error { _, e := w.Approval("p_1", "?"); return e }()
-	}), Policy{Serial: true, JoinCancel: true, ForceStop: func(string) {}})
+	}), Policy{Serial: true, JoinCancel: true, ForceStop: func(string) error {
+		return nil
+	}})
 	r := submit(t, m)
 	await(t, func() bool { return state(s, r) == Waiting })
 	_, live := m.Answer("k_other", r.ID, "p_1", true)

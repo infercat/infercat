@@ -7,12 +7,14 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	runstate "github.com/infercat/infercat/internal/run"
 	"net"
 	"net/http"
 	"os"
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"sync"
 	"sync/atomic"
 	"syscall"
 	"testing"
@@ -270,17 +272,102 @@ func TestStopGenerationCannotStopReplacement(t *testing.T) {
 	if err := r.SendGeneration(0, json.RawMessage(`{}`)); err == nil {
 		t.Fatal("zero generation bypassed ownership")
 	}
-	r.StopGeneration(old)
+	if err := r.StopGeneration(old); err != nil {
+		t.Fatal(err)
+	}
 	waitRuntime(t, r, "healthy")
 	replacement := r.Generation()
 	if old == replacement {
 		t.Fatal("generation did not advance")
 	}
-	r.StopGeneration(old)
+	if err := r.StopGeneration(old); err != nil {
+		t.Fatal("stale generation should already be stopped", err)
+	}
+	if err := r.StopGeneration(0); err != nil {
+		t.Fatal("zero generation has nothing to stop", err)
+	}
 	if err := r.SendGeneration(old, json.RawMessage(`{}`)); err == nil {
 		t.Fatal("old run dispatched into replacement")
 	}
 	if r.Generation() != replacement || r.Status().State != "healthy" {
 		t.Fatal("old stop killed replacement")
 	}
+}
+
+func Test157V5RestartedChildDoesNotQuarantineOtherKeys(t *testing.T) {
+	options, _ := runtimeFixture(t, false)
+	runtime := StartRuntime(context.Background(), options)
+	defer runtime.Close()
+	waitRuntime(t, runtime, "healthy")
+	owned := runtime.Generation()
+	store, err := runstate.NewStore(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	manager, err := runstate.New(store, nil, nil)
+	if err != nil {
+		t.Fatal(err)
+	}
+	entered, release := make(chan struct{}), make(chan struct{})
+	var once sync.Once
+	defer func() { once.Do(func() { close(release) }); manager.Close() }()
+	var calls atomic.Int32
+	if err := manager.Register("test", manager.Consumer(func(context.Context, *runstate.Work) (json.RawMessage, error) {
+		if calls.Add(1) == 1 {
+			close(entered)
+			<-release
+		}
+		return json.RawMessage(`{}`), nil
+	}), runstate.Policy{Serial: true, JoinCancel: true, ForceStop: func(string) error {
+		err := runtime.StopGeneration(owned)
+		once.Do(func() { close(release) })
+		return err
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	first, err := manager.Submit("first", "test", "", json.RawMessage(`{}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	<-entered
+	// Restart the child while its owned run has not joined. The hook will see the old generation.
+	if err := runtime.StopGeneration(owned); err != nil {
+		t.Fatal(err)
+	}
+	waitRuntime(t, runtime, "healthy")
+	replacement := runtime.Generation()
+	if replacement == owned {
+		t.Fatal("child did not restart")
+	}
+	next, err := manager.Submit("friend", "test", "", json.RawMessage(`{}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := manager.Cancel(first.KeyID, first.ID); err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(50 * time.Second)
+	for {
+		row, err := store.Get(next.KeyID, next.ID)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if row.State == runstate.Failed {
+			t.Fatal("friend was quarantined", row.Reason)
+		}
+		if row.State == runstate.Done {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("friend did not resume", row.State)
+		}
+		time.Sleep(20 * time.Millisecond)
+	}
+	if runtime.Generation() != replacement || runtime.Status().State != "healthy" {
+		t.Fatal("replacement stopped")
+	}
+	if _, err := manager.Submit("third", "test", "", json.RawMessage(`{}`)); err != nil {
+		t.Fatal("new work refused", err)
+	}
+	t.Log("stale owned generation stop: successor completed, new key admitted, replacement healthy")
 }

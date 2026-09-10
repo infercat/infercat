@@ -40,7 +40,9 @@ func TestConsumerCancelWaitsForCleanupInEveryLiveState(t *testing.T) {
 				close(cleanup)
 				<-release
 				return nil, err
-			}), Policy{Serial: true, JoinCancel: true, ForceStop: func(string) {}})
+			}), Policy{Serial: true, JoinCancel: true, ForceStop: func(string) error {
+				return nil
+			}})
 			r := submit(t, m)
 			if phase == Waiting {
 				await(t, func() bool { return state(s, r) == Waiting })
@@ -90,7 +92,9 @@ func TestConsumerApprovalCommitsBeforeDeliveryAndNeverReplays(t *testing.T) {
 		}
 		deliveries.Add(1)
 		return json.RawMessage(`{"answer":"done"}`), nil
-	}), Policy{Serial: true, JoinCancel: true, ForceStop: func(string) {}})
+	}), Policy{Serial: true, JoinCancel: true, ForceStop: func(string) error {
+		return nil
+	}})
 	r := submit(t, m)
 	await(t, func() bool { return state(s, r) == Waiting })
 	if _, err := m.Answer("k_other", r.ID, "p_1", true); !errors.Is(err, ErrNotFound) {
@@ -103,8 +107,8 @@ func TestConsumerApprovalCommitsBeforeDeliveryAndNeverReplays(t *testing.T) {
 		t.Fatal(err)
 	}
 	await(t, func() bool { return state(s, r) == Done })
-	if _, err := m.Answer(r.KeyID, r.ID, "p_1", false); !errors.Is(err, ErrConflict) {
-		t.Fatal("duplicate answer", err)
+	if _, err := m.Answer(r.KeyID, r.ID, "p_1", false); !committedTerminal(err) {
+		t.Fatal("ended answer did not return snapshot", err)
 	}
 	if deliveries.Load() != 1 {
 		t.Fatal("answer replayed", deliveries.Load())
@@ -121,7 +125,9 @@ func TestConsumerFailedApprovalCommitNeverDelivers(t *testing.T) {
 			delivered.Store(true)
 		}
 		return nil, e
-	}), Policy{Serial: true, JoinCancel: true, ForceStop: func(string) {}})
+	}), Policy{Serial: true, JoinCancel: true, ForceStop: func(string) error {
+		return nil
+	}})
 	r := submit(t, m)
 	await(t, func() bool { return state(s, r) == Waiting })
 	s.mu.Lock()
@@ -164,7 +170,9 @@ func TestConsumerUsesSharedAttemptLedgerForEveryModelCall(t *testing.T) {
 			}
 		}
 		return json.RawMessage(`{"done":true}`), nil
-	}), Policy{Serial: true, JoinCancel: true, ForceStop: func(string) {}})
+	}), Policy{Serial: true, JoinCancel: true, ForceStop: func(string) error {
+		return nil
+	}})
 	r := submit(t, m)
 	await(t, func() bool { return state(s, r) == Done })
 	got, _ := s.Get(r.KeyID, r.ID)

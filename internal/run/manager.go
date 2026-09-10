@@ -237,7 +237,11 @@ func (m *Manager) Resume(key, rid string) error {
 		return nil
 	})
 	if err == nil {
-		m.start(r)
+		if m.Policies[r.Kind].Serial {
+			m.schedule(r.Kind)
+		} else {
+			m.start(r)
+		}
 	} else if committedTerminal(err) {
 		m.stopTerminal(r)
 	}
@@ -475,7 +479,7 @@ func (m *Manager) Sweep() error {
 		}
 		for _, r := range rows {
 			if !terminal(r.State) && !r.Expires.After(s.now()) {
-				if _, cancelErr := m.Cancel(key, r.ID); cancelErr != nil {
+				if _, cancelErr := m.Cancel(key, r.ID); cancelErr != nil && !committedTerminal(cancelErr) {
 					s.log("run expiry cancel failed for %s/%s: %v", key, r.ID, cancelErr)
 				}
 			}

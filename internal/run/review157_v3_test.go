@@ -45,10 +45,12 @@ func Test157V3CommittedTerminalStopsOwnedConsumer(t *testing.T) {
 				}
 				<-wedge
 				return nil, nil
-			}), Policy{Serial: true, JoinCancel: true, ForceStop: func(string) {
+			}), Policy{Serial: true, JoinCancel: true, ForceStop: func(string) error {
 				if stops.Add(1) == 1 {
 					close(wedge)
 				}
+
+				return nil
 			}}); err != nil {
 				t.Fatal(err)
 			}
@@ -144,7 +146,9 @@ func Test157V3FailedWriteReturnsNoCommittedClone(t *testing.T) {
 func Test157V3WaitingQuarantineAndStopping(t *testing.T) {
 	s := store(t)
 	m := manager(t, s, nil, nil)
-	if err := m.Register("bad", nil, Policy{JoinCancel: true, ForceStop: func(string) {}}); !errors.Is(err, ErrInvalid) {
+	if err := m.Register("bad", nil, Policy{JoinCancel: true, ForceStop: func(string) error {
+		return nil
+	}}); !errors.Is(err, ErrInvalid) {
 		t.Fatal("nonserial join accepted", err)
 	}
 	a, b := create(t, s, "key"), create(t, s, "key")
@@ -187,7 +191,11 @@ func Test157V3StopWaiterEndsBeforeHookReturns(t *testing.T) {
 	m.stopTimeout = 30 * time.Millisecond
 	entered, hook, release := make(chan struct{}), make(chan struct{}), make(chan struct{})
 	defer close(release)
-	if err := m.Register("test", m.Consumer(func(context.Context, *Work) (json.RawMessage, error) { close(entered); <-release; return nil, nil }), Policy{Serial: true, JoinCancel: true, ForceStop: func(string) { close(hook); <-release }}); err != nil {
+	if err := m.Register("test", m.Consumer(func(context.Context, *Work) (json.RawMessage, error) { close(entered); <-release; return nil, nil }), Policy{Serial: true, JoinCancel: true, ForceStop: func(string) error {
+		close(hook)
+		<-release
+		return nil
+	}}); err != nil {
 		t.Fatal(err)
 	}
 	r := submit(t, m)
@@ -224,7 +232,7 @@ func Test157V3AnswerAlreadyDeadReturnsCommittedSnapshot(t *testing.T) {
 	s := store(t)
 	m := manager(t, s, nil, nil)
 	r := create(t, s, "key")
-	for _, state := range []State{Failed, Cancelled} {
+	for _, state := range []State{Failed, Cancelled, Done} {
 		_, err := s.change(r.KeyID, r.ID, func(v *Run) error { v.State = state; v.Reason = "storage exhausted"; return nil })
 		if err != nil {
 			t.Fatal(err)

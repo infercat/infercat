@@ -256,8 +256,8 @@ func writeStatus(w io.Writer, st admin.Status) {
 			fmt.Fprintf(w, "images    suspect: %d failed generations; %s (further failures do not count)\n", d.ImageAbandons, retry)
 		}
 	}
-	if st.ImageCleanupPending > 0 {
-		fmt.Fprintf(w, "images    %d stale output files awaiting cleanup\n", st.ImageCleanupPending)
+	if st.ImageCleanupPending > 0 || st.ImageOrphansForReview > 0 {
+		fmt.Fprintf(w, "images    %d awaiting cleanup, %d for review\n", st.ImageCleanupPending, st.ImageOrphansForReview)
 	}
 	if len(st.Keys) == 0 {
 		fmt.Fprintf(w, "\nno keys yet — `%s keys add <name>` mints one\n", product.CLIName)

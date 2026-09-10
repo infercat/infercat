@@ -130,16 +130,21 @@ func (r *Runtime) loop(ctx context.Context) {
 
 // Generation identifies the supervised child owned by a run, including restarts.
 func (r *Runtime) Generation() uint64 { r.mu.Lock(); defer r.mu.Unlock(); return r.generation }
-func (r *Runtime) StopGeneration(generation uint64) {
+func (r *Runtime) StopGeneration(generation uint64) error {
 	r.mu.Lock()
-	if r.generation != generation || r.stopGeneration == nil {
+	if generation == 0 || r.generation != generation {
 		r.mu.Unlock()
-		return
+		return nil // The owned generation is already gone; never stop its replacement.
+	}
+	if r.stopGeneration == nil {
+		r.mu.Unlock()
+		return nil
 	}
 	stop, done := r.stopGeneration, r.generationDone
 	r.mu.Unlock()
 	stop()
 	<-done
+	return nil
 }
 func (r *Runtime) runGeneration(ctx context.Context) error {
 	child, stop := context.WithCancel(ctx)
