@@ -65,7 +65,7 @@ export class GatewayError extends Error {
   }
 }
 
-async function call(
+export async function call(
   t: Transport,
   secret: string,
   path: string,

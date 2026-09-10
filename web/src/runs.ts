@@ -9,6 +9,7 @@ export async function followRuns(options: {
   connected: (value: boolean) => void;
   failed: (error: unknown) => void;
   known?: () => string[];
+  onEvent?: (signal: AbortSignal) => Promise<void>;
   delay?: (signal: AbortSignal) => Promise<void>;
 }): Promise<void> {
   const { transport, secret, signal, changed, connected, failed } = options;
@@ -34,6 +35,7 @@ export async function followRuns(options: {
             catch (error) { if (!(error instanceof GatewayError && error.status === 404)) throw error; }
           }
           if (signal.aborted) return;
+          await options.onEvent?.(signal);
           changed(records, event.reset === true);
           cursor = event.cursor;
           connected(true);
@@ -83,7 +85,7 @@ export function mergeRunRecords(convs: import('./storage').Conversation[], recor
   const next = convs.map((c) => {
     let changed = false;
     const messages = c.messages.flatMap<import('./storage').Message>((m) => {
-      if (m.kind !== 'run') return [m];
+      if (m.kind !== 'run' || m.runKind === 'image') return [m];
       const exact = records.find((r) => r.id === (m.run?.id ?? m.remoteId));
       const correlated = keyId && m.keyId === keyId && m.clientRequestId && owners.get(m.clientRequestId)?.size === 1
         ? records.filter((r) => r.client_request_id === m.clientRequestId && !known.has(r.id) && !found.has(r.id)) : [];

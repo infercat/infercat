@@ -20,6 +20,6 @@ export function computer(name: string): string {
     /(’s|'s|s’|s')$|\b(laptop|desktop|computer|machine|workstation|server|pc|mac|box|rig)$/i.test(name)
       ? tr('app_host_computer_named', { name }) : tr('app_host_computer_person', { name });
 }
-export function privacy(host: string, logging: boolean): string {
-  return tr(logging ? 'app_privacy_logging' : 'app_privacy_normal', { computer: computer(host), product: PRODUCT_NAME });
+export function privacy(host: string, logging: boolean, imageRetentionDays?: number): string {
+  return tr(logging ? 'app_privacy_logging' : 'app_privacy_normal', { computer: computer(host), product: PRODUCT_NAME }) + (imageRetentionDays === undefined ? '' : ` ${tr('app_privacy_images', { days: imageRetentionDays })}`);
 }

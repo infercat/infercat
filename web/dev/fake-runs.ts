@@ -1,6 +1,7 @@
 import type { FakeRequest, FakeResponse } from './fake-backend';
 import type { RunEvent, RunRecord } from '../src/api';
-const runs = new Map<string, RunRecord>(), events: RunEvent[] = [];
+export const runs = new Map<string, RunRecord>();
+const events: RunEvent[] = [];
 try { for (const record of JSON.parse(globalThis.localStorage?.getItem('fake.runs') ?? '[]') as RunRecord[]) runs.set(record.id, record); } catch { /* isolated test host without storage */ }
 export const runRequests: { path: string; method: string; body: unknown }[] = [];
 let sequence = 0;

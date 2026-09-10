@@ -9,7 +9,7 @@ import { tr, privacy } from '../i18n/text';
 // fold and language links. Page keeps that composition across connection states; its footer and
 // landing sections remain available at every width, without owning any connection behaviour.
 import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
-import { describeError, getMe, hostName, logsPrompts, type FriendlyError, type Me } from '../api';
+import { describeError, getMe, hostName, hostImages, logsPrompts, type FriendlyError, type Me } from '../api';
 import { decodeCode as decodeInvite,isAdminCode } from '../admin-route';
 import { inviteFromHash, InviteError, inviteHint, maskInvite } from '../invite';
 import { HOST_URL, PRODUCT_NAME, SOURCE_URL, VERSION } from '../product';
@@ -683,12 +683,13 @@ function Hint({ text }: { text: string }) {
  */
 function LogPromptsGate({ me, onAccept }: { me: Me; onAccept: () => void }) {
   return (
-    <Page promise={privacy(hostName(me), true)}>
+    <Page promise={privacy(hostName(me), true, hostImages(me)?.retention_days)}>
       <CardHead />
       <div className="failure" role="alert">
         <strong>{tr('app_host_records_input', { host: hostName(me) || tr('app_this_host') })}</strong>
         <p>
           {tr('app_this_host_is_running_with_prompt_logging_on_everything')}</p>
+        {hostImages(me) && <p className="card-only">{tr('app_privacy_images', { days: hostImages(me)!.retention_days })}</p>}
         <p className="dim">
           <Text name="app_connected_identity" values={{ name: <code>{me.key.name}</code>, id: me.key.id }} />
         </p>

@@ -1,3 +1,4 @@
+import type { ImageJob } from './imageJobs';
 import type { RunRecord } from './api';
 import type { AttachedFile, AttachmentRef } from './attachments';
 import type { ImageMeta } from './images';
@@ -22,6 +23,8 @@ export function isAnswer(m: Message): boolean {
 export interface ChatItem extends MessageFields { kind?: 'message' }
 export interface RunItem extends MessageFields {
   kind: 'run'; role: 'assistant';
+  runKind?: 'image';
+  job?: ImageJob;
   run?: RunRecord;
   remoteId?: string;
   clientRequestId?: string;
@@ -328,7 +331,7 @@ export function carriedAfter(messages: readonly Message[]): Set<string> {
  * or the host cut short is not a delivery.
  */
 export function delivered(m: Message | undefined): boolean {
-  if (m?.kind === 'run') return Boolean(m.run);
+  if (m?.kind === 'run') return Boolean(m.run || m.job);
   return m?.role === 'assistant' && m.status !== undefined && m.status !== 'interrupted';
 }
 
