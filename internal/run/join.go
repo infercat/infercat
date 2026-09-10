@@ -2,9 +2,58 @@ package run
 
 import "time"
 
+func (m *Manager) unavailable(kind string) bool {
+	return m.blocked[kind] > 0 || m.quarantined[kind]
+}
+func (m *Manager) resumeKind(kind string) {
+	if m.unavailable(kind) || m.ctx.Err() != nil {
+		return
+	}
+	if m.Policies[kind].Serial {
+		m.schedule(kind)
+		return
+	}
+	for _, r := range m.queued(kind) {
+		if m.active[r.ID] == nil {
+			m.start(r)
+		}
+	}
+}
+
+// Called under m.mu. Accepted queued work settles before any new admission.
+func (m *Manager) quarantine(kind, cause string) {
+	if m.quarantined == nil {
+		m.quarantined = map[string]bool{}
+	}
+	if !m.quarantined[kind] {
+		m.Store.log("run kind %s quarantined: force-stop %s", kind, cause)
+	}
+	m.quarantined[kind] = true
+	for _, r := range m.queued(kind) {
+		if m.active[r.ID] != nil {
+			continue
+		}
+		_, err := m.Store.change(r.KeyID, r.ID, func(v *Run) error {
+			v.State, v.Reason = Failed, "runtime quarantined"
+			return nil
+		})
+		if err != nil {
+			m.Store.log("quarantine settlement failed for %s: %v", r.ID, err)
+		}
+		m.release(r.ID)
+	}
+}
+func (m *Manager) recoveredKind(kind string) {
+	if m.quarantined[kind] {
+		delete(m.quarantined, kind)
+		m.Store.log("run kind %s quarantine cleared after successful stop", kind)
+	}
+	m.resumeKind(kind)
+}
 func (m *Manager) boundJoin(r Run, w *execution) {
 	w.join.Do(func() {
 		go func() {
+			defer close(w.joined)
 			timer := time.NewTimer(m.joinTimeout)
 			defer timer.Stop()
 			select {
@@ -14,20 +63,55 @@ func (m *Manager) boundJoin(r Run, w *execution) {
 			}
 			w.cancel()
 			m.mu.Lock()
+			if m.active[r.ID] != w {
+				m.mu.Unlock()
+				return
+			}
 			w.expired = true
+			m.blocked[w.kind]++
+			stop := m.Policies[w.kind].ForceStop
 			m.mu.Unlock()
-			if stop := m.Policies[w.kind].ForceStop; stop != nil {
-				go stop()
+			stopped := make(chan bool, 1)
+			go func() {
+				ok := false
+				defer func() { _ = recover(); stopped <- ok }()
+				if stop != nil {
+					stop(r.ID)
+				} else {
+					m.Store.log("run %s join deadline: no force-stop hook", r.ID)
+				}
+				ok = true
+			}()
+			deadline := time.NewTimer(m.stopTimeout)
+			defer deadline.Stop()
+			ok, timedOut := false, false
+			select {
+			case ok = <-stopped:
+			case <-deadline.C:
+				timedOut = true
 			}
 			m.finish(r.KeyID, r.ID, Cancelled, "consumer did not join", nil)
 			m.mu.Lock()
 			if m.active[r.ID] == w {
 				delete(m.active, r.ID)
-				if m.Policies[w.kind].Serial {
-					m.schedule(w.kind)
+				m.release(r.ID)
+			}
+			m.blocked[w.kind]--
+			if ok {
+				m.recoveredKind(w.kind)
+			} else {
+				cause := "panic"
+				if timedOut {
+					cause = "timeout"
 				}
+				m.quarantine(w.kind, cause)
 			}
 			m.mu.Unlock()
+			if timedOut && <-stopped {
+				m.mu.Lock()
+				m.recoveredKind(w.kind)
+				m.mu.Unlock()
+			}
 		}()
 	})
 }

@@ -84,6 +84,9 @@ func (s *Store) reservedBytes(key string) int {
 
 // Every ledger commit participates, so another run cannot spend reserved capacity.
 func (s *Store) retainedBudget(key string, next *snapshot, rid string, size int) (func(), error) {
+	if size < s.data[key].encodedBytes {
+		return func() {}, nil
+	}
 	var lease *reservation
 	credit := 0
 	if rid != "" {

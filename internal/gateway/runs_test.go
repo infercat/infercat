@@ -291,15 +291,17 @@ func TestRunSSEReplayResetAndRevocation(t *testing.T) {
 func TestRunSSEBadCursorAndShutdown(t *testing.T) {
 	h := newHarness(t, Config{}, nil)
 	m := runManager(t, h, nil)
-	for _, cursor := range []string{"old-epoch:1", "broken", "e_bad:999"} {
+	for _, cursor := range []string{"broken", "e_bad:not-a-number", "bad!:1"} {
 		r, _ := openEvents(t, h, cursor)
 		if r.StatusCode != 400 {
 			t.Fatal(r.Status)
 		}
 		r.Body.Close()
 	}
-	r, reader := openEvents(t, h, "")
-	readRunEvent(t, reader)
+	r, reader := openEvents(t, h, "old-epoch:999")
+	if e := readRunEvent(t, reader); !e.Reset {
+		t.Fatal("unknown epoch did not reset", e)
+	}
 	m.Close()
 	if _, e := io.ReadAll(r.Body); e != nil {
 		t.Fatal(e)

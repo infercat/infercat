@@ -209,6 +209,11 @@ func (s *Store) DiscardImage(key, rid string) error {
 // Called under the store lock after expiry. Removes orphaned files after an interrupted commit too.
 func (s *Store) sweepImages(key string, v *snapshot) error {
 	dir := filepath.Join(s.root, key, "images")
+	for path := range s.imageCleanup {
+		if filepath.Dir(path) == dir {
+			s.unlinkImage(path)
+		}
+	}
 	if info, e := os.Lstat(dir); errors.Is(e, os.ErrNotExist) {
 		for path := range s.imageCleanup {
 			if filepath.Dir(path) == dir {
@@ -225,6 +230,21 @@ func (s *Store) sweepImages(key string, v *snapshot) error {
 	if err != nil {
 		return err
 	}
+	if v == nil || len(v.Runs) == 0 {
+		info, err := os.Stat(dir)
+		if err != nil {
+			return err
+		}
+		if s.emptyImageStamp == nil {
+			s.emptyImageStamp = map[string]time.Time{}
+		}
+		if len(entries) > 0 && !s.emptyImageStamp[key].Equal(info.ModTime()) {
+			s.log("image scan skipped for empty snapshot: %s", key)
+			s.emptyImageStamp[key] = info.ModTime()
+		}
+		return nil
+	}
+	delete(s.emptyImageStamp, key)
 	for path := range s.imageCleanup {
 		if filepath.Dir(path) == dir {
 			delete(s.imageCleanup, path)

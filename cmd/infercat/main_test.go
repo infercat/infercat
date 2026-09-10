@@ -1133,7 +1133,7 @@ func TestServeRemembersModelPinAndAllClearsIt(t *testing.T) {
 	}
 }
 
-func (g *fakeGateway) SetRuns(*runstate.Manager) {}
+func (g *fakeGateway) SetRuns(*runstate.Manager) error { return nil }
 func (g *fakeGateway) ExecuteStep(context.Context, string, runstate.Step, func() error) (runstate.StepResult, error) {
 	return runstate.StepResult{}, nil
 }

@@ -32,13 +32,16 @@ type RuntimeOptions struct {
 	Exited  func()
 }
 type Runtime struct {
-	mu      sync.Mutex
-	status  RuntimeStatus
-	input   *os.File
-	writeMu sync.Mutex
-	cancel  context.CancelFunc
-	done    chan struct{}
-	options RuntimeOptions
+	mu             sync.Mutex
+	status         RuntimeStatus
+	input          *os.File
+	writeMu        sync.Mutex
+	cancel         context.CancelFunc
+	done           chan struct{}
+	options        RuntimeOptions
+	generation     uint64
+	stopGeneration context.CancelFunc
+	generationDone chan struct{}
 }
 
 func StartRuntime(ctx context.Context, options RuntimeOptions) *Runtime {
@@ -55,14 +58,22 @@ func (r *Runtime) set(state, message string, pid int) {
 	r.status.PID = pid
 	r.mu.Unlock()
 }
-func (r *Runtime) Close() { r.cancel(); <-r.done }
-func (r *Runtime) Send(raw json.RawMessage) error {
+func (r *Runtime) Close()                         { r.cancel(); <-r.done }
+func (r *Runtime) Send(raw json.RawMessage) error { return r.send(0, raw) }
+func (r *Runtime) SendGeneration(generation uint64, raw json.RawMessage) error {
+	return r.send(generation, raw)
+}
+func (r *Runtime) send(generation uint64, raw json.RawMessage) error {
 	if len(raw) > MaxFrame || !json.Valid(raw) {
 		return errors.New("invalid agent protocol frame")
 	}
 	r.writeMu.Lock()
 	defer r.writeMu.Unlock()
 	r.mu.Lock()
+	if generation != 0 && generation != r.generation {
+		r.mu.Unlock()
+		return errors.New("agent runtime generation changed")
+	}
 	in := r.input
 	r.mu.Unlock()
 	if in == nil {
@@ -85,7 +96,7 @@ func (r *Runtime) loop(ctx context.Context) {
 	}
 	delay := 500 * time.Millisecond
 	for ctx.Err() == nil {
-		err := r.once(ctx)
+		err := r.runGeneration(ctx)
 		if r.options.Exited != nil {
 			r.options.Exited()
 		}
@@ -112,6 +123,38 @@ func (r *Runtime) loop(ctx context.Context) {
 		r.mu.Unlock()
 	}
 	r.set("stopped", "", 0)
+}
+
+// Generation identifies the supervised child owned by a run, including restarts.
+func (r *Runtime) Generation() uint64 { r.mu.Lock(); defer r.mu.Unlock(); return r.generation }
+func (r *Runtime) StopGeneration(generation uint64) {
+	r.mu.Lock()
+	if r.generation != generation || r.stopGeneration == nil {
+		r.mu.Unlock()
+		return
+	}
+	stop, done := r.stopGeneration, r.generationDone
+	r.mu.Unlock()
+	stop()
+	<-done
+}
+func (r *Runtime) runGeneration(ctx context.Context) error {
+	child, stop := context.WithCancel(ctx)
+	done := make(chan struct{})
+	r.mu.Lock()
+	r.generation++
+	r.stopGeneration = stop
+	r.generationDone = done
+	r.mu.Unlock()
+	defer func() {
+		stop()
+		r.mu.Lock()
+		r.stopGeneration = nil
+		r.status.State = "backoff"
+		close(done)
+		r.mu.Unlock()
+	}()
+	return r.once(child)
 }
 
 var errPort = errors.New("health port unavailable")

@@ -21,11 +21,12 @@ const (
 )
 
 var (
-	ErrQueueLimit = errors.New("image queue limit reached")
-	ErrNotFound   = errors.New("run not found")
-	ErrLimit      = errors.New("run limit reached")
-	ErrInvalid    = errors.New("invalid run request")
-	ErrConflict   = errors.New("run state changed")
+	ErrQuarantined = errors.New("runtime quarantined")
+	ErrQueueLimit  = errors.New("image queue limit reached")
+	ErrNotFound    = errors.New("run not found")
+	ErrLimit       = errors.New("run limit reached")
+	ErrInvalid     = errors.New("invalid run request")
+	ErrConflict    = errors.New("run state changed")
 )
 
 type State string

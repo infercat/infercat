@@ -1,13 +1,21 @@
 package agent
 
 import (
+	"archive/tar"
 	"bytes"
+	"compress/gzip"
 	"crypto/sha256"
+	"crypto/sha512"
+	"encoding/base64"
 	"encoding/hex"
 	"encoding/json"
+	"io"
+	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
+	"time"
 )
 
 func TestPinnedCompositionDisablesBothOwnersWithoutLiveInstall(t *testing.T) {
@@ -70,4 +78,61 @@ func TestPinnedCompositionDisablesBothOwnersWithoutLiveInstall(t *testing.T) {
 	if _, err = HarnessOptions(dir); err == nil {
 		t.Fatal("changed manifest accepted")
 	}
+}
+
+// Explicit pinned suite: authenticate the registry archive, not the installed copy.
+func TestPinnedCompositionMatchesLockedTarball(t *testing.T) {
+	if os.Getenv("INFERCAT_AGENT_TEST_INSTALL") == "" {
+		t.Skip("explicit pinned archive fixture")
+	}
+	raw, _ := packages.ReadFile("assets/package-lock.json")
+	var lock struct {
+		Packages map[string]struct{ Resolved, Integrity string }
+	}
+	if err := json.Unmarshal(raw, &lock); err != nil {
+		t.Fatal(err)
+	}
+	entry := lock.Packages["node_modules/@deepseek-ai/dsh-base"]
+	if !strings.HasPrefix(entry.Resolved, "https://registry.npmjs.org/") || !strings.HasPrefix(entry.Integrity, "sha512-") {
+		t.Fatal("unexpected lock entry")
+	}
+	client := http.Client{Timeout: 30 * time.Second}
+	response, err := client.Get(entry.Resolved)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer response.Body.Close()
+	archive, err := io.ReadAll(io.LimitReader(response.Body, 8<<20))
+	if err != nil || response.StatusCode != 200 {
+		t.Fatal("archive fetch", err, response.StatusCode)
+	}
+	digest := sha512.Sum512(archive)
+	if "sha512-"+base64.StdEncoding.EncodeToString(digest[:]) != entry.Integrity {
+		t.Fatal("registry archive integrity mismatch")
+	}
+	gz, err := gzip.NewReader(bytes.NewReader(archive))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer gz.Close()
+	tr := tar.NewReader(gz)
+	for {
+		h, e := tr.Next()
+		if e == io.EOF {
+			break
+		}
+		if e != nil {
+			t.Fatal(e)
+		}
+		if h.Name != "package/cordis.patch.yml" {
+			continue
+		}
+		got, e := io.ReadAll(io.LimitReader(tr, 1<<20))
+		if e != nil || !bytes.Equal(got, baseComposition) {
+			t.Fatal("vendored manifest differs from locked archive", e)
+		}
+		t.Logf("locked tarball manifest SHA-256 %x", sha256.Sum256(got))
+		return
+	}
+	t.Fatal("manifest absent from locked tarball")
 }

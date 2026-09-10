@@ -2,6 +2,8 @@ package run
 
 import (
 	"encoding/json"
+	"errors"
+	"log"
 	"time"
 )
 
@@ -9,6 +11,9 @@ const terminalBound = 4096
 const idleRelease = 5 * time.Minute
 
 func (s *Store) markBroken(key string, err error) {
+	if errors.Is(err, ErrLimit) || errors.Is(err, ErrConflict) || errors.Is(err, ErrNotFound) {
+		return
+	}
 	first := s.broken[key] == nil
 	s.broken[key] = err
 	if first && s.Log != nil {
@@ -85,4 +90,12 @@ func copyRun(r Run) Run {
 	var copy Run
 	_ = json.Unmarshal(raw, &copy)
 	return copy
+}
+
+func (s *Store) log(format string, args ...any) {
+	if s.Log != nil {
+		s.Log(format, args...)
+	} else {
+		log.Printf(format, args...)
+	}
 }

@@ -18,7 +18,7 @@ type Policy struct {
 	Admission func(context.Context, string) (BatchAdmission, error)
 	Release   func(string, string) // Idempotently release any unspent per-job reservation.
 
-	ForceStop      func() // Must end the owned runtime generation; installed before Start.
+	ForceStop      func(string) // Must end the owned runtime generation; installed before Start.
 	Serial         bool
 	QueueLimit     func(string) (int, error) // Resolved outside the manager mutex.
 	Validate       func(json.RawMessage) error
@@ -30,6 +30,9 @@ type Policy struct {
 func (m *Manager) Register(name string, kind Kind, policy Policy) error {
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if policy.JoinCancel && policy.ForceStop == nil {
+		return ErrInvalid
+	}
 	if m.started || m.ctx.Err() != nil {
 		return ErrConflict
 	}

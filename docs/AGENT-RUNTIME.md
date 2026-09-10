@@ -100,12 +100,21 @@ Registration is rejected after startup/first submission, and the manager copies
 the caller's initial kind map. Failed attempt starts end the run, so serial queues
 cannot repeatedly select the same failed start.
 
-Joined cancellation has a 30-second deadline. A host consumer registers
-`Policy.ForceStop` to end its owned runtime generation. At the deadline the manager
-invokes that stop hook once and records Cancelled with `consumer did not join`;
-late worker returns cannot replace that terminal outcome. Close has the same bound.
-Go cannot kill an arbitrary uncooperative goroutine; the native adapter must supply
-the stop hook for its supervised process before exposing a real route.
+Registration refuses JoinCancel without a ForceStop hook. Joined cancellation has
+a 30-second deadline. The host registers
+`Policy.ForceStop(runID)` to stop that run's owned runtime generation. At the
+deadline, the manager waits up to ten more seconds for the hook, recovering a
+panic. A successful stop permits the next queued run; timeout or panic quarantines
+the kind from new starts. Accepted queued runs fail as `runtime quarantined`,
+release their reservations and publish terminal events. New submissions receive
+503 `upstream_down` with Retry-After, rather than a malformed-request error. Entry
+logs name timeout or panic; a successful stop (including a late return) logs recovery
+and clears quarantine. Host restart also clears it. The bounded Cancelled outcome remains authoritative,
+and late worker returns cannot replace it. Close returns within join + stop bounds.
+Go cannot kill an arbitrary goroutine. The supervised adapter identifies a runtime
+generation: other sessions on that generation fail without replay, while a delayed
+stop for an older generation cannot kill its replacement. This is not per-session
+process isolation.
 
 `Work.Approval` persists a pending question and waits without reconstructing the
 consumer. `Manager.Answer` commits the identified answer once before waking it;
@@ -123,8 +132,19 @@ Unused reservation capacity is released after the step; expiry removes the run,
 its retained payload and any reservation together. Reads return detached data;
 failed writes publish no event. A corrupt or ambiguous store fails closed.
 Pure storage writes do not advance the lifecycle cursor or publish run-state events.
-The ordinary budget reserves terminal headroom; at the ceiling a bounded minimal
-terminal/usage record can replace the new output with `output not retained: budget`.
+The ordinary budget reserves lifecycle headroom. At the ceiling, a bounded minimal
+lifecycle/usage record (including Waiting) can replace newly returned output with
+`output not retained: budget`; stored image metadata is preserved and the marker
+goes in the existing bounded Reason. Usage identity fields are never rewritten.
+A commit that shrinks the encoded snapshot is budget-exempt, so expiry can reclaim
+space even while the remaining snapshot is still above the ordinary ceiling.
+The 4 KiB exception is tallied per run in the snapshot across restart; its final
+512 bytes are reserved for settlement. Exhaustion ends the existing run Failed as
+`storage exhausted` and refuses the requested dispatch/approval. The emergency
+record may trim oldest replay entries with normal cursor Reset, preserving
+accumulated attempts, usage, captured outputs and image metadata. New-run admission
+never consumes this lifecycle exception.
+Budget refusals do not mark the key broken.
 `SettlementError` distinguishes a successful model call whose accounting could not
 be recorded from a failed call. Neither condition replays the model request.
 One bounded cancellation note (4 KiB, no new captured outputs) may be retained from
@@ -150,3 +170,24 @@ imported or deleted by this extraction.
 An offline test in `make check` checks both disabling rows against the vendored
 pinned base composition. Startup refuses a missing or changed installed manifest;
 the live test requires the expected sessions directory to exist and remain empty.
+
+Round-two storage behavior: single-key List refreshes access time; all-key
+enumeration does not. Idle terminal keys with no subscriber leave memory after
+five minutes even while other keys are active. Resident snapshots cost up to
+64 MiB plus terminal headroom per key; all-key enumeration can temporarily load
+all known snapshots before releasing idle ones. Live or directly polled keys stay
+resident. A first load reads and parses the snapshot; resident reads use memory. Every run write advances Updated. Retain is explicitly silent on the
+lifecycle stream, while artifact creation, discard and each eviction publish their
+own notifications. A valid cursor from an unknown epoch returns Reset.
+
+Sweep reloads under the lock after any unlock. Expiry records exact artifact paths
+from the loaded pre-deletion snapshot, commits the shrink, then unlinks those proven
+paths through the retry tracker. Scanning an empty snapshot never authorizes
+orphan deletion: unknown files stay intact. A nonempty orphan directory is logged
+once per observed directory change, not once per sweep tick. Failed unlinks remain
+visible and retryable; they do not break a key. The opt-in pinned tarball test
+requires network access and INFERCAT_AGENT_TEST_INSTALL; ordinary make check skips
+it. Its recorded live run compared the vendored manifest byte-for-byte with the
+SHA-512-verified registry tarball (/tmp/infercat-157-tarball.log). The verified
+manifest SHA-256 is
+`885d9766775a2585f8c3a608cd2d2c97391e158b3ac1c53365cb2d1ca82040db`.

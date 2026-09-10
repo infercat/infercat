@@ -18,28 +18,31 @@ import (
 )
 
 type snapshot struct {
-	Epoch    string              `json:"epoch"`
-	Seq      uint64              `json:"seq"`
-	Runs     map[string]Run      `json:"runs"`
-	Events   []Event             `json:"events"`
-	Retained map[string]Retained `json:"retained,omitempty"`
+	encodedBytes   int
+	ExceptionBytes map[string]int      `json:"exception_bytes,omitempty"`
+	Epoch          string              `json:"epoch"`
+	Seq            uint64              `json:"seq"`
+	Runs           map[string]Run      `json:"runs"`
+	Events         []Event             `json:"events"`
+	Retained       map[string]Retained `json:"retained,omitempty"`
 }
 type Store struct {
-	mu           sync.Mutex
-	root         string
-	data         map[string]*snapshot
-	broken       map[string]error
-	subs         map[string]map[chan Event]bool
-	now          func() time.Time
-	write        func(string, []byte) error
-	reserved     map[string]map[string]*reservation
-	imageBudget  int
-	imageCleanup map[string]bool
-	known        map[string]bool
-	accessed     map[string]time.Time
-	recovered    map[string]bool
-	recovery     bool
-	Log          func(string, ...any)
+	mu              sync.Mutex
+	root            string
+	data            map[string]*snapshot
+	broken          map[string]error
+	subs            map[string]map[chan Event]bool
+	now             func() time.Time
+	write           func(string, []byte) error
+	reserved        map[string]map[string]*reservation
+	imageBudget     int
+	imageCleanup    map[string]bool
+	emptyImageStamp map[string]time.Time
+	known           map[string]bool
+	accessed        map[string]time.Time
+	recovered       map[string]bool
+	recovery        bool
+	Log             func(string, ...any)
 }
 
 var safeID = regexp.MustCompile(`^[a-zA-Z0-9_-]{1,80}$`)
@@ -146,6 +149,7 @@ func (s *Store) load(key string) (*snapshot, error) {
 		if len(raw) > MaxStored+MaxRuns*terminalBound {
 			return nil, ErrLimit
 		}
+		v.encodedBytes = len(raw)
 		if e = json.Unmarshal(raw, v); e != nil {
 			return nil, e
 		}
@@ -163,6 +167,11 @@ func (s *Store) load(key string) (*snapshot, error) {
 				return nil, ErrInvalid
 			}
 		}
+		for rid, used := range v.ExceptionBytes {
+			if _, ok := v.Runs[rid]; !ok || used < 0 || used > terminalBound {
+				return nil, ErrInvalid
+			}
+		}
 		for rid := range v.Retained {
 			if _, ok := v.Runs[rid]; !ok {
 				return nil, ErrInvalid
@@ -170,6 +179,10 @@ func (s *Store) load(key string) (*snapshot, error) {
 		}
 	} else if !errors.Is(err, os.ErrNotExist) {
 		return nil, err
+	}
+	if v.encodedBytes == 0 {
+		raw, _ := json.Marshal(v)
+		v.encodedBytes = len(raw)
 	}
 	s.data[key] = v
 	if s.recovery && !s.recovered[key] {
@@ -185,6 +198,7 @@ func clone(v *snapshot) *snapshot {
 	raw, _ := json.Marshal(v)
 	var out snapshot
 	_ = json.Unmarshal(raw, &out)
+	out.encodedBytes = v.encodedBytes
 	return &out
 }
 func (s *Store) commit(key string, v *snapshot, event *Event) error {
@@ -195,11 +209,6 @@ func (s *Store) commit(key string, v *snapshot, event *Event) error {
 	return s.commitFor(key, v, event, rid)
 }
 func (s *Store) commitFor(key string, v *snapshot, event *Event, rid string) error {
-	if event != nil {
-		if old, ok := s.data[key].Runs[event.RunID]; ok && old.State == event.State && old.CancelRequested == v.Runs[event.RunID].CancelRequested {
-			event = nil
-		}
-	}
 	if err := s.broken[key]; err != nil {
 		return err
 	}
@@ -208,37 +217,103 @@ func (s *Store) commitFor(key string, v *snapshot, event *Event, rid string) err
 			delete(v.Retained, rid)
 		}
 	}
-	if event != nil {
-		v.Seq++
-		event.Cursor = fmt.Sprintf("%s:%d", v.Epoch, v.Seq)
-		v.Events = append(v.Events, *event)
-		if len(v.Events) > 256 {
-			v.Events = v.Events[len(v.Events)-256:]
+	for id := range v.ExceptionBytes {
+		if _, ok := v.Runs[id]; !ok {
+			delete(v.ExceptionBytes, id)
 		}
+	}
+	events := []Event{}
+	if event != nil {
+		events = append(events, *event)
+	}
+	for id, r := range v.Runs {
+		old := s.data[key].Runs[id]
+		if _, image := imageOutput(r); image && string(r.Output) != string(old.Output) {
+			r.Updated = s.now().UTC()
+			v.Runs[id] = r
+			if event == nil || event.RunID != id {
+				events = append(events, Event{RunID: id, State: r.State, Time: r.Updated})
+			}
+		}
+	}
+	for i := range events {
+		v.Seq++
+		events[i].Cursor = fmt.Sprintf("%s:%d", v.Epoch, v.Seq)
+		v.Events = append(v.Events, events[i])
+	}
+	if len(v.Events) > 256 {
+		v.Events = v.Events[len(v.Events)-256:]
 	}
 	raw, err := json.Marshal(v)
 	if err != nil {
 		return err
 	}
 	undo, err := s.retainedBudget(key, v, rid, len(raw))
-	if err != nil && rid != "" && terminal(v.Runs[rid].State) {
-		old, _ := json.Marshal(s.data[key])
+	before, after := s.data[key].Runs[rid], v.Runs[rid]
+	lifecycle := before.State != after.State || before.CancelRequested != after.CancelRequested
+	if errors.Is(err, ErrLimit) && before.ID != "" && lifecycle {
+		old := s.data[key]
 		r := v.Runs[rid]
-		r.Output = json.RawMessage(`{"error":"output not retained: budget"}`)
+		if _, stored := imageOutput(r); stored {
+			r.Reason = "output not retained: budget"
+		} else if len(before.Output) > 0 {
+			r.Output = before.Output
+		} else {
+			r.Output = json.RawMessage(`{"error":"output not retained: budget"}`)
+		}
 		if len(r.Attempts) > 0 {
 			a := &r.Attempts[len(r.Attempts)-1]
-			a.Output = nil
-			a.Usage.Prompt = ""
-			a.Usage.Completion = ""
-			a.Usage.Model = boundedReason(a.Usage.Model)
-			a.Usage.Code = boundedReason(a.Usage.Code)
-			a.Usage.Endpoint = boundedReason(a.Usage.Endpoint)
+			a.Output, a.Usage.Prompt, a.Usage.Completion = nil, "", ""
+			if n := len(before.Attempts); n > 0 && before.Attempts[n-1].ID == a.ID {
+				prior := before.Attempts[n-1]
+				a.Output, a.Usage.Prompt, a.Usage.Completion = prior.Output, prior.Usage.Prompt, prior.Usage.Completion
+			}
 		}
 		v.Runs[rid] = r
+		if v.ExceptionBytes == nil {
+			v.ExceptionBytes = map[string]int{}
+		}
+		used := old.ExceptionBytes[rid]
+		// Measure with four digits, so the tally's own encoded growth is included.
+		v.ExceptionBytes[rid] = terminalBound
 		raw, _ = json.Marshal(v)
-		if len(raw)-len(old) <= terminalBound && len(raw) <= MaxStored+MaxRuns*terminalBound {
-			err = nil
-			undo = func() {}
+		limit := terminalBound
+		if !terminal(r.State) {
+			limit -= 512
+		}
+		if used+max(0, len(raw)-old.encodedBytes) > limit || len(raw) > MaxStored+MaxRuns*terminalBound {
+			r.State, r.Reason = Failed, "storage exhausted"
+			r.Expires = r.Updated.Add(Retention)
+			v.Runs[rid] = r
+			// Refuse newly proposed retention; prior evidence remains authoritative.
+			if held, ok := old.Retained[rid]; ok {
+				v.Retained[rid] = held
+			} else {
+				delete(v.Retained, rid)
+			}
+			for i := range events {
+				if events[i].RunID == rid {
+					events[i].State = Failed
+				}
+			}
+			for i := len(v.Events) - len(events); i < len(v.Events); i++ {
+				if v.Events[i].RunID == rid {
+					v.Events[i].State = Failed
+				}
+			}
+			raw, _ = json.Marshal(v)
+			// Replay is disposable; attempts, usage and captured outputs are not.
+			for (used+max(0, len(raw)-old.encodedBytes) > terminalBound || len(raw) > MaxStored+MaxRuns*terminalBound) && len(v.Events) > 0 {
+				v.Events = v.Events[1:]
+				raw, _ = json.Marshal(v)
+			}
+			s.log("run %s/%s lifecycle refused: storage exhausted", key, rid)
+		}
+		charge := max(0, len(raw)-old.encodedBytes)
+		if used+charge <= terminalBound && len(raw) <= MaxStored+MaxRuns*terminalBound {
+			v.ExceptionBytes[rid] = used + charge
+			raw, _ = json.Marshal(v)
+			err, undo = nil, func() {}
 		}
 	}
 	if err != nil {
@@ -257,6 +332,7 @@ func (s *Store) commitFor(key string, v *snapshot, event *Event, rid string) err
 		s.markBroken(key, err)
 		return err
 	}
+	v.encodedBytes = len(raw)
 	s.data[key] = v
 	s.known[key] = true
 	// Reservations belong to live run identities, never expired retained files.
@@ -265,10 +341,10 @@ func (s *Store) commitFor(key string, v *snapshot, event *Event, rid string) err
 			delete(s.reserved[key], rid)
 		}
 	}
-	if event != nil {
+	for _, event := range events {
 		for ch := range s.subs[key] {
 			select {
-			case ch <- *event:
+			case ch <- event:
 			default:
 				close(ch)
 				delete(s.subs[key], ch)
@@ -303,9 +379,7 @@ func (s *Store) change(key, rid string, fn func(*Run) error, retain ...func(*Ret
 		v.Retained[rid] = data
 	}
 	lifecycle := r.State != v.Runs[rid].State || r.CancelRequested != v.Runs[rid].CancelRequested
-	if lifecycle {
-		r.Updated = s.now().UTC()
-	}
+	r.Updated = s.now().UTC()
 	if terminal(r.State) && !terminal(v.Runs[rid].State) {
 		r.Expires = r.Updated.Add(Retention)
 	}
@@ -319,6 +393,9 @@ func (s *Store) change(key, rid string, fn func(*Run) error, retain ...func(*Ret
 		event = &ev
 	}
 	err = s.commitFor(key, v, event, rid)
+	if err == nil && v.Runs[rid].State != r.State {
+		err = ErrLimit // The durable terminal fallback refused the requested transition.
+	}
 	return copyRun(v.Runs[rid]), err
 }
 func (s *Store) CreateBatch(key, kind, priority string, inputs []json.RawMessage, cap int, admit ...func([]Run) (func(), error)) ([]Run, error) {
@@ -463,19 +540,21 @@ func (s *Store) Subscribe(key, cursor string) ([]Event, <-chan Event, func(), er
 		return nil, nil, nil, ErrLimit
 	}
 	seq := uint64(0)
+	reset := cursor == ""
 	if cursor != "" {
 		parts := strings.Split(cursor, ":")
-		if len(parts) != 2 || parts[0] != v.Epoch {
+		if len(parts) != 2 || !safeID.MatchString(parts[0]) {
 			return nil, nil, nil, ErrInvalid
 		}
 		seq, err = strconv.ParseUint(parts[1], 10, 64)
-		if err != nil || seq > v.Seq {
+		if err != nil || (parts[0] == v.Epoch && seq > v.Seq) {
 			return nil, nil, nil, ErrInvalid
 		}
+		reset = parts[0] != v.Epoch
 	}
 	replay := []Event{}
 	oldest := v.Seq - uint64(len(v.Events))
-	if cursor == "" || seq < oldest {
+	if reset || seq < oldest {
 		runs, _ := s.list(key)
 		replay = append(replay, Event{Cursor: fmt.Sprintf("%s:%d", v.Epoch, v.Seq), Time: s.now().UTC(), Reset: true, Runs: runs})
 	} else {

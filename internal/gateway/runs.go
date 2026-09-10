@@ -15,11 +15,12 @@ import (
 )
 
 // SetRuns is startup wiring only, before any gateway listener is exposed.
-func (g *Gateway) SetRuns(m *runstate.Manager) {
+func (g *Gateway) SetRuns(m *runstate.Manager) error {
 	g.runs = m
 	if g.cfg.Images != nil {
-		_ = m.Register("image", runstate.ImageKind, runstate.Policy{Serial: true, DeferredCancel: true, Validate: runstate.ValidateImage, Admission: g.prepareImageBatch, Release: g.releaseImageReservation})
+		return m.Register("image", runstate.ImageKind, runstate.Policy{Serial: true, DeferredCancel: true, Validate: runstate.ValidateImage, Admission: g.prepareImageBatch, Release: g.releaseImageReservation})
 	}
+	return nil
 }
 
 // ExecuteStep reuses the request owner; finish settles once before the result is observed.
@@ -128,6 +129,8 @@ func runError(err error) *gwError {
 		return gatewayError
 	}
 	switch {
+	case errors.Is(err, runstate.ErrQuarantined):
+		return errf(CodeUpstreamDown, 1, "runtime quarantined; retry after recovery")
 	case errors.Is(err, runstate.ErrQueueLimit):
 		return errf(CodeImageQueueFull, 1, "image queue is full")
 	case errors.Is(err, runstate.ErrNotFound):

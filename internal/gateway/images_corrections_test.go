@@ -331,3 +331,11 @@ func TestImageQueuedKeyRevocationReleasesReservation(t *testing.T) {
 	waitImageJob(t, h, rows[1].ID, runstate.Failed)
 	waitUntil(t, time.Second, "unused hold released", func() bool { return h.gw.Counters(h.key.ID).TodayImages == 1 })
 }
+
+func TestSetRunsRejectsLateImageRegistration(t *testing.T) {
+	h := imagesHarness(t, func(http.ResponseWriter, *http.Request) {})
+	h.gw.runs.Start()
+	if err := h.gw.SetRuns(h.gw.runs); err == nil {
+		t.Fatal("late registration silently accepted")
+	}
+}

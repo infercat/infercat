@@ -24,6 +24,9 @@ type Manager struct {
 	started     bool
 	sweeping    bool
 	joinTimeout time.Duration
+	stopTimeout time.Duration
+	blocked     map[string]int
+	quarantined map[string]bool
 	releases    map[string]func()
 }
 
@@ -32,6 +35,7 @@ type execution struct {
 	answer  chan struct{}
 	kind    string
 	done    chan struct{}
+	joined  chan struct{}
 	join    sync.Once
 	key     string
 	expired bool
@@ -39,7 +43,7 @@ type execution struct {
 
 func New(s *Store, exec Executor, kinds map[string]Kind) (*Manager, error) {
 	ctx, cancel := context.WithCancel(context.Background())
-	m := &Manager{Store: s, Execute: exec, Kinds: maps.Clone(kinds), joinTimeout: 30 * time.Second, active: map[string]*execution{}, ctx: ctx, cancel: cancel}
+	m := &Manager{Store: s, Execute: exec, Kinds: maps.Clone(kinds), joinTimeout: 30 * time.Second, stopTimeout: 10 * time.Second, blocked: map[string]int{}, active: map[string]*execution{}, ctx: ctx, cancel: cancel}
 	s.mu.Lock()
 	s.recovery = true
 	for key := range s.data {
@@ -57,6 +61,10 @@ func (m *Manager) Submit(key, kind, priority string, input json.RawMessage) (Run
 }
 func (m *Manager) SubmitBatch(key, kind, priority string, inputs []json.RawMessage) ([]Run, error) {
 	m.mu.Lock()
+	if m.unavailable(kind) {
+		m.mu.Unlock()
+		return nil, ErrQuarantined
+	}
 	if m.ctx.Err() != nil {
 		m.mu.Unlock()
 		return nil, ErrConflict
@@ -91,6 +99,9 @@ func (m *Manager) SubmitBatch(key, kind, priority string, inputs []json.RawMessa
 	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
+	if m.unavailable(kind) {
+		return nil, ErrQuarantined
+	}
 	if m.ctx.Err() != nil {
 		return nil, ErrConflict
 	}
@@ -144,7 +155,7 @@ func (m *Manager) queued(kind string) []Run {
 	return rows
 }
 func (m *Manager) schedule(kind string) {
-	if m.ctx.Err() != nil {
+	if m.ctx.Err() != nil || m.unavailable(kind) {
 		return
 	}
 	for _, a := range m.active {
@@ -168,15 +179,13 @@ func (m *Manager) Position(kind, rid string) int {
 }
 func (m *Manager) start(r Run) {
 	ctx, cancel := context.WithCancel(m.ctx)
-	worker := &execution{cancel: cancel, kind: r.Kind, key: r.KeyID, done: make(chan struct{}), answer: make(chan struct{}, 1)}
+	worker := &execution{cancel: cancel, kind: r.Kind, key: r.KeyID, done: make(chan struct{}), joined: make(chan struct{}), answer: make(chan struct{}, 1)}
 	m.active[r.ID] = worker
-	m.wg.Add(1)
 	go func() {
-		defer m.wg.Done()
 		defer close(worker.done)
 		defer func() {
 			m.mu.Lock()
-			if m.active[r.ID] == worker {
+			if m.active[r.ID] == worker && !worker.expired {
 				delete(m.active, r.ID)
 				m.release(r.ID)
 				if m.Policies[r.Kind].Serial {
@@ -196,7 +205,7 @@ func (m *Manager) Resume(key, rid string) error {
 		return ErrConflict
 	}
 	r, err := m.Store.change(key, rid, func(v *Run) error {
-		if v.State != Waiting || m.active[rid] != nil {
+		if v.State != Waiting || m.active[rid] != nil || m.unavailable(v.Kind) {
 			return ErrConflict
 		}
 		v.State = Queued
@@ -424,17 +433,28 @@ func (m *Manager) Sweep() error {
 		}
 		for _, r := range rows {
 			if !terminal(r.State) && !r.Expires.After(s.now()) {
-				if _, err = m.Cancel(key, r.ID); err != nil {
-					break
+				if _, cancelErr := m.Cancel(key, r.ID); cancelErr != nil {
+					s.log("run expiry cancel failed for %s/%s: %v", key, r.ID, cancelErr)
 				}
 			}
 		}
 		s.mu.Lock()
 		if err == nil {
-			next := clone(s.data[key])
+			last = s.accessed[key]
+			v, loadErr := s.load(key)
+			if loadErr != nil {
+				s.markBroken(key, loadErr)
+				s.mu.Unlock()
+				continue
+			}
+			next := clone(v)
+			var paths []string
 			changed := false
 			for rid, r := range next.Runs {
 				if terminal(r.State) && !r.Expires.After(s.now()) {
+					if _, ok := imageOutput(r); ok {
+						paths = append(paths, s.artifactPath(key, rid))
+					}
 					delete(next.Runs, rid)
 					changed = true
 				}
@@ -443,6 +463,9 @@ func (m *Manager) Sweep() error {
 				err = s.commit(key, next, nil)
 			}
 			if err == nil {
+				for _, path := range paths {
+					s.unlinkImage(path)
+				}
 				err = s.sweepImages(key, next)
 			}
 		}
@@ -485,16 +508,29 @@ func (m *Manager) Close() {
 	for id := range m.releases {
 		m.release(id)
 	}
+	var workers []*execution
 	for id, w := range m.active {
+		workers = append(workers, w)
 		m.boundJoin(Run{ID: id, KeyID: w.key}, w)
 	}
 	m.mu.Unlock()
-	done := make(chan struct{})
-	go func() { m.wg.Wait(); close(done) }()
-	select {
-	case <-done:
-	case <-time.After(m.joinTimeout):
+	deadline := time.NewTimer(m.joinTimeout + m.stopTimeout)
+	defer deadline.Stop()
+	for _, w := range workers {
+		select {
+		case <-w.done:
+		case <-w.joined:
+		case <-deadline.C:
+			return
+		}
 	}
+	sweepDone := make(chan struct{})
+	go func() { m.wg.Wait(); close(sweepDone) }()
+	select {
+	case <-sweepDone:
+	case <-deadline.C:
+	}
+
 }
 
 // Done lets transports leave when host shutdown cancels the manager.

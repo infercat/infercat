@@ -260,3 +260,24 @@ func processLive(pid int) bool {
 	out, _ := exec.Command("ps", "-p", fmt.Sprint(pid), "-o", "stat=").Output()
 	return len(out) > 0 && out[0] != 'Z'
 }
+
+func TestStopGenerationCannotStopReplacement(t *testing.T) {
+	options, _ := runtimeFixture(t, false)
+	r := StartRuntime(context.Background(), options)
+	defer r.Close()
+	waitRuntime(t, r, "healthy")
+	old := r.Generation()
+	r.StopGeneration(old)
+	waitRuntime(t, r, "healthy")
+	replacement := r.Generation()
+	if old == replacement {
+		t.Fatal("generation did not advance")
+	}
+	r.StopGeneration(old)
+	if err := r.SendGeneration(old, json.RawMessage(`{}`)); err == nil {
+		t.Fatal("old run dispatched into replacement")
+	}
+	if r.Generation() != replacement || r.Status().State != "healthy" {
+		t.Fatal("old stop killed replacement")
+	}
+}

@@ -231,7 +231,9 @@ func (e *env) cmdServe(ctx context.Context, pre string, args []string) error {
 	if err = runs.Sweep(); err != nil {
 		e.logf("run expiry: %v", err)
 	}
-	gw.SetRuns(runs)
+	if err = gw.SetRuns(runs); err != nil {
+		return fmt.Errorf("register runs: %w", err)
+	}
 	runs.Start()
 
 	reload := func() error {

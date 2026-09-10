@@ -125,9 +125,11 @@ func TestReplayResetAndSlowSubscriber(t *testing.T) {
 		t.Fatal(e)
 	}
 	stop2()
-	if _, _, _, e = s.Subscribe("k_b", live.Cursor); !errors.Is(e, ErrInvalid) {
-		t.Fatal(e)
+	other, _, closeOther, e := s.Subscribe("k_b", live.Cursor)
+	if e != nil || len(other) != 1 || !other[0].Reset {
+		t.Fatal(other, e)
 	}
+	closeOther()
 	for i := 0; i < 260; i++ {
 		if _, e = s.change("k_a", r.ID, func(v *Run) error {
 			if v.State == Running {

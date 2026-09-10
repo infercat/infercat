@@ -71,7 +71,15 @@ No CLI flags change these constants in this slice.
 Ordinary writes leave 64 KiB of terminal headroom. If a legacy full snapshot cannot
 retain a new terminal output, it receives an explicit `output not retained: budget`
 marker and a minimal terminal/usage update. That update may exceed the ordinary
-budget by at most 4 KiB per run, with a 400 KiB maximum exception per key. Disk or
+budget by at most 4 KiB per run, with a 400 KiB maximum exception per key.
+A private per-run byte tally in the same snapshot survives restart and is never
+renewed by later lifecycle writes; 512 bytes of that allowance are reserved for
+terminal settlement. If the requested lifecycle update cannot fit, the run ends
+Failed with `storage exhausted`, the refusal is logged, and dispatch/approval does
+not continue. At the absolute cap this terminal write may discard the oldest
+replay-ring entries (old cursors receive Reset), never accumulated attempts, usage,
+captured outputs or image metadata. Newly proposed retention is refused. Expiry
+removes the tally with its run; a rejected new-run admission does not use this path. Disk or
 directory failures still refuse that key and are logged; they do not refuse host
 startup or stop expiry for healthy keys. Snapshot bodies load on first use and are
 released from memory after five idle minutes with no live run or subscriber.
@@ -85,3 +93,11 @@ marker until the run record expires. Startup sweeps remove orphaned artifacts;
 interrupted work is never automatically replayed.
 
 The image budget counts retained, servable outputs. Stale files that cannot be unlinked are logged and retried on the next sweep; they may temporarily add disk usage outside that budget. `infercat status` reports their pending-cleanup count.
+
+Shrinking run-snapshot commits are exempt from the retained-byte budget, including
+expiry above the ordinary ceiling. Bounded lifecycle records cover Waiting as well
+as terminal states; image artifact metadata and metering identities survive that
+fallback. Budget refusal never marks a key corrupt. Expiry and clear operations
+unlink only paths established from the loaded pre-deletion snapshot after the
+commit succeeds. An empty snapshot cannot authorize a directory scan to delete
+unknown image files; those are left intact and logged.
