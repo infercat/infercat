@@ -78,6 +78,10 @@ The read sandbox is an allow-list on both shipped platforms:
   `/lib*`, `/bin`, `/sbin`, `/etc`, `/opt`, the pinned runtime, and the current
   workspace. Only that workspace/tmp is writable, plus `/dev/null` and optional
   `/dev/tty`; zero/random/urandom are readable. Device-node creation is denied.
+  If `/etc/resolv.conf`, `/etc/hosts` or `/etc/nsswitch.conf` resolves outside
+  those trees, the launcher grants read on that regular file only, re-resolving
+  it on every launch. Missing/unreadable targets are omitted; DNS may then fail
+  inside the sandbox. No `/run` directory grant is added.
   `/proc` is readable so descendant tools can read their own process information.
   Other same-uid processes' `/proc/<pid>/environ` remains readable wherever ordinary
   Linux permissions permit it; those processes may expose their own environment

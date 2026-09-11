@@ -100,3 +100,28 @@ stopped. See [file-key evidence](161-sandbox/mac-file-key.json),
 [pinned delta output](161-sandbox/mac-review-delta.log).
 The final gate result is supplied in the freeze handoff; no Linux success is
 claimed by these Mac records.
+
+## Resolver delta after the initial Linux measurement
+
+The initial published checkpoint's Linux CI 34569253847 failed the external DNS
+canary: `tool-ok`, `bash-ok`, `python-ok`, `node-ok`, and owned-TLS `https-ok`
+preceded `curl exit status 6`. The pinned harness step was not reached. This is
+DNS failure evidence, not confirmation of a particular resolver symlink target.
+The [initial output](161-sandbox/linux-initial-canary.log) is retained verbatim
+apart from trailing whitespace.
+
+The ruled replacement checks `/etc/resolv.conf`, `/etc/hosts`, and
+`/etc/nsswitch.conf` on each launch. Only symlinks resolving outside the existing
+allowed trees to readable regular files gain READ_FILE on the resolved leaf.
+Missing/unreadable targets are omitted. The O_PATH helper checks the opened inode
+is still regular, so no directory substitution can grant a subtree. `/run` itself
+is never granted. The Linux fixture logs both the resolved target and chosen leaf;
+`curl --show-error` retains DNS diagnostics instead of only the exit code.
+
+The resolver selection regression covers regular/missing/in-tree/directory targets,
+unreadable files where ordinary permissions deny the read, and a changed symlink
+between launches. The updated Mac native/canary command passed 11 top-level tests
+plus two approval subtests, zero failures/skips; see
+[delta output](161-sandbox/mac-resolver-delta.log). Linux execution of the final
+replacement is still required; these local checks do not claim that DNS or the
+pinned harness has passed on Linux.

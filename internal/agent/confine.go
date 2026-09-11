@@ -135,3 +135,27 @@ func checkSandbox(ctx context.Context, cmd *exec.Cmd) error {
 	}
 	return nil
 }
+
+// resolverLeaf grants no directory authority; resolve afresh for every launch.
+func resolverLeaf(path string) string {
+	target, err := filepath.EvalSymlinks(path)
+	if err != nil || target == path {
+		return ""
+	}
+	for _, root := range sandboxTrees() {
+		root, err := filepath.EvalSymlinks(root)
+		if err == nil && beneath(target, root) {
+			return ""
+		}
+	}
+	info, err := os.Stat(target)
+	if err != nil || !info.Mode().IsRegular() {
+		return ""
+	}
+	file, err := os.Open(target)
+	if err != nil {
+		return ""
+	}
+	file.Close()
+	return target
+}

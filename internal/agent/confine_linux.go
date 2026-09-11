@@ -64,6 +64,9 @@ func landlockExec(workspace, installed string, command []string) error {
 		if err = unix.Fstat(opened, &st); err != nil {
 			return err
 		}
+		if access == unix.LANDLOCK_ACCESS_FS_READ_FILE && st.Mode&unix.S_IFMT != unix.S_IFREG {
+			return nil // A resolver replacement must never become a directory grant.
+		}
 		if st.Mode&unix.S_IFMT != unix.S_IFDIR {
 			access &= uint64(unix.LANDLOCK_ACCESS_FS_READ_FILE | unix.LANDLOCK_ACCESS_FS_WRITE_FILE | unix.LANDLOCK_ACCESS_FS_EXECUTE | unix.LANDLOCK_ACCESS_FS_TRUNCATE | unix.LANDLOCK_ACCESS_FS_IOCTL_DEV)
 		}
@@ -80,6 +83,13 @@ func landlockExec(workspace, installed string, command []string) error {
 	for _, path := range sandboxTrees() {
 		if err := add(path, read|unix.LANDLOCK_ACCESS_FS_EXECUTE, true); err != nil {
 			return err
+		}
+	}
+	for _, name := range []string{"/etc/resolv.conf", "/etc/hosts", "/etc/nsswitch.conf"} {
+		if target := resolverLeaf(name); target != "" {
+			if err := add(target, unix.LANDLOCK_ACCESS_FS_READ_FILE, true); err != nil && !errors.Is(err, unix.EACCES) {
+				return err
+			}
 		}
 	}
 	if err := add(installed, read|unix.LANDLOCK_ACCESS_FS_EXECUTE, false); err != nil {

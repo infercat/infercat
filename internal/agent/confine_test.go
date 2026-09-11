@@ -46,13 +46,13 @@ func sandboxCanary(args []string) int {
 		{"/bin/bash", "-c", `if cat "$1" >/dev/null 2>&1; then exit 9; fi; printf bash-ok`, "_", canary},
 		{"python3", "-c", "import pathlib,sys\ntry: pathlib.Path(sys.argv[1]).read_text()\nexcept PermissionError: print('python-ok')\nelse: raise Exception('canary read')", canary},
 		{node, "-e", `try{require('fs').readFileSync(process.argv[1]);process.exit(9)}catch(e){if(!['EPERM','EACCES'].includes(e.code))throw e;console.log('node-ok')}`, canary},
-		{"curl", "--max-time", "5", "--fail", "--silent", "--cacert", cert, endpoint},
+		{"curl", "--max-time", "5", "--fail", "--silent", "--show-error", "--cacert", cert, endpoint},
 	}
 	if runtime.GOOS == "linux" {
 		commands = append(commands, []string{node, "-e", `require('child_process').execFileSync('python3',['-c',"print(open('/proc/self/status').read().splitlines()[0])"],{stdio:'inherit'});console.log('grandchild-proc-ok')`})
 	}
 	if os.Getenv("INFERCAT_REQUIRE_SANDBOX") == "1" {
-		commands = append(commands, []string{"curl", "--max-time", "10", "--fail", "--silent", "--head", "https://example.com"})
+		commands = append(commands, []string{"curl", "--max-time", "10", "--fail", "--silent", "--show-error", "--head", "https://example.com"})
 	}
 	for _, argv := range commands {
 		out, err := exec.Command(argv[0], argv[1:]...).CombinedOutput()
@@ -82,6 +82,12 @@ func sandboxCanary(args []string) int {
 }
 
 func Test161SandboxCanaries(t *testing.T) {
+	if runtime.GOOS == "linux" {
+		for _, name := range []string{"/etc/resolv.conf", "/etc/hosts", "/etc/nsswitch.conf"} {
+			target, err := filepath.EvalSymlinks(name)
+			t.Logf("resolver %s -> %q; resolve error=%v; extra leaf=%q", name, target, err, resolverLeaf(name))
+		}
+	}
 	workspace, err := sandboxWorkspace(t.TempDir())
 	if err != nil {
 		t.Fatal(err)
@@ -197,4 +203,60 @@ func Test161PreflightDiagnostics(t *testing.T) {
 	if err = checkSandbox(context.Background(), exec.Command("/bin/sh", "-c", "exit 0")); err != nil {
 		t.Fatal(err)
 	}
+}
+
+func Test161ResolverLeafIsOptionalAndFresh(t *testing.T) {
+	dir, err := canonicalPath(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	link := filepath.Join(dir, "resolv.conf")
+	first, second := filepath.Join(dir, "first"), filepath.Join(dir, "second")
+	for _, path := range []string{first, second} {
+		if err := os.WriteFile(path, []byte("synthetic resolver"), 0600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	point := func(target string) {
+		t.Helper()
+		_ = os.Remove(link)
+		if err := os.Symlink(target, link); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if resolverLeaf(link) != "" || resolverLeaf(first) != "" {
+		t.Fatal("missing or ordinary file granted")
+	}
+	point(first)
+	if got := resolverLeaf(link); got != first {
+		t.Fatal("symlink leaf", got)
+	}
+	point(second)
+	if got := resolverLeaf(link); got != second {
+		t.Fatal("stale resolution", got)
+	}
+	point(dir)
+	if resolverLeaf(link) != "" {
+		t.Fatal("directory granted")
+	}
+	point(filepath.Join(dir, "missing"))
+	if resolverLeaf(link) != "" {
+		t.Fatal("absent target granted")
+	}
+	point("/bin/sh")
+	if resolverLeaf(link) != "" {
+		t.Fatal("already allowed target granted")
+	}
+	point(first)
+	if err := os.Chmod(first, 0000); err != nil {
+		t.Fatal(err)
+	}
+	defer os.Chmod(first, 0600)
+	if f, err := os.Open(first); err != nil {
+		if resolverLeaf(link) != "" {
+			t.Fatal("unreadable target granted")
+		}
+	} else {
+		f.Close()
+	} // Root can still read mode 0000.
 }
