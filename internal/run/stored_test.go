@@ -206,7 +206,7 @@ func TestClearTracksPerKeyCleanupAndRetriesWithoutLiveRemoval(t *testing.T) {
 		t.Fatal(err)
 	}
 	data, _ = s.Stored("k_a")
-	if *data.PendingCleanup != 0 || s.ImageCleanupPending() != 1 {
+	if *data.PendingCleanup != 0 || imageCleanupPending(s) != 1 {
 		t.Fatal("wrong key cleanup")
 	}
 }
@@ -502,7 +502,7 @@ func TestStoredObservedOrphansNeverBecomeCleanupAuthority(t *testing.T) {
 		t.Fatal(err)
 	}
 	got, _ := s.Stored("k_a")
-	if got.ObservedOrphans != 1 || *got.PendingCleanup != 0 || got.RetryCleanup != 0 || s.ImageCleanupPending() != 1 {
+	if got.ObservedOrphans != 1 || *got.PendingCleanup != 0 || got.RetryCleanup != 0 || imageCleanupPending(s) != 1 {
 		t.Fatal(got)
 	}
 	if err := clearTest(s, "k_a"); err != nil {
@@ -520,7 +520,7 @@ func TestStoredObservedOrphansNeverBecomeCleanupAuthority(t *testing.T) {
 	if err := s.sweepImages("k_a", s.data["k_a"]); err != nil {
 		t.Fatal("vanishing directory", err)
 	}
-	if s.ImageCleanupPending() != 0 {
+	if imageCleanupPending(s) != 0 {
 		t.Fatal("stale observed count")
 	}
 }
@@ -644,7 +644,7 @@ func TestOrphanAcrossTwoClearsRemainsReportOnly(t *testing.T) {
 		if err := clearTest(s, "k_a"); err != nil {
 			t.Fatal(err)
 		}
-		if s.ImageCleanupPending() != 1 || len(s.imageCleanup) != 0 || len(s.data["k_a"].Cleanup) != 0 {
+		if imageCleanupPending(s) != 1 || len(s.imageCleanup) != 0 || len(s.data["k_a"].Cleanup) != 0 {
 			t.Fatal("observation promoted or counted twice")
 		}
 	}
@@ -744,8 +744,8 @@ func TestImageCleanupCountsSeparateProvenAndObserved(t *testing.T) {
 	s.imageCleanup = map[string]bool{"proven": true}
 	s.imageOrphans = map[string]bool{"observed": true, "proven": true}
 	proven, review := s.ImageCleanupCounts()
-	if proven != 1 || review != 1 || s.ImageCleanupPending() != 2 {
-		t.Fatal(proven, review, s.ImageCleanupPending())
+	if proven != 1 || review != 1 || imageCleanupPending(s) != 2 {
+		t.Fatal(proven, review, imageCleanupPending(s))
 	}
 }
 

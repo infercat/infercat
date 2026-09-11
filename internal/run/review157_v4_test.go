@@ -102,7 +102,7 @@ func Test157V4CleanupPopulationsStayDistinct(t *testing.T) {
 	s.imageCleanup = map[string]bool{"proven": true}
 	s.imageOrphans = map[string]bool{"observed": true}
 	proven, review := s.ImageCleanupCounts()
-	if proven != 1 || review != 1 || s.ImageCleanupPending() != 2 {
+	if proven != 1 || review != 1 || imageCleanupPending(s) != 2 {
 		t.Fatal(proven, review)
 	}
 }

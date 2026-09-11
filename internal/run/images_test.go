@@ -11,6 +11,11 @@ import (
 	"time"
 )
 
+func imageCleanupPending(s *Store) int {
+	proven, review := s.ImageCleanupCounts()
+	return proven + review
+}
+
 func imageIn(prompt string) json.RawMessage {
 	b, _ := json.Marshal(ImageInput{Prompt: prompt})
 	return b
@@ -276,7 +281,7 @@ func TestUnlinkFailureKeepsKeyUsableAndRetries(t *testing.T) {
 	if e != nil {
 		t.Fatal("key bricked", e)
 	}
-	if s.ImageCleanupPending() != 1 {
+	if imageCleanupPending(s) != 1 {
 		t.Fatal("missing pending cleanup count")
 	}
 	o, _ := imageOutput(r)
@@ -301,7 +306,7 @@ func TestUnlinkFailureKeepsKeyUsableAndRetries(t *testing.T) {
 	if _, e = os.Stat(path); !errors.Is(e, os.ErrNotExist) {
 		t.Fatal("cleanup not retried", e)
 	}
-	if s.ImageCleanupPending() != 0 {
+	if imageCleanupPending(s) != 0 {
 		t.Fatal("stale cleanup count")
 	}
 }

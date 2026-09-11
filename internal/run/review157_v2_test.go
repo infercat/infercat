@@ -125,8 +125,8 @@ func Test157V2EmptyImagesLogOnlyChanges(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	if lines != 1 || s.ImageCleanupPending() != 1 {
-		t.Fatal("repeated orphan log or missing status count", lines, s.ImageCleanupPending())
+	if lines != 1 || imageCleanupPending(s) != 1 {
+		t.Fatal("repeated orphan log or missing status count", lines, imageCleanupPending(s))
 	}
 	later := time.Now().Add(time.Hour)
 	os.Chtimes(dir, later, later)
@@ -150,7 +150,7 @@ func Test157V2EmptyImagesLogOnlyChanges(t *testing.T) {
 	if err := os.RemoveAll(dir); err != nil {
 		t.Fatal(err)
 	}
-	if err := s.sweepImages("key", empty); err != nil || s.ImageCleanupPending() != 0 {
+	if err := s.sweepImages("key", empty); err != nil || imageCleanupPending(s) != 0 {
 		t.Fatal("vanished directory retained or broken", err)
 	}
 

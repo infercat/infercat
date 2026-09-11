@@ -341,7 +341,7 @@ the snapshot again.
 The CLI separates proven retries from report-only observations as
 `N awaiting cleanup, M for review`; the admin response carries
 `image_cleanup_pending` (proven retries) and additive `image_orphans_for_review`
-(report-only). The aggregate Store.ImageCleanupPending accessor remains their sum.
+(report-only).
 
 The allowance-exhausted 67,043,328-byte fixture enters the new load check and took
 73.9 ms cold (filesystem pages warm); the 67,518,464-byte absolute-cap case took
