@@ -1,0 +1,137 @@
+{
+  "platform": "macOS",
+  "probe_start": "2026-09-11T05:46:13.554849+00:00",
+  "probe_end": "2026-09-11T05:46:58.885160+00:00",
+  "probes": [
+    {
+      "name": "native-read",
+      "state": "done",
+      "start": "2026-09-11T05:46:13.554849+00:00",
+      "end": "2026-09-11T05:46:21.205299+00:00",
+      "steps": [
+        [
+          "think",
+          "done"
+        ],
+        [
+          "read",
+          "failed"
+        ],
+        [
+          "think",
+          "done"
+        ]
+      ],
+      "sse_steps": 8,
+      "attempts": 3
+    },
+    {
+      "name": "bash-read",
+      "state": "done",
+      "start": "2026-09-11T05:46:21.205528+00:00",
+      "end": "2026-09-11T05:46:30.851632+00:00",
+      "steps": [
+        [
+          "think",
+          "done"
+        ],
+        [
+          "run",
+          "done"
+        ],
+        [
+          "think",
+          "done"
+        ]
+      ],
+      "sse_steps": 9,
+      "attempts": 3
+    },
+    {
+      "name": "python-read",
+      "state": "done",
+      "start": "2026-09-11T05:46:30.851958+00:00",
+      "end": "2026-09-11T05:46:47.140053+00:00",
+      "steps": [
+        [
+          "think",
+          "done"
+        ],
+        [
+          "run",
+          "done"
+        ],
+        [
+          "think",
+          "done"
+        ],
+        [
+          "run",
+          "done"
+        ],
+        [
+          "think",
+          "done"
+        ]
+      ],
+      "sse_steps": 17,
+      "attempts": 4
+    },
+    {
+      "name": "credential-sentinel",
+      "state": "done",
+      "start": "2026-09-11T05:46:47.140469+00:00",
+      "end": "2026-09-11T05:46:53.261796+00:00",
+      "steps": [
+        [
+          "think",
+          "done"
+        ],
+        [
+          "run",
+          "done"
+        ],
+        [
+          "think",
+          "done"
+        ]
+      ],
+      "sse_steps": 7,
+      "attempts": 3
+    },
+    {
+      "name": "write-capture",
+      "state": "done",
+      "start": "2026-09-11T05:46:53.262252+00:00",
+      "end": "2026-09-11T05:46:58.885160+00:00",
+      "steps": [
+        [
+          "think",
+          "done"
+        ],
+        [
+          "write",
+          "done"
+        ],
+        [
+          "think",
+          "done"
+        ]
+      ],
+      "sse_steps": 6,
+      "attempts": 3
+    }
+  ],
+  "attempts_matching_usage": 16,
+  "usage_identity_fields": [
+    "key_id",
+    "ts",
+    "model",
+    "prompt_tokens",
+    "completion_tokens",
+    "status"
+  ],
+  "workspace_entries_after_settlement": [],
+  "owned_host_and_engine_stopped": true,
+  "linux_runtime_verified": false
+}

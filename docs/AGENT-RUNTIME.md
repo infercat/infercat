@@ -94,6 +94,12 @@ OS user or a guarantee against kernel/sandbox vulnerabilities.
 Full network egress is allowed, including local services; there is no destination
 filter or protection for data exposed by a reachable service. The native
 workspace-write/ask policy still governs tool requests inside the outer sandbox.
+Only the per-run confined path substitutes the native sandbox runner with our
+inherited provider: it accepts `workspace-write` for the exact canonical outer
+workspace, refuses read-only/stricter policies and other roots, and returns the
+original command under the inherited kernel policy. It does not invoke a nested
+sandbox launcher. Native sandbox-policy, bash execution, permission/approval and
+in-process filesystem fencing remain in place; the pinned vendor tree is unchanged.
 An Allow answer cannot expand the outer read/write boundary. Ordinary workspace
 writes do not ask; 129's three tool-description strings remain unchanged.
 

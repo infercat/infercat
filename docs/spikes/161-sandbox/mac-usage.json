@@ -1,0 +1,130 @@
+[
+  {
+    "key_id": "k_37628b",
+    "ts": "2026-09-11T01:46:14.061838-04:00",
+    "model": "e4b-116c",
+    "prompt_tokens": 7035,
+    "completion_tokens": 187,
+    "status": 200
+  },
+  {
+    "key_id": "k_37628b",
+    "ts": "2026-09-11T01:46:17.953491-04:00",
+    "model": "e4b-116c",
+    "prompt_tokens": 204,
+    "completion_tokens": 8,
+    "status": 200
+  },
+  {
+    "key_id": "k_37628b",
+    "ts": "2026-09-11T01:46:18.207902-04:00",
+    "model": "e4b-116c",
+    "prompt_tokens": 7301,
+    "completion_tokens": 260,
+    "status": 200
+  },
+  {
+    "key_id": "k_37628b",
+    "ts": "2026-09-11T01:46:21.743909-04:00",
+    "model": "e4b-116c",
+    "prompt_tokens": 7037,
+    "completion_tokens": 354,
+    "status": 200
+  },
+  {
+    "key_id": "k_37628b",
+    "ts": "2026-09-11T01:46:27.24149-04:00",
+    "model": "e4b-116c",
+    "prompt_tokens": 204,
+    "completion_tokens": 6,
+    "status": 200
+  },
+  {
+    "key_id": "k_37628b",
+    "ts": "2026-09-11T01:46:27.460048-04:00",
+    "model": "e4b-116c",
+    "prompt_tokens": 7522,
+    "completion_tokens": 318,
+    "status": 200
+  },
+  {
+    "key_id": "k_37628b",
+    "ts": "2026-09-11T01:46:31.418087-04:00",
+    "model": "e4b-116c",
+    "prompt_tokens": 7040,
+    "completion_tokens": 468,
+    "status": 200
+  },
+  {
+    "key_id": "k_37628b",
+    "ts": "2026-09-11T01:46:38.086727-04:00",
+    "model": "e4b-116c",
+    "prompt_tokens": 207,
+    "completion_tokens": 9,
+    "status": 200
+  },
+  {
+    "key_id": "k_37628b",
+    "ts": "2026-09-11T01:46:38.345885-04:00",
+    "model": "e4b-116c",
+    "prompt_tokens": 7543,
+    "completion_tokens": 386,
+    "status": 200
+  },
+  {
+    "key_id": "k_37628b",
+    "ts": "2026-09-11T01:46:42.448766-04:00",
+    "model": "e4b-116c",
+    "prompt_tokens": 8059,
+    "completion_tokens": 399,
+    "status": 200
+  },
+  {
+    "key_id": "k_37628b",
+    "ts": "2026-09-11T01:46:47.891422-04:00",
+    "model": "e4b-116c",
+    "prompt_tokens": 7012,
+    "completion_tokens": 190,
+    "status": 200
+  },
+  {
+    "key_id": "k_37628b",
+    "ts": "2026-09-11T01:46:51.951144-04:00",
+    "model": "e4b-116c",
+    "prompt_tokens": 181,
+    "completion_tokens": 7,
+    "status": 200
+  },
+  {
+    "key_id": "k_37628b",
+    "ts": "2026-09-11T01:46:52.172833-04:00",
+    "model": "e4b-116c",
+    "prompt_tokens": 7221,
+    "completion_tokens": 39,
+    "status": 200
+  },
+  {
+    "key_id": "k_37628b",
+    "ts": "2026-09-11T01:46:54.02006-04:00",
+    "model": "e4b-116c",
+    "prompt_tokens": 6983,
+    "completion_tokens": 125,
+    "status": 200
+  },
+  {
+    "key_id": "k_37628b",
+    "ts": "2026-09-11T01:46:57.411011-04:00",
+    "model": "e4b-116c",
+    "prompt_tokens": 152,
+    "completion_tokens": 8,
+    "status": 200
+  },
+  {
+    "key_id": "k_37628b",
+    "ts": "2026-09-11T01:46:57.637352-04:00",
+    "model": "e4b-116c",
+    "prompt_tokens": 7213,
+    "completion_tokens": 58,
+    "status": 200
+  }
+]

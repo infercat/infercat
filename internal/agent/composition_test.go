@@ -66,6 +66,25 @@ func TestPinnedCompositionDisablesBothOwnersWithoutLiveInstall(t *testing.T) {
 			t.Fatal("owner not disabled exactly once", id, count)
 		}
 	}
+	if bytes.Contains(raw, []byte("infercat-outer-sandbox")) || strings.Contains(strings.Join(options.Env, "\n"), "INFERCAT_CONFINED_WORKSPACE") {
+		t.Fatal("unconfined fixture got inherited provider")
+	}
+	workspace := t.TempDir()
+	confined, err := harnessOptions(dir, filepath.Join(workspace, ".runtime"), workspace)
+	if err != nil {
+		t.Fatal(err)
+	}
+	composed, err := os.ReadFile(filepath.Join(confined.Dir, "adapter.patch.yml"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !bytes.Contains(composed, []byte(`"id":"sandbox"`)) || !bytes.Contains(composed, []byte(`"id":"infercat-outer-sandbox"`)) || !strings.Contains(strings.Join(confined.Env, "\n"), "INFERCAT_CONFINED_WORKSPACE="+workspace) {
+		t.Fatal("missing confined provider composition")
+	}
+	got, err := os.ReadFile(filepath.Join(confined.Dir, "inherited-sandbox.mjs"))
+	if err != nil || !bytes.Equal(got, inheritedSandbox) {
+		t.Fatal("provider not materialized", err)
+	}
 	if err = os.Remove(filepath.Join(root, "node_modules/@deepseek-ai/dsh-base/cordis.patch.yml")); err != nil {
 		t.Fatal(err)
 	}

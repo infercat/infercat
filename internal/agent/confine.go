@@ -69,7 +69,7 @@ func sandboxOptions(data, workspace string) (RuntimeOptions, error) {
 	if err = sandboxLayout(canonical, runtime); err != nil {
 		return RuntimeOptions{}, err
 	}
-	options, err := harnessOptions(canonical, filepath.Join(workspace, ".runtime"))
+	options, err := harnessOptions(canonical, filepath.Join(workspace, ".runtime"), workspace)
 	if err != nil {
 		return options, err
 	}

@@ -19,12 +19,15 @@ var wire []byte
 //go:embed assets/adapter.mjs
 var adapter []byte
 
+//go:embed assets/inherited-sandbox.mjs
+var inheritedSandbox []byte
+
 // HarnessOptions materializes only our plugin/config. The integrity-locked vendor
 // tree stays unchanged. No external model credentials or host bearer is inherited.
 func HarnessOptions(dataDir string) (RuntimeOptions, error) {
-	return harnessOptions(dataDir, filepath.Join(dataDir, "agent", "host"))
+	return harnessOptions(dataDir, filepath.Join(dataDir, "agent", "host"), "")
 }
-func harnessOptions(dataDir, dir string) (RuntimeOptions, error) {
+func harnessOptions(dataDir, dir, outerWorkspace string) (RuntimeOptions, error) {
 	runtime, err := Installed(dataDir)
 	if err != nil {
 		return RuntimeOptions{}, err
@@ -61,6 +64,15 @@ func harnessOptions(dataDir, dir string) (RuntimeOptions, error) {
 			map[string]any{"id": "infercat-agent", "name": plugin},
 		}},
 	}
+	if outerWorkspace != "" {
+		provider := filepath.Join(dir, "inherited-sandbox.mjs")
+		if err = os.WriteFile(provider, inheritedSandbox, 0600); err != nil {
+			return RuntimeOptions{}, err
+		}
+		rows = append(rows, map[string]any{"id": "sandbox", "disabled": true}, map[string]any{"insert": []any{
+			map[string]any{"id": "infercat-outer-sandbox", "name": provider, "config": map[string]any{"workspace": outerWorkspace}},
+		}})
+	}
 	raw, _ := json.Marshal(rows) // JSON is a YAML subset accepted by the native patch loader.
 	patch := filepath.Join(dir, "adapter.patch.yml")
 	if err = os.WriteFile(patch, raw, 0600); err != nil {
@@ -71,6 +83,9 @@ func harnessOptions(dataDir, dir string) (RuntimeOptions, error) {
 		"HOME=" + dir, "DSH_HOME=" + filepath.Join(dir, "harness"),
 		"DSH_TELEMETRY_MODE=DISABLED", "DSH_PERMISSION_MODE=workspace-write",
 		"INFERCAT_AGENT_RUNTIME=" + runtime,
+	}
+	if outerWorkspace != "" {
+		env = append(env, "INFERCAT_CONFINED_WORKSPACE="+outerWorkspace)
 	}
 	if exa := os.Getenv("EXA_API_KEY"); exa != "" {
 		env = append(env, "INFERCAT_EXA_FD=4")
