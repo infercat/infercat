@@ -357,9 +357,10 @@ type meResponse struct {
 		InFlight    int `json:"in_flight"`
 	} `json:"usage"`
 	Host struct {
-		Images   *imageOffer `json:"images,omitempty"`
-		Name     string      `json:"name"`
-		Upstream struct {
+		Images     *imageOffer `json:"images,omitempty"`
+		Name       string      `json:"name"`
+		Embeddings *string     `json:"embeddings,omitempty"`
+		Upstream   struct {
 			Kind         upstream.Kind `json:"kind"`
 			Healthy      bool          `json:"healthy"`
 			ModelContext int           `json:"model_context"`
@@ -395,8 +396,30 @@ func (q *request) me() {
 	if q.g.cfg.LiveHostName != nil {
 		m.Host.Name = q.g.cfg.LiveHostName()
 	}
+	if d := q.g.router.route(string(embeddingsEndpoint)); d != nil && d != q.g.router.text {
+		model := ""
+		if member, managed := q.g.cfg.Managed["embed"]; managed {
+			if member.Offered() {
+				model = member.Model
+			}
+		} else if d.Up.Info().Health.OK && len(d.Up.Info().Models) > 0 {
+			model = d.Up.Info().Models[0]
+		}
+		if model != "" && allowsModel(q.key, nil, model) {
+			m.Host.Embeddings = &model
+		}
+	}
 	m.Host.Audio.Transcriptions = q.g.router.audioModel(transcribeEndpoint)
 	m.Host.Audio.Speech = q.g.router.audioModel(speechEndpoint)
+	for id, dest := range map[string]**string{"transcribe": &m.Host.Audio.Transcriptions, "speech": &m.Host.Audio.Speech} {
+		if member, managed := q.g.cfg.Managed[id]; managed {
+			*dest = nil
+			if member.Offered() {
+				model := member.Model
+				*dest = &model
+			}
+		}
+	}
 	for _, model := range []**string{&m.Host.Audio.Transcriptions, &m.Host.Audio.Speech} {
 		if *model != nil && !allowsModel(q.key, nil, **model) {
 			*model = nil

@@ -146,6 +146,10 @@ func (e *env) setup(ctx context.Context, dir string, p profile.Profile, custom b
 			for _, im := range installation.Members {
 				if im.ID == m.ID {
 					r.State = "checked"
+					if im.Unavailable != "" {
+						r.State = "unavailable"
+						r.Detail = im.Unavailable
+					}
 					r.Paths = im.Paths
 					if im.External {
 						r.State = "running"
@@ -175,6 +179,10 @@ func (e *env) setup(ctx context.Context, dir string, p profile.Profile, custom b
 		}
 		endpoint, key, model := setupFields(&cfg, m.Class)
 		if endpoint == nil {
+			continue
+		}
+		if !custom && r.State == "unavailable" && *endpoint == m.URL() {
+			*endpoint, *model = "", ""
 			continue
 		}
 		if *endpoint != "" && *endpoint != m.URL() || *key != "" || *model != "" && *model != m.Model.Name || m.Unavailable != "" && *endpoint != "" {
@@ -211,6 +219,11 @@ func (e *env) setup(ctx context.Context, dir string, p profile.Profile, custom b
 	}
 	if err := saveConfig(dir, cfg); err != nil {
 		return err
+	}
+	if !custom {
+		if err := profile.RetireTrees(dir, installation); err != nil {
+			fmt.Fprintln(e.errw, "Profile tree cleanup:", err)
+		}
 	}
 	fmt.Fprintf(e.out, "Saved %s; infercat serve reuses these settings.\n", configPath(dir))
 	return nil

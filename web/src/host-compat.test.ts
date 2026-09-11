@@ -9,7 +9,7 @@ const source = ts.createSourceFile('contract.ts', readFileSync(new URL('../../pa
 const me = source.statements.find((s): s is ts.InterfaceDeclaration => ts.isInterfaceDeclaration(s) && s.name.text === 'Me')!;
 const host = (me.members.find((m) => m.name?.getText(source) === 'host') as ts.PropertySignature).type as ts.TypeLiteralNode;
 // Explicit extension inventory (082's size-1 alternative to a generated Go schema).
-const optional = ['audio', 'images', 'log_prompts', 'vision'];
+const optional = ['audio', 'embeddings', 'images', 'log_prompts', 'vision'];
 
 describe('shipped host capabilities', () => {
   it('keeps additive fields optional and requires an explicit inventory update', () => {
@@ -17,7 +17,7 @@ describe('shipped host capabilities', () => {
     for (const m of host.members) {
       if (!(m.name!.getText(source) in old.host)) expect((m as ts.PropertySignature).questionToken).toBeDefined();
     }
-    expect(Object.keys(current.host).sort()).toEqual(['audio', 'images', 'log_prompts', 'models', 'name', 'relay', 'upstream', 'vision']);
+    expect(Object.keys(current.host).sort()).toEqual(['audio', 'embeddings', 'images', 'log_prompts', 'models', 'name', 'relay', 'upstream', 'vision']);
   });
   it('requires current fixture coverage for Go wire field names', () => {
     const proxy = readFileSync(new URL('../../internal/gateway/proxy.go', import.meta.url), 'utf8');
@@ -38,8 +38,8 @@ describe('shipped host capabilities', () => {
     expect(hostAudio(old as Me, 'transcriptions')).toBeNull();
     expect(hostAudio(old as Me, 'speech')).toBeNull();
     expect(hostImages(old as Me)).toBeNull();
-    expect(hostImages(current as Me)?.model).toBe('FLUX.2-klein-4B-Q8_0');
-    expect(modelVision(current as Me, 'compat-model')).toBe(true);
+    expect(hostImages(current as Me)?.model).toBe('sd-cpp-local');
+    expect(modelVision(current as Me, current.host.models[0]!)).toBe(true);
     expect(modelVision(current as Me, 'missing')).toBeNull();
     const me = { ...current, host: { ...current.host, vision: { text: false, unknown: null }, audio: { transcriptions: 'asr-model', speech: null } } } as Me;
     expect(modelVision(me, 'text')).toBe(false);

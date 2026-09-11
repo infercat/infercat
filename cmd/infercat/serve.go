@@ -103,6 +103,17 @@ func (e *env) cmdServe(ctx context.Context, pre string, args []string) error {
 		return err
 	}
 	defer guard.Close()
+	profileRuntime, err := startProfile(ctx, dataDir, cfg.ProfileInstall, map[string]string{"text": *upURL, "transcribe": *transcribeURL, "speech": *speechURL, "image": *imageURL})
+	if err != nil {
+		return err
+	}
+	if profileRuntime != nil {
+		defer profileRuntime.Close()
+	}
+	embed, err := profileEmbedding(ctx, profileRuntime)
+	if err != nil {
+		return err
+	}
 	transcribe, err := upstream.OpenAudio(ctx, *transcribeURL, *transcribeKey)
 	if err != nil {
 		return err
@@ -205,6 +216,7 @@ func (e *env) cmdServe(ctx context.Context, pre string, args []string) error {
 	defer public.Close()
 	gw, err := e.plat.newGateway(gatewayOptions{
 		RemoteConsole: remoteHandler, LiveHostName: state.name,
+		Embed: embed, Managed: profileBindings(profileRuntime, map[string]probeEngine{"text": up, "transcribe": transcribe, "speech": speech, "image": images, "embed": embed}),
 		ModelsPinned:    pinned,
 		TranscribeModel: *transcribeModel, SpeechModel: *speechModel,
 		SpeechVoices: voices,
@@ -259,6 +271,9 @@ func (e *env) cmdServe(ctx context.Context, pre string, args []string) error {
 	started := time.Now()
 	adm, err := admin.Serve(dataDir, func() admin.Status {
 		st := buildStatus(ctx, started, tun, up, gw, store, tele)
+		if profileRuntime != nil {
+			st.Members = profileRuntime.Status()
+		}
 		st.Bridge = public.Status()
 		if harness != nil {
 			s := harness.Status()
@@ -300,6 +315,9 @@ func (e *env) cmdServe(ctx context.Context, pre string, args []string) error {
 	})
 
 	go refreshLoop(ctx, up, e.logf, refreshEvery)
+	if embed != nil {
+		go refreshLoop(ctx, embed, e.logf, refreshEvery)
+	}
 	for _, engine := range []probeEngine{transcribe, speech} {
 		if engine != nil {
 			go refreshLoop(ctx, engine, e.logf, refreshEvery)

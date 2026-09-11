@@ -17,8 +17,8 @@ English · [简体中文](DATA-DIRECTORY.zh-CN.md)
 | `runs/<key-id>/images/<run-id>` | Generated PNG/JPEG: up to 8 MiB each, 7-day expiry, separate 256 MiB per-key budget (oldest evicted first). See [image hosting](IMAGES.md). |
 | `config.json` | Remembered `serve` flags and the active `profile_install` reference. |
 | `profiles/downloads/` | SHA-256-addressed verified downloads and resumable `.part` files; no system installation. |
-| `profiles/trees/` | Private extracted artifact/model trees; completed trees can remain after a failed check. |
-| `profiles/install-<sha256>.json` | The versioned installation record: profile digest, canonical paths, file hashes, symlink targets, and external ownership. Config points to the active record. |
+| `profiles/trees/` | Private extracted artifact/model trees; successful setup retires trees the new manifest does not reference. Failed checks retain verified downloads. |
+| `profiles/install-<sha256>.json` | The versioned installation record: profile digest, canonical paths, file hashes, symlink targets, external ownership, unavailable reasons, and materialized commands. Config points to the active record. |
 | `profiles/members/<id>/` | Generated engine config, isolated HOME, and `engine.log` (wraps at 1 MiB). |
 | `tunnel.log` | The tunnel engine's log (`serve --verbose` prints it instead). |
 

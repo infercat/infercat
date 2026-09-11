@@ -2,7 +2,7 @@
   "agent": false,
   "key": {
     "id": "fixture-key",
-    "name": "compat-fixture",
+    "name": "proof-151b-b",
     "status": "active"
   },
   "limits": {
@@ -10,38 +10,39 @@
     "max_queued_images": 8,
     "daily_audio_seconds": 3600,
     "daily_speech_chars": 200000,
-    "rpm": 20,
-    "tpm": 20000,
+    "rpm": 60,
+    "tpm": 100000,
     "max_concurrent": 1,
     "max_output_tokens": 4096,
     "max_context": 0,
     "daily_tokens": 200000
   },
   "usage": {
-    "today_images": 2,
-    "rpm_used": 5,
-    "tpm_used": 0,
-    "today_tokens": 0,
+    "today_images": 1,
+    "rpm_used": 31,
+    "tpm_used": 125,
+    "today_tokens": 125,
     "in_flight": 0
   },
   "host": {
     "images": {
-      "model": "FLUX.2-klein-4B-Q8_0",
+      "model": "sd-cpp-local",
       "retention_days": 7,
       "queue_cap": 8,
       "queued": 0
     },
-    "name": "Compatibility host",
+    "name": "proof-151b-b",
+    "embeddings": "bge-m3",
     "upstream": {
       "kind": "llama.cpp",
       "healthy": true,
-      "model_context": 8192
+      "model_context": 16384
     },
     "models": [
-      "compat-model"
+      "gemma4-e4b"
     ],
     "vision": {
-      "compat-model": true
+      "gemma4-e4b": true
     },
     "audio": {
       "transcriptions": null,

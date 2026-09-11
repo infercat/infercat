@@ -93,6 +93,12 @@ func newRouter(text upstream.Engine, cfg Config) *Router {
 		r.routes[string(audio.route)] = d
 		r.destinations = append(r.destinations, d)
 	}
+	if cfg.Embed != nil {
+		d := &Destination{ID: "embed", Kind: "engine", Origin: "local", Up: cfg.Embed, Text: cfg.Embed}
+		d.Queue.cap = func() int { return max(1, d.Up.Info().Slots) }
+		r.routes[string(embeddingsEndpoint)] = d
+		r.destinations = append(r.destinations, d)
+	}
 	if cfg.Images != nil {
 		d := &Destination{ID: "images", Kind: "engine", Origin: "local", Up: cfg.Images, Images: cfg.Images, model: cfg.ImageModel}
 		d.Queue.cap = func() int { return 1 }
@@ -114,7 +120,7 @@ func (r *Router) Resolve(key *keys.Key, route, model string) (*Destination, *gwE
 		return nil, errf(CodeNotFound, 0, "no route for POST %s", route)
 	}
 	pin := r.pinned
-	if d.Text == nil {
+	if d != r.text {
 		pin = nil
 	}
 	if model != "" && !allowsModel(key, pin, model) {

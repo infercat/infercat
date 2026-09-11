@@ -74,7 +74,8 @@ type normalized struct {
 type request struct {
 	innerError *gwError
 
-	readRelease func()
+	releaseManaged func()
+	readRelease    func()
 
 	continueChat   func()
 	onAcquired     func() error
@@ -169,6 +170,7 @@ func (q *request) serve() {
 func (q *request) proxy(kind endpoint) {
 	q.kind = kind
 	for _, stage := range []func() *gwError{
+		q.prepareManaged,
 		q.checkHealth,    // the engine is up (cheapest; consumes nothing when it is not)
 		q.admitKey,       // per-key concurrency + RPM
 		q.readBody,       // under the read deadline, into the record
@@ -240,6 +242,9 @@ func (q *request) checkHealth() *gwError {
 // outcome (a rejection hands them back un-counted: a friend retrying against a 4xx does not dig
 // the hole deeper).
 func (q *request) admitKey() *gwError {
+	if q.adm != nil {
+		return nil
+	}
 	a, err := q.g.lim.admit(q.key.ID, q.key.Limits)
 	if err != nil {
 		return err
@@ -291,7 +296,7 @@ func (q *request) normalize() *gwError {
 		}
 		q.n.body, q.responses = body, adapter
 	}
-	n, err := normalize(q.kind, q.n.body, q.key, q.destination.Up.Info().Models, q.g.cfg.ModelsPinned)
+	n, err := normalize(q.kind, q.n.body, q.key, q.destination.Up.Info().Models, q.modelPins())
 	if err != nil {
 		return err
 	}
@@ -461,6 +466,9 @@ func (q *request) relay() *gwError {
 // admission by the settle table, and records the usage event. It is deferred by serveHTTP and is
 // the only way out.
 func (q *request) finish() {
+	if q.releaseManaged != nil {
+		defer q.releaseManaged()
+	}
 	if q.readRelease != nil {
 		q.readRelease()
 	}
@@ -630,4 +638,11 @@ func (q *request) markTTFT() {
 		q.ttftSet = true
 		q.ev.TTFTMS = time.Since(q.start).Milliseconds()
 	}
+}
+
+func (q *request) modelPins() []string {
+	if q.destination != q.g.router.text {
+		return nil
+	}
+	return q.g.cfg.ModelsPinned
 }

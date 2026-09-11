@@ -66,7 +66,8 @@ func (g *Gateway) imageOffer(key *keys.Key) (*imageOffer, *gwError) {
 	if (model == "" && len(key.Limits.Models) > 0) || (model != "" && !allowsModel(key, nil, model)) {
 		return nil, missing
 	}
-	if !info.Health.OK {
+	member, managed := g.cfg.Managed["images"]
+	if managed && !member.Offered() || !managed && !info.Health.OK {
 		return nil, errf(CodeUpstreamDown, 3, "image engine unavailable")
 	}
 	if model == "" {
@@ -368,6 +369,10 @@ func (q *request) proxyImage(rid string, input json.RawMessage) {
 	if q.g.cfg.LogPrompts {
 		q.ev.Prompt = in.Prompt
 	}
+	if e := q.prepareManaged(); e != nil {
+		q.fail(e)
+		return
+	}
 	offer, unavailable := q.g.imageOffer(q.key)
 	d := q.g.router.route(string(imagesEndpoint))
 	if d != nil && unavailable != nil && unavailable.Code == CodeUpstreamDown {
@@ -618,6 +623,9 @@ func (q *request) settleImage() {
 }
 
 func (q *request) admitImageKey() *gwError {
+	if q.adm != nil {
+		return nil
+	}
 	q.adm = &admission{key: q.key.ID, detached: true}
 	return nil
 }

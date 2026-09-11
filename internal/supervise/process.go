@@ -107,3 +107,14 @@ func (p *Process) WaitHealth(ctx context.Context, probe func(context.Context) er
 		}
 	}
 }
+
+// Exited is called under the owning member's lock, never concurrently with Close.
+func (p *Process) Exited() bool {
+	select {
+	case err := <-p.done:
+		p.done <- err
+		return true
+	default:
+		return false
+	}
+}

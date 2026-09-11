@@ -240,6 +240,9 @@ func writeStatus(w io.Writer, st admin.Status) {
 		}
 		fmt.Fprintln(w)
 	}
+	for _, m := range st.Members {
+		fmt.Fprintf(w, "member    %s: %s (restarts %d) %s\n", m.ID, m.State, m.Restarts, m.Error)
+	}
 	writeSessions(w, st.Tunnel)
 	fmt.Fprintf(w, "queue     %d in flight, %d waiting  (peak %d in flight, sampled)\n", st.Queue.InFlight, st.Queue.Waiting, st.Engine.SlotsPeak)
 	fmt.Fprintf(w, "engine    %s\n", engineWords(st.Engine))

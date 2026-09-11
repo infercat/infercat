@@ -68,6 +68,8 @@ type gatewayServer interface {
 }
 
 type gatewayOptions struct {
+	Embed                        upstream.Engine
+	Managed                      map[string]gateway.ManagedMember
 	Images                       upstream.ImageEngine
 	ImageModel                   string
 	RemoteConsole                http.Handler
