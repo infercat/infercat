@@ -1,4 +1,4 @@
-import { offersImageTool } from '../chatTools';
+import { offersHostTools } from '../chatTools';
 import ChatToolSteps from './ChatToolSteps';
 import { hostImages } from '../api';
 import { useImageJobs } from './useImageJobs';
@@ -390,8 +390,8 @@ export default function Chat({ state, live, dispatch, onRedial, reconnecting = f
       if (history.some((m) => !leftOut.includes(m) && m.images?.some((i) => !data[i.id]))) {
         setMissingChats((seen) => new Set(seen).add(convId));
       }
-      const toolChat = !me.agent && offersImageTool(me);
-      const request = { ...(toolChat ? { host_tools: ['make_image'], conversation: convId, client_request_id: replyId } : {}), model, messages, temperature: settings.temperature, ...thinkingFields(settings.thinking) };
+      const toolChat = !me.agent && offersHostTools(me);
+      const request = { ...(toolChat ? { host_tools: [...me.host_tools!], conversation: convId, client_request_id: replyId } : {}), model, messages, temperature: settings.temperature, ...thinkingFields(settings.thinking) };
       if (me.agent && history.some((m) => !leftOut.includes(m) && m.images?.some((image) => !data[image.id]))) { setImageNotice(rejectionNotice({ reason: 'missing_image', message: tr('app_image_missing') })); setStreaming(false); abort.current = null; return; }
       if (!fitsRequest(request)) {
         setImageNotice(rejectionNotice({ reason: 'body_too_large', message: tr('app_over_message_size', { size: '4 MB' }) }));
@@ -729,7 +729,7 @@ export default function Chat({ state, live, dispatch, onRedial, reconnecting = f
                   onContinue={() => send(tr('app_continue_from_where_you_stopped'))}
                   onNewChat={startNew}
                   onResend={resend}
-                /></div>{m.hostRun?.records.map(record => <ChatToolSteps key={record.id} record={record} host={host} connected={agentRuns.connected} />)}</Fragment>
+                /></div>{m.hostRun?.records.map(record => <ChatToolSteps key={record.id} record={record} live={live} host={host} connected={agentRuns.connected} />)}</Fragment>
               ))
             )}
           </div>
