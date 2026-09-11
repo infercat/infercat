@@ -2,7 +2,7 @@
 import { test, expect, vi, afterEach } from 'vitest';
 import fixture from './test/fixture.json';
 import { render } from './render';
-import { createConsole } from './app';
+import { reads, mount as mountAdmin } from './test/mockAdmin';
 import { copy } from './copy';
 const now = Date.parse('2026-09-06T12:00:00Z');
 const data = () => structuredClone(fixture);
@@ -82,15 +82,13 @@ test('untrusted names, model IDs, paths and errors are text, never executable ma
 });
 
 test('polling is GET-only, stale data remains grey, recovery refreshes counters, keyboard focus returns', async () => {
- vi.useFakeTimers(); history.replaceState(null,'','/');
- document.body.innerHTML='<div id="app"></div>';
+ history.replaceState(null,'','/');
  let offline=false; const d=data();
  const request=vi.fn(async url => {
   if(offline) throw new Error('offline');
-  const key=url.slice(5); const value=key==='usage?window=today'?d.today:key==='usage?window=week'?d.week:d[key];
-  return new Response(JSON.stringify(value),{status:200});
+  return reads(d)(url);
  });
- const app=createConsole(document.querySelector('#app'),'secret',request,()=>now+Date.now());
+ const app=mountAdmin(d,{token:'secret',request,now:()=>now+Date.now()});
  await vi.advanceTimersByTimeAsync(0);
  const row=document.querySelector('[data-key="k_7f3a2b"]'); row.focus(); row.dispatchEvent(new KeyboardEvent('keydown',{key:'Enter',bubbles:true}));
  expect(document.activeElement.dataset.close).toBe('true');
@@ -106,9 +104,8 @@ test('polling is GET-only, stale data remains grey, recovery refreshes counters,
 });
 
 test('a replaced admin token asks for a fresh console URL instead of retrying unauthorized reads', async () => {
- vi.useFakeTimers();document.body.innerHTML='<div id="app"></div>';
  const request=vi.fn(async()=>new Response('{}',{status:401}));
- const app=createConsole(document.querySelector('#app'),'expired',request);
+ const app=mountAdmin(fixture,{token:'expired',request});
  await vi.advanceTimersByTimeAsync(0);
  expect(document.body.textContent).toContain('Open this page with infercat console');
  const count=request.mock.calls.length;await vi.advanceTimersByTimeAsync(6000);

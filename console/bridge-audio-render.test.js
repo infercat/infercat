@@ -2,13 +2,13 @@
 import {afterEach,expect,test,vi} from 'vitest';
 import fixture from './test/fixture.json';
 import {bridgeAudioFixture} from './test/bridge-audio-fixture';
-import {createConsole} from './app';
+import { reads, mount as mountAdmin } from './test/mockAdmin';
 let app;
 afterEach(()=>{app?.stop();vi.useRealTimers();});
 async function mount(data,lang='en',remote=false){
- vi.useFakeTimers();history.replaceState(null,'',`/?lang=${lang}`);document.body.innerHTML='<div id="app"></div>';
- const request=vi.fn(async(url,init)=>{expect(init.method).toBeUndefined();const path=url.slice(5);return new Response(JSON.stringify(path==='usage?window=today'?data.today:path==='usage?window=week'?data.week:data[path]));});
- app=createConsole(document.querySelector('#app'),'test',request,Date.now,undefined,remote?{path:'tunnel',leave(){}}:undefined);await vi.advanceTimersByTimeAsync(0);return request;
+ history.replaceState(null,'',`/?lang=${lang}`);
+ const request=vi.fn(async(url,init)=>{expect(init.method).toBeUndefined();return reads(data)(url);});
+ app=mountAdmin(data,{request,remote:remote?{path:'tunnel',leave(){}}:undefined});await vi.advanceTimersByTimeAsync(0);return request;
 }
 const rows=selector=>[...document.querySelectorAll(selector+' tbody tr')].map(r=>r.textContent);
 for(const remote of [false,true])for(const state of ['absent','on','reconnecting','error','off'])test(`public URL ${state}, remote=${remote}`,async()=>{

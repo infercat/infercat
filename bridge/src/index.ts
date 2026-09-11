@@ -181,7 +181,6 @@ export class Host extends DurableObject<Env> {
   private slots?: number;
   private queue: Job[] = [];
   private reading = 0;
-  private readBytes = 0;
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
     this.socket = ctx.getWebSockets()[0];
@@ -311,10 +310,9 @@ export class Host extends DurableObject<Env> {
     let body: Uint8Array = new Uint8Array();
     if (req.body) {
       // Reserve the full buffer before reading; untrusted Content-Length never sets the budget.
-      if (this.reading >= 4 || this.readBytes + MAX_BODY > 16 * 1024 * 1024)
+      if (this.reading >= 4 || (this.reading + 1) * MAX_BODY > 16 * 1024 * 1024)
         return reply(429, "host_busy");
       this.reading++;
-      this.readBytes += MAX_BODY;
       try {
         body = await bounded(req, MAX_BODY);
       } catch (e) {
@@ -323,7 +321,6 @@ export class Host extends DurableObject<Env> {
           : reply(408, "body_timeout");
       } finally {
         this.reading--;
-        this.readBytes -= MAX_BODY;
       }
     }
     if (!this.socket) return reply(503, "host_offline");

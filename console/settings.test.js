@@ -1,12 +1,12 @@
 // @vitest-environment jsdom
 import {test,expect,vi,afterEach} from 'vitest';
 import fixture from './test/fixture.json';
-import {createConsole} from './app';
+import { reads, mount } from './test/mockAdmin';
 let app;
 afterEach(()=>{app?.stop();vi.useRealTimers();});
 const tick=()=>vi.advanceTimersByTimeAsync(0);
 async function setup(mode='ok'){
- vi.useFakeTimers();history.replaceState(null,'','/');document.body.innerHTML='<div id="app"></div>';
+ history.replaceState(null,'','/');
  const data=structuredClone(fixture);Object.assign(data.settings,{writes_supported:true,default_web_url:'https://infercat.ai',configured_console:'127.0.0.1:9101',console_address:'127.0.0.1:9101',running_slots:2,remote:{enabled:false,in_use:false}});
  const writes=[];let finish;
  const request=async(url,init)=>{
@@ -15,9 +15,9 @@ async function setup(mode='ok'){
    if(path==='settings'){const body=JSON.parse(init.body);for(const [key,value]of Object.entries(body))data.settings[key==='web_url'?'configured_web_url':key==='console'?'configured_console':key]=value;return new Response(JSON.stringify(data.settings));}
    data.settings.remote.enabled=path!=='remote/off';data.settings.remote.since='2026-09-09T12:04:00Z';return new Response(JSON.stringify(path==='remote/off'?{ok:true}:{key_id:'admin',name:data.settings.name,invite:'ia1.host.secret',link:'https://infercat.ai/#ia1.host.secret'}));
   }
-  return new Response(JSON.stringify(path==='usage?window=today'?data.today:path==='usage?window=week'?data.week:data[path]));
+  return reads(data)(url);
  };
- app=createConsole(document.querySelector('#app'),'token',request);await tick();return {data,writes,finish:()=>finish()};
+ app=mount(data,{token:'token',request});await tick();return {data,writes,finish:()=>finish()};
 }
 function edit(key,value){const el=document.querySelector(`[data-setting="${key}"]`);if(el.type==='checkbox')el.checked=value;else el.value=value;el.dispatchEvent(new Event('input',{bubbles:true}));}
 function submit(){document.querySelector('[data-form="settings"]').dispatchEvent(new Event('submit',{bubbles:true,cancelable:true}));}

@@ -10,7 +10,7 @@ export interface DrawerState {
  confirm?: boolean; rotated?: boolean; once?: Invite; qr?: string; qrFailed?: boolean;
  error?: string; message?: CopyKey; copied?: 'link' | 'code';
 }
-export const defaults: Limits = { rpm: 20, tpm: 20000, max_concurrent: 1, max_output_tokens: 4096, max_context: 0, daily_tokens: 200000, models: [] };
+const defaults: Limits = { rpm: 20, tpm: 20000, max_concurrent: 1, max_output_tokens: 4096, max_context: 0, daily_tokens: 200000, models: [] };
 export function draft(key?: Key): DrawerState {
  return { mode: key ? 'key' : 'mint', name: key?.name || '', limits: structuredClone(key?.limits || defaults), dirty: false };
 }
@@ -19,7 +19,7 @@ const tr = (lang: Lang) => (key: CopyKey, ...args: (string | number)[]) => escap
 function button(lang: Lang, action: string, key: CopyKey, pending: boolean, cls = 'secondary', name = '') {
  return `<button type="button" class="${cls}" data-action="${action}" ${pending ? 'disabled' : ''}>${tr(lang)(key, name)}</button>`;
 }
-export function message(lang: Lang, ui?: DrawerState, pending = false): string {
+function message(lang: Lang, ui?: DrawerState, pending = false): string {
  return `<p class="field-hint action-message" role="status">${pending ? tr(lang)('working') : ui?.error ? escape(ui.error) : ui?.message ? tr(lang)(ui.message) : ''}</p>`;
 }
 export function limitsForm(data: Snapshot, lang: Lang, ui?: DrawerState, key?: Key, pending = false): string {
