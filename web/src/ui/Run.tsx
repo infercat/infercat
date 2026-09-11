@@ -58,8 +58,8 @@ export function runLine(run: RunView): string {
   const step = run.steps.at(-1);
   return step && stepName(step) ? tr('app_run_step', { step: stepName(step), elapsed }) : tr('app_run_generating', { elapsed });
 }
-export default function RunRow({ run, host, connected, disabled, pending, onCancel, onAnswer, onRetry, loadText, onSave }: {
-  run: RunView; host: string; connected: boolean; disabled: boolean; pending: boolean;
+export default function RunRow({ run, host, connected, disabled, pending, onCancel, onAnswer, onRetry, loadText, onSave, stepsOnly = false }: {
+  stepsOnly?: boolean; run: RunView; host: string; connected: boolean; disabled: boolean; pending: boolean;
   onCancel: () => void; onAnswer: (id: string, allow: boolean) => void; onRetry: () => void; loadText?: (id: string) => Promise<string>; onSave?: (image: NonNullable<RunView['images']>[number]) => void;
 }) {
   const [opened, setOpened] = useState<AttachedFile | null>(null);
@@ -79,11 +79,11 @@ export default function RunRow({ run, host, connected, disabled, pending, onCanc
   const who = host || tr('app_the_host_lowercase');
   const current = run.steps.at(-1)?.id;
   return <div className="row assistant run" data-run-state={run.state}>
-    {!['done', 'failed'].includes(run.state) && <div className="spoken">
+    {!stepsOnly && !['done', 'failed'].includes(run.state) && <div className="spoken">
       {live && <i className="live" aria-hidden="true" />}<span>{runLine(run)}</span>
       {!terminal && !(run.runKind === 'image' && run.cancelRequested) && <button className="ghost tiny" disabled={disabled || pending} onClick={onCancel}>{tr('app_cancel')}</button>}
     </div>}
-    {run.state === 'failed' && <><p className="ended interrupted">{tr(run.runKind === 'image' ? 'app_job_failed' : run.refused ? 'app_run_refused' : 'app_run_failed', { host: who })}</p>
+    {!stepsOnly && run.state === 'failed' && <><p className="ended interrupted">{tr(run.runKind === 'image' ? 'app_job_failed' : run.refused ? 'app_run_refused' : 'app_run_failed', { host: who })}</p>
       {run.error && <details className="host-said"><summary>{tr('app_details')}</summary><pre>{run.error}</pre></details>}</>}
     {run.steps.length > 0 && <details className="host-said steps" onToggle={(e) => setDetailsOpen(e.currentTarget.open)}><summary>{tr(terminal ? (run.steps.length === 1 ? 'app_run_steps_one' : 'app_run_steps') : (run.steps.length === 1 ? 'app_run_steps_so_far_one' : 'app_run_steps_so_far'), { count: run.steps.length })}</summary>
       {run.steps.map((step) => <Fragment key={step.id}><div className={`step ${current === step.id && !step.complete && live ? 'now' : ''}`}>
@@ -101,7 +101,7 @@ export default function RunRow({ run, host, connected, disabled, pending, onCanc
     {outputError && <details className="host-said"><summary>{tr('app_details')}</summary><pre>{outputError}</pre></details>}
     {openedImage && <div className="sheet-wrap" onClick={() => setOpenedImage(null)}><figure className="sheet image" role="dialog" aria-modal="true" aria-label={openedImage.name} tabIndex={-1} ref={(el) => el?.focus()} onClick={(e) => e.stopPropagation()}><img src={openedImage.url} alt={openedImage.name} onLoad={(e) => setSize({ w: e.currentTarget.naturalWidth, h: e.currentTarget.naturalHeight })} />{size.w > 0 && <figcaption>{tr('app_run_output_image_caption', { ...size, size: bytesLabel(openedImage.size), host: who })}</figcaption>}{onSave && <div className="sheet-actions"><button className="ghost tiny" onClick={() => onSave(openedImage)}>{tr('app_job_save')}</button></div>}</figure></div>}
     {run.text && <Markdown text={run.text} />}
-    {terminal && <div className="meta"><span className="meta-text">{run.runKind === 'image' ? tr(run.state === 'done' ? 'app_run_meta_images_one' : 'app_job_meta_failed', { host: who, elapsed: voiceTime(run.elapsed) }) : run.tokens ? tr('app_run_meta_agent', { host: who, elapsed: voiceTime(run.elapsed), input: run.tokens.in.toLocaleString('en-US'), output: run.tokens.out.toLocaleString('en-US') }) : `${voiceTime(run.elapsed)} · ${who}`}{run.runKind !== 'image' && run.tokensPerSecond !== undefined && Number.isFinite(run.tokensPerSecond) && run.tokensPerSecond >= 0 ? ` · ${rateText(run.tokensPerSecond)}` : ''}</span><span className="actions">
+    {!stepsOnly && terminal && <div className="meta"><span className="meta-text">{run.runKind === 'image' ? tr(run.state === 'done' ? 'app_run_meta_images_one' : 'app_job_meta_failed', { host: who, elapsed: voiceTime(run.elapsed) }) : run.tokens ? tr('app_run_meta_agent', { host: who, elapsed: voiceTime(run.elapsed), input: run.tokens.in.toLocaleString('en-US'), output: run.tokens.out.toLocaleString('en-US') }) : `${voiceTime(run.elapsed)} · ${who}`}{run.runKind !== 'image' && run.tokensPerSecond !== undefined && Number.isFinite(run.tokensPerSecond) && run.tokensPerSecond >= 0 ? ` · ${rateText(run.tokensPerSecond)}` : ''}</span><span className="actions">
       {run.state === 'done' && run.runKind === 'image' && <button className="ghost tiny" disabled={disabled || pending} onClick={onRetry}>{tr('app_regenerate')}</button>}
       {run.state === 'done' && run.text && <CopyButton text={run.text} />}
       {run.state === 'failed' && <button className="ghost tiny" disabled={disabled || pending} onClick={onRetry}>{tr('app_try_again')}</button>}

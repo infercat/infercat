@@ -38,7 +38,7 @@ describe('shipped host capabilities', () => {
     expect(hostAudio(old as Me, 'transcriptions')).toBeNull();
     expect(hostAudio(old as Me, 'speech')).toBeNull();
     expect(hostImages(old as Me)).toBeNull();
-    expect(hostImages(current as Me)?.model).toBe('sd-cpp-local');
+    expect(hostImages(current as Me)?.model).toBe('image-model');
     expect(modelVision(current as Me, current.host.models[0]!)).toBe(true);
     expect(modelVision(current as Me, 'missing')).toBeNull();
     const me = { ...current, host: { ...current.host, vision: { text: false, unknown: null }, audio: { transcriptions: 'asr-model', speech: null } } } as Me;

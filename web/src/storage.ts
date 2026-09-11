@@ -20,7 +20,7 @@ export function isAnswer(m: Message): boolean {
   return m.role !== 'assistant' || (m.status !== 'interrupted' && m.status !== 'no_answer');
 }
 
-export interface ChatItem extends MessageFields { kind?: 'message' }
+export interface ChatItem extends MessageFields { kind?: 'message'; hostRun?: { keyId: string; requestId: string; ids: string[]; records: RunRecord[] } }
 export interface RunItem extends MessageFields {
   kind: 'run'; role: 'assistant';
   runKind?: 'image';

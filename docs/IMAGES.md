@@ -145,6 +145,8 @@ The `/me` printout should include `{'model': 'FLUX.2-klein-4B-Q8_0', 'retention_
 
 In the image-enabled app, friends get a picture square beside Attach. Image mode treats each paragraph as a prompt, shows a run row per image, and keeps batch results together in Images. The queue check refuses an over-cap batch before sending; running rows become finished pictures, with Save, Edit prompt and Discard in the Images sheet. The host supplies the model and retention figure. This paragraph describes the image-jobs app; a newer host alone does not update an older app build.
 
+Ask for a picture in chat on a host that offers image tools. The app automatically opts in when the host reports both the image model and `host_tools: ["make_image"]`; no chat toggle is needed. The reply streams normally, with the tool step and one row per image underneath it. Images also appear in Images, linked back to the asking turn. Stopping the reply does not cancel an image already submitted; use that image row’s Cancel.
+
 Stop the foreground bridge, host and engine with Ctrl-C when finished. These commands install no background jobs.
 
 ## Measured on one Mac

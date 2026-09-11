@@ -1,56 +1,63 @@
 {
   "agent": false,
+  "host": {
+    "audio": {
+      "speech": null,
+      "transcriptions": null
+    },
+    "embeddings": "m1",
+    "images": {
+      "model": "image-model",
+      "queue_cap": 8,
+      "queued": 0,
+      "retention_days": 7
+    },
+    "log_prompts": false,
+    "models": [
+      "m1",
+      "m2",
+      "m3"
+    ],
+    "name": "max-laptop",
+    "relay": {
+      "region": ""
+    },
+    "upstream": {
+      "healthy": true,
+      "kind": "llama.cpp",
+      "model_context": 8192
+    },
+    "vision": {
+      "m1": true,
+      "m2": null,
+      "m3": null
+    }
+  },
+  "host_tools": [
+    "make_image"
+  ],
   "key": {
     "id": "fixture-key",
-    "name": "proof-151b-b",
+    "name": "alice",
     "status": "active"
   },
   "limits": {
-    "daily_images": 20,
-    "max_queued_images": 8,
     "daily_audio_seconds": 3600,
+    "daily_images": 20,
     "daily_speech_chars": 200000,
-    "rpm": 60,
-    "tpm": 100000,
+    "daily_tokens": 0,
     "max_concurrent": 1,
-    "max_output_tokens": 4096,
     "max_context": 0,
-    "daily_tokens": 200000
+    "max_output_tokens": 2048,
+    "max_queued_images": 8,
+    "rpm": 0,
+    "tpm": 0
   },
   "usage": {
+    "in_flight": 0,
+    "rpm_used": 1,
     "today_images": 1,
-    "rpm_used": 31,
-    "tpm_used": 125,
-    "today_tokens": 125,
-    "in_flight": 0
-  },
-  "host": {
-    "images": {
-      "model": "sd-cpp-local",
-      "retention_days": 7,
-      "queue_cap": 8,
-      "queued": 0
-    },
-    "name": "proof-151b-b",
-    "embeddings": "bge-m3",
-    "upstream": {
-      "kind": "llama.cpp",
-      "healthy": true,
-      "model_context": 16384
-    },
-    "models": [
-      "gemma4-e4b"
-    ],
-    "vision": {
-      "gemma4-e4b": true
-    },
-    "audio": {
-      "transcriptions": null,
-      "speech": null
-    },
-    "relay": {
-      "region": "New York City"
-    },
-    "log_prompts": false
+    "today_tokens": 0,
+    "tpm_used": 0
   }
 }

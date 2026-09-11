@@ -1,3 +1,4 @@
+import { mergeChatRuns } from './chatTools';
 import { GatewayError, getRun, runEvents, type RunEvent, type RunRecord } from './api';
 import type { Transport } from './transport';
 
@@ -21,7 +22,7 @@ export async function followRuns(options: {
         for await (const event of runEvents(transport, secret, cursor, signal)) {
           if (signal.aborted) return;
           if (event.cursor === cursor && !event.reset) continue;
-          const ids = event.reset ? [...new Set([...(event.runs ?? []).filter((r) => r.kind === 'agent').map((r) => r.id), ...(options.known?.() ?? [])])] : event.run_id ? [event.run_id] : [];
+          const ids = event.reset ? [...new Set([...(event.runs ?? []).filter((r) => ['agent','chat'].includes(r.kind)).map((r) => r.id), ...(options.known?.() ?? [])])] : event.run_id ? [event.run_id] : [];
           if (event.reset) { snapshots.clear(); fromRead.clear(); }
           const records: RunRecord[] = [];
           for (const id of ids) {
@@ -77,6 +78,7 @@ export function runItem(record: RunRecord, id = record.id, keyId = record.key_id
   return { kind: 'run', id, role: 'assistant', content: record.text ?? '', run: snapshot, keyId, clientRequestId: record.client_request_id };
 }
 export function mergeRunRecords(convs: import('./storage').Conversation[], records: RunRecord[], keyId?: string): import('./storage').Conversation[] {
+  convs = mergeChatRuns(convs, records, keyId);
   const found = new Set<string>(), known = new Set(convs.flatMap((c) => c.messages.flatMap((m) => m.kind === 'run' ? [m.run?.id ?? m.remoteId ?? ''] : [])));
   const owners = new Map<string, Set<string>>();
   for (const c of convs) for (const m of c.messages) if (m.kind === 'run' && m.clientRequestId && m.keyId === keyId) {

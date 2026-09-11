@@ -1,3 +1,5 @@
+import { offersImageTool } from '../chatTools';
+import ChatToolSteps from './ChatToolSteps';
 import { hostImages } from '../api';
 import { useImageJobs } from './useImageJobs';
 import { ImageJobRow, ImagesSheet } from './ImageJobs';
@@ -14,7 +16,7 @@ import { imageCopy, fitsRequest, type ImageData } from '../images';
 import { readImages, storeImages, preparedFrom } from '../image-store';
 import { Text } from '../i18n/RichText';
 import { tr, privacy, appLanguage } from '../i18n/text';
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { Fragment, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import {
   chatEvents,
   describeError,
@@ -388,7 +390,8 @@ export default function Chat({ state, live, dispatch, onRedial, reconnecting = f
       if (history.some((m) => !leftOut.includes(m) && m.images?.some((i) => !data[i.id]))) {
         setMissingChats((seen) => new Set(seen).add(convId));
       }
-      const request = { model, messages, temperature: settings.temperature, ...thinkingFields(settings.thinking) };
+      const toolChat = !me.agent && offersImageTool(me);
+      const request = { ...(toolChat ? { host_tools: ['make_image'], conversation: convId, client_request_id: replyId } : {}), model, messages, temperature: settings.temperature, ...thinkingFields(settings.thinking) };
       if (me.agent && history.some((m) => !leftOut.includes(m) && m.images?.some((image) => !data[image.id]))) { setImageNotice(rejectionNotice({ reason: 'missing_image', message: tr('app_image_missing') })); setStreaming(false); abort.current = null; return; }
       if (!fitsRequest(request)) {
         setImageNotice(rejectionNotice({ reason: 'body_too_large', message: tr('app_over_message_size', { size: '4 MB' }) }));
@@ -403,11 +406,13 @@ export default function Chat({ state, live, dispatch, onRedial, reconnecting = f
         leftOut.length === 0
           ? undefined
           : (leftOut.length === 1 ? tr('app_earlier_message_omitted', { context: compact(ctx), host: host || tr('app_the_host_lowercase') }) : tr('app_earlier_messages_omitted', { count: leftOut.length, context: compact(ctx), host: host || tr('app_the_host_lowercase') }));
-      patch(convId, (c) => ({
+      const appendReply = (c: Conversation): Conversation => ({
         ...c,
         updatedAt: Date.now(),
-        messages: [...history, { id: replyId, role: 'assistant', content: '', model, imageCount, ...(previous ? { previous } : {}), ...(note ? { note } : {}), ...(settings.thinking !== 'default' ? { thinking: settings.thinking } : {}) }],
-      }));
+        messages: [...history, { id: replyId, role: 'assistant', content: '', model, imageCount, ...(toolChat ? { hostRun: { keyId: me.key.id, requestId: replyId, ids: [], records: [] } } : {}), ...(previous ? { previous } : {}), ...(note ? { note } : {}), ...(settings.thinking !== 'default' ? { thinking: settings.thinking } : {}) }],
+      });
+      if (toolChat) { const c = convs.find(c => c.id === convId); if (c) persist(appendReply(c)); }
+      patch(convId, appendReply);
       setBanner(null);
       setRetryUntil(0);
       let reply: Reply = startReply(); // the clock behind the footer's numbers starts at Send (032)
@@ -423,6 +428,7 @@ export default function Chat({ state, live, dispatch, onRedial, reconnecting = f
           refreshMe,
           setWaitingForHeaders,
         )) {
+          if (ev.kind === 'run') { patch(convId, c => ({ ...c, messages: c.messages.map(m => m.id === replyId && m.kind !== 'run' && m.hostRun ? { ...m, hostRun: { ...m.hostRun, ids: [...new Set([...m.hostRun.ids, ev.id])] } } : m) })); }
           if (ev.kind === 'error') failed = { code: ev.code, error: ev.error };
           reply = reduceReply(reply, ev);
           if (ev.kind === 'error' && ev.code === 'images_not_supported') {
@@ -450,7 +456,7 @@ export default function Chat({ state, live, dispatch, onRedial, reconnecting = f
       }
       void refreshMe();
     },
-    [live.transport, live.secret, model, settings, patch, dispatch, refreshMe, host, me.host.upstream.model_context, me.agent, scope, agentRuns],
+    [live.transport, live.secret, model, settings, patch, dispatch, refreshMe, host, me.host.upstream.model_context, me.agent, me.host_tools, hostImages(me)?.model, me.key.id, scope, agentRuns, convs, persist],
   );
 
   async function send(text: string): Promise<void> {
@@ -702,15 +708,14 @@ export default function Chat({ state, live, dispatch, onRedial, reconnecting = f
                   onCancel={() => { void agentRuns.act(m); }} onAnswer={(id, allow) => { void agentRuns.act(m, { id, allow }); }}
                   onRetry={() => { const at = lastIndexOfRole(conv.messages.slice(0, i), 'user'); if (at >= 0) void run(conv.id, conv.messages.slice(0, at + 1), undefined, {}, m.id); }} />
               ) : (
-                <MessageView
-                  key={m.id}
+                <Fragment key={m.id}><div id={`turn-${m.id}`}><MessageView
                   message={m}
                   speech={speechModel ? { state: speechState, onListen: listenTo, onStop: () => player.stop() } : undefined}
                   imageData={imageData}
                   onEditing={setEditingTurnId}
                   imagesLoaded={loadedImageRefs === imageRefs}
                   host={host}
-                  live={streaming && i === conv.messages.length - 1}
+                  live={streaming && !conv.messages.slice(i + 1).some(m => m.kind !== 'run' && m.role === 'assistant')}
                   busy={streaming}
                   answering={conv.messages[i + 1]?.role === 'assistant' && (conv.messages[i + 1]?.kind === 'run' || conv.messages[i + 1]?.status === undefined)}
                   undelivered={lost.has(m.id)}
@@ -724,7 +729,7 @@ export default function Chat({ state, live, dispatch, onRedial, reconnecting = f
                   onContinue={() => send(tr('app_continue_from_where_you_stopped'))}
                   onNewChat={startNew}
                   onResend={resend}
-                />
+                /></div>{m.hostRun?.records.map(record => <ChatToolSteps key={record.id} record={record} host={host} connected={agentRuns.connected} />)}</Fragment>
               ))
             )}
           </div>
@@ -821,7 +826,7 @@ export default function Chat({ state, live, dispatch, onRedial, reconnecting = f
       {imagesOpen && hostImages(me)?.model && <ImagesSheet jobs={imageWork.jobs} live={live} connected={agentRuns.connected && !sendBlocked} disabled={readOnly || locked || sendBlocked} pending={imageWork.pending} onClose={closeImages}
         onEdit={(text) => { closeImages(); setDraft(text); setImageMode(true); composer.current?.focus(); }}
         conversationTitle={(job) => convs.find((c) => c.messages.some((m) => m.kind === 'run' && m.job?.id === job.id))?.title ?? tr('app_untitled_chat')}
-        onConversation={(job) => { const c = convs.find((c) => c.messages.some((m) => m.kind === 'run' && m.job?.id === job.id)); if (c) setCurrentId(c.id); closeImages(); }}
+        onConversation={(job) => { const c = convs.find((c) => c.messages.some((m) => m.kind === 'run' && m.job?.id === job.id)); if (c) { setCurrentId(c.id); closeImages(); requestAnimationFrame(() => { const m = c.messages.find(m => m.kind !== 'run' && m.hostRun && (m.hostRun.ids.includes(job.input.parent_run_id ?? '') || m.hostRun.requestId === job.input.client_request_id)); document.getElementById(`turn-${m?.id ?? ''}`)?.scrollIntoView({ block: 'center' }); }); } else closeImages(); }}
         onCancel={(job) => { void imageWork.act(job); }} onDiscard={(job) => { void imageWork.act(job, true); }} />}
       {sheet && (
         <SettingsSheet

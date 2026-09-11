@@ -15,6 +15,7 @@ export interface Limits {
 }
 
 export interface Me {
+  host_tools?: string[];
   /** Agent runs are available only when the host explicitly reports this capability. */
   agent?: boolean;
   key: { id: string; name: string; status: 'active' | 'paused' | 'revoked' };

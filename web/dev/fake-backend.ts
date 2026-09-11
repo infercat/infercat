@@ -1,3 +1,4 @@
+import { fakeChatTools } from './fake-chat-tools';
 import { handleImageJobs, fakeImageJobs, imageControl } from './fake-image-jobs';
 import { handleFakeRuns } from './fake-runs';
 import type { Me } from '../../packages/client/src/contract';
@@ -24,6 +25,7 @@ export interface FakeResponse {
 }
 
 export interface FakeOptions {
+  hostTools?: boolean;
   agent?: boolean;
   imageJobs?: boolean;
   runState?: string;
@@ -121,6 +123,7 @@ export function fakeMe(opts: FakeOptions = {}) {
   const models = opts.models ?? ['gemma-4-e2b-it', 'deepseek-v4-flash'];
   return {
     ...(opts.agent ? { agent: true } : {}),
+    ...(opts.hostTools ? { host_tools: ['make_image'] } : {}),
     key: { id: 'k_7f3a2b', name: 'alice', status: opts.keyPaused && pauseBit ? 'paused' : 'active' },
     limits: { ...LIMITS, ...(opts.imageJobs ? { daily_images: imageControl.daily, max_queued_images: 8 } : {}) },
     usage: { ...counters, ...(opts.imageJobs ? { today_images: fakeImageJobs().filter((j) => j.state === 'done').length } : {}) },
@@ -184,6 +187,7 @@ export function handleFake(req: FakeRequest, opts: FakeOptions = {}): FakeRespon
       pauseBit = true;
       return error(403, 'permission_error', 'key_paused', 'This invite is paused by the host.');
     }
+    if (opts.hostTools) { const tool = fakeChatTools(req); if (tool) return tool; }
     const parsed = JSON.parse(req.body || '{}') as {
       model?: string;
       messages?: { role: string; content: string | { type: string; text?: string; image_url?: { url: string } }[] }[];

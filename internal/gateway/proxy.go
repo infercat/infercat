@@ -342,8 +342,9 @@ func (q *request) models() {
 }
 
 type meResponse struct {
-	Agent *bool `json:"agent,omitempty"`
-	Key   struct {
+	Agent     *bool    `json:"agent,omitempty"`
+	HostTools []string `json:"host_tools,omitempty"`
+	Key       struct {
 		ID     string      `json:"id"`
 		Name   string      `json:"name"`
 		Status keys.Status `json:"status"`
@@ -387,6 +388,9 @@ func (q *request) me() {
 	m.Key.ID, m.Key.Name, m.Key.Status = q.key.ID, q.key.Name, q.key.Status
 	m.Limits = keys.AudioDefaults(q.key.Limits)
 	m.Host.Images, _ = q.g.imageOffer(q.key)
+	if m.Host.Images != nil && q.g.runs != nil && q.g.runs.Kinds["chat"] != nil {
+		m.HostTools = []string{"make_image"}
+	}
 	m.Limits.MaxQueuedImages = ImageQueueCap(q.key.Limits)
 	cnt := q.g.lim.counters(q.key.ID)
 	m.Usage.TodayImages = cnt.TodayImages

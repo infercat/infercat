@@ -4,7 +4,7 @@ The released fixtures were captured 2026-09-09 from actual `infercat serve` bina
 
 - `0.1.0.json`: v0.1.0, `78fc87f03b7fca2575473daf35150df50a7d9707`.
 - `0.1.1.json`: v0.1.1, `7f1539c6aef14246d86f6fe0a93346dcb7772087`.
-- `current.json`: re-captured from the 151b-B candidate on `d884df9`, with the real managed E4B, BGE-M3 and sd.cpp engines and one charged image.
+- `current.json`: re-captured for 146 from `TestChatImageToolOffer` on base `ba895bd`: the real gateway HTTP handler with isolated loopback fixture engines, registered chat/agent kinds, an embedding destination, and one charged image. `INFERCAT_146_ME_CAPTURE=/tmp/me.json go test ./internal/gateway -run ^TestChatImageToolOffer$ -count=1` reproduces it. This is a dev capture, not a native-model proof.
 
 The released binaries used a new temporary `--data-dir`, `--dev-listen 127.0.0.1:19082`,
 `--name 'Compatibility host'`, and a loopback test engine. The engine served
