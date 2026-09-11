@@ -1,0 +1,7 @@
+PROOF_DIR /var/folders/py/4kyvk9wx1gg1ljrx0g0wl8000000gn/T/infercat-161.h2dem8c1
+START search-write r_f40698745f94b561d73fb3cda81509aa 2026-09-11T05:53:46.323816+00:00
+PROGRESS search-write 0 queued 0
+PROGRESS search-write 20 running 4
+END search-write 2026-09-11T05:53:57.993063+00:00 done [('think', 'done'), ('search', 'done'), ('think', 'done'), ('write', 'done'), ('think', 'done')] ASKS 0
+SEARCH_WRITE_PASSED; live search, two-line retained file, ephemeral workspace removed
+OWN_HOST_AND_ENGINE_STOPPED

@@ -1,6 +1,6 @@
 # 161: per-run read sandbox verification
 
-Local candidate; Linux runtime verification remains pending. This is not a freeze.
+Local review freeze; Linux runtime verification and public publication remain pending.
 
 The same per-run launcher owns preflight, the child, its private workspace/tmp,
 and final cleanup. The inherited native SandboxProvider is materialized only
@@ -58,3 +58,13 @@ and `GOOS=linux GOARCH=amd64 go build ./cmd/infercat` passed.
 
 The full local command log is retained beside this report. It is local evidence,
 not a claim that the Linux runner has executed the confinement tests.
+
+## Real search descriptor and 129 task
+
+The separate real E4B search/write probe passed through the routes: live Exa
+search via the inherited descriptor, then a two-line `notes.md` captured before
+the workspace was removed. The run ended Done with five completed steps; all
+four model attempts match usage identities, and SSE replacements match GET.
+The host and engine were stopped afterward. The public evidence contains no
+credential. See [result and metering](161-sandbox/mac-search-write.json) and
+[command output](161-sandbox/mac-search-write.log).
