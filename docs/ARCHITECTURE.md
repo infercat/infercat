@@ -707,7 +707,9 @@ parents; duplicate entries, hardlinks and device entries refuse. Expanded bytes 
 100,000 entries bound each extraction. Symlinks publish last, then every resolved
 link is checked to stay inside the tree; failed extractions remove their partial tree.
 Completed downloads and extracted trees may remain after a later failure, but the
-active host configuration never points at a failed setup.
+anchor/config refusals leave the active host configuration unchanged. An ordinary optional
+member failure is recorded as unavailable and its profile-owned endpoint is cleared.
+Profile-marked unavailable members are neither fetched nor probed.
 
 `internal/supervise` shares the agent guardian's lifetime pipe, process-group cleanup
 and 1 MiB wrapping logs. Managed dry checks fail on an occupied port, wait at most
@@ -719,18 +721,45 @@ unchanged. ASR/speech have no production helper artifact pin until the founder p
 that release. The generic fixture publisher proves the installation path meanwhile.
 
 A content-addressed `profiles/install-<sha256>.json` records the profile version/digest,
-canonical model/artifact paths, regular-file hashes and symlink targets, and external
-ownership. Its bounded strict reader rejects unknown/duplicate fields, malformed
+canonical model/artifact paths, regular-file hashes and symlink targets, external
+ownership, unavailable reasons and the materialized command/environment/directory.
+Setup also prints that command for stopped members. Its bounded strict reader rejects unknown/duplicate fields, malformed
 inventory, a missing anchor and a profile-digest mismatch. The record describes the
 verified installation; reading the record alone does not re-attest current disk bytes.
 Setup writes the manifest before atomically replacing 0600 `config.json` with its
 `profile_install` reference and verified supported endpoints, preserving unrelated
 settings. A manifest/config failure leaves the previous config intact; an unreferenced
-manifest/tree can remain for diagnosis. No credentials are inferred or embedded.
+manifest can remain for diagnosis. After a successful config commit, setup retires real
+child trees under `profiles/trees` that the new manifest no longer references; failed
+setups do not retire anything. No credentials are inferred or embedded.
 
-Serve currently preserves the installation reference but does not start its members.
-The next slice adds lifecycle/on-demand supervision, dormant offers and the separate
-embedding destination. This slice does not enforce idle policy or add a scheduler.
+Serve validates the installation against the current embedded digest; a mismatch
+requires setup again. Before each owned start it rechecks selected file hashes and
+symlink targets, then launches the materialized command through the shared guardian.
+The text anchor starts before serving; resident/cpu members remain running, and
+on-demand members start only for authenticated, admitted work. Startup is coalesced
+per member and bounded to two minutes; one cancelled waiter does not cancel another.
+The request’s body deadline is suspended during that wait and reset to 30 seconds
+afterward; unmanaged requests retain their existing deadline.
+
+A managed lease precedes health/tokenizer work and is released after `q.finish`.
+Image execution retains it through output transfer and settlement. The fixed idle
+countdown starts on the last release. Process death and three consecutive idle
+health failures allow restart with bounded backoff (1–30 seconds). An on-demand
+member requires a live lease to restart; a failed start with no remaining leases
+does not reverify or launch in the background. Active leases prevent health probes
+from stopping a busy engine. There is no pressure-based
+eviction or cross-member scheduling. Shutdown closes all owned process groups;
+external endpoints are probed but never started, restarted or stopped.
+
+Status lists member states and observed health without treating dormant as healthy.
+`/me` and image-job admission advertise dormant configured offers from pinned model
+metadata without waking engines; failed members are unavailable. `/v1/embeddings`
+uses its own destination, queue and lease when a profile supplies one, preserving
+key model restrictions without applying the text anchor’s host pin to embeddings.
+`host.embeddings` is additive in `/me`; hosts without a separate embedding member
+retain the existing text-engine route. Native audio lifecycle/routes are fixture
+verified here; installation of the published native helpers is a separate follow-up.
 
 ### Native speech helper and helper artifacts
 

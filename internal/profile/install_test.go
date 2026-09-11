@@ -28,6 +28,9 @@ func TestMain(m *testing.M) {
 		os.Exit(supervise.Guardian(os.Args[2:], false))
 	}
 	if len(os.Args) > 3 && os.Args[1] == "_profile-fixture" {
+		if os.Getenv("PROFILE_START_DELAY") == "1" {
+			time.Sleep(500 * time.Millisecond)
+		}
 		os.WriteFile(os.Getenv("PROFILE_PID"), []byte(strconv.Itoa(os.Getpid())), 0600)
 		http.ListenAndServe("127.0.0.1:"+os.Args[2], http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if os.Getenv("PROFILE_STALL") == "1" {
@@ -460,5 +463,40 @@ func TestManagedBusyPortAndEarlyExit(t *testing.T) {
 	defer cancel()
 	if e = p.WaitHealth(ctx, func(context.Context) error { return fmt.Errorf("not ready") }); e == nil {
 		t.Fatal("dead child considered ready")
+	}
+}
+
+func TestDegradedInstallationReloadAndChangedProfile(t *testing.T) {
+	p := fixture(t)
+	in := Installation{Version: 1, Profile: p.ID, Digest: profileDigest(p), Artifacts: map[string]string{}, Files: map[string]string{}, Links: map[string]string{}}
+	for _, m := range p.Members {
+		im := InstalledMember{ID: m.ID, Paths: map[string]string{}, Unavailable: "publisher unavailable"}
+		if m.Class == "text" {
+			im.External = true
+			im.Unavailable = ""
+		}
+		in.Members = append(in.Members, im)
+	}
+	dir := t.TempDir()
+	name, e := SaveInstallation(dir, in)
+	if e != nil {
+		t.Fatal(e)
+	}
+	loaded, e := LoadInstallation(dir, name)
+	if e != nil {
+		t.Fatal(e)
+	}
+	runtime, e := StartInstalled(context.Background(), dir, loaded)
+	if e != nil {
+		t.Fatal(e)
+	}
+	runtime.Close()
+	in.Digest = strings.Repeat("0", 64)
+	name, e = SaveInstallation(dir, in)
+	if e != nil {
+		t.Fatal(e)
+	}
+	if _, e = LoadInstallation(dir, name); e == nil {
+		t.Fatal("changed embedded digest accepted")
 	}
 }

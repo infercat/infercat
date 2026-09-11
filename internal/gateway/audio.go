@@ -45,7 +45,7 @@ func (q *request) proxyAudio(kind endpoint) {
 		q.ev.Stream = true
 	}
 	// n.stream stays false: a binary response must never receive SSE queue comments.
-	for _, stage := range []func() *gwError{q.audioHealth, q.admitKey, q.readAudio, q.reserveAudio, q.acquireSlot, q.callAudio, q.relayAudio} {
+	for _, stage := range []func() *gwError{q.prepareManaged, q.audioHealth, q.admitKey, q.readAudio, q.reserveAudio, q.acquireSlot, q.callAudio, q.relayAudio} {
 		if err := stage(); err != nil {
 			if q.outcome == outcomeNone {
 				q.outcome = outcomeRejected

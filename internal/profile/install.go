@@ -17,9 +17,13 @@ import (
 )
 
 type InstalledMember struct {
-	ID       string            `json:"id"`
-	External bool              `json:"external"`
-	Paths    map[string]string `json:"paths"`
+	Directory   string            `json:"directory,omitempty"`
+	Unavailable string            `json:"unavailable,omitempty"`
+	Command     []string          `json:"command,omitempty"`
+	Env         []string          `json:"env,omitempty"`
+	ID          string            `json:"id"`
+	External    bool              `json:"external"`
+	Paths       map[string]string `json:"paths"`
 }
 type Installation struct {
 	Version   int               `json:"version"`
@@ -103,30 +107,37 @@ func Prepare(ctx context.Context, p Profile, dir string, paths map[string]string
 		})
 		return stage, err
 	}
-	for _, m := range p.Members {
+	prepare := func(m Member, im *InstalledMember) error {
+		if m.Unavailable != "" {
+			im.Unavailable = m.Unavailable
+			return nil
+		}
 		check := Check(ctx, m, paths, roots)
 		if check.Err != nil {
-			return in, check.Err
+			return check.Err
 		}
-		im := InstalledMember{ID: m.ID, External: check.State == "running", Paths: check.Paths}
+		*im = InstalledMember{ID: m.ID, External: check.State == "running", Paths: check.Paths}
 		if im.External {
 			fmt.Fprintf(out, "%s: external engine reused; active weights not attested\n", m.ID)
-			in.Members = append(in.Members, im)
-			continue
+			return nil
 		}
 		if m.Artifact == "" {
+			im.Unavailable = "published engine pin unavailable"
 			fmt.Fprintf(out, "%s: unavailable; no published engine pin\n", m.ID)
 			if m.Class == "text" {
-				return in, fmt.Errorf("anchor has no published engine pin")
+				return fmt.Errorf("anchor has no published engine pin")
 			}
-			continue
+			return nil
 		}
-		if len(in.Artifacts) == 0 {
+		{
 			for _, a := range p.Artifacts {
+				if in.Artifacts[a.ID] != "" || (a.ID != m.Artifact && !strings.Contains(fmt.Sprint(m.Command, m.Env), "{artifact:"+a.ID+"}")) {
+					continue
+				}
 				fmt.Fprintf(out, "Engine %s: %s\n", a.ID, a.License)
 				path, e := obtain(a.Asset, "")
 				if e != nil {
-					return in, e
+					return e
 				}
 				in.Artifacts[a.ID] = path
 			}
@@ -143,17 +154,18 @@ func Prepare(ctx context.Context, p Profile, dir string, paths map[string]string
 		for _, a := range m.Model.Assets {
 			path, e := obtain(a, check.Paths[a.ID])
 			if e != nil {
-				return in, e
+				return e
 			}
 			im.Paths[a.ID] = path
 		}
-		command, env, work, e := Materialize(p, m, im, in.Artifacts, dir)
+		command, env, work, e := Materialize(p, m, *im, in.Artifacts, dir)
 		if e != nil {
-			return in, e
+			return e
 		}
+		im.Command, im.Env, im.Directory = command, env, work
 		proc, e := supervise.Start(command, env, work, strings.TrimPrefix(m.URL(), "http://"))
 		if e != nil {
-			return in, e
+			return e
 		}
 		ready, cancel := context.WithTimeout(ctx, 2*time.Minute)
 		probeMember := m
@@ -178,11 +190,26 @@ func Prepare(ctx context.Context, p Profile, dir string, paths map[string]string
 		cancel()
 		proc.Close()
 		if e != nil {
-			return in, fmt.Errorf("%s dry check: %w", m.ID, e)
+			return fmt.Errorf("%s dry check: %w", m.ID, e)
 		}
 		fmt.Fprintf(out, "%s: dry check passed; owned process stopped\n", m.ID)
+		return nil
+	}
+	for _, m := range p.Members {
+		im := InstalledMember{ID: m.ID, Paths: map[string]string{}}
+		if e := prepare(m, &im); e != nil {
+			if m.Class == "text" || ctx.Err() != nil {
+				return in, e
+			}
+			im.Unavailable = e.Error()
+			fmt.Fprintf(out, "%s: unavailable: %v\n", m.ID, e)
+		}
+		if len(im.Command) > 0 {
+			fmt.Fprintf(out, "%s command: %s\n", m.ID, CommandLine(im))
+		}
 		in.Members = append(in.Members, im)
 	}
+
 	return in, ctx.Err()
 }
 
@@ -278,15 +305,15 @@ func (in Installation) validate(p Profile) error {
 		seen[im.ID] = true
 		assets := map[string]bool{}
 		for _, a := range member.Model.Assets {
-			if !im.External && a.Archive == nil && in.Files[im.Paths[a.ID]] != a.SHA256 {
+			if !im.External && im.Unavailable == "" && a.Archive == nil && in.Files[im.Paths[a.ID]] != a.SHA256 {
 				return bad
 			}
 			assets[a.ID] = true
 		}
-		if !im.External && (len(im.Paths) != len(assets) || in.Artifacts[member.Artifact] == "") {
+		if !im.External && im.Unavailable == "" && (len(im.Paths) != len(assets) || in.Artifacts[member.Artifact] == "") {
 			return bad
 		}
-		if !im.External {
+		if !im.External && im.Unavailable == "" {
 			for _, a := range p.Artifacts {
 				if a.ID == member.Artifact && (a.Executable == "" || in.Files[filepath.Join(in.Artifacts[a.ID], a.Executable)] == "") {
 					return bad

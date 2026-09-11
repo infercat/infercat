@@ -27,6 +27,7 @@ export interface Me {
     /** Per-model capability; null means the engine did not report it. */
     vision?: Record<string, boolean | null>;
     images?: { model: string; retention_days: number; queue_cap: number; queued: number; retry_at?: string };
+    embeddings?: string | null;
     audio?: { transcriptions: string | null; speech: string | null };
     relay: { region: string };
     /** The host runs with --log-prompts. Absent on a gateway older than ticket 006: absent = false. */

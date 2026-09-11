@@ -42,6 +42,7 @@ func newPlatform() platform {
 		encodeInvite: invite.Encode,
 		newGateway: func(o gatewayOptions, up upstream.Upstream, store keys.Store, rec usage.Recorder, logf func(string, ...any)) (gatewayServer, error) {
 			return gateway.New(gateway.Config{
+				Embed: o.Embed, Managed: o.Managed,
 				RemoteConsole: o.RemoteConsole, LiveHostName: o.LiveHostName,
 				Images: o.Images, ImageModel: o.ImageModel,
 				ModelsPinned:    o.ModelsPinned,

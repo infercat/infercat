@@ -12,6 +12,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
 
 	"github.com/infercat/infercat/internal/profile"
@@ -146,8 +147,9 @@ func TestSetupUnavailableAndAbsentMembers(t *testing.T) {
 	p, m := setupFixture(t, false)
 	setupEngine(t, &p.Members[0], true)
 	all, _ := profile.Builtin("apple-64g")
-	// Even if reachable, a separate embedding engine has no host-config seam yet.
+	// A profile-marked unavailable member stays unavailable even if reachable.
 	embed := all.Members[3]
+	embed.Unavailable = "fixture unavailable"
 	setupEngine(t, &embed, true)
 	p.Members = append(p.Members, embed)
 	dir := t.TempDir()
@@ -159,7 +161,7 @@ func TestSetupUnavailableAndAbsentMembers(t *testing.T) {
 	if cfg.Upstream != p.Members[0].URL() || cfg.UpstreamSpeech != "" {
 		t.Fatal(cfg)
 	}
-	if !strings.Contains(out, "separate embedding route pending") {
+	if !strings.Contains(out, "fixture unavailable") {
 		t.Fatal(out)
 	}
 }
@@ -246,6 +248,52 @@ func TestManagedSetupCommitAndRollback(t *testing.T) {
 			check := profile.Check(context.Background(), p.Members[0], nil, nil)
 			if check.State != "running" || check.Err != nil {
 				t.Fatal(check)
+			}
+		})
+	}
+}
+
+func TestManagedSetupOptionalFailurePreservesChat(t *testing.T) {
+	for _, declared := range []bool{false, true} {
+		t.Run(fmt.Sprint(declared), func(t *testing.T) {
+			p, m := setupFixture(t, true)
+			setupEngine(t, &p.Members[0], true)
+			// The profile-marked unavailable case must not even probe the live member.
+			var probes atomic.Int32
+			s := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { probes.Add(1); http.Error(w, "unavailable", 500) }))
+			defer s.Close()
+			u, _ := url.Parse(s.URL)
+			p.Members[1].Port, _ = strconv.Atoi(u.Port())
+			if declared {
+				p.Members[1].Unavailable = "fixture unavailable"
+			}
+			dir := t.TempDir()
+			before := config{Name: "preserved", UpstreamTranscribe: p.Members[1].URL(), UpstreamTranscribeModel: p.Members[1].Model.Name}
+			if e := saveConfig(dir, before); e != nil {
+				t.Fatal(e)
+			}
+			var out bytes.Buffer
+			e := env{out: &out, errw: &out}
+			if err := e.setup(context.Background(), dir, p, false, m, nil, nil); err != nil {
+				t.Fatal(err, out.String())
+			}
+			cfg, err := loadConfig(dir)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if cfg.Name != before.Name || cfg.Upstream != p.Members[0].URL() || cfg.UpstreamTranscribe != "" || cfg.UpstreamTranscribeModel != "" || cfg.ProfileInstall == "" {
+				t.Fatal(cfg)
+			}
+			b, err := os.ReadFile(filepath.Join(dir, cfg.ProfileInstall))
+			if err != nil {
+				t.Fatal(err)
+			}
+			var in profile.Installation
+			if json.Unmarshal(b, &in) != nil || in.Members[1].Unavailable == "" {
+				t.Fatal(string(b))
+			}
+			if declared && probes.Load() != 0 {
+				t.Fatal("unavailable member probed", probes.Load())
 			}
 		})
 	}
