@@ -35,16 +35,29 @@ func Detect(ctx context.Context, system, arch, dir string, run Runner) Machine {
 	switch system {
 	case "darwin":
 		m.RAMBytes = number(run(ctx, "sysctl", "-n", "hw.memsize"))
+		if arch == "arm64" {
+			m.GPU, m.VRAMBytes = "metal", m.RAMBytes
+		}
 		var v struct {
 			Displays []struct {
 				Model string `json:"sppci_model"`
 			} `json:"SPDisplaysDataType"`
 		}
-		_ = json.Unmarshal(run(ctx, "system_profiler", "SPDisplaysDataType", "-json"), &v)
+		nameCtx, cancel := context.WithTimeout(ctx, 3*time.Second)
+		_ = json.Unmarshal(run(nameCtx, "system_profiler", "SPDisplaysDataType", "-json"), &v)
+		cancel()
 		if len(v.Displays) > 0 {
 			m.GPUName = v.Displays[0].Model
 			if strings.Contains(m.GPUName, "Apple") {
 				m.GPU = "metal"
+			}
+		}
+		if arch == "arm64" && m.GPUName == "" {
+			for _, name := range []string{"machdep.cpu.brand_string", "hw.model"} {
+				m.GPUName = strings.TrimSpace(string(run(ctx, "sysctl", "-n", name)))
+				if m.GPUName != "" {
+					break
+				}
 			}
 		}
 	case "linux":

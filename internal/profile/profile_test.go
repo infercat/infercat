@@ -223,6 +223,46 @@ func TestHardwareDetection(t *testing.T) {
 		})
 	}
 }
+
+func TestAppleSiliconDetectionWithoutDisplayMetadata(t *testing.T) {
+	for _, tc := range []struct{ name, arch, display, brand, model, wantName string }{
+		{"empty", "arm64", `{"SPDisplaysDataType":[]}`, "Apple M5 Max", "VirtualMac2,1", "Apple M5 Max"},
+		{"malformed", "arm64", `{`, "", "VirtualMac2,1", "VirtualMac2,1"},
+		{"timeout", "arm64", "", "Apple M5 Max", "", "Apple M5 Max"},
+		{"no names", "arm64", "", "", "", ""},
+		{"intel unchanged", "amd64", `{"SPDisplaysDataType":[]}`, "Intel", "Mac", ""},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			run := func(ctx context.Context, name string, args ...string) []byte {
+				if name == "system_profiler" {
+					deadline, ok := ctx.Deadline()
+					if !ok || time.Until(deadline) > 3*time.Second {
+						t.Fatal("display query is not bounded")
+					}
+					if tc.name == "timeout" {
+						<-ctx.Done()
+					}
+					return []byte(tc.display)
+				}
+				if name == "sysctl" {
+					return []byte(map[string]string{"hw.memsize": "17179869184", "machdep.cpu.brand_string": tc.brand, "hw.model": tc.model}[args[1]])
+				}
+				return nil
+			}
+			m := Detect(context.Background(), "darwin", tc.arch, t.TempDir(), run)
+			if m.GPUName != tc.wantName || m.RAMBytes != 16<<30 {
+				t.Fatal(m)
+			}
+			if tc.arch == "arm64" {
+				if m.GPU != "metal" || m.VRAMBytes != m.RAMBytes || m.Propose() != "apple-16g" {
+					t.Fatal(m)
+				}
+			} else if m.GPU != "cpu" || m.VRAMBytes != 0 || m.Propose() != "" {
+				t.Fatal("Intel path changed", m)
+			}
+		})
+	}
+}
 func serverMember(t *testing.T, h http.HandlerFunc) (Member, *httptest.Server) {
 	t.Helper()
 	s := httptest.NewServer(h)

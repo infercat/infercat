@@ -677,8 +677,8 @@ M for review". The Go `ImageCleanupPending()` accessor remains their sum.
 `internal/profile/data/*.json` embeds one independent version-1 JSON file per tier.
 There is no online refresh. `apple-64g` uses the measured E4B Q4 substitute; the
 intended 27–32B anchor remains unmeasured. `apple-16g` uses Q4 E4B with F16 vision
-and no image member: memory verified in an instrumented 16 GB macOS VM (stock
-detection refuses VMs until 178); performance unverified on real hardware.
+and no image member: memory verified in a 16 GB macOS VM; performance
+unverified on real hardware.
 `nvidia-12g` is wholly unmeasured.
 BGE-M3 never inherits the measured BGE-small working set. Policy and headroom reservations are explicitly draft, not measured performance guarantees.
 
@@ -700,6 +700,10 @@ artifacts. Commands from custom files remain inert. Built-in managed commands ex
 `{artifact:ID}` into argv/environment without a shell; unknown placeholders refuse.
 The executable comes only from the selected verified artifact. Audio.cpp receives a
 private generated Fun-ASR config; environment defaults are PATH and a member-local HOME.
+
+On darwin/arm64, Metal and unified VRAM equal to RAM follow from the architecture
+and RAM query; display metadata supplies only the chip name, with a CPU-brand/model
+fallback when absent or timed out.
 
 Setup reads RAM/GPU/VRAM/OS/architecture and free disk using bounded-time OS queries;
 unknown fields remain unknown, and NVIDIA VRAM is the largest single device rather
