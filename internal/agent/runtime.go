@@ -219,7 +219,7 @@ func (r *Runtime) once(ctx context.Context) error {
 		return err
 	}
 	cmd := exec.Command(binary, append([]string{"_agent-guardian"}, o.Command...)...)
-	configureGroup(cmd)
+	supervise.ConfigureGroup(cmd)
 	cmd.ExtraFiles = []*os.File{lifeRead, portFile}
 	if o.SearchKey != "" {
 		keyRead, keyWrite, err := os.Pipe()
@@ -249,7 +249,13 @@ func (r *Runtime) once(ctx context.Context) error {
 	r.input = inputWrite
 	r.mu.Unlock()
 	r.set("starting", "", cmd.Process.Pid)
-	defer func() { r.mu.Lock(); r.input = nil; r.mu.Unlock(); inputWrite.Close(); killGroup(cmd.Process.Pid) }()
+	defer func() {
+		r.mu.Lock()
+		r.input = nil
+		r.mu.Unlock()
+		inputWrite.Close()
+		supervise.KillGroup(cmd.Process.Pid)
+	}()
 	readDone := make(chan struct{})
 	go func() {
 		defer close(readDone)
@@ -274,7 +280,7 @@ func (r *Runtime) once(ctx context.Context) error {
 		select {
 		case <-waited:
 		case <-time.After(3 * time.Second):
-			killGroup(cmd.Process.Pid)
+			supervise.KillGroup(cmd.Process.Pid)
 			<-waited
 		}
 		<-readDone

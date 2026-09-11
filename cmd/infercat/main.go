@@ -107,7 +107,7 @@ func run(ctx context.Context, args []string, out, errw io.Writer, in io.Reader, 
 		return agent.Confine(args[1:])
 	}
 	if len(args) > 0 && args[0] == "_agent-guardian" {
-		return agent.Guardian(args[1:])
+		return supervise.Guardian(args[1:], true)
 	}
 	if len(args) > 0 && args[0] == "_profile-guardian" {
 		return supervise.Guardian(args[1:], false)

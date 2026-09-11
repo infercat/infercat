@@ -584,7 +584,6 @@ func (q *request) fail(e *gwError) {
 			return
 		}
 		if q.r.Context().Err() != nil && !q.image.definitiveFailure {
-			q.image.abandoned = true
 			e = q.imageAbandoned("the host stopped while the engine was working")
 		}
 		q.image.failure = errorJSON(e, true)

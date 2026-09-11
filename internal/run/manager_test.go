@@ -14,14 +14,23 @@ import (
 
 func await(t *testing.T, fn func() bool) {
 	t.Helper()
-	until := time.Now().Add(3 * time.Second)
+	awaitFor(t, 3*time.Second, "condition timed out", fn)
+}
+
+// Empty what lets the caller retain its detailed timeout assertion.
+func awaitFor(t *testing.T, d time.Duration, what string, fn func() bool) bool {
+	t.Helper()
+	until := time.Now().Add(d)
 	for time.Now().Before(until) {
 		if fn() {
-			return
+			return true
 		}
 		time.Sleep(time.Millisecond)
 	}
-	t.Fatal("condition timed out")
+	if what != "" {
+		t.Fatal(what)
+	}
+	return false
 }
 func manager(t *testing.T, s *Store, ex Executor, k Kind) *Manager {
 	t.Helper()

@@ -70,7 +70,6 @@ type Gateway struct {
 	runs                 *runstate.Manager
 	imageRecoveryTimeout time.Duration // Tests may shorten fixed timing windows.
 	imageProbeEvery      time.Duration
-	imagePollEvery       time.Duration
 	imageBackoffBase     time.Duration
 	audioHistoryErr      error
 	cfg                  Config

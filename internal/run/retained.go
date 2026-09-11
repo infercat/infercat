@@ -51,7 +51,7 @@ func (s *Store) Admit(key, rid string, bytes int) (func(), error) {
 	if terminal(r.State) || r.CancelRequested {
 		return nil, ErrConflict
 	}
-	if bytes <= 0 || bytes > s.maxStored-MaxLiveKey*terminalBound {
+	if bytes <= 0 || bytes > s.budget() {
 		return nil, ErrLimit
 	}
 	if s.reserved == nil {
@@ -63,8 +63,7 @@ func (s *Store) Admit(key, rid string, bytes int) (func(), error) {
 	if s.reserved[key][rid] != nil {
 		return nil, ErrConflict
 	}
-	raw, _ := json.Marshal(v)
-	if len(raw)+s.reservedBytes(key)+bytes > s.maxStored-MaxLiveKey*4096 {
+	if v.encodedBytes+s.reservedBytes(key)+bytes > s.budget() {
 		return nil, ErrLimit
 	}
 	lease := &reservation{bytes: bytes}
@@ -95,11 +94,10 @@ func (s *Store) retainedBudget(key string, next *snapshot, rid string, size int)
 	if rid != "" {
 		lease = s.reserved[key][rid]
 		if lease != nil {
-			old, _ := json.Marshal(s.data[key])
-			credit = min(lease.bytes, max(0, size-len(old)))
+			credit = min(lease.bytes, max(0, size-s.data[key].encodedBytes))
 		}
 	}
-	if size+s.reservedBytes(key)-credit > s.maxStored-MaxLiveKey*terminalBound {
+	if size+s.reservedBytes(key)-credit > s.budget() {
 		return nil, ErrLimit
 	}
 	if lease != nil {
@@ -219,3 +217,6 @@ func (s *Store) Retained(key, rid string) (Retained, error) {
 	err = json.Unmarshal(raw, &out)
 	return out, err
 }
+
+func (s *Store) budget() int  { return s.maxStored - MaxLiveKey*terminalBound }
+func (s *Store) hardCap() int { return s.maxStored + MaxRuns*terminalBound }

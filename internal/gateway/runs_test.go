@@ -137,16 +137,16 @@ func runManager(t *testing.T, h *harness, kind runstate.Kind) *runstate.Manager 
 }
 func waitRun(t *testing.T, m *runstate.Manager, key, id string, want runstate.State) runstate.Run {
 	t.Helper()
-	until := time.Now().Add(3 * time.Second)
-	for time.Now().Before(until) {
-		r, e := m.Store.Get(key, id)
+	var r runstate.Run
+	if waitUntil(t, 3*time.Second, "", func() bool {
+		var e error
+		r, e = m.Store.Get(key, id)
 		if e != nil {
 			t.Fatal(e)
 		}
-		if r.State == want {
-			return r
-		}
-		time.Sleep(time.Millisecond)
+		return r.State == want
+	}) {
+		return r
 	}
 	t.Fatal("state wait", want)
 	return runstate.Run{}

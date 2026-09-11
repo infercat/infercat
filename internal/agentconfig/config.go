@@ -11,6 +11,9 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"slices"
+
+	"github.com/infercat/infercat/internal/dirlock"
 	"strings"
 
 	"github.com/infercat/infercat/internal/fsx"
@@ -54,7 +57,7 @@ func Parse(s string) ([]string, error) {
 		if name != "opencode" && name != "dsh" && name != "codex" {
 			return nil, fmt.Errorf("unknown agent %q (opencode,dsh,codex)", name)
 		}
-		if !strings.Contains(","+strings.Join(out, ",")+",", ","+name+",") {
+		if !slices.Contains(out, name) {
 			out = append(out, name)
 		}
 	}
@@ -159,7 +162,7 @@ func (c *Config) locked(fn func() error) error {
 		return err
 	}
 	defer f.Close()
-	if err = lock(f); err != nil {
+	if err = dirlock.Lock(f); err != nil {
 		return fmt.Errorf("agent configuration is busy: %w", err)
 	}
 	return fn()

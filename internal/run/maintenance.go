@@ -1,7 +1,6 @@
 package run
 
 import (
-	"encoding/json"
 	"errors"
 	"log"
 	"time"
@@ -103,12 +102,7 @@ func boundedReason(reason string) string {
 }
 
 // Clone only a returned run, not all of its key's captured bytes.
-func copyRun(r Run) Run {
-	raw, _ := json.Marshal(r)
-	var copy Run
-	_ = json.Unmarshal(raw, &copy)
-	return copy
-}
+func copyRun(r Run) Run { return deepCopy(r) }
 
 func (s *Store) log(format string, args ...any) {
 	if s.Log != nil {

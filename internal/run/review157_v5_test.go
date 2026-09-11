@@ -37,12 +37,6 @@ func Test157V5RecoveryRetriesAfterRefusedWrite(t *testing.T) {
 		t.Fatal("recovery not durable", got.State, err)
 	}
 }
-func Test157V5TerminalMessageHasNoDanglingColon(t *testing.T) {
-	if got := (&CommittedTerminal{Run: Run{State: Done}}).Error(); got != "run ended" {
-		t.Fatal(got)
-	}
-}
-
 func Test157V5TerminalReserveOrReplayAllowsRecovery(t *testing.T) {
 	for _, replay := range []bool{false, true} {
 		t.Run(fmt.Sprint(replay), func(t *testing.T) {

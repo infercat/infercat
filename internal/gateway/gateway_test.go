@@ -1003,16 +1003,15 @@ func TestServeAndShutdown(t *testing.T) {
 
 func waitHealthy(t *testing.T, base string) {
 	t.Helper()
-	deadline := time.Now().Add(3 * time.Second)
-	for time.Now().Before(deadline) {
+	if waitUntil(t, 3*time.Second, "", func() bool {
 		res, err := http.Get(base + "/healthz")
-		if err == nil {
-			res.Body.Close()
-			if res.StatusCode == 200 {
-				return
-			}
+		if err != nil {
+			return false
 		}
-		time.Sleep(10 * time.Millisecond)
+		res.Body.Close()
+		return res.StatusCode == 200
+	}) {
+		return
 	}
 	t.Fatalf("%s never became healthy", base)
 }
