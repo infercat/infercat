@@ -58,14 +58,17 @@ func Test157V4CloseDoesNotQuarantineAcceptedRows(t *testing.T) {
 	s := store(t)
 	m := manager(t, s, nil, nil)
 	m.joinTimeout = 10 * time.Millisecond
-	m.stopTimeout = 20 * time.Millisecond
+	m.stopTimeout = time.Second
 	entered, release := make(chan struct{}), make(chan struct{})
 	defer close(release)
 	if err := m.Register("test", m.Consumer(func(context.Context, *Work) (json.RawMessage, error) { close(entered); <-release; return nil, nil }), Policy{Serial: true, JoinCancel: true, ForceStop: func(string) error { return errors.New("stop failed") }}); err != nil {
 		t.Fatal(err)
 	}
-	submit(t, m)
+	r := submit(t, m)
 	<-entered
+	m.mu.Lock()
+	w := m.active[r.ID]
+	m.mu.Unlock()
 	var logged atomic.Bool
 	s.Log = func(f string, args ...any) {
 		if strings.Contains(fmt.Sprintf(f, args...), "force-stop error") {
@@ -75,6 +78,12 @@ func Test157V4CloseDoesNotQuarantineAcceptedRows(t *testing.T) {
 	queued, waiting := create(t, s, "k_queued"), create(t, s, "k_waiting")
 	s.change(waiting.KeyID, waiting.ID, func(r *Run) error { r.State = Waiting; return nil })
 	m.Close()
+	// Close has its own deadline; observe the completed join before its effects.
+	select {
+	case <-w.joined:
+	case <-time.After(2 * time.Second):
+		t.Fatal("shutdown join did not finish")
+	}
 	if !logged.Load() {
 		t.Fatal("shutdown stop failure was silent")
 	}
