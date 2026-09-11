@@ -168,7 +168,12 @@
             "sha256": "a3f4c73d043860e3fd2e5b06f36795eb81de0fc8e8de6df703245edddd87dbad",
             "url": "https://github.com/k2-fsa/sherpa-onnx/releases/download/tts-models/kokoro-multi-lang-v1_1.tar.bz2",
             "license": "Apache-2.0 model; espeak-ng dependency GPLv3",
-            "revision": "tts-models asset SHA-256 pinned"
+            "revision": "tts-models asset SHA-256 pinned",
+            "archive": {
+              "format": "tar.bz2",
+              "strip": 1,
+              "bytes": 1073741824
+            }
           }
         ],
         "extra_args": [],
@@ -186,17 +191,15 @@
       "candidates": [],
       "pending": "",
       "command": [
-        "sherpa-onnx-offline-tts",
-        "--kokoro-model={model}",
-        "--kokoro-voices={asset:speech-voices}",
-        "--kokoro-data-dir={model_dir}/espeak-ng-data",
-        "--kokoro-lexicon={model_dir}/lexicon-us-en.txt,{model_dir}/lexicon-zh.txt",
-        "--num-threads=2",
-        "--sid=0",
-        "--text={input}",
-        "--output-filename={output}"
+        "infercat-speech",
+        "--model-dir",
+        "{asset:speech-support}",
+        "--listen",
+        "127.0.0.1:{port}"
       ],
-      "env": {},
+      "env": {
+        "LD_LIBRARY_PATH": "{artifact:sherpa}/lib"
+      },
       "port": 8082,
       "context": 0,
       "concurrency": 1,
@@ -204,7 +207,8 @@
         "kind": "cpu",
         "idle_seconds": 0
       },
-      "unavailable": "HTTP adapter pending"
+      "unavailable": "",
+      "artifact": "speech-helper"
     },
     {
       "id": "embed",
@@ -276,5 +280,36 @@
     "friends": 2,
     "draft": true
   },
-  "promise": "Entirely unmeasured NVIDIA draft based on the Apple floor data; llama.cpp CUDA is intended, not benchmarked. No performance promise. 600s idle and headroom reservations are draft policy."
+  "promise": "Entirely unmeasured NVIDIA draft based on the Apple floor data; llama.cpp CUDA is intended, not benchmarked. No performance promise. 600s idle and headroom reservations are draft policy.",
+  "artifacts": [
+    {
+      "id": "sherpa",
+      "file": "sherpa-onnx-v1.13.7-linux-x64-shared.tar.bz2",
+      "bytes": 27884774,
+      "sha256": "95b9f4358e2d5522a0bd987c3ee91128e31f8abf4340927cab32e438300f3c24",
+      "url": "https://github.com/k2-fsa/sherpa-onnx/releases/download/v1.13.7/sherpa-onnx-v1.13.7-linux-x64-shared.tar.bz2",
+      "license": "Apache-2.0; bundled espeak-ng GPLv3",
+      "revision": "v1.13.7",
+      "archive": {
+        "format": "tar.bz2",
+        "strip": 1,
+        "bytes": 268435456
+      }
+    },
+    {
+      "id": "speech-helper",
+      "file": "infercat-helpers_v0.1.0_linux-amd64.tar.gz",
+      "bytes": 8412229,
+      "sha256": "97681d3d52e31f2af2f009d5a6bf4c9a8893cc21fdbd8a57828a35ab8cb29952",
+      "url": "https://github.com/infercat/infercat/releases/download/helpers-v0.1.0/infercat-helpers_v0.1.0_linux-amd64.tar.gz",
+      "license": "MIT; bundled dependency notices",
+      "revision": "helpers-v0.1.0 / 9cfb34d45d32a9c06ab9197ba6b0796dd0020d7d",
+      "archive": {
+        "format": "tar.gz",
+        "strip": 1,
+        "bytes": 67108864
+      },
+      "executable": "bin/infercat-speech"
+    }
+  ]
 }
