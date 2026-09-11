@@ -30,6 +30,11 @@ describe('shipped host capabilities', () => {
       }
     }
     collect(current);
+    expect(current.usage.today_searches).toBe(1);
+    expect(current.limits.search_per_day).toBe(50);
+    expect(current.host_tools).toEqual(['make_image', 'web_search']);
+    const tools = me.members.find((m) => m.name?.getText(source) === 'host_tools') as ts.PropertySignature;
+    expect(tools.questionToken).toBeDefined();
     expect(current.usage.today_images).toBeGreaterThan(0); // omitempty cannot capture an explicit zero
     for (const name of names) expect(fields.has(name!), `capture current /me field ${name}`).toBe(true);
   });

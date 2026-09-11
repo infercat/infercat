@@ -34,7 +34,8 @@
     }
   },
   "host_tools": [
-    "make_image"
+    "make_image",
+    "web_search"
   ],
   "key": {
     "id": "fixture-key",
@@ -51,13 +52,15 @@
     "max_output_tokens": 2048,
     "max_queued_images": 8,
     "rpm": 0,
-    "tpm": 0
+    "tpm": 0,
+    "search_per_day": 50
   },
   "usage": {
     "in_flight": 0,
     "rpm_used": 1,
     "today_images": 1,
     "today_tokens": 0,
-    "tpm_used": 0
+    "tpm_used": 0,
+    "today_searches": 1
   }
 }

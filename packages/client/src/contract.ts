@@ -1,6 +1,7 @@
 // Gateway wire contract, versioned with @infercat/client. Both the web app and client use this
 // type-only module; localized parsing and presentation belong to each caller.
 export interface Limits {
+  search_per_day?: number;
   rpm: number;
   tpm: number;
   max_concurrent: number;
@@ -20,7 +21,7 @@ export interface Me {
   agent?: boolean;
   key: { id: string; name: string; status: 'active' | 'paused' | 'revoked' };
   limits: Limits;
-  usage: { today_images?: number; rpm_used: number; tpm_used: number; today_tokens: number; in_flight: number };
+  usage: { today_searches?: number; today_images?: number; rpm_used: number; tpm_used: number; today_tokens: number; in_flight: number };
   host: {
     name: string;
     upstream: { kind: string; healthy: boolean; model_context: number };

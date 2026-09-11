@@ -29,7 +29,7 @@ func TestLegacyKeyBudgetsDoNotRewriteFile(t *testing.T) {
 		t.Fatalf("keys: %v %v", list, err)
 	}
 	l := list[0].Limits
-	want := Budgets{"images": {{"images", "day", 20}}, "tokens": {{"tokens", "minute", 1234}, {"tokens", "day", 5678}}, "audio": {{"seconds", "day", 3600}}, "speech": {{"characters", "day", 200000}}}
+	want := Budgets{"search": {{"requests", "day", 50}}, "images": {{"images", "day", 20}}, "tokens": {{"tokens", "minute", 1234}, {"tokens", "day", 5678}}, "audio": {{"seconds", "day", 3600}}, "speech": {{"characters", "day", 200000}}}
 	if !reflect.DeepEqual(l.Budgets(), want) {
 		t.Fatalf("budgets: %+v", l.Budgets())
 	}

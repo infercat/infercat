@@ -83,6 +83,10 @@ func (s *Stats) add(e *Event, meters bool) {
 		s.addMeters(e)
 		return
 	}
+	// Host searches have their own meter; they are neither model calls nor app polls.
+	if e.Kind == "search" {
+		return
+	}
 	s.Requests++
 	call := ModelCall(e)
 	if call {

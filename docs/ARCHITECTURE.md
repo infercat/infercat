@@ -791,12 +791,12 @@ URL substitutes for it. Publication follows the founder's release decision.
 
 ## Host tools in chat (148)
 
-Only `POST /v1/chat/completions` with `host_tools:["make_image"]` opts into
+Only `POST /v1/chat/completions` with a nonempty `host_tools` selection (`make_image`, `web_search`) opts into
 host execution. An absent/empty array keeps ordinary chat; malformed or unknown
 names, or nonempty opt-in with caller `tools`/`tool_choice`, are refused. No client
 is detected and no tools are injected into third-party requests without this field.
-The offer is exactly the key-filtered image capability in `/me`; without it the
-request stays ordinary chat. `conversation` and `client_request_id` are optional
+The offer is the requested subset of `/me.host_tools`: key-filtered images and
+operator-configured search. With no available requested tool, chat stays ordinary. `conversation` and `client_request_id` are optional
 128-byte correlation strings on the chat/image records, removed from the model
 input. They confer neither authority nor deduplication.
 
@@ -811,17 +811,31 @@ text/reasoning deltas. Non-streamed replies carry `run_id` too. The shared
 ends the attempt through its normal settlement owner. Final success follows the
 durable run terminal state, never just the model's last delta.
 
-The first call may request one `make_image` execution with a bounded prompt and
-integer count 1..the effective image queue cap (also subject to the existing live
-run bounds). Before submitting, the host rechecks the key and image offer and
-commits the executing `StepEvent` within a retained-space reservation. One atomic
-`SubmitBatch` creates interactive image jobs carrying `parent_run_id` and
-`tool_call_id` (each at most 80 bytes). The second model call receives the job ids
-or a tool-error result and `tool_choice:none`. Multiple first calls execute none;
-invalid arguments and capacity races likewise become tool-error results. A second
-call asking for tools records a refused step, preserves already streamed prose,
-and ends with the existing error shape; there is no third model call. An unfinished
-or truncated tool call cannot submit images.
+A turn allows three tool rounds (at most two dispatched searches), hence up to
+four separately metered model calls. Each round executes one requested, available
+tool. Malformed, unknown or multiple calls execute none and return a tool-error
+result before a final prose call. The last permitted round sets `tool_choice:none`;
+a further call is refused while emitted prose is preserved. Incomplete tool calls
+never execute. Each `make_image` round rechecks the key/offer and atomically submits
+its own interactive batch after retaining the executing step. Parent-run and
+tool-call associations retain their existing bounds and recovery semantics.
+
+`web_search` uses the operator's startup-loaded Exa credential; config stores only
+`search.key_file`. The bounded request contains query, result count and highlight
+options, with no friend identity. No retries, redirects or page fetching; timeout
+10 s, response body 128 KiB, plain-text output 16 KiB. The typed search step captures
+exactly the title/URL/snippet text sent back to the model. Empty/error/timeout
+results let the model continue. Each attempted provider call records one `search`
+row with class `search`, unit `requests`, charged 1 and measured 1 only for a valid
+response. It reserves and settles under the existing per-key meter lock; cancellation
+before dispatch releases without a row. `SettledAt` drives restart/day accounting.
+The separate `search_per_day` budget defaults to 50 (negative unlimited), is exposed
+with `usage.today_searches`, and refuses as `budget_exhausted` until UTC midnight.
+It spends neither text RPM nor tokens. Provider bodies and queries never enter the
+search telemetry row; captured text stays in the run's existing retained owner.
+The disclosed `--log-prompts` opt-in still logs tool queries/results within messages.
+Search rows contribute only their resource meters to day/key/via totals, not HTTP
+request/model/poll counts, latency percentiles or LastCall.
 
 HTTP disconnect and DELETE request Stop for the chat; committed image jobs remain
 independently owned. The originating delivery is tied to the durable run id and

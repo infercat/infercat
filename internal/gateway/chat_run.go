@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"maps"
 	"net/http"
+	"slices"
 	"strings"
 	"sync"
 	"time"
@@ -18,6 +19,7 @@ import (
 )
 
 type chatRunInput struct {
+	Tools           []string       `json:"host_tools"`
 	Body            map[string]any `json:"body"`
 	Delivery        string         `json:"delivery"`
 	Conversation    string         `json:"conversation,omitempty"`
@@ -45,18 +47,24 @@ func (q *request) routeHostTools() *gwError {
 	if err != nil {
 		return err
 	}
+	requested, _ := q.n.body["host_tools"].([]any)
 	delete(q.n.body, "host_tools")
 	if !enabled {
 		return nil
 	}
-	offer, _ := q.g.imageOffer(q.key)
-	if offer == nil {
+	var selected []string
+	for _, name := range requested {
+		if slices.Contains(q.g.hostTools(q.key), name.(string)) {
+			selected = append(selected, name.(string))
+		}
+	}
+	if len(selected) == 0 {
 		return nil
 	}
 	if q.g.runs == nil {
 		return errf(CodeNotFound, 0, "chat runs unavailable")
 	}
-	input := chatRunInput{Body: maps.Clone(q.n.body), Delivery: rand.Text()}
+	input := chatRunInput{Tools: selected, Body: maps.Clone(q.n.body), Delivery: rand.Text()}
 	for name, dest := range map[string]*string{"conversation": &input.Conversation, "client_request_id": &input.ClientRequestID} {
 		if value, ok := input.Body[name]; ok {
 			s, ok := value.(string)
@@ -127,17 +135,26 @@ func (g *Gateway) executeChat(ctx context.Context, w *runstate.Work, input chatR
 	if err != nil {
 		return nil, err
 	}
-	offer, _ := g.imageOffer(key)
-	if offer == nil {
-		return nil, errors.New("image capability no longer available")
+	var tools []any
+	for _, name := range input.Tools {
+		if name == "make_image" {
+			if offer, _ := g.imageOffer(key); offer != nil {
+				tools = append(tools, makeImageTool(offer.QueueCap))
+			}
+		} else if g.cfg.Search != nil {
+			tools = append(tools, webSearchTool())
+		}
 	}
-	body["tools"] = []any{makeImageTool(offer.QueueCap)}
+	if len(tools) > 0 {
+		body["tools"] = tools
+	}
 	body["parallel_tool_calls"] = false
 	body["stream"] = true
 	var text, thought strings.Builder
 	var prompt, completion int
 	var jobs []string
-	for attempt := 0; attempt < 2; attempt++ {
+	searches, answerOnly := 0, false
+	for attempt := 0; attempt <= maxToolRounds; attempt++ {
 		raw, err := json.Marshal(body)
 		if err != nil {
 			return nil, err
@@ -172,29 +189,48 @@ func (g *Gateway) executeChat(ctx context.Context, w *runstate.Work, input chatR
 		if reply.finishReason == "length" {
 			return nil, errors.New("model stopped before completing its tool call")
 		}
-		if attempt == 1 {
-			_, err = g.chatTool(ctx, w, input, reply.calls, false)
+		if answerOnly {
+			if _, err = g.chatTool(ctx, w, input, reply.calls, false); err != nil {
+				return nil, err
+			}
+			return nil, errors.New("tool limit reached; the extra tool call was refused")
+		}
+		var content string
+		if len(reply.calls) == 1 && reply.calls[0].Function.Name == "web_search" && slices.Contains(input.Tools, "web_search") {
+			var dispatched bool
+			content, dispatched, err = g.searchTool(ctx, w, reply.calls[0].Function.Arguments, searches < maxSearchCalls)
+			if dispatched {
+				searches++
+			} else {
+				answerOnly = true
+			}
 			if err != nil {
 				return nil, err
 			}
-			return nil, errors.New("one image request per turn; the second tool call was refused")
+		} else {
+			allowed := len(reply.calls) == 1 && reply.calls[0].Function.Name == "make_image" && slices.Contains(input.Tools, "make_image")
+			result, e := g.chatTool(ctx, w, input, reply.calls, allowed)
+			if e != nil {
+				return nil, e
+			}
+			jobs = append(jobs, result.Jobs...)
+			encoded, _ := json.Marshal(result)
+			content = string(encoded)
+			answerOnly = result.Error != ""
 		}
-		toolResult, e := g.chatTool(ctx, w, input, reply.calls, true)
-		if e != nil {
-			return nil, e
-		}
-		jobs = append(jobs, toolResult.Jobs...)
 		messages, ok := body["messages"].([]any)
 		if !ok {
 			return nil, errors.New("chat messages must be an array")
 		}
 		messages = append(append([]any{}, messages...), reply.message())
-		content, _ := json.Marshal(toolResult)
 		for _, call := range reply.calls {
-			messages = append(messages, map[string]any{"role": "tool", "tool_call_id": call.ID, "content": string(content)})
+			messages = append(messages, map[string]any{"role": "tool", "tool_call_id": call.ID, "content": content})
 		}
 		body["messages"] = messages
-		body["tool_choice"] = "none"
+		if attempt+1 == maxToolRounds || answerOnly {
+			answerOnly = true
+			body["tool_choice"] = "none"
+		}
 	}
 	response := map[string]any{"id": w.Run.ID, "object": "chat.completion", "run_id": w.Run.ID, "choices": []any{map[string]any{"index": 0, "message": map[string]any{"role": "assistant", "content": text.String(), "reasoning_content": thought.String()}, "finish_reason": d.finish}}, "usage": map[string]int{"prompt_tokens": prompt, "completion_tokens": completion, "total_tokens": prompt + completion}}
 	d.output = response
@@ -213,10 +249,14 @@ func (g *Gateway) chatTool(ctx context.Context, w *runstate.Work, input chatRunI
 	}
 	defer release()
 	step := runstate.StepEvent{ID: "tool_" + rand.Text(), Type: "step", At: time.Now().UTC(), Kind: "other", Name: "Make image", Tool: "make_image", Status: "running", Result: "submitting image jobs; outcome not confirmed"}
+	if !execute {
+		step.Name = "Tool refused"
+		step.Tool = ""
+	}
 	if err = w.Store.Retain(w.Run.KeyID, w.Run.ID, nil, nil, nil, step); err != nil {
 		return result, err
 	}
-	result.Error = "one image request per turn"
+	result.Error = "one permitted tool request per round"
 	if execute && len(calls) == 1 && calls[0].Function.Name == "make_image" {
 		var key *keys.Key
 		key, err = g.chatKey(ctx, w.Run.KeyID)

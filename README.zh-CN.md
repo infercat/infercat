@@ -115,6 +115,7 @@ infercat serve --upstream http://127.0.0.1:18080
 传给 `serve` 的参数会保存在 `config.json` 中，下次直接运行 `serve` 即可，无需重复输入。
 
 用[图片生成主机配方](docs/IMAGES.zh-CN.md)让朋友生成图片。
+用[搜索主机配方](docs/SEARCH.zh-CN.md)为明确选择主机工具的对话提供网页搜索。
 
 <details>
 <summary><b>macOS 提示无法验证开发者</b></summary>
@@ -164,7 +165,7 @@ unzip web-<version>.zip -d web && python3 -m http.server 8080 --directory web --
 
 ## 隐私
 
-- **聊天日志默认只记数字和耗时**；主机开启 `serve --log-prompts` 后会记录文本，应用会向朋友说明。图片任务会在朋友的密钥下保留提示词和图片 7 天（受保留期和空间上限约束），不受该日志开关控制。开启 `--log-prompts` 后，图片提示词也会写入 `usage.jsonl`。
+- **聊天日志默认只记数字和耗时**；主机开启 `serve --log-prompts` 后会记录文本，应用会向朋友说明。图片任务会在朋友的密钥下保留提示词和图片 7 天（受保留期和空间上限约束），不受该日志开关控制。开启 `--log-prompts` 后，图片提示词也会写入 `usage.jsonl`。工具查询和结果也会像其他消息文本一样写入提示词日志。
 - 中继端**只看密文**：从朋友的浏览器到主机设备之间全程采用 WireGuard 加密。目前浏览器流量一律经由中继转发（浏览器本身无法进行 NAT 打洞）；直连链路将随隧道库的 WebRTC 传输层一同推出。
 - 邀请密钥只展示一次，本地仅保存**哈希值**。邀请码一旦泄露，执行一次 `keys rotate` 就能让旧码立刻失效。
 

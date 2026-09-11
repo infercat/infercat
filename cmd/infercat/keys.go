@@ -52,6 +52,7 @@ func (e *env) cmdKeys(ctx context.Context, pre string, args []string) error {
 // limitFlags registers the nine limit flags and returns a reader that applies only the ones the
 // host actually typed, so `keys limits ID --rpm 60` leaves everything else alone.
 func limitFlags(fs *flag.FlagSet) func(base keys.Limits) keys.Limits {
+	searches := fs.Int("search-per-day", 0, "searches per UTC day (default 50)")
 	rpm := fs.Int("rpm", 0, "requests per minute")
 	tpm := fs.Int("tpm", 0, "tokens per minute (prompt + completion)")
 	conc := fs.Int("max-concurrent", 0, "requests this friend may have in flight")
@@ -66,6 +67,8 @@ func limitFlags(fs *flag.FlagSet) func(base keys.Limits) keys.Limits {
 	return func(l keys.Limits) keys.Limits {
 		fs.Visit(func(f *flag.Flag) {
 			switch f.Name {
+			case "search-per-day":
+				l.SearchPerDay = *searches
 			case "rpm":
 				l.RPM = *rpm
 			case "tpm":
@@ -496,6 +499,7 @@ Limit flags:
   --max-output-tokens N   clamp on max_tokens
   --max-context N         context ceiling (0 = the upstream's)
   --daily-tokens N        tokens per UTC day
+  --search-per-day N     searches per UTC day (default 50)
   --daily-images N       images per UTC day (default 20)
   --max-queued-images N queued images per key (default 8)
   --daily-audio-seconds N transcription seconds per UTC day (default 3600)

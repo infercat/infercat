@@ -19,29 +19,34 @@ const configName = "config.json"
 // and --ephemeral, because it changes the host address and is a per-run mode, not a setting.
 // Keys a newer build no longer knows (queue_timeout, request_timeout, max_body, retired by ticket
 // 010) are ignored on load and dropped on the next save.
+type searchConfig struct {
+	KeyFile string `json:"key_file"`
+}
+
 type config struct {
-	ProfileInstall          string `json:"profile_install,omitempty"`
-	UpstreamImages          string `json:"upstream_images,omitempty"`
-	UpstreamImagesKey       string `json:"upstream_images_key,omitempty"`
-	UpstreamImagesModel     string `json:"upstream_images_model,omitempty"`
-	UpstreamSpeechVoices    string `json:"upstream_speech_voices,omitempty"`
-	UpstreamTranscribeModel string `json:"upstream_transcribe_model,omitempty"`
-	UpstreamSpeechModel     string `json:"upstream_speech_model,omitempty"`
-	UpstreamTranscribe      string `json:"upstream_transcribe,omitempty"`
-	UpstreamTranscribeKey   string `json:"upstream_transcribe_key,omitempty"`
-	UpstreamSpeech          string `json:"upstream_speech,omitempty"`
-	UpstreamSpeechKey       string `json:"upstream_speech_key,omitempty"`
-	MaxTranscriptionSeconds int    `json:"max_transcription_seconds,omitempty"`
-	Models                  string `json:"models,omitempty"`
-	Console                 string `json:"console,omitempty"`
-	Upstream                string `json:"upstream,omitempty"`
-	UpstreamKey             string `json:"upstream_key,omitempty"`
-	Slots                   int    `json:"slots,omitempty"`
-	DevListen               string `json:"dev_listen,omitempty"`
-	DERPMapURL              string `json:"derpmap_url,omitempty"`
-	Region                  string `json:"region,omitempty"`
-	Name                    string `json:"name,omitempty"`
-	WebURL                  string `json:"web_url,omitempty"`
+	Search                  *searchConfig `json:"search,omitempty"`
+	ProfileInstall          string        `json:"profile_install,omitempty"`
+	UpstreamImages          string        `json:"upstream_images,omitempty"`
+	UpstreamImagesKey       string        `json:"upstream_images_key,omitempty"`
+	UpstreamImagesModel     string        `json:"upstream_images_model,omitempty"`
+	UpstreamSpeechVoices    string        `json:"upstream_speech_voices,omitempty"`
+	UpstreamTranscribeModel string        `json:"upstream_transcribe_model,omitempty"`
+	UpstreamSpeechModel     string        `json:"upstream_speech_model,omitempty"`
+	UpstreamTranscribe      string        `json:"upstream_transcribe,omitempty"`
+	UpstreamTranscribeKey   string        `json:"upstream_transcribe_key,omitempty"`
+	UpstreamSpeech          string        `json:"upstream_speech,omitempty"`
+	UpstreamSpeechKey       string        `json:"upstream_speech_key,omitempty"`
+	MaxTranscriptionSeconds int           `json:"max_transcription_seconds,omitempty"`
+	Models                  string        `json:"models,omitempty"`
+	Console                 string        `json:"console,omitempty"`
+	Upstream                string        `json:"upstream,omitempty"`
+	UpstreamKey             string        `json:"upstream_key,omitempty"`
+	Slots                   int           `json:"slots,omitempty"`
+	DevListen               string        `json:"dev_listen,omitempty"`
+	DERPMapURL              string        `json:"derpmap_url,omitempty"`
+	Region                  string        `json:"region,omitempty"`
+	Name                    string        `json:"name,omitempty"`
+	WebURL                  string        `json:"web_url,omitempty"`
 }
 
 // webURL is where this host's friends open the web app: the remembered --web-url, else the

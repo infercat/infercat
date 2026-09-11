@@ -53,3 +53,14 @@ Raw capture, requests, setup/status logs and cleanup proof are retained locally
 under `/private/tmp/infercat-proof-151b-b/`. The proof key was revoked, the owned
 host and connect stopped, and all seven proof ports closed. No invite is stored
 in this fixture or repository.
+
+## Search fields (164)
+
+The three additive search fields in `current.json` are a projection from the actual
+164 candidate's authenticated `/me` after the owned E4B → Exa → sd.cpp turn:
+`host_tools`, `limits.search_per_day`, and `usage.today_searches`. The remaining
+fields retain the landed 146 gateway fixture; this fixture is therefore composite, not
+claimed as a fresh whole-response capture. The full unedited 164 response is at
+`/private/tmp/infercat-proof-164/me-after.json`. It reports one charged search and
+both tools. The proof key was revoked and all owned processes stopped. Released
+fixtures remain unchanged.
