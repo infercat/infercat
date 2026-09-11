@@ -677,8 +677,9 @@ M for review". The Go `ImageCleanupPending()` accessor remains their sum.
 `internal/profile/data/*.json` embeds one independent version-1 JSON file per tier.
 There is no online refresh. `apple-64g` uses the measured E4B Q4 substitute; the
 intended 27–32B anchor remains unmeasured. `apple-16g` uses Q4 E4B with F16 vision
-and no image member. It ships in 0.1.5 unverified on real 16 GiB hardware; the
-151c proof on a rented 16 GB Mac is deferred. `nvidia-12g` is wholly unmeasured.
+and no image member: memory verified in an instrumented 16 GB macOS VM (stock
+detection refuses VMs until 178); performance unverified on real hardware.
+`nvidia-12g` is wholly unmeasured.
 BGE-M3 never inherits the measured BGE-small working set. Policy and headroom reservations are explicitly draft, not measured performance guarantees.
 
 | Object | Fields and units |
