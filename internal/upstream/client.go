@@ -15,7 +15,7 @@ import (
 	"time"
 )
 
-// The two deadlines the engine owns (DESIGN §1.6). Probes, tokenize and lists must never be the
+// The two deadlines the engine owns (docs/archive/DESIGN.md §1.6). Probes, tokenize and lists must never be the
 // reason a request hangs; a generation's first byte bounds an engine that accepted a request but
 // does not start (its later bytes are the gateway's idle deadline).
 const (

@@ -1,5 +1,5 @@
 // Package upstream abstracts the OpenAI-compatible inference server the gateway proxies to. The
-// engine is a state (DESIGN §3.2) that every consumer reads at the moment it decides (§3.3), behind
+// engine is a state (docs/archive/DESIGN.md §3.2) that every consumer reads at the moment it decides (§3.3), behind
 // a seam so small the engine's address cannot leak into the gateway (§3.4).
 package upstream
 
@@ -67,7 +67,7 @@ type Engine interface {
 	CountTokens(ctx context.Context, model, text string, messages []byte) (n int, exact bool, err error)
 	// Do sends one request to the engine: bearer added, base URL private, redirects never
 	// followed, a generation bounded by the first-byte deadline and a GET by the probe deadline
-	// (DESIGN §1.6). A non-2xx comes back as a response, not an error. The caller owns resp.Body.
+	// (docs/archive/DESIGN.md §1.6). A non-2xx comes back as a response, not an error. The caller owns resp.Body.
 	Do(ctx context.Context, method, path string, body []byte, stream bool) (*http.Response, error)
 }
 

@@ -3,7 +3,8 @@
 //	ic1.<legacy tailcat address>.<secret>
 //	ic2.<PSK tailcat address>.<secret>
 //
-// Ticket 004 mirrors this in TypeScript; the two MUST agree (docs/ARCHITECTURE.md §Invite format).
+// TypeScript mirrors: web/src/invite.ts and packages/client/src/invite.ts; all three
+// MUST agree (docs/ARCHITECTURE.md §Invite format).
 package invite
 
 import (

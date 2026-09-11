@@ -1,4 +1,4 @@
-# Architecture contract (v1, 2026-09-02 evening — v0 was the build-night seam contract; v1 folds in tickets 005–011 and `docs/DESIGN.md`)
+# Architecture contract
 
 This file is the seam contract every engineer codes against. It is binding where it says MUST.
 Change it by contesting to the PM, never silently. The product name lives in
@@ -194,7 +194,7 @@ files remain unchanged: the limiter derives `map[class][]Budget{Unit, Window, Am
 with both minute and day token windows; RPM, concurrency, output/context ceilings and model policy
 stay beside those budgets. Reading a key file never rewrites it.
 
-## Engine (`internal/upstream`; state per `docs/DESIGN.md` §3, landed by 011)
+## Engine (`internal/upstream`)
 
 The engine is a state, not a value: `Kind` is `Unknown` until a signature probe answers (`Generic` only when
 `/v1/models` answered without a signature); `Health{OK, Since, Err}`; `ModelContext`, `Slots` (override
@@ -240,7 +240,7 @@ allowlist-filtered models, vision and audio offers, not engine structure. New us
 context when reported, otherwise the engine context. Independent audio capacity and model-aware
 admission are the intentional corrections; routes, existing fields and error bodies stay intact.
 
-## Request pipeline, limits, and deadlines (006 + 010; `docs/DESIGN.md` §1)
+## Request pipeline, limits, and deadlines
 
 One pipeline, one exit. A request record owns every resource; the stage order is fixed in one function:
 `checkHealth → admitKey (RPM + per-key concurrency) → readBody → normalize → count → checkBudgets (reserve

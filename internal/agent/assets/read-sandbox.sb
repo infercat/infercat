@@ -32,7 +32,7 @@
   (literal "/dev/null") (literal "/dev/tty") (literal "/dev/dtracehelper")
   (subpath (param "WORKSPACE")) (subpath (param "TMPDIR")))
 
-; egress — choose one:
+; Full network egress is allowed.
 (allow network-bind (local ip))                                   ; the plugin's private health listener
 (allow network-outbound (remote ip "localhost:*"))                ; loopback only (gateway)
 (allow network-outbound (literal "/private/var/run/mDNSResponder"))

@@ -6,7 +6,7 @@ commit `23b864e7cc2cd1e94bbbc83b3a32e501f1f2b484`. Both EN and Simplified
 Chinese use actual simulator system languages. This is iOS Simulator evidence,
 not a physical-phone claim and not Chrome device emulation.
 
-Reproduce with [the opt-in harness](../web/dev/ios-proof/README.md).
+Reproduce with [the opt-in harness](../../web/dev/ios-proof/README.md).
 The application tested is the live `https://infercat.ai`; the tunnel terminates
 at a fresh **096 isolated host** on this Mac. No launch-host changes or production
 deployments were made. The original launch recordings and machine-readable
@@ -45,21 +45,21 @@ an offline result.
 
 | State | English | 中文 |
 | --- | --- | --- |
-| Copy invite | [EN](../web/dev/screenshots/096-en-copy-invite.png) | [ZH](../web/dev/screenshots/096-zh-copy-invite.png) |
-| Native install confirmation | [EN](../web/dev/screenshots/096-en-native-install.png) | [ZH](../web/dev/screenshots/096-zh-native-install.png) |
-| Default Home Screen icon | [EN](../web/dev/screenshots/096-en-icon-default.png) | [ZH](../web/dev/screenshots/096-zh-icon-default.png) |
-| Tinted Home Screen icon | [EN](../web/dev/screenshots/096-en-icon-tinted.png) | [ZH](../web/dev/screenshots/096-zh-icon-tinted.png) |
-| Actual blank launch surface | [EN](../web/dev/screenshots/096-en-launch.png) | [ZH](../web/dev/screenshots/096-zh-launch.png) |
-| Native paste permission | [EN](../web/dev/screenshots/096-en-paste-permission.png) | [ZH](../web/dev/screenshots/096-zh-paste-permission.png) |
-| Standalone owned-host chat | [EN](../web/dev/screenshots/096-en-standalone.png) | [ZH](../web/dev/screenshots/096-zh-standalone.png) |
+| Copy invite | [EN](../../web/dev/screenshots/096-en-copy-invite.png) | [ZH](../../web/dev/screenshots/096-zh-copy-invite.png) |
+| Native install confirmation | [EN](../../web/dev/screenshots/096-en-native-install.png) | [ZH](../../web/dev/screenshots/096-zh-native-install.png) |
+| Default Home Screen icon | [EN](../../web/dev/screenshots/096-en-icon-default.png) | [ZH](../../web/dev/screenshots/096-zh-icon-default.png) |
+| Tinted Home Screen icon | [EN](../../web/dev/screenshots/096-en-icon-tinted.png) | [ZH](../../web/dev/screenshots/096-zh-icon-tinted.png) |
+| Actual blank launch surface | [EN](../../web/dev/screenshots/096-en-launch.png) | [ZH](../../web/dev/screenshots/096-zh-launch.png) |
+| Native paste permission | [EN](../../web/dev/screenshots/096-en-paste-permission.png) | [ZH](../../web/dev/screenshots/096-zh-paste-permission.png) |
+| Standalone owned-host chat | [EN](../../web/dev/screenshots/096-en-standalone.png) | [ZH](../../web/dev/screenshots/096-zh-standalone.png) |
 
-[Additional real model reply](../web/dev/screenshots/096-en-chat.png).
+[Additional real model reply](../../web/dev/screenshots/096-en-chat.png).
 
 ## Verification
 
 `INFERCAT_PWA_ENGINE=http://127.0.0.1:49186 make ios-proof` completed with
 **10 passed / 0 failed / 2 skipped**. The two skips are the explicitly unproved
-EN/ZH device-network-off cases. [The result](../web/dev/ios-proof/result.json)
+EN/ZH device-network-off cases. [The result](../../web/dev/ios-proof/result.json)
 records the exact harness SHA-256 and the native launch-frame indices. The run's
 14 PNGs and the extra manual EN chat PNG are exported at 390×844 with a 256-color
 palette. Originals and MOVs stay outside git. The documented export printed

@@ -3,7 +3,7 @@ package gateway
 // The engine-facing half of a request: body shaping (what normalize and checkBudgets call), the two
 // read-only routes, the error mapping for the engine seam, and the two relays. The pipeline itself
 // is in request.go. Everything the engine is sent goes through upstream.Engine.Do: this package
-// never sees the engine's address or transport (DESIGN §3.4, E4).
+// never sees the engine's address or transport (docs/archive/DESIGN.md §3.4, E4).
 
 import (
 	"bufio"
@@ -91,7 +91,7 @@ func stripOverrides(body map[string]any) []string {
 // normalize is the one place the body is shaped before the engine sees it: engine-override aliases
 // are stripped (promise 1, overrideKeys), a missing model is filled and the allowlist enforced, the
 // output cap is clamped to the key's, and streams get include_usage. Everything else in body passes
-// through byte-identical. It returns what the later stages read (DESIGN §1.7).
+// through byte-identical. It returns what the later stages read (docs/archive/DESIGN.md §1.7).
 func normalize(kind endpoint, body map[string]any, k *keys.Key, engineModels, pinned []string) (normalized, *gwError) {
 	n := normalized{body: body, stripped: stripOverrides(body)}
 	model, err := resolveModel(body, k, engineModels, pinned)
@@ -569,7 +569,7 @@ func contextOverflow(typ, msg string) bool {
 // ---- relays ----
 
 // idleReader re-arms the engine idle deadline on every read: a live engine, however slow, is never
-// cut; one that sends nothing for the idle duration is cancelled (DESIGN §1.6).
+// cut; one that sends nothing for the idle duration is cancelled (docs/archive/DESIGN.md §1.6).
 type idleReader struct {
 	r io.Reader
 	t *time.Timer

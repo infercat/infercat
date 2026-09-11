@@ -439,7 +439,7 @@ func tunnelLogf(dataDir string, verbose bool, terminal func(string, ...any)) (fu
 
 // refreshLoop re-probes the engine; when it comes or goes, or reports a different slot count,
 // that is logged once. Nothing is pushed anywhere: the gateway's queue reads the engine's slot
-// count at every decision (ticket 010, DESIGN §1.5), so an engine down at startup cannot pin it.
+// count at every decision (ticket 010, docs/archive/DESIGN.md §1.5), so an engine down at startup cannot pin it.
 type probeEngine interface {
 	Info() upstream.Info
 	Refresh(context.Context) error

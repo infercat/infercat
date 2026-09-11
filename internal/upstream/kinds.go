@@ -88,7 +88,7 @@ func sniff(ctx context.Context, c *client) (Kind, error) {
 	return Generic, nil
 }
 
-// Refresh is the one probe, and every transition goes through it (DESIGN §3.2): Unknown and an
+// Refresh is the one probe, and every transition goes through it (docs/archive/DESIGN.md §3.2): Unknown and an
 // engine answers a signature → identified, OK, fields filled; Unknown and nothing answers → still
 // Unknown, not OK (Err updated, Since kept); identified and the refresh succeeds → fields replaced;
 // identified and it fails → fields kept, not OK — /me keeps telling the truth about what it knew.

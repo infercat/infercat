@@ -199,7 +199,6 @@ infercat keys limits alice --rpm 60 --daily-tokens 1000000 --max-output-tokens 8
 ## 项目状态：Beta
 
 核心功能均已跑通并经过测速（`docs/MEASURE.md`：经中继传输约 160 tokens/s，浏览器首字延迟 110–160 ms）。坦白说，目前还有这些已知限制：浏览器流量目前一律走中继；macOS 二进制文件尚未签名（见上文）；一台主机对应一个引擎；默认的公共中继有限流，而且随时可能被撤销，所以超出演示用途就该自建中继。各层的负载上限正在测，结果记在 `docs/MEASURE.md`，并会在 `docs/LIMITS.md` 里用大白话讲清楚。
-<!-- TODO(028): link docs/LIMITS.md when it lands -->
 
 ## 快速上手（朋友端 · 用自己的应用）
 

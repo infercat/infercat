@@ -298,8 +298,8 @@ all known snapshots before releasing idle ones. Live or directly polled keys sta
 resident. All-key enumeration re-reads and re-parses each nonresident idle key
 on every call, then releases it again. It is not amortized across calls. On this
 Mac, 8 idle keys with 1 MiB each took 6.37–6.59 ms per repeated enumeration with
-filesystem pages warm; the first already-resident call took 7.83 µs. Measurement:
-/tmp/infercat-157-v3-outcomes.log. Scheduling enumeration pays this tradeoff; the landed platform position cache
+filesystem pages warm; the first already-resident call took 7.83 µs. Scheduling
+enumeration pays this tradeoff; the landed platform position cache
 serves repeated position reads. Every run write advances Updated. Retain is explicitly silent on the
 lifecycle stream, while artifact creation, discard and each eviction publish their
 own notifications. A valid cursor from an unknown epoch returns Reset.
@@ -316,7 +316,7 @@ Failed unlinks remain
 visible and retryable; they do not break a key. The opt-in pinned tarball test
 requires network access and INFERCAT_AGENT_TEST_INSTALL; ordinary make check skips
 it. Its recorded live run compared the vendored manifest byte-for-byte with the
-SHA-512-verified registry tarball (/tmp/infercat-157-tarball.log). The verified
+SHA-512-verified registry tarball. The verified
 manifest SHA-256 is
 `885d9766775a2585f8c3a608cd2d2c97391e158b3ac1c53365cb2d1ca82040db`.
 
@@ -337,7 +337,7 @@ the generation only after the child starts. Model identifiers are limited to
 
 A single nonresident ceiling key (67,043,328 encoded bytes) required 46.8–51.7 ms
 per all-key enumeration on this Mac with filesystem pages warm; each call parsed
-the snapshot again. Measurement: /tmp/infercat-157-v4-focused.log.
+the snapshot again.
 The CLI separates proven retries from report-only observations as
 `N awaiting cleanup, M for review`; the admin response carries
 `image_cleanup_pending` (proven retries) and additive `image_orphans_for_review`
@@ -345,8 +345,8 @@ The CLI separates proven retries from report-only observations as
 
 The allowance-exhausted 67,043,328-byte fixture enters the new load check and took
 73.9 ms cold (filesystem pages warm); the 67,518,464-byte absolute-cap case took
-83.2 ms. Both preserve bytes and fail only that key. Measurements, without timing
-assertions: /tmp/infercat-157-v5-focused.log. Failed recovery is marked complete
+83.2 ms. Both preserve bytes and fail only that key. These are measurements, not
+timing assertions. Failed recovery is marked complete
 only after success and is retried on the next load. Needs-attention responses use
 503 upstream_down with Retry-After: 60 and direct the friend to the host.
 The agent route uses the landed Answer and generation-stop contracts. Runtime
@@ -399,7 +399,7 @@ image client's old cursor. Reconnect returns the existing Reset with current
 summaries; GET detail recovers the current steps and outputs. No extra ring or
 replay guarantee is introduced.
 
-The pinned `dsh-tools/lib/index.js:1218,3032,3213` creates `run_code` nested calls
+The pinned `dsh-tools` runtime creates `run_code` nested calls
 with `parent: exec.token`, preserves that parent on the execution, and invokes the
 same `tools/execute` hook. The adapter's parent branch is therefore reachable,
 not dead code: admission, key recheck and reservation are at the root-tool boundary.
