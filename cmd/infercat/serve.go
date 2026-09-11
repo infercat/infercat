@@ -91,6 +91,17 @@ func (e *env) cmdServe(ctx context.Context, pre string, args []string) error {
 		return err
 	}
 
+	var search *gateway.Search
+	if cfg.Search != nil {
+		path := cfg.Search.KeyFile
+		if path != "" && !filepath.IsAbs(path) {
+			path = filepath.Join(dataDir, path)
+		}
+		search, err = gateway.OpenSearch(path)
+		if err != nil {
+			return err
+		}
+	}
 	voices, err := parseSpeechVoices(*speechVoices)
 	if err != nil {
 		return err
@@ -141,8 +152,8 @@ func (e *env) cmdServe(ctx context.Context, pre string, args []string) error {
 	pinned := splitModels(*models)
 	*upURL = forgetIfAuto(*upURL)
 	if err := saveConfig(dataDir, config{
-		ProfileInstall: cfg.ProfileInstall,
-		Upstream:       *upURL, UpstreamKey: *upKey, Slots: *slots, Models: strings.Join(pinned, ","),
+		ProfileInstall: cfg.ProfileInstall, Search: cfg.Search,
+		Upstream: *upURL, UpstreamKey: *upKey, Slots: *slots, Models: strings.Join(pinned, ","),
 		UpstreamTranscribeModel: *transcribeModel, UpstreamSpeechModel: *speechModel,
 		UpstreamSpeechVoices: *speechVoices,
 		UpstreamImages:       *imageURL, UpstreamImagesKey: *imageKey, UpstreamImagesModel: *imageModel,
@@ -215,6 +226,7 @@ func (e *env) cmdServe(ctx context.Context, pre string, args []string) error {
 	public := bridge.Manager{Keys: store, Slots: func() int { return up.Info().Slots }}
 	defer public.Close()
 	gw, err := e.plat.newGateway(gatewayOptions{
+		Search:        search,
 		RemoteConsole: remoteHandler, LiveHostName: state.name,
 		Embed: embed, Managed: profileBindings(profileRuntime, map[string]probeEngine{"text": up, "transcribe": transcribe, "speech": speech, "image": images, "embed": embed}),
 		ModelsPinned:    pinned,

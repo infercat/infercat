@@ -28,6 +28,8 @@ import (
 // here: it is the engine's slot count, read live (DESIGN §1.5). Deadlines and the body cap are
 // constants (§1.6), each bounding one party's failure.
 type Config struct {
+	Search *Search
+
 	Embed                        upstream.Engine
 	Managed                      map[string]ManagedMember
 	Images                       upstream.ImageEngine

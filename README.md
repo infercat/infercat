@@ -116,6 +116,7 @@ Flags you pass to `serve` are remembered in `config.json`, so the next `serve` n
 
 Add a microphone and spoken replies with the [voice hosting recipe](docs/VOICE.md).
 Make pictures with the [image generation hosting recipe](docs/IMAGES.md).
+Search the web in an opted-in chat with the [search hosting recipe](docs/SEARCH.md).
 
 <details>
 <summary><b>macOS says it cannot verify the developer</b></summary>
@@ -169,7 +170,7 @@ Exactly `/v1/models`, `/v1/chat/completions` and `/v1/responses` through the gat
 
 ## Privacy
 
-- **Chat logs contain counts and timings** unless the host runs `serve --log-prompts`, which the web app discloses. Image jobs keep the friend’s image prompts and pictures under their key for 7 days, subject to retention/storage limits, independently of that flag. With `--log-prompts`, image prompts also enter `usage.jsonl`.
+- **Chat logs contain counts and timings** unless the host runs `serve --log-prompts`, which the web app discloses. Image jobs keep the friend’s image prompts and pictures under their key for 7 days, subject to retention/storage limits, independently of that flag. With `--log-prompts`, image prompts also enter `usage.jsonl`. Tool queries and results appear in prompt logs like any other message text.
 - The relay sees **ciphertext**: traffic is WireGuard-encrypted from the friend's browser to the host's machine. Browser traffic is always relayed for now (a browser cannot hole-punch); the direct path arrives with the tunnel library's WebRTC transport.
 - Invite secrets are shown once and stored **hashed**. A leaked invite is one `keys rotate` away from useless.
 

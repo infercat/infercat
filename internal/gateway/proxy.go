@@ -351,11 +351,12 @@ type meResponse struct {
 	} `json:"key"`
 	Limits keys.Limits `json:"limits"`
 	Usage  struct {
-		TodayImages int `json:"today_images,omitempty"`
-		RPMUsed     int `json:"rpm_used"`
-		TPMUsed     int `json:"tpm_used"`
-		TodayTokens int `json:"today_tokens"`
-		InFlight    int `json:"in_flight"`
+		TodaySearches int `json:"today_searches,omitempty"`
+		TodayImages   int `json:"today_images,omitempty"`
+		RPMUsed       int `json:"rpm_used"`
+		TPMUsed       int `json:"tpm_used"`
+		TodayTokens   int `json:"today_tokens"`
+		InFlight      int `json:"in_flight"`
 	} `json:"usage"`
 	Host struct {
 		Images     *imageOffer `json:"images,omitempty"`
@@ -388,12 +389,13 @@ func (q *request) me() {
 	m.Key.ID, m.Key.Name, m.Key.Status = q.key.ID, q.key.Name, q.key.Status
 	m.Limits = keys.AudioDefaults(q.key.Limits)
 	m.Host.Images, _ = q.g.imageOffer(q.key)
-	if m.Host.Images != nil && q.g.runs != nil && q.g.runs.Kinds["chat"] != nil {
-		m.HostTools = []string{"make_image"}
+	if q.g.runs != nil && q.g.runs.Kinds["chat"] != nil {
+		m.HostTools = q.g.hostTools(q.key)
 	}
 	m.Limits.MaxQueuedImages = ImageQueueCap(q.key.Limits)
 	cnt := q.g.lim.counters(q.key.ID)
 	m.Usage.TodayImages = cnt.TodayImages
+	m.Usage.TodaySearches = cnt.TodaySearches
 	m.Usage.RPMUsed, m.Usage.TPMUsed, m.Usage.TodayTokens, m.Usage.InFlight = cnt.RPMUsed, cnt.TPMUsed, cnt.TodayTokens, cnt.InFlight
 	info := q.g.router.text.Up.Info()
 	m.Host.Name = q.g.cfg.HostName

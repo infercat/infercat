@@ -68,6 +68,8 @@ type gatewayServer interface {
 }
 
 type gatewayOptions struct {
+	Search *gateway.Search
+
 	Embed                        upstream.Engine
 	Managed                      map[string]gateway.ManagedMember
 	Images                       upstream.ImageEngine

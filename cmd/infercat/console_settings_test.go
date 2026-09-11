@@ -18,7 +18,7 @@ import (
 
 func TestSettingsApplyAndRefusal(t *testing.T) {
 	dir := t.TempDir()
-	saveConfig(dir, config{Name: "before", UpstreamKey: "keep-secret", UpstreamTranscribeKey: "keep-audio", Console: "127.0.0.1:9101"})
+	saveConfig(dir, config{Search: &searchConfig{KeyFile: "search.key"}, Name: "before", UpstreamKey: "keep-secret", UpstreamTranscribeKey: "keep-audio", Console: "127.0.0.1:9101"})
 	remote, _ := adminkey.Open(dir)
 	s := &consoleState{remote: remote, value: consoleSettings{Name: "before", DataDir: dir, ConsoleAddress: "127.0.0.1:9101", ConfiguredConsole: "127.0.0.1:9101"}}
 	store, _ := keys.NewFileStore(dir)
@@ -48,7 +48,7 @@ func TestSettingsApplyAndRefusal(t *testing.T) {
 	call(`{"console":"127.0.0.1:9102","name":"after"}`, true, 400)
 	call(`{"name":"after","web_url":"https://new.example/app/","slots":4,"console":"off","log_requests":true}`, false, 200)
 	cfg, _ := loadConfig(dir)
-	if cfg.Name != "after" || cfg.Slots != 4 || cfg.Console != "off" || cfg.UpstreamKey != "keep-secret" || cfg.UpstreamTranscribeKey != "keep-audio" || s.name() != "after" || !s.logs.Load() {
+	if cfg.Search == nil || cfg.Search.KeyFile != "search.key" || cfg.Name != "after" || cfg.Slots != 4 || cfg.Console != "off" || cfg.UpstreamKey != "keep-secret" || cfg.UpstreamTranscribeKey != "keep-audio" || s.name() != "after" || !s.logs.Load() {
 		t.Fatal(cfg)
 	}
 	if s.snapshot().ConsoleAddress != "127.0.0.1:9101" {

@@ -18,6 +18,7 @@ const (
 // Limits are per-key. Zero means "use the default" at creation time and "unlimited / upstream's"
 // once stored (MaxContext 0 = upstream context; Models empty = all models).
 type Limits struct {
+	SearchPerDay      int      `json:"search_per_day"`
 	DailyImages       int      `json:"daily_images"`
 	MaxQueuedImages   int      `json:"max_queued_images"`
 	DailyAudioSeconds int      `json:"daily_audio_seconds"`
@@ -33,7 +34,7 @@ type Limits struct {
 
 // DefaultLimits are applied at `keys add` when a field is zero.
 func DefaultLimits() Limits {
-	return Limits{DailyImages: 20, MaxQueuedImages: 8, DailyAudioSeconds: 3600, DailySpeechChars: 200000, RPM: 20, TPM: 20000, MaxConcurrent: 1, MaxOutputTokens: 4096, MaxContext: 0, DailyTokens: 200000}
+	return Limits{SearchPerDay: 50, DailyImages: 20, MaxQueuedImages: 8, DailyAudioSeconds: 3600, DailySpeechChars: 200000, RPM: 20, TPM: 20000, MaxConcurrent: 1, MaxOutputTokens: 4096, MaxContext: 0, DailyTokens: 200000}
 }
 
 // Key is one friend. SecretHash is "sha256:<hex>" of the invite secret; the secret itself is never stored.
@@ -95,6 +96,12 @@ func AudioDefaults(l Limits) Limits {
 }
 
 func ImageDefaults(l Limits) Limits {
+	if l.SearchPerDay == 0 {
+		l.SearchPerDay = 50
+	}
+	if l.SearchPerDay < 0 {
+		l.SearchPerDay = -1
+	}
 	if l.DailyImages < 0 {
 		l.DailyImages = -1
 	}

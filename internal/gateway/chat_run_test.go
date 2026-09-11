@@ -125,7 +125,7 @@ func TestHostChatHandsOffBeforeAttemptsAndKeepsImagesIndependent(t *testing.T) {
 				t.Fatal("handoff not recorded once", handoff)
 			}
 			second := h.up.body(t)
-			if second["tool_choice"] != "none" {
+			if second["tool_choice"] == "none" {
 				t.Fatal(second)
 			}
 			b, _ := json.Marshal(second)
@@ -207,7 +207,7 @@ func TestHostChatDisconnectCancelsChatNotSubmittedImage(t *testing.T) {
 	}
 }
 
-func TestHostChatSecondToolIsRefusedWithoutThirdAttempt(t *testing.T) {
+func TestHostChatFourthToolIsRefusedWithoutFifthAttempt(t *testing.T) {
 	h := hostChatHarness(t, []string{imageCall(`{"prompt":"fox","count":1}`)}, nil)
 	h.up.srv.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		h.up.set("sse", `{"choices":[{"delta":{"content":"Visible words."}}]}`, imageCall(`{"prompt":"fox","count":1}`))
@@ -220,7 +220,7 @@ func TestHostChatSecondToolIsRefusedWithoutThirdAttempt(t *testing.T) {
 	id := chatRunID(t, h)
 	run, _ := h.gw.runs.Store.Get(h.key.ID, id)
 	data, _ := h.gw.runs.Store.Retained(h.key.ID, id)
-	if run.State != runstate.Failed || len(run.Attempts) != 2 || len(data.Steps) != 2 || data.Steps[1].Status != "failed" {
+	if run.State != runstate.Failed || len(run.Attempts) != 4 || len(data.Steps) != 4 || data.Steps[3].Status != "failed" {
 		t.Fatal(run, data)
 	}
 	rows, _ := h.gw.runs.Store.List(h.key.ID)
@@ -230,8 +230,8 @@ func TestHostChatSecondToolIsRefusedWithoutThirdAttempt(t *testing.T) {
 			images++
 		}
 	}
-	if images != 1 {
-		t.Fatal("second image submitted", images)
+	if images != 3 {
+		t.Fatal("fourth image submitted", images)
 	}
 }
 func TestHostChatMultipleCallsExecuteNone(t *testing.T) {
