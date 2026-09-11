@@ -22,6 +22,9 @@ var adapter []byte
 // HarnessOptions materializes only our plugin/config. The integrity-locked vendor
 // tree stays unchanged. No external model credentials or host bearer is inherited.
 func HarnessOptions(dataDir string) (RuntimeOptions, error) {
+	return harnessOptions(dataDir, filepath.Join(dataDir, "agent", "host"))
+}
+func harnessOptions(dataDir, dir string) (RuntimeOptions, error) {
 	runtime, err := Installed(dataDir)
 	if err != nil {
 		return RuntimeOptions{}, err
@@ -30,7 +33,6 @@ func HarnessOptions(dataDir string) (RuntimeOptions, error) {
 	if err != nil || !bytes.Equal(actual, baseComposition) {
 		return RuntimeOptions{}, errors.New("pinned harness composition missing or changed")
 	}
-	dir := filepath.Join(dataDir, "agent", "host")
 	if err = os.MkdirAll(dir, 0700); err != nil {
 		return RuntimeOptions{}, err
 	}
@@ -56,7 +58,6 @@ func HarnessOptions(dataDir string) (RuntimeOptions, error) {
 		map[string]any{"id": "web", "config": map[string]any{"searchProvider": "exa"}},
 		map[string]any{"id": "web-search-deepseek", "disabled": true},
 		map[string]any{"insert": []any{
-			map[string]any{"id": "web-search-exa", "name": filepath.Join(runtime, "node_modules/@deepseek-ai/dsh-web-search-exa/lib/index.js"), "config": map[string]any{"numResults": 3}},
 			map[string]any{"id": "infercat-agent", "name": plugin},
 		}},
 	}
@@ -72,9 +73,9 @@ func HarnessOptions(dataDir string) (RuntimeOptions, error) {
 		"INFERCAT_AGENT_RUNTIME=" + runtime,
 	}
 	if exa := os.Getenv("EXA_API_KEY"); exa != "" {
-		env = append(env, "EXA_API_KEY="+exa)
+		env = append(env, "INFERCAT_EXA_FD=4")
 	}
-	return RuntimeOptions{Dir: dir, Env: env, Command: []string{
+	return RuntimeOptions{SearchKey: os.Getenv("EXA_API_KEY"), Dir: dir, Env: env, Command: []string{
 		filepath.Join(runtime, "node/bin/node"), filepath.Join(runtime, "node_modules/@deepseek-ai/dsh/lib/bin.js"),
 		"--profile", "headless", "--patch", patch,
 	}}, nil

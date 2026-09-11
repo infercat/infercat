@@ -1,5 +1,6 @@
 // Product-owned plugin; the pinned harness owns agent execution and sandbox policy.
 import { createRequire } from 'node:module';
+import {readFileSync,closeSync} from 'node:fs';
 import { pathToFileURL } from 'node:url';
 import { createServer } from 'node:http';
 import { randomUUID } from 'node:crypto';
@@ -7,7 +8,7 @@ import { isDeepStrictEqual } from 'node:util';
 import { modelRequest, modelChunks } from './wire.mjs';
 
 export const name = 'infercat-agent';
-export const inject = ['agents', 'sessions', 'llm', 'systemPrompt'];
+export const inject = ['agents', 'sessions', 'llm', 'systemPrompt', 'web'];
 export const MAX_FRAME = 2 * 1024 * 1024;
 export const wording = {
   write: 'Normal workspace writes need only file_path and content. If the workspace is already writable, omit both sandbox_permissions and justification.',
@@ -54,10 +55,13 @@ export function apply(ctx) {
   const require = createRequire(process.env.INFERCAT_AGENT_RUNTIME + '/package.json');
   const load = name => import(pathToFileURL(require.resolve(name)).href);
   void (async () => {
-    const [{ installModelSelection }, { LlmAdapter, createUserMessage }] = await Promise.all([
-      load('@deepseek-ai/dsh-agent'), load('@deepseek-ai/dsh-llm'),
+    const [{ installModelSelection }, { LlmAdapter, createUserMessage }, {apply: exaApply}] = await Promise.all([
+      load('@deepseek-ai/dsh-agent'), load('@deepseek-ai/dsh-llm'), load('@deepseek-ai/dsh-web-search-exa'),
     ]);
     await ctx.get('loader')?.await();
+    const searchKey=process.env.INFERCAT_EXA_FD==='4'?readFileSync(4,'utf8'):'';
+    if(process.env.INFERCAT_EXA_FD==='4')closeSync(4);
+    exaApply(ctx,{apiKey:searchKey,numResults:3});
     const runs = new Map(), calls = new Map();
     const send = message => {
       const raw = JSON.stringify(message) + '\n';

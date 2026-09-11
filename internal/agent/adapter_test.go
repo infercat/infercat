@@ -36,7 +36,7 @@ func TestPinnedAdapterAcknowledgesBeforeModelAndCapturesNativeWrite(t *testing.T
 		t.Fatal(err)
 	}
 	enabled := true
-	if err = ks.SetLimitsAndAgent(context.Background(), k.ID, k.Limits, &enabled); err != nil {
+	if err := ks.SetLimitsAndAgent(context.Background(), k.ID, k.Limits, &enabled); err != nil {
 		t.Fatal(err)
 	}
 	s, err := runstate.NewStore(dir)
@@ -60,15 +60,18 @@ func TestPinnedAdapterAcknowledgesBeforeModelAndCapturesNativeWrite(t *testing.T
 			n = calls.Add(1)
 		}
 		var event string
-		if n >= 1 && n <= 4 {
+		if n >= 1 && n <= 5 {
 			tool, path, content := "write", "notes.md", "Line one\nLine two\n"
 			if n == 1 {
+				content = "Old line\n"
+			}
+			if n == 2 {
 				tool = "read"
 			}
-			if n == 3 {
+			if n == 4 {
 				path = "other.md"
 			}
-			if n == 4 {
+			if n == 5 {
 				path = "binary.dat"
 				content = "\x00binary\n"
 			}
@@ -94,22 +97,15 @@ func TestPinnedAdapterAcknowledgesBeforeModelAndCapturesNativeWrite(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	workspace, err := workspaceFor(dir, k.ID)
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err = os.WriteFile(filepath.Join(workspace, "notes.md"), []byte("Old line\n"), 0600); err != nil {
-		t.Fatal(err)
-	}
 	a := StartAdapter(context.Background(), dir, m, ks)
-	defer a.Runtime.Close()
+	defer a.Close()
 	defer m.Close()
 	until := time.Now().Add(10 * time.Second)
-	for a.Runtime.Status().State != "healthy" && time.Now().Before(until) {
+	for a.Status().State != "healthy" && time.Now().Before(until) {
 		time.Sleep(20 * time.Millisecond)
 	}
-	if a.Runtime.Status().State != "healthy" {
-		t.Fatal(a.Runtime.Status())
+	if a.Status().State != "healthy" {
+		t.Fatal(a.Status())
 	}
 	r, err := m.Submit(k.ID, "agent", "", json.RawMessage(`{"model":"fixture","messages":[{"role":"user","content":"Write notes.md with two lines, then confirm."}]}`))
 	if err != nil {
@@ -134,7 +130,7 @@ func TestPinnedAdapterAcknowledgesBeforeModelAndCapturesNativeWrite(t *testing.T
 		log, _ := os.ReadFile(filepath.Join(dir, "agent/host/runtime.log"))
 		t.Fatalf("run=%+v\nretained=%s\nlog=%s", r, formatJSON(d), log)
 	}
-	if calls.Load() != 5 || len(r.Attempts) < 5 {
+	if calls.Load() != 6 || len(r.Attempts) < 6 {
 		t.Fatal("wrong model attempts", calls.Load(), r.Attempts)
 	}
 	if len(d.Steps) < 2 || d.Steps[0].Kind != "think" || d.Steps[0].Status != "done" {
@@ -143,7 +139,7 @@ func TestPinnedAdapterAcknowledgesBeforeModelAndCapturesNativeWrite(t *testing.T
 	var file runstate.Captured
 	ok := false
 	for _, value := range d.Outputs {
-		if value.Name == "notes.md" {
+		if value.Name == "notes.md" && string(value.Data) == "Line one\nLine two\n" {
 			file = value
 			ok = true
 		}
@@ -151,7 +147,7 @@ func TestPinnedAdapterAcknowledgesBeforeModelAndCapturesNativeWrite(t *testing.T
 	if !ok || string(file.Data) != "Line one\nLine two\n" {
 		t.Fatalf("native file not captured: %s", formatJSON(d))
 	}
-	if len(d.Outputs) != 9 {
+	if len(d.Outputs) != 12 {
 		t.Fatal("repeated native id lost a capture", len(d.Outputs))
 	}
 	view, err := s.Detail(k.ID, r.ID)
@@ -167,7 +163,7 @@ func TestPinnedAdapterAcknowledgesBeforeModelAndCapturesNativeWrite(t *testing.T
 			}
 		}
 	}
-	if diffCount != 2 {
+	if diffCount != 3 {
 		t.Fatal("existing/new diffs or binary fallback missing", view.Outputs)
 	}
 	var existing, added bool
@@ -228,10 +224,10 @@ func TestPinnedAdapterCancellationRetainsFinalPrefix(t *testing.T) {
 		t.Fatal(err)
 	}
 	a := StartAdapter(context.Background(), dir, m, ks)
-	defer a.Runtime.Close()
+	defer a.Close()
 	defer m.Close()
 	until := time.Now().Add(10 * time.Second)
-	for a.Runtime.Status().State != "healthy" && time.Now().Before(until) {
+	for a.Status().State != "healthy" && time.Now().Before(until) {
 		time.Sleep(20 * time.Millisecond)
 	}
 	r, err := m.Submit(k.ID, "agent", "", json.RawMessage(`{"model":"fixture","messages":[{"role":"user","content":"hello"}]}`))
@@ -278,10 +274,10 @@ func TestPinnedAdapterCancellationRetainsFinalPrefix(t *testing.T) {
 			ended = true
 		}
 	}
-	if !ended || a.Runtime.Status().Restarts != 0 {
-		t.Fatal("lost final evidence or restarted runtime", ended, a.Runtime.Status(), types)
+	if !ended || a.Status().Restarts != 0 {
+		t.Fatal("lost final evidence or restarted runtime", ended, a.Status(), types)
 	}
-	t.Logf("native cancel settled in %s; final turn/end retained; runtime reused", time.Since(start))
+	t.Logf("native cancel settled in %s; final turn/end retained; per-run child joined", time.Since(start))
 }
 
 func TestAdapterInputRefusesUnsupportedBeforeCreation(t *testing.T) {
@@ -310,20 +306,12 @@ func TestPinnedNativeApprovalAllowAndDeny(t *testing.T) {
 			if err := os.Symlink(runtimeDir(installed), runtimeDir(dir)); err != nil {
 				t.Fatal(err)
 			}
-			cache, err := os.UserCacheDir()
-			if err != nil {
-				t.Fatal(err)
-			}
-			proof, err := os.MkdirTemp(cache, "infercat-approval-proof-")
-			if err != nil {
-				t.Fatal(err)
-			}
-			defer os.RemoveAll(proof)
-			target := filepath.Join(proof, "outside.txt")
+			var target string
+			var a *Adapter
 			ks, _ := keys.NewFileStore(dir)
 			k, _, _ := ks.Add(context.Background(), "fixture", keys.Limits{})
 			enabled := true
-			if err = ks.SetLimitsAndAgent(context.Background(), k.ID, k.Limits, &enabled); err != nil {
+			if err := ks.SetLimitsAndAgent(context.Background(), k.ID, k.Limits, &enabled); err != nil {
 				t.Fatal(err)
 			}
 			store, _ := runstate.NewStore(dir)
@@ -337,6 +325,7 @@ func TestPinnedNativeApprovalAllowAndDeny(t *testing.T) {
 				delta := map[string]any{"content": "Finished the approval fixture."}
 				reason := "stop"
 				if len(req.Tools) > 0 && calls.Add(1) == 1 {
+					target = filepath.Join(filepath.Dir(a.currentRuntime().options.Dir), "approved.txt")
 					args, _ := json.Marshal(map[string]string{"file_path": target, "content": "approved write", "sandbox_permissions": "danger-full-access", "justification": "Write the isolated proof file."})
 					delta = map[string]any{"tool_calls": []any{map[string]any{"index": 0, "id": "call:approval", "type": "function", "function": map[string]string{"name": "write", "arguments": string(args)}}}}
 					reason = "tool_calls"
@@ -348,11 +337,11 @@ func TestPinnedNativeApprovalAllowAndDeny(t *testing.T) {
 				}
 				return runstate.StepResult{Output: json.RawMessage(`{}`), Dispatched: true, Settled: true}, nil
 			}, nil)
-			a := StartAdapter(context.Background(), dir, m, ks)
-			defer a.Runtime.Close()
+			a = StartAdapter(context.Background(), dir, m, ks)
+			defer a.Close()
 			defer m.Close()
 			until := time.Now().Add(10 * time.Second)
-			for a.Runtime.Status().State != "healthy" && time.Now().Before(until) {
+			for a.Status().State != "healthy" && time.Now().Before(until) {
 				time.Sleep(20 * time.Millisecond)
 			}
 			r, err := m.Submit(k.ID, "agent", "", json.RawMessage(`{"model":"fixture","messages":[{"role":"user","content":"Run the isolated approval proof."}]}`))
@@ -396,14 +385,19 @@ func TestPinnedNativeApprovalAllowAndDeny(t *testing.T) {
 			if r.State != runstate.Done {
 				t.Fatal("native approval did not settle", r.State, r.Reason)
 			}
-			raw, readErr := os.ReadFile(target)
-			if allow && (readErr != nil || string(raw) != "approved write") {
-				t.Fatal("allow did not continue", readErr)
-			}
-			if !allow && !os.IsNotExist(readErr) {
-				t.Fatal("deny wrote output", readErr)
+			if _, e := os.Stat(target); !os.IsNotExist(e) {
+				t.Fatal("ephemeral workspace survived", e)
 			}
 			data, _ = store.Retained(k.ID, r.ID)
+			captured := false
+			for _, o := range data.Outputs {
+				if o.Name == "approved.txt" && string(o.Data) == "approved write" {
+					captured = true
+				}
+			}
+			if captured != allow {
+				t.Fatal("approval capture mismatch", allow, captured)
+			}
 			outcome := "rejected"
 			if allow {
 				outcome = "allowed-once"
@@ -421,14 +415,14 @@ func TestPinnedNativeApprovalAllowAndDeny(t *testing.T) {
 				}
 			}
 			for _, step := range data.Steps {
-				if step.Kind == "write" && ((allow && strings.Contains(step.Result, "not captured")) || (!allow && step.Status == "failed")) {
+				if step.Kind == "write" && ((allow && step.Status == "done") || (!allow && step.Status == "failed")) {
 					note = true
 				}
 			}
 			if !audit || !note {
 				t.Fatal("missing native decision/capture-refusal evidence", audit, note)
 			}
-			t.Logf("native ask %q -> %s; file exists=%v; run=%s", question, outcome, readErr == nil, r.State)
+			t.Logf("native ask %q -> %s; captured=%v; run=%s", question, outcome, captured, r.State)
 		})
 	}
 }
@@ -465,10 +459,10 @@ func TestPinnedForceStopRestartsSupervisor(t *testing.T) {
 		return runstate.StepResult{Output: json.RawMessage(`{}`), Dispatched: true, Settled: true}, err
 	}, nil)
 	a := StartAdapter(context.Background(), dir, m, ks)
-	defer a.Runtime.Close()
+	defer a.Close()
 	defer m.Close()
 	until := time.Now().Add(10 * time.Second)
-	for a.Runtime.Status().State != "healthy" && time.Now().Before(until) {
+	for a.Status().State != "healthy" && time.Now().Before(until) {
 		time.Sleep(20 * time.Millisecond)
 	}
 	input := json.RawMessage(`{"model":"fixture","messages":[{"role":"user","content":"Say ready."}]}`)
@@ -489,21 +483,11 @@ func TestPinnedForceStopRestartsSupervisor(t *testing.T) {
 	if second.State != runstate.Queued {
 		t.Fatal("agent kind not serial", second.State)
 	}
-	old := a.Runtime.Generation()
+	old := a.currentRuntime()
+	oldDir := filepath.Dir(old.options.Dir)
 	block.Store(false)
 	if err := m.Policies["agent"].ForceStop(first.ID); err != nil {
 		t.Fatal(err)
-	}
-	until = time.Now().Add(10 * time.Second)
-	for time.Now().Before(until) {
-		first, _ = store.Get(k.ID, first.ID)
-		if first.State == runstate.Failed && a.Runtime.Status().State == "healthy" && a.Runtime.Generation() != old {
-			break
-		}
-		time.Sleep(20 * time.Millisecond)
-	}
-	if first.State != runstate.Failed || a.Runtime.Status().State != "healthy" || a.Runtime.Generation() == old {
-		t.Fatal("generation did not recover", first.State, a.Runtime.Status())
 	}
 	until = time.Now().Add(8 * time.Second)
 	for time.Now().Before(until) {
@@ -531,5 +515,15 @@ func TestPinnedForceStopRestartsSupervisor(t *testing.T) {
 	if third.State != runstate.Done {
 		t.Fatal("replacement did not serve", third.State, third.Reason)
 	}
-	t.Logf("generation %d stopped; one active session failed without replay; serial successor on generation %d", old, a.Runtime.Generation())
+	first, _ = store.Get(k.ID, first.ID)
+	if first.State != runstate.Failed {
+		t.Fatal(first)
+	}
+	if _, e := os.Stat(oldDir); !os.IsNotExist(e) {
+		t.Fatal("failed workspace retained", e)
+	}
+	if old.Status().Restarts != 0 {
+		t.Fatal("failed run replayed")
+	}
+	t.Log("owned child stopped; active run failed without replay; fresh serial successors completed; old workspace removed")
 }

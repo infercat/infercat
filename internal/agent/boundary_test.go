@@ -104,7 +104,7 @@ func TestAdapterRefusesDispatchWhenPrefixCannotBeRetained(t *testing.T) {
 	}, nil)
 	a := &Adapter{manager: m, keys: ks, dir: dir, live: map[string]*session{}}
 	binary, _ := os.Executable()
-	a.Runtime = StartRuntime(context.Background(), RuntimeOptions{Command: []string{binary, "-test.run=^TestAdapterBoundaryProcess$"}, Dir: dir, Env: []string{"INFERCAT_BOUNDARY_FIXTURE=1"}, Frame: func(raw json.RawMessage) {
+	a.runtime = StartRuntime(context.Background(), RuntimeOptions{Command: []string{binary, "-test.run=^TestAdapterBoundaryProcess$"}, Dir: dir, Env: []string{"INFERCAT_BOUNDARY_FIXTURE=1"}, Frame: func(raw json.RawMessage) {
 		var f frame
 		_ = json.Unmarshal(raw, &f)
 		a.mu.Lock()
@@ -115,9 +115,9 @@ func TestAdapterRefusesDispatchWhenPrefixCannotBeRetained(t *testing.T) {
 			s.frames <- raw
 		}
 	}})
-	defer a.Runtime.Close()
+	defer a.Close()
 	defer m.Close()
-	waitRuntime(t, a.Runtime, "healthy")
+	waitRuntime(t, a.currentRuntime(), "healthy")
 	if err := m.Register("agent", m.Consumer(a.run), runstate.Policy{Serial: true, JoinCancel: true, ForceStop: a.stopRun}); err != nil {
 		t.Fatal(err)
 	}
@@ -150,7 +150,7 @@ func TestApprovalIPCCommitsOnceAndKeepsToolReservation(t *testing.T) {
 	a := &Adapter{manager: m, keys: ks, dir: dir, live: map[string]*session{}}
 	binary, _ := os.Executable()
 	observed := make(chan error, 1)
-	a.Runtime = StartRuntime(context.Background(), RuntimeOptions{Command: []string{binary, "-test.run=^TestAdapterBoundaryProcess$"}, Dir: dir, Env: []string{"INFERCAT_BOUNDARY_FIXTURE=1", "INFERCAT_APPROVAL_FIXTURE=1"}, Frame: func(raw json.RawMessage) {
+	a.runtime = StartRuntime(context.Background(), RuntimeOptions{Command: []string{binary, "-test.run=^TestAdapterBoundaryProcess$"}, Dir: dir, Env: []string{"INFERCAT_BOUNDARY_FIXTURE=1", "INFERCAT_APPROVAL_FIXTURE=1"}, Frame: func(raw json.RawMessage) {
 		var f frame
 		_ = json.Unmarshal(raw, &f)
 		if f.Type == "probe" {
@@ -176,9 +176,9 @@ func TestApprovalIPCCommitsOnceAndKeepsToolReservation(t *testing.T) {
 			s.frames <- raw
 		}
 	}})
-	defer a.Runtime.Close()
+	defer a.Close()
 	defer m.Close()
-	waitRuntime(t, a.Runtime, "healthy")
+	waitRuntime(t, a.currentRuntime(), "healthy")
 	if err := m.Register("agent", m.Consumer(a.run), runstate.Policy{Serial: true, JoinCancel: true, ForceStop: a.stopRun}); err != nil {
 		t.Fatal(err)
 	}
@@ -240,7 +240,7 @@ func Test116CNativeCRLFResultSettlesWithoutAbort(t *testing.T) {
 			m, _ := runstate.New(store, nil, nil)
 			a := &Adapter{manager: m, keys: ks, dir: dir, live: map[string]*session{}}
 			binary, _ := os.Executable()
-			a.Runtime = StartRuntime(context.Background(), RuntimeOptions{Command: []string{binary, "-test.run=^TestAdapterBoundaryProcess$"}, Dir: dir, Env: []string{"INFERCAT_BOUNDARY_FIXTURE=1", "INFERCAT_STEP_FIXTURE=1", "INFERCAT_INVALID_STEP=" + fmt.Sprint(invalid), "INFERCAT_BATCH_STEP=" + fmt.Sprint(mode == "batch")}, Frame: func(raw json.RawMessage) {
+			a.runtime = StartRuntime(context.Background(), RuntimeOptions{Command: []string{binary, "-test.run=^TestAdapterBoundaryProcess$"}, Dir: dir, Env: []string{"INFERCAT_BOUNDARY_FIXTURE=1", "INFERCAT_STEP_FIXTURE=1", "INFERCAT_INVALID_STEP=" + fmt.Sprint(invalid), "INFERCAT_BATCH_STEP=" + fmt.Sprint(mode == "batch")}, Frame: func(raw json.RawMessage) {
 				var f frame
 				_ = json.Unmarshal(raw, &f)
 				a.mu.Lock()
@@ -251,9 +251,9 @@ func Test116CNativeCRLFResultSettlesWithoutAbort(t *testing.T) {
 					s.frames <- raw
 				}
 			}})
-			defer a.Runtime.Close()
+			defer a.Close()
 			defer m.Close()
-			waitRuntime(t, a.Runtime, "healthy")
+			waitRuntime(t, a.currentRuntime(), "healthy")
 			var stops atomic.Int32
 			if err := m.Register("agent", m.Consumer(a.run), runstate.Policy{Serial: true, JoinCancel: true, ForceStop: func(id string) error { stops.Add(1); return a.stopRun(id) }}); err != nil {
 				t.Fatal(err)

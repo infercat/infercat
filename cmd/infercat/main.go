@@ -130,6 +130,9 @@ func isTerminal(f *os.File) bool {
 }
 
 func run(ctx context.Context, args []string, out, errw io.Writer, in io.Reader, tty bool, plat platform) int {
+	if len(args) > 0 && args[0] == "_confine" {
+		return agent.Confine(args[1:])
+	}
 	if len(args) > 0 && args[0] == "_agent-guardian" {
 		return agent.Guardian(args[1:])
 	}

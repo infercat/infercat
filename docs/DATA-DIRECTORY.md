@@ -114,3 +114,15 @@ On the engineer’s Mac (three iterations), 100 runs with 25 MiB input measured 
 At the ordinary ceiling (100 runs, about 63 MB encoded; three iterations), Stored reads measured 21.06 ms warm and 62.37 ms cold. These reads serialize bounded retained payloads for row sizes; they preserve the prior access time so polling does not pin a key in memory. Expiry persists proven cleanup intents with its shrink; a failed image metadata commit best-effort unlinks its own artifact and tracks failures as proven retries. Unnamed image files are collected when records remain; an empty snapshot leaves them for manual review.
 
 The admin field `image_cleanup_pending` now counts proven retry paths only; older hosts included observations in that field. `image_orphans_for_review` carries the separate report-only count. The store aggregate accessor still sums both. Unnamed image files are collected when the snapshot has runs; only empty snapshots leave unknown files for review. Owned `.run-*` write-remnant files in both the state and image directories are collected on load or sweep; failed deletions are logged and retried on later scans.
+
+### Agent workspaces
+
+`agent/workspaces/run-*/` is temporary per-run work, including private `tmp/` and
+`.runtime/` configuration/state. The confined child can read/write its own workspace,
+not other run workspaces or the host's run/key records. After captured outputs are
+retained and the child joins, the workspace is removed; only captured copies remain
+in `runs/<key>/state.json`. A host crash or a reported cleanup failure may leave an
+unreused directory for operator reclamation. Earlier per-key workspaces are left
+untouched. The installed runtime is read/execute-only inside the child; the Exa key
+is sent through a one-time inherited descriptor, not a state file or child environment.
+See [agent runtime](AGENT-RUNTIME.md) for the exact system-tree/network limits.

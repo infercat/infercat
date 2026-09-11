@@ -75,11 +75,21 @@ jobs:
       - uses: docker/setup-buildx-action@v4
 
       - name: Check and release dry run (every proof once, nothing published)
+        env:
+          INFERCAT_REQUIRE_SANDBOX: "1"
         run: |
           go build ./...
           # The Playwright-version step already installed the locked workspace.
           # One make graph shares all other prerequisites; no proof is skipped.
           make -o web-deps check release-dry
+
+      - name: Linux agent confinement — pinned harness and canaries
+        env:
+          INFERCAT_REQUIRE_SANDBOX: "1"
+        run: |
+          go build -o "$RUNNER_TEMP/infercat-agent-probe" ./cmd/infercat
+          "$RUNNER_TEMP/infercat-agent-probe" --data-dir "$RUNNER_TEMP/agent-fixture" agent install
+          INFERCAT_AGENT_TEST_INSTALL="$RUNNER_TEMP/agent-fixture" go test -race -v -count=1 ./internal/agent -run '^Test161|^TestPinned'
 
       - name: Every artifact has a checksum
         run: |

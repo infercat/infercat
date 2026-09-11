@@ -25,67 +25,85 @@ It uses `npm ci --ignore-scripts`, then invokes the pinned harness's helper scri
 that sets its bundled subprocess helper executable. The complete tree is published
 by rename; a second install of that complete tree does nothing. Package licenses
 remain in the installed tree. The pinned harness is a developer preview, with its
-upstream safety notice unchanged; it is not a verified per-friend isolation boundary.
+upstream safety notice unchanged. Infercat applies the read sandbox around the
+whole child, including its in-process tools.
 
 Files live below the host's `agent/` directory:
 
-- `runtime-0.1.5-alpha.1-node22.23.2/`: pinned Node and integrity-locked packages.
-- `host/`: our adapter plugin and native composition patch, harness configuration, and
-  `runtime.log` (at most 1 MiB, replaced on restart).
-- `npm-cache/`: installer cache, outside retained run data.
+- `runtime-0.1.5-alpha.1-node22.23.2/`: pinned Node and integrity-locked packages,
+  readable and executable by the child, never writable through the sandbox.
+- `workspaces/run-*/`: a fresh workspace for each run, including private `tmp/`
+  and `.runtime/` plugin/configuration/native state and bounded runtime log.
+- `npm-cache/`: installer cache, outside the child's allowed trees.
 
-Workspaces live at `<dataDir>/agent/workspaces/<key>/`, including for home-less
-service accounts and volume-backed containers. Admission checks the directory is
-writable before creating a run; failure is `agent_unavailable`. Captured copies live in the
-capped run store and are independent of later workspace edits. Existing workspaces
-from the earlier preview are not automatically migrated or deleted.
+After final output capture and child join, the workspace is removed. Captured
+copies remain in the existing bounded run store; files not captured do not carry
+into the next run. Earlier per-key workspaces and legacy `host/` files are not
+imported or deleted automatically. An interrupted host or a cleanup failure can
+leave a workspace for the operator to reclaim; it is never reused or granted to a
+subsequent run. Cleanup failures are logged. The stored-data bound is not a live
+workspace disk, CPU or memory quota.
 
 `--agent` is off by default and is not remembered. `/status.agent` is absent when
-off; when enabled it contains `state`, optional `pid` and `last_error`, and
-`restarts`. States are `starting`, `healthy`, `backoff`, `failed`, and `stopped`.
-Healthy means the native plugin is ready on its private health listener. Missing
-installation, an unsupported OS, or a runtime failure never stops normal serving.
+off. When enabled, its existing state/PID/error fields describe the adapter:
+`healthy` while idle means the installation and sandbox availability preflight
+passed, with no child PID; while running it means the private plugin health check
+passed. A fresh child starts for each Serial run. There is no automatic replay or
+restart into an old workspace. Failed creation/readiness becomes a failed run and
+status error; the next run may start a fresh child. A failed preflight at POST
+returns `agent_unavailable`, while normal model serving remains available.
 
-One guardian owns the runtime process group. Only Infercat owns the write end of
-the guardian's lifetime pipe. Host death closes that pipe: the guardian sends TERM,
-waits up to two seconds, then kills the group. The supervisor allows a further
-one second to join cleanup. This covers host death, including SIGKILL; it does not
-cover simultaneous guardian death or descendants that escape the process group.
-The loopback health listener is passed as an open descriptor, so there is no
-release-to-bind port race. An occupied configured fixture port is refused without
-touching its listener. Readiness allows ten seconds; three failed health probes
-after readiness trigger restart. Restart delays are 0.5, 1, 2, then at most 4 seconds.
-Closed or malformed child protocol output ends that runtime generation.
+The existing guardian owns each child's process group. Host death closes the
+lifetime pipe; the guardian sends TERM, waits up to two seconds, then kills the
+group. The supervisor allows a further second to join. This does not contain
+processes that escape that group or simultaneous guardian death. The child's
+health listener is inherited as fd 3, rather than reserved and rebound. Protocol
+and health failure end that run's child; they never run it without confinement.
 
-The product-owned plugin uses the native agent registry, session events, model
-adapter, and cancellation services. It is separate from the vendor packages.
-The private newline-JSON protocol carries start/cancel, session and streaming
-events, model requests/results, and a settled notification. Frames are bounded to
-2 MiB; overload ends the generation rather than silently truncating an event.
-The native transport has a 64-session bound; the host registers the agent kind
-with Serial, so only one agent run is active per host. Accepted queued runs wait
-for a healthy generation before their first native dispatch. Late model results after cancellation
-are ignored; settlement is emitted only after native session flush and disposal.
-A restarted process does not reconstruct or replay prior runs.
+The read sandbox is an allow-list on both shipped platforms:
 
-All model calls, including helpers, use the IPC adapter. No external model
-credentials or gateway bearer are inherited. `EXA_API_KEY`, when configured by the
-host, is intended for the native search provider and is scrubbed from tool subprocess
-environments. On Linux, that scrub does not prevent a same-user tool from reading
-`/proc/<ppid>/environ` and recovering the harness's key; the macOS sentinel proves
-only direct environment removal. Passing the key through a descriptor could reduce
-environment exposure, but is not implemented and alone would not establish a read
-boundary against same-user tools. The harness's workspace-write
-and ask policy remains intact: ordinary workspace writes do not ask; genuine
-approval requests are not automatically allowed. The three description strings
-proven in 129 are applied verbatim, with a check that schema semantics are unchanged.
-The shipped sandbox provides write confinement: “confined to your workspace and
-temporary files; not isolated from the host's other data.” **An agent can read the host's data directory; host reads are not confined.** The pinned Seatbelt profile allows reads by default, the Landlock
-profile grants read access to `/`, and the in-process file service fences writes
-only. There is no complete read-deny composition setting for these capabilities.
-Use `--agent` only on a single-friend host until a complete read boundary exists.
-Keeping workspaces in the data volume does not establish read isolation. The retained-data bound is not
-a hard quota on a live workspace or temporary files.
+- macOS uses deny-default Seatbelt through `sandbox-exec`: read/execute the approved
+  system and tool trees (`/usr`, `/bin`, `/sbin`, `/System`, Homebrew, `/usr/local`,
+  `/Library/Developer`), read the listed Frameworks/Apple/etc/timezone/device paths,
+  and read/write the current workspace and its private temporary directory. Root
+  directory access and global file metadata are allowed; metadata/names may be
+  visible outside those trees even though file contents are denied. Paths are
+  canonicalized so `/var` aliases do not invalidate the policy. PATH selects a
+  working Python before the `/usr/bin` xcrun shim; `/Applications` and broad temp
+  directories are not granted.
+- Linux re-execs `_confine`, locks its OS thread, applies `no_new_privs` and a
+  Landlock ruleset, then execs Node on that thread. ABI 3 or newer is required to
+  restrict truncation; older/disabled kernels refuse agent availability. All known
+  supported filesystem rights are handled. Reads/exec are limited to `/usr`,
+  `/lib*`, `/bin`, `/sbin`, `/etc`, `/opt`, the pinned runtime, and the current
+  workspace. Only that workspace/tmp is writable, plus `/dev/null` and optional
+  `/dev/tty`; zero/random/urandom are readable. Device-node creation is denied.
+  Only the initial child's `/proc/<pid>` is readable, not the host's or unrelated
+  processes' proc directories. Ordinary Unix file permissions still apply.
+
+Data/runtime layouts under a broadly readable tool tree are refused, as is a
+runtime that contains the data directory: an allow-list cannot promise to hide a
+subtree it also grants. Agent reads outside its workspace and the approved runtime
+and system trees are denied; this includes the host data directory, other run
+workspaces and personal dotfiles. The earlier single-friend recommendation is
+retired for supported, successfully confined hosts. Windows agents remain
+unsupported. Allowed system/tool trees may themselves contain readable
+configuration or identifying information. This is kernel policy, not a separate
+OS user or a guarantee against kernel/sandbox vulnerabilities.
+
+Full network egress is allowed, including local services; there is no destination
+filter or protection for data exposed by a reachable service. The native
+workspace-write/ask policy still governs tool requests inside the outer sandbox.
+An Allow answer cannot expand the outer read/write boundary. Ordinary workspace
+writes do not ask; 129's three tool-description strings remain unchanged.
+
+All model calls use the existing IPC adapter and the run's key at the Go gateway;
+no gateway bearer or external model credentials are inherited. When configured,
+the Exa key travels on an inherited pipe: the plugin reads and closes its descriptor
+before readiness and supplies it directly to the search provider. It is absent
+from the child's initial environment and is not written to plugin/config files.
+The key still exists in the harness's process memory; this is not a secret boundary
+against a compromised harness. A host-side search proxy is outside this slice.
 
 ## Verification
 
@@ -139,10 +157,9 @@ At the stop deadline the manager abandons its waiter and closes the joined
 notification. Go cannot kill a non-cooperative hook goroutine: that one goroutine
 remains until the hook returns; a late successful return performs recovery
 directly. There is no extra manager goroutine waiting indefinitely for it.
-Go cannot kill an arbitrary goroutine. The supervised adapter identifies a runtime
-generation: other sessions on that generation fail without replay, while a delayed
-stop for an older generation cannot kill its replacement. This is not per-session
-process isolation.
+Go cannot kill an arbitrary goroutine. The adapter identifies the runtime instance
+and generation owned by the run; a delayed stop cannot kill a later run's child.
+Each native run has its own process, while host scheduling remains Serial.
 
 `Work.Approval` persists a pending question and waits without reconstructing the
 consumer. `Manager.Answer` commits the identified answer once before waking it;
@@ -313,7 +330,7 @@ assertions: /tmp/infercat-157-v5-focused.log. Failed recovery is marked complete
 only after success and is retried on the next load. Needs-attention responses use
 503 upstream_down with Retry-After: 60 and direct the friend to the host.
 The agent route uses the landed Answer and generation-stop contracts. Runtime
-loss ends the active native session without replay; restart restores availability.
+loss ends the active native session without replay; a later run gets a fresh child.
 
 Detail and approval responses use a detached projection: run metadata, steps,
 approval, output descriptors, and attempt identity/settlement/meters. Bulk attempt

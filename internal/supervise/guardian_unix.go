@@ -38,6 +38,11 @@ func Guardian(argv []string, agent bool) int {
 	cmd.Stdin, cmd.Stdout, cmd.Stderr = os.Stdin, os.Stdout, os.Stderr
 	if agent {
 		cmd.ExtraFiles = []*os.File{health}
+		if os.Getenv("INFERCAT_EXA_FD") == "4" {
+			key := os.NewFile(5, "agent-search-key")
+			defer key.Close()
+			cmd.ExtraFiles = append(cmd.ExtraFiles, key)
+		}
 	} // Child fd 3 is health, never the lifetime pipe.
 	if err := cmd.Start(); err != nil {
 		return 1

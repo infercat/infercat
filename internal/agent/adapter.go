@@ -20,12 +20,17 @@ import (
 )
 
 type Adapter struct {
-	Runtime *Runtime
-	manager *runstate.Manager
-	keys    keys.Store
-	dir     string
-	mu      sync.Mutex
-	live    map[string]*session
+	runtime        *Runtime
+	ctx            context.Context
+	cancel         context.CancelFunc
+	status         RuntimeStatus
+	perRun, closed bool
+	workers        sync.WaitGroup
+	manager        *runstate.Manager
+	keys           keys.Store
+	dir            string
+	mu             sync.Mutex
+	live           map[string]*session
 }
 type frame struct {
 	Purpose string            `json:"purpose"`
@@ -43,6 +48,7 @@ type frame struct {
 	} `json:"frame"`
 }
 type session struct {
+	runtime    *Runtime
 	generation uint64
 	frames     chan json.RawMessage
 	lost       chan struct{}
@@ -52,49 +58,19 @@ type session struct {
 
 func StartAdapter(ctx context.Context, dir string, m *runstate.Manager, ks keys.Store) *Adapter {
 	a := &Adapter{manager: m, keys: ks, dir: dir, live: map[string]*session{}}
-	options, err := HarnessOptions(dir)
-	if err != nil {
-		a.Runtime = StartHarness(ctx, dir)
-	} else {
-		options.Frame = func(raw json.RawMessage) {
-			var f frame
-			if json.Unmarshal(raw, &f) != nil {
-				return
-			}
-			a.mu.Lock()
-			s := a.live[f.RunID]
-			a.mu.Unlock()
-			if s == nil {
-				return
-			}
-			if s.bytes.Add(int64(len(raw))) > MaxFrame {
-				s.once.Do(func() { close(s.lost) })
-				return
-			}
-			select {
-			case s.frames <- raw:
-			default:
-				s.once.Do(func() { close(s.lost) })
-			}
-		}
-		options.Exited = func() {
-			a.mu.Lock()
-			defer a.mu.Unlock()
-			for _, s := range a.live {
-				s.once.Do(func() { close(s.lost) })
-			}
-		}
-		a.Runtime = StartRuntime(ctx, options)
-	}
-	if err := m.Register("agent", m.Consumer(a.run), runstate.Policy{Serial: true, JoinCancel: true, ForceStop: a.stopRun, Validate: ValidateInput, Admission: func(_ context.Context, key string) (runstate.BatchAdmission, error) {
-		if a.Runtime.Status().State != "healthy" {
-			return runstate.BatchAdmission{}, runstate.ErrAgentUnavailable
-		}
-		_, err := workspaceFor(dir, key)
+	a.ctx, a.cancel = context.WithCancel(ctx)
+	a.perRun = true
+	a.status = RuntimeStatus{State: "starting"}
+	a.workers.Add(1)
+	go func() { defer a.workers.Done(); _ = a.availability(a.ctx) }()
+	if err := m.Register("agent", m.Consumer(a.run), runstate.Policy{Serial: true, JoinCancel: true, ForceStop: a.stopRun, Validate: ValidateInput, Admission: func(ctx context.Context, key string) (runstate.BatchAdmission, error) {
+		err := a.availability(ctx)
 		return runstate.BatchAdmission{QueueLimit: runstate.MaxLiveKey}, err
 	}}); err != nil {
-		a.Runtime.Close()
-		a.Runtime.set("failed", "agent registration failed", 0)
+		a.Close()
+		a.mu.Lock()
+		a.status = RuntimeStatus{State: "failed", LastError: "agent registration failed"}
+		a.mu.Unlock()
 	}
 	return a
 }
@@ -103,7 +79,7 @@ func (a *Adapter) stopRun(id string) error {
 	s := a.live[id]
 	a.mu.Unlock()
 	if s != nil {
-		return a.Runtime.StopGeneration(s.generation)
+		return s.runtime.StopGeneration(s.generation)
 	}
 	return nil
 }
@@ -126,13 +102,6 @@ func workspaceFor(dataDir, key string) (string, error) {
 		return "", runstate.ErrAgentUnavailable
 	}
 	return path, nil
-}
-func (a *Adapter) send(v any) error {
-	raw, e := json.Marshal(v)
-	if e != nil {
-		return e
-	}
-	return a.Runtime.Send(raw)
 }
 
 // Validate before creation: preserve supported input exactly, refuse unknown parts.
@@ -198,25 +167,29 @@ func ValidateInput(raw json.RawMessage) error {
 	return nil
 }
 
-func (a *Adapter) run(ctx context.Context, w *runstate.Work) (json.RawMessage, error) {
-	for a.Runtime.Status().State != "healthy" {
-		select {
-		case <-ctx.Done():
-			return nil, ctx.Err()
-		case <-time.After(20 * time.Millisecond):
-		}
-	}
-	workspace, err := workspaceFor(a.dir, w.Run.KeyID)
+func (a *Adapter) run(ctx context.Context, w *runstate.Work) (out json.RawMessage, err error) {
+	runtime, workspace, cleanup, err := a.runtimeForRun(ctx, w.Run.KeyID)
+	defer func() { cleanup(err) }()
 	if err != nil {
-		return nil, runstate.Failure("workspace_unavailable")
+		return nil, err
 	}
-	s := &session{generation: a.Runtime.Generation(), frames: make(chan json.RawMessage, 256), lost: make(chan struct{})}
+	if err = waitChild(ctx, runtime); err != nil {
+		return nil, err
+	}
+	send := func(v any) error {
+		raw, e := json.Marshal(v)
+		if e != nil {
+			return e
+		}
+		return runtime.Send(raw)
+	}
+	s := &session{runtime: runtime, generation: runtime.Generation(), frames: make(chan json.RawMessage, 256), lost: make(chan struct{})}
 	a.mu.Lock()
 	a.live[w.Run.ID] = s
 	a.mu.Unlock()
 	defer func() { a.mu.Lock(); delete(a.live, w.Run.ID); a.mu.Unlock() }()
 	start, _ := json.Marshal(map[string]any{"type": "start", "id": w.Run.ID, "cwd": workspace, "input": w.Run.Input})
-	if err := a.Runtime.SendGeneration(s.generation, start); err != nil {
+	if err := runtime.SendGeneration(s.generation, start); err != nil {
 		return nil, runstate.Failure("runtime_lost")
 	}
 	var release func()
@@ -277,7 +250,7 @@ func (a *Adapter) run(ctx context.Context, w *runstate.Work) (json.RawMessage, e
 			if failure == nil {
 				failure = ctx.Err()
 			}
-			if err := a.send(map[string]any{"type": "cancel", "id": w.Run.ID}); err != nil {
+			if err := send(map[string]any{"type": "cancel", "id": w.Run.ID}); err != nil {
 				log.Printf("agent cancel lost for run %s: %v", w.Run.ID, err)
 				go a.stopRun(w.Run.ID)
 			}
@@ -292,7 +265,7 @@ func (a *Adapter) run(ctx context.Context, w *runstate.Work) (json.RawMessage, e
 					failure = adapterCause(err)
 				}
 			}
-			if e := a.send(response); e != nil {
+			if e := send(response); e != nil {
 				return nil, runstate.Failure("runtime_lost")
 			}
 		case raw := <-s.frames:
@@ -312,7 +285,7 @@ func (a *Adapter) run(ctx context.Context, w *runstate.Work) (json.RawMessage, e
 							failure = adapterCause(e)
 						}
 					}
-					if e = a.send(response); e != nil {
+					if e = send(response); e != nil {
 						return nil, runstate.Failure("runtime_lost")
 					}
 				}
@@ -335,14 +308,14 @@ func (a *Adapter) run(ctx context.Context, w *runstate.Work) (json.RawMessage, e
 					if err != nil {
 						response["error"] = "cancelled settlement retention refused"
 					}
-					if e := a.send(response); e != nil {
+					if e := send(response); e != nil {
 						return nil, runstate.Failure("runtime_lost")
 					}
 					break
 				}
 				err = flush(f.Events, nil)
 				if err != nil {
-					_ = a.send(map[string]any{"type": "reply", "id": f.ID, "error": adapterCause(err).Error()})
+					_ = send(map[string]any{"type": "reply", "id": f.ID, "error": adapterCause(err).Error()})
 					break
 				}
 				for _, ev := range f.Events {
@@ -489,7 +462,7 @@ func (a *Adapter) run(ctx context.Context, w *runstate.Work) (json.RawMessage, e
 				if err != nil {
 					response["error"] = adapterCause(err).Error()
 				}
-				if e := a.send(response); e != nil {
+				if e := send(response); e != nil {
 					return nil, runstate.Failure("runtime_lost")
 				}
 			case "model":
@@ -504,7 +477,7 @@ func (a *Adapter) run(ctx context.Context, w *runstate.Work) (json.RawMessage, e
 				modelID = f.ID
 				modelActive = true
 				go func(id, purpose string, input json.RawMessage) {
-					_, e := w.Step(runstate.Step{RequireAgent: true, Purpose: purpose, Route: "/v1/chat/completions", Input: input, Observe: func(p []byte) error { return a.send(map[string]any{"type": "model_data", "id": id, "data": string(p)}) }})
+					_, e := w.Step(runstate.Step{RequireAgent: true, Purpose: purpose, Route: "/v1/chat/completions", Input: input, Observe: func(p []byte) error { return send(map[string]any{"type": "model_data", "id": id, "data": string(p)}) }})
 					modelDone <- e
 				}(f.ID, f.Purpose, f.Request)
 			case "stream":
@@ -533,13 +506,13 @@ func (a *Adapter) run(ctx context.Context, w *runstate.Work) (json.RawMessage, e
 					wait.Status = "failed"
 					wait.Result = "Unsupported native approval request"
 					_ = flush(nil, nil, wait)
-					_ = a.send(map[string]any{"type": "reply", "id": f.ID, "error": wait.Result})
+					_ = send(map[string]any{"type": "reply", "id": f.ID, "error": wait.Result})
 					err = runstate.Failure("approval_invalid")
 					break
 				}
 				wait.Text = request
 				if err = flush(nil, nil, wait); err != nil {
-					_ = a.send(map[string]any{"type": "reply", "id": f.ID, "error": "retention refused"})
+					_ = send(map[string]any{"type": "reply", "id": f.ID, "error": "retention refused"})
 					break
 				}
 				if release != nil {
@@ -562,7 +535,7 @@ func (a *Adapter) run(ctx context.Context, w *runstate.Work) (json.RawMessage, e
 				if e != nil {
 					response["error"] = "approval unavailable"
 				}
-				err = a.send(response)
+				err = send(response)
 			case "model_cancel":
 				w.Abort()
 			case "error":
