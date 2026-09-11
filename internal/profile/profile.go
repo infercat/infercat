@@ -1,4 +1,4 @@
-// Package profile describes pinned loadouts. Commands are data, never executed here.
+// Package profile describes and installs pinned loadouts. Custom files are compatibility-only.
 package profile
 
 import (
@@ -27,13 +27,14 @@ type Hardware struct {
 	MeasuredOn string `json:"measured_on"`
 }
 type Asset struct {
-	ID       string `json:"id"`
-	File     string `json:"file"`
-	Bytes    int64  `json:"bytes"`
-	SHA256   string `json:"sha256"`
-	URL      string `json:"url"`
-	License  string `json:"license"`
-	Revision string `json:"revision"`
+	Archive  *Archive `json:"archive,omitempty"`
+	ID       string   `json:"id"`
+	File     string   `json:"file"`
+	Bytes    int64    `json:"bytes"`
+	SHA256   string   `json:"sha256"`
+	URL      string   `json:"url"`
+	License  string   `json:"license"`
+	Revision string   `json:"revision"`
 }
 type Measurement struct {
 	Status               string  `json:"status"`
@@ -57,6 +58,7 @@ type Policy struct {
 	IdleSeconds int    `json:"idle_seconds"`
 }
 type Member struct {
+	Artifact    string            `json:"artifact,omitempty"`
 	ID          string            `json:"id"`
 	Class       string            `json:"class"`
 	Engine      string            `json:"engine"`
@@ -78,13 +80,19 @@ type Headroom struct {
 	Friends        int    `json:"friends"`
 	Draft          bool   `json:"draft"`
 }
+type Artifact struct {
+	Asset
+	Executable string `json:"executable,omitempty"`
+}
+
 type Profile struct {
-	Version  int      `json:"version"`
-	ID       string   `json:"id"`
-	Hardware Hardware `json:"hardware"`
-	Members  []Member `json:"members"`
-	Headroom Headroom `json:"headroom"`
-	Promise  string   `json:"promise"`
+	Artifacts []Artifact `json:"artifacts,omitempty"`
+	Version   int        `json:"version"`
+	ID        string     `json:"id"`
+	Hardware  Hardware   `json:"hardware"`
+	Members   []Member   `json:"members"`
+	Headroom  Headroom   `json:"headroom"`
+	Promise   string     `json:"promise"`
 }
 
 var idPattern = regexp.MustCompile(`^[a-z][a-z0-9-]{0,63}$`)
@@ -147,7 +155,7 @@ func unique(d *json.Decoder, depth int, parent string) error {
 				if !ok || seen[s] || !clean(s) {
 					return fmt.Errorf("duplicate or invalid key %v", k)
 				}
-				if parent != "env" && s != strings.ToLower(s) {
+				if parent != "env" && parent != "files" && parent != "paths" && parent != "artifacts" && s != strings.ToLower(s) {
 					return fmt.Errorf("profile fields are case sensitive: %s", s)
 				}
 				seen[s] = true
@@ -164,7 +172,7 @@ func unique(d *json.Decoder, depth int, parent string) error {
 }
 func (p Profile) Validate() error {
 	bad := func(s string) error { return fmt.Errorf("invalid profile: %s", s) }
-	if p.Version != 1 || !idPattern.MatchString(p.ID) || len(p.Members) == 0 || len(p.Members) > 16 || p.Promise == "" {
+	if len(p.Artifacts) > 16 || p.Version != 1 || !idPattern.MatchString(p.ID) || len(p.Members) == 0 || len(p.Members) > 16 || p.Promise == "" {
 		return bad("version, id, members or promise")
 	}
 	h := p.Hardware
@@ -174,11 +182,24 @@ func (p Profile) Validate() error {
 	if p.Headroom.OSBytes == 0 || p.Headroom.OSBytes >= h.RAMBytes || p.Headroom.KVBytesPerSlot == 0 || p.Headroom.Friends < 1 || p.Headroom.Friends > 64 || p.Headroom.KVBytesPerSlot > h.RAMBytes {
 		return bad("headroom")
 	}
+	artifacts := map[string]bool{}
+	for _, a := range p.Artifacts {
+		if err := validAsset(a.Asset); err != nil {
+			return err
+		}
+		if artifacts[a.ID] || a.Archive == nil || a.Executable != "" && (!filepath.IsLocal(a.Executable) || strings.Contains(a.Executable, "\\")) {
+			return bad("engine artifact")
+		}
+		artifacts[a.ID] = true
+	}
 	ids, ports := map[string]bool{}, map[int]bool{}
 	anchors := 0
 	for _, m := range p.Members {
 		if !idPattern.MatchString(m.ID) || ids[m.ID] || m.Port < 1 || m.Port > 65535 || ports[m.Port] || m.Concurrency < 1 || m.Concurrency > 64 || m.Context < 0 || m.Context > 1<<20 {
 			return bad("member identity or limits")
+		}
+		if m.Artifact != "" && !artifacts[m.Artifact] {
+			return bad("missing engine artifact")
 		}
 		ids[m.ID] = true
 		ports[m.Port] = true
@@ -216,9 +237,11 @@ func (p Profile) Validate() error {
 			}
 			assets := map[string]bool{}
 			for _, a := range model.Assets {
-				u, e := url.Parse(a.URL)
-				if !idPattern.MatchString(a.ID) || assets[a.ID] || a.File == "" || a.File == "." || a.File == ".." || filepath.Base(a.File) != a.File || strings.ContainsAny(a.File, "*?[]\\") || a.Bytes <= 0 || !hashPattern.MatchString(a.SHA256) || e != nil || u.Scheme != "https" || u.Host == "" || u.User != nil || a.License == "" || a.Revision == "" {
-					return bad("asset pin")
+				if assets[a.ID] {
+					return bad("duplicate asset")
+				}
+				if err := validAsset(a); err != nil {
+					return err
 				}
 				assets[a.ID] = true
 			}
@@ -232,4 +255,12 @@ func (p Profile) Validate() error {
 
 func clean(s string) bool {
 	return !strings.ContainsFunc(s, func(r rune) bool { return r < 32 || r == 127 })
+}
+
+func validAsset(a Asset) error {
+	u, e := url.Parse(a.URL)
+	if !idPattern.MatchString(a.ID) || a.File == "" || a.File == "." || a.File == ".." || filepath.Base(a.File) != a.File || strings.ContainsAny(a.File, "*?[]\\") || a.Bytes <= 0 || !hashPattern.MatchString(a.SHA256) || e != nil || u.Scheme != "https" || u.Host == "" || u.User != nil || a.License == "" || a.Revision == "" || a.Archive != nil && !validArchive(*a.Archive) {
+		return fmt.Errorf("invalid asset pin: %s", a.ID)
+	}
+	return nil
 }

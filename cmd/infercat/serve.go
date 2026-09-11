@@ -130,7 +130,8 @@ func (e *env) cmdServe(ctx context.Context, pre string, args []string) error {
 	pinned := splitModels(*models)
 	*upURL = forgetIfAuto(*upURL)
 	if err := saveConfig(dataDir, config{
-		Upstream: *upURL, UpstreamKey: *upKey, Slots: *slots, Models: strings.Join(pinned, ","),
+		ProfileInstall: cfg.ProfileInstall,
+		Upstream:       *upURL, UpstreamKey: *upKey, Slots: *slots, Models: strings.Join(pinned, ","),
 		UpstreamTranscribeModel: *transcribeModel, UpstreamSpeechModel: *speechModel,
 		UpstreamSpeechVoices: *speechVoices,
 		UpstreamImages:       *imageURL, UpstreamImagesKey: *imageKey, UpstreamImagesModel: *imageModel,

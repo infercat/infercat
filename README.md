@@ -147,7 +147,9 @@ xattr -d com.apple.quarantine ./infercat
 `infercat serve -h` says the same, with the data directory's files.
 </details>
 
-`infercat setup` checks a hardware profile against cached model pins and engines you have already started, then saves compatible upstream settings for `serve`. It never downloads or launches a member. Use `--profile apple-64g`, a repeatable `--model-path anchor=/path/to/model.gguf` (asset ids also work), or `--custom profile.json` for compatibility checking without a performance promise. Missing assets include their publisher URLs. The 16 GB anchor choice is pending, NVIDIA is unmeasured, and separate embeddings still need routing integration. The [native Kokoro helper](packaging/helpers/README.md) builds separately and streams WAV or PCM; automatic fetching and supervision are still pending. See the [profile schema](docs/ARCHITECTURE.md#loadout-profiles-and-setup).
+`infercat setup --profile apple-64g` reuses hash-matched cached models and downloads missing published engine/model pins into your data directory. It starts each owned member, checks its model identity (and one small prompt for the anchor), then stops it before saving compatible settings. Existing engines stay running. Use repeatable `--model-path anchor=/path/to/model.gguf` overrides (asset ids also work), or `--custom profile.json` for compatibility checks with no downloads or launches. Failed checks leave the previous host config intact.
+
+Setup does not keep engines running: start your engines before `infercat serve`; automatic supervision is not enabled yet. Members without a published engine build are reported as unavailable. The native ASR/speech builds await their separate release; the 16 GB anchor choice is pending, NVIDIA is unmeasured, and separate embeddings are checked but not yet routed. See the [profile schema](docs/ARCHITECTURE.md#loadout-profiles-and-setup) and [native Kokoro helper](packaging/helpers/README.md).
 
 ## Quickstart (friend)
 

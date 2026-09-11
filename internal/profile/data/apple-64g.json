@@ -84,7 +84,8 @@
         "kind": "resident",
         "idle_seconds": 0
       },
-      "unavailable": ""
+      "unavailable": "",
+      "artifact": "llama"
     },
     {
       "id": "asr",
@@ -204,7 +205,7 @@
         "kind": "cpu",
         "idle_seconds": 0
       },
-      "unavailable": "HTTP adapter pending"
+      "unavailable": "published helper release pending"
     },
     {
       "id": "embed",
@@ -267,7 +268,8 @@
         "kind": "on-demand",
         "idle_seconds": 600
       },
-      "unavailable": "separate embedding route pending"
+      "unavailable": "separate embedding route pending",
+      "artifact": "llama"
     },
     {
       "id": "image",
@@ -359,7 +361,8 @@
         "kind": "on-demand",
         "idle_seconds": 600
       },
-      "unavailable": ""
+      "unavailable": "",
+      "artifact": "sd"
     }
   ],
   "headroom": {
@@ -368,5 +371,51 @@
     "friends": 2,
     "draft": true
   },
-  "promise": "Draft policy: 6 GiB OS/app reserve, 512 MiB KV reservation per 16K slot, two concurrent text slots, 600s pool idle. Per-member and named-pair measurements only; no all-resident tier proof. Intended 27-32B Apple anchor is unmeasured. BGE-M3 is unmeasured. No fetching or supervision in setup."
+  "promise": "Draft policy: 6 GiB OS/app reserve, 512 MiB KV reservation per 16K slot, two concurrent text slots, 600s pool idle. Per-member and named-pair measurements only; no all-resident tier proof. Intended 27-32B Apple anchor is unmeasured. BGE-M3 is unmeasured. Setup fetches published pins and dry-checks owned engines; serve supervision follows separately. Speech/ASR await the published helper release.",
+  "artifacts": [
+    {
+      "id": "llama",
+      "file": "llama-b10809-bin-macos-arm64.tar.gz",
+      "bytes": 11123196,
+      "sha256": "7d692df9e1e386e62f1c12b843903218041e6cd74c9415aa39a7ed3176f9eaa2",
+      "url": "https://github.com/ggml-org/llama.cpp/releases/download/b10809/llama-b10809-bin-macos-arm64.tar.gz",
+      "license": "MIT",
+      "revision": "b10809",
+      "archive": {
+        "format": "tar.gz",
+        "strip": 1,
+        "bytes": 134217728
+      },
+      "executable": "llama-server"
+    },
+    {
+      "id": "sd",
+      "file": "sd-master-469fc49-bin-Darwin-macOS-26.6.2-arm64.zip",
+      "bytes": 50125324,
+      "sha256": "3e760ffba6a7e124fbe7b47f0288159ff91038eab8825fbdb79aa8fe69e7cafa",
+      "url": "https://github.com/leejet/stable-diffusion.cpp/releases/download/master-851-469fc49/sd-master-469fc49-bin-Darwin-macOS-26.6.2-arm64.zip",
+      "license": "MIT",
+      "revision": "master-851-469fc49",
+      "archive": {
+        "format": "zip",
+        "strip": 0,
+        "bytes": 536870912
+      },
+      "executable": "sd-server"
+    },
+    {
+      "id": "sherpa",
+      "file": "sherpa-onnx-v1.13.7-osx-arm64-shared.tar.bz2",
+      "bytes": 20262139,
+      "sha256": "c4789fc9d1d06c0c8095aaadba040f524db869c0f90ac40db93aa71bb4375996",
+      "url": "https://github.com/k2-fsa/sherpa-onnx/releases/download/v1.13.7/sherpa-onnx-v1.13.7-osx-arm64-shared.tar.bz2",
+      "license": "Apache-2.0; bundled espeak-ng GPLv3",
+      "revision": "v1.13.7",
+      "archive": {
+        "format": "tar.bz2",
+        "strip": 1,
+        "bytes": 268435456
+      }
+    }
+  ]
 }

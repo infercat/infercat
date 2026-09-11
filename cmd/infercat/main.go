@@ -23,6 +23,7 @@ import (
 	"github.com/infercat/infercat/internal/keys"
 	"github.com/infercat/infercat/internal/product"
 	runstate "github.com/infercat/infercat/internal/run"
+	"github.com/infercat/infercat/internal/supervise"
 	"github.com/infercat/infercat/internal/upstream"
 	"github.com/infercat/infercat/internal/usage"
 )
@@ -127,6 +128,9 @@ func isTerminal(f *os.File) bool {
 func run(ctx context.Context, args []string, out, errw io.Writer, in io.Reader, tty bool, plat platform) int {
 	if len(args) > 0 && args[0] == "_agent-guardian" {
 		return agent.Guardian(args[1:])
+	}
+	if len(args) > 0 && args[0] == "_profile-guardian" {
+		return supervise.Guardian(args[1:], false)
 	}
 	e := &env{out: out, errw: errw, in: in, plat: plat, tty: tty}
 	dataDir, rest, err := splitGlobal(args)

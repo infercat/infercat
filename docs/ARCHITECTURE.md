@@ -662,20 +662,22 @@ headroom reservations are explicitly draft, not measured performance guarantees.
 
 | Object | Fields and units |
 | --- | --- |
-| Profile | `version`, `id`, `hardware`, `members`, `headroom`, `promise` |
+| Profile | `version`, `id`, `hardware`, `members`, `artifacts`, `headroom`, `promise` |
 | Hardware | `os`, `arch`, `gpu` (metal/nvidia/cpu), `ram_bytes`, `vram_bytes`, `measured_on`; RAM/VRAM are compatibility minima |
-| Member | `id`, `class` (text/transcribe/speech/embed/image), `engine`, `engine_pin`, `model`, `command`, `env`, `port`, `context` tokens, `concurrency`, `policy`, `unavailable`; only a pending text anchor has `pending` and two `candidates` instead of a selected model |
+| Member | `id`, `class` (text/transcribe/speech/embed/image), `engine`, `engine_pin`, optional `artifact` id, `model`, `command`, `env`, `port`, `context` tokens, `concurrency`, `policy`, `unavailable`; only a pending text anchor has `pending` and two `candidates` instead of a selected model |
 | Model/candidate | `name` is the advertised API model id; `quantization`, `assets`, `extra_args`, `measurement` |
-| Asset | `id`, basename `file`, `bytes`, lowercase `sha256`, HTTPS publisher `url`, `license`, `revision`; support bundles are pinned assets too |
+| Asset | `id`, basename `file`, `bytes`, lowercase `sha256`, HTTPS publisher `url`, `license`, `revision`; support bundles are pinned assets too; optional `archive` describes extraction |
+| Archive/artifact | `archive.format` is tar.gz/tar.bz2/zip, `strip` is 0–4 leading components, `bytes` is the expanded ceiling (at most 8 GiB). Profile `artifacts` contain asset pins plus an optional relative `executable`; a member selects one by id |
 | Measurement | `status` (measured/unmeasured), `date`, `source`, `rss_bytes`, `tokens_per_second`, `mixed_tokens_per_second`, `ttft_ms`, `note`; notes identify the measured workload/pair, and unmeasured numeric fields stay zero |
 | Policy/headroom | `policy.kind` is resident/on-demand/cpu; only on-demand has positive `idle_seconds`. Headroom has `os_bytes`, `kv_bytes_per_slot`, `friends`, `draft`. The shipped draft reserves 6 GiB OS/app and 512 MiB per 16K text slot, two friends, 600-second pool idle |
 
 Parsing refuses unknown fields, duplicate keys, nulls, control characters, invalid
-pins/limits and unsupported versions. Files are capped at 256 KiB. Command/env
-strings are inert documentation: setup never expands or executes them. Their
-`{port}`, `{model}`, `{model_name}`, `{asset:ID}`, `{config}`, `{model_dir}` and CLI
-`{input}`/`{output}` placeholders describe later engine configuration and extracted
-support files. The native sherpa command is a CLI recipe, not an HTTP service.
+pins/limits and unsupported versions. Profile files are capped at 256 KiB and 16
+artifacts. Commands from custom files remain inert. Built-in managed commands expand
+`{port}`, `{model}`, `{model_name}`, `{asset:ID}`, `{config}`, `{model_dir}` and
+`{artifact:ID}` into argv/environment without a shell; unknown placeholders refuse.
+The executable comes only from the selected verified artifact. Audio.cpp receives a
+private generated Fun-ASR config; environment defaults are PATH and a member-local HOME.
 
 Setup reads RAM/GPU/VRAM/OS/architecture and free disk using bounded-time OS queries;
 unknown fields remain unknown, and NVIDIA VRAM is the largest single device rather
@@ -689,18 +691,46 @@ checked; neither filenames nor a running server attest loaded weight bytes.
 
 Only fixed loopback ports are probed, with no redirects/proxy credentials, a
 1 MiB response cap and a 15-second request timeout. `/v1/models` establishes health
-and advertised model identity; the text anchor must also generate content for one
-small prompt. Pending/absent anchors, failed checks, wrong explicit pins and
-conflicting existing upstream URLs/keys refuse without rewriting config. Missing
-optional members are reported with exact filenames/URLs and remain unstarted.
-Successful setup merges verified supported endpoints into the existing atomic
-0600 `config.json`, preserving unrelated settings. Embeddings still route through
-the text upstream; the separate BGE member is inventoried/probed but not wired.
-Native sherpa is marked `HTTP adapter pending`. No credentials are inferred.
+and advertised model identity. External engines are reused without lifecycle ownership;
+their active weights are not attested by health. Pending anchors and conflicting
+upstream settings refuse. Custom mode keeps the existing compatibility-only path.
 
-The next slice adds verified fetching/extraction and supervision through the
-existing guardian; engine policy remains responsible for loading/eviction. This
-slice neither enforces the draft idle policy nor creates a second scheduler.
+Built-in setup holds the data-directory lock, fetches missing assets and shows each
+model's licence names once per setup. Downloads use HTTPS, a one-hour request bound,
+exact pinned size, and SHA-256 before use. A partial file is resumed only with an
+exact matching Content-Range; a server ignoring Range restarts the partial. Short
+or cancelled transfers retain only a partial file. Oversize/hash mismatches never
+publish a usable download. Existing cached downloads are rehashed before reuse.
+
+Archives extract into fresh private trees. Paths cannot be absolute or traverse
+parents; duplicate entries, hardlinks and device entries refuse. Expanded bytes and
+100,000 entries bound each extraction. Symlinks publish last, then every resolved
+link is checked to stay inside the tree; failed extractions remove their partial tree.
+Completed downloads and extracted trees may remain after a later failure, but the
+active host configuration never points at a failed setup.
+
+`internal/supervise` shares the agent guardian's lifetime pipe, process-group cleanup
+and 1 MiB wrapping logs. Managed dry checks fail on an occupied port, wait at most
+two minutes for model readiness, then send the anchor prompt once. Engines without
+socket inheritance still perform their own bind after the port precheck. Each owned
+process stops before setup returns; descendants that escape its process group are
+outside this guardian's containment. Agent NDJSON and inherited-health semantics are
+unchanged. ASR/speech have no production helper artifact pin until the founder publishes
+that release. The generic fixture publisher proves the installation path meanwhile.
+
+A content-addressed `profiles/install-<sha256>.json` records the profile version/digest,
+canonical model/artifact paths, regular-file hashes and symlink targets, and external
+ownership. Its bounded strict reader rejects unknown/duplicate fields, malformed
+inventory, a missing anchor and a profile-digest mismatch. The record describes the
+verified installation; reading the record alone does not re-attest current disk bytes.
+Setup writes the manifest before atomically replacing 0600 `config.json` with its
+`profile_install` reference and verified supported endpoints, preserving unrelated
+settings. A manifest/config failure leaves the previous config intact; an unreferenced
+manifest/tree can remain for diagnosis. No credentials are inferred or embedded.
+
+Serve currently preserves the installation reference but does not start its members.
+The next slice adds lifecycle/on-demand supervision, dormant offers and the separate
+embedding destination. This slice does not enforce idle policy or add a scheduler.
 
 ### Native speech helper and helper artifacts
 
@@ -722,5 +752,5 @@ runs both relocated binaries. Our archives exclude sherpa/espeak-ng and model da
 the separately fetched sherpa libraries occupy `sherpa/lib` beside `bin`. Manifests
 record source revisions, binary hashes and the voice-list hash, with archive checksums
 alongside them.
-This extraction does not yet change setup, host supervision, or the profile's pending
-speech marker. Publication follows the founder's release decision.
+The helper production pin remains absent from setup until publication; no CI snapshot
+URL substitutes for it. Publication follows the founder's release decision.
