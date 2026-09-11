@@ -1,5 +1,8 @@
 // Approved landing spec, with PM copy rulings. HTML is authored here, never user input.
 export const en = {
+  app_run_diff_more: "{shown} of {total} lines · View full diff",
+  app_run_diff_counts: "{added} added · {removed} removed",
+  app_run_diff: "Write diff",
   app_job_daily_exhausted: "The host's images for today are used up. Try again tomorrow.",
   app_job_meter_uncapped: "{used} images today",
   app_privacy_images: "Pictures you ask for, and the words you asked with, stay on the host under your key for {days} days.",

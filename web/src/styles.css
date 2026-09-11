@@ -1270,3 +1270,14 @@ body { overscroll-behavior-y: none; }
 .output .spoken { margin: 0; }
 .sheet.harvest .empty-line { color: var(--muted); font-size: 13.5px; padding: 18px 0; margin: 0; }
 .app.zh :is(.conv.harvest .count, .sheet.harvest header .caption, .asking-head, .output .line, .output .waitline) { font-family: var(--mono-cjk); }
+
+/* Captured write diffs use the run's existing ink/mono register. */
+.row.run .run-diff, .row.run .run-diff-status { margin: 4px 0 8px 3.4rem; font: 12px var(--mono); }
+.row.run .run-diff { border: 1px solid var(--border); min-width: 0; }
+.row.run .run-diff header { display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 6px 8px; color: var(--muted); }
+.row.run .run-diff pre { margin: 0; padding: 6px 8px; font: inherit; white-space: pre-wrap; overflow-wrap: anywhere; }
+.row.run .run-diff .diff-line { display: block; }
+.row.run .run-diff .add { background: var(--surface); color: var(--text); }
+.row.run .run-diff .remove { color: var(--muted); }
+.row.run .run-diff > button { margin: 4px 8px 8px; text-align: left; }
+.app.zh .row.run .run-diff, .app.zh .row.run .run-diff-status { font-family: var(--mono-cjk); }

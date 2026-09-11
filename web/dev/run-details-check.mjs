@@ -1,0 +1,42 @@
+import { chromium } from 'playwright';
+import { createServer } from 'vite';
+import { readFileSync, mkdirSync } from 'node:fs';
+import assert from 'node:assert/strict';
+const fixture=JSON.parse(readFileSync(new URL('./testdata/run-details.json',import.meta.url),'utf8'));
+const out='/private/tmp/infercat-162-screens';mkdirSync(out,{recursive:true});
+const server=await createServer({server:{host:'127.0.0.1',port:0}});await server.listen();
+const base=`http://127.0.0.1:${server.httpServer.address().port}`,browser=await chromium.launch();let checks=0,shots=0;
+const ok=(value,label)=>{assert.ok(value,label);checks++;};
+const short='--- a/notes.md\n+++ b/notes.md\n@@ -1,2 +1,2 @@\n-The burst rule is unknown.\n+The burst rule permits twice the rate.\n It applies within ten seconds.\n';
+const long='--- a/notes.md\n+++ b/notes.md\n@@ -1,1 +1,20 @@\n-old note\n'+Array.from({length:20},(_,i)=>`+${i===0?'<script>alert(1)</script> ':''}Rule ${i+1}: keep the recorded burst limit. 规则已记录。`).join('\n')+'\n';
+try{for(const width of [390,1280])for(const lang of ['en','zh']){
+ const context=await browser.newContext({viewport:{width,height:width===390?844:900},locale:lang==='zh'?'zh-CN':'en-US',isMobile:width===390,hasTouch:width===390}),page=await context.newPage(),errors=[];
+ page.on('pageerror',e=>errors.push(e.message));
+ await page.addInitScript(language=>{window.localStorage.setItem('bn.language',JSON.stringify(language));Object.defineProperty(window.navigator,'clipboard',{value:{writeText:async text=>{window.__copied=text;}}});},lang);
+ const invite=`ic1.tcRUNproofaddressRUNproofaddress.${'D'.repeat(43)}`;
+ await page.goto(`${base}/?fake&agent&connectMs=20&runState=done&invite=${encodeURIComponent(invite)}&autoconnect`);
+ await page.locator('.composer textarea').waitFor();await page.waitForFunction(()=>!document.querySelector('.composer textarea').disabled);
+ await page.evaluate(async({short,long})=>{
+  window.__diffReads=0;window.__diffBodies={'diff-1':long,'diff-short':short};
+  const {TunnelTransport}=await import('/src/transport/index.ts'),original=TunnelTransport.prototype.fetch;
+  TunnelTransport.prototype.fetch=function(path,init){if(path.startsWith('/v1/runs/r-1/outputs/diff-')){window.__diffReads++;if(path.endsWith('diff-late'))return new Promise(resolve=>{window.__releaseDiff=()=>resolve(new window.Response('OBSOLETE'));});return Promise.resolve(new window.Response(window.__diffBodies[path.split('/').at(-1)],{headers:{'Content-Type':'text/x-diff'}}));}return original.call(this,path,init);};
+ },{short,long});
+ await page.locator('.composer textarea').fill('Record the burst rule in notes.md.');await page.locator('.composer .primary').click();await page.locator('.row.run').waitFor();await page.waitForFunction(()=>!!window.__fakeRuns?.get('r-1'));
+ await page.evaluate(f=>{f.created=new Date(Date.now()-134000).toISOString();f.steps[0].at=new Date(Date.now()-129000).toISOString();window.__detailsFixture=f;window.__fakeRuns.updateRun('r-1',f);},fixture);
+ await page.waitForFunction(()=>document.querySelector('.row.run .meta')?.textContent.includes('25 tok/s'));
+ ok(await page.evaluate(()=>window.__diffReads===0),'collapsed details do not fetch diff');ok(await page.locator('.row.run .chip').count()===0,'diff is not an eager chip');
+ await page.locator('.row.run .steps summary').click();await page.locator('.run-diff').waitFor();
+ ok(await page.locator('.run-diff .diff-line').count()===12,'twelve preview rows');ok(await page.locator('.run-diff script').count()===0,'HTML stays text');ok(await page.evaluate(()=>window.__diffReads===1),'one scoped fetch');
+ await page.locator('.run-diff header button').click();ok(await page.evaluate(text=>window.__copied===text,long),'Copy receives exact full diff');
+ await page.evaluate(()=>document.fonts.ready);await page.locator('.run-diff').scrollIntoViewIfNeeded();ok(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth),'no page overflow');await page.screenshot({path:`${out}/long-${width}-${lang}.png`});shots++;
+ await page.locator('.run-diff > button').click();await page.locator('.sheet.file').waitFor();ok(await page.locator('.sheet.file pre').textContent()===long,'sheet contains complete raw diff');await page.keyboard.press('Escape');
+ await page.evaluate(()=>{const f=window.structuredClone(window.__detailsFixture);f.steps[0].output_id='diff-short';f.outputs[0].id='diff-short';window.__fakeRuns.updateRun('r-1',f);});
+ await page.waitForFunction(()=>document.querySelector('.run-diff pre')?.textContent.includes('The burst rule permits'));
+ ok(await page.locator('.run-diff > button').count()===0,'short diff needs no expansion');await page.locator('.run-diff').scrollIntoViewIfNeeded();await page.screenshot({path:`${out}/short-${width}-${lang}.png`});shots++;
+ await page.evaluate(()=>{const f=window.structuredClone(window.__detailsFixture);f.steps[0].output_id='diff-late';f.outputs[0].id='diff-late';window.__fakeRuns.updateRun('r-1',f);});await page.waitForFunction(()=>!!window.__releaseDiff);
+ await page.evaluate(()=>{const f=window.structuredClone(window.__detailsFixture);f.steps[0].output_id='diff-short';f.outputs[0].id='diff-short';window.__fakeRuns.updateRun('r-1',f);});await page.waitForFunction(()=>document.querySelector('.run-diff pre')?.textContent.includes('The burst rule permits'));
+ await page.evaluate(()=>window.__releaseDiff());ok(!(await page.locator('.row.run').innerText()).includes('OBSOLETE'),'late response fenced');
+ await page.evaluate(()=>{const f=window.structuredClone(window.__detailsFixture);delete f.outputs[0].kind;f.steps[0].output_id='diff-short';f.outputs[0].id='diff-short';window.__fakeRuns.updateRun('r-1',f);});await page.waitForFunction(()=>!document.querySelector('.run-diff'));ok(true,'no kind means no card');
+ await page.reload();await page.waitForFunction(()=>document.querySelector('.row.run .meta')?.textContent.includes('25 tok/s'));ok(true,'rate persists across reload');
+ ok(errors.length===0,errors.join('\n'));await context.close();
+}console.log(`${checks} checks passed / 0 failed; ${shots} captures; ${out}`);}finally{await browser.close();await server.close();}

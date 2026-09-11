@@ -72,7 +72,7 @@ export function runItem(record: RunRecord, id = record.id, keyId = record.key_id
     id: record.id, kind: record.kind, state: record.state, created: record.created, updated: record.updated, expires: record.expires,
     cancel_requested: record.cancel_requested, queue_position: record.queue_position, client_request_id: record.client_request_id, key_id: keyId, reason: record.reason, input: null,
     text: record.text, steps: record.steps, outputs: record.outputs, approval: record.approval,
-    attempts: (record.attempts ?? []).map((a) => ({ id: a.id, dispatched: a.dispatched, settled: a.settled, accounting_uncertain: a.accounting_uncertain, usage: { prompt_tokens: a.usage.prompt_tokens, completion_tokens: a.usage.completion_tokens } })),
+    attempts: (record.attempts ?? []).map((a) => ({ id: a.id, dispatched: a.dispatched, settled: a.settled, accounting_uncertain: a.accounting_uncertain, usage: { prompt_tokens: a.usage.prompt_tokens, completion_tokens: a.usage.completion_tokens, total_ms: a.usage.total_ms, ttft_ms: a.usage.ttft_ms } })),
   };
   return { kind: 'run', id, role: 'assistant', content: record.text ?? '', run: snapshot, keyId, clientRequestId: record.client_request_id };
 }

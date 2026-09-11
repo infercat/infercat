@@ -1,0 +1,11 @@
+{
+  "id": "r-1", "key_id": "k_fake", "kind": "agent", "state": "done",
+  "created": "2026-09-13T12:00:00Z", "updated": "2026-09-13T12:02:14Z", "expires": "2026-09-20T12:02:14Z", "cancel_requested": false, "input": null,
+  "text": "The burst rule is recorded in notes.md.",
+  "steps": [{"id":"write-1","type":"step","at":"2026-09-13T12:00:05Z","kind":"write","status":"done","name":"notes.md","tool":"write_file","result":"2 lines","output_id":"diff-1"}],
+  "outputs": [{"id":"diff-1","name":"notes.md.diff","kind":"diff","mime":"text/x-diff","size":256}],
+  "attempts": [
+    {"id":"model-1","dispatched":true,"settled":true,"accounting_uncertain":false,"usage":{"prompt_tokens":500,"completion_tokens":100,"total_ms":3000,"ttft_ms":1000}},
+    {"id":"model-2","dispatched":true,"settled":true,"accounting_uncertain":false,"usage":{"prompt_tokens":600,"completion_tokens":150,"total_ms":10000,"ttft_ms":2000}}
+  ]
+}
