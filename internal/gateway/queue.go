@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-// slotQueue is one destination's queue in front of its engine (DESIGN §1.5): a FIFO whose capacity is the
+// slotQueue is one destination's queue in front of its engine (docs/archive/DESIGN.md §1.5): a FIFO whose capacity is the
 // engine's slot count read at decision time, never pushed. A released slot goes to the oldest
 // waiter; at most max(2, 2×cap) requests wait at once (006 promise 10) and one more is refused on
 // the spot, so a burst degrades to fast 503s with Retry-After rather than a growing set of parked
@@ -71,7 +71,7 @@ func (s *slotQueue) acquire(ctx context.Context, wait, every time.Duration, queu
 // there; otherwise why the wait ended — the timeout, the friend's context, or a keepalive write
 // that failed. A hand-over and a departure can become ready in the same instant, and Go's select
 // picks between ready cases at random: the departure wins, always, so a slot is never spent on a
-// request that has already gone (021; DESIGN §1.4 charges a Cut its whole reservation, which is the
+// request that has already gone (021; docs/archive/DESIGN.md §1.4 charges a Cut its whole reservation, which is the
 // wrong answer for a friend who left while queued).
 func (s *slotQueue) wait(ctx context.Context, w *waiter, wait, every time.Duration, queued func() error) *gwError {
 	var tick <-chan time.Time

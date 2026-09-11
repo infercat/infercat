@@ -1,6 +1,5 @@
 # 161: per-run read sandbox verification
 
-Review candidate; Linux runtime verification remains pending before landing.
 
 The same per-run launcher owns preflight, the child, its private workspace/tmp,
 and final cleanup. The inherited native SandboxProvider is materialized only

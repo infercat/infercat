@@ -39,7 +39,7 @@ func (e endpoint) countsAgainstRPM() bool {
 	return class != "" || e == "/v1/runs" || e == "/v1/images/jobs" || strings.HasPrefix(string(e), "/v1/images/outputs/") || strings.HasPrefix(string(e), "/v1/runs/")
 }
 
-// outcome is how a request ended, set by the stage that ended it (DESIGN §1.4). finish reads it
+// outcome is how a request ended, set by the stage that ended it (docs/archive/DESIGN.md §1.4). finish reads it
 // through the settle table: it alone decides what the request counted and what it is charged.
 type outcome uint8
 
@@ -52,7 +52,7 @@ const (
 	outcomeCut                      // the engine was asked (2xx started or not), then: client stopped reading, client gone, engine idle/error mid-stream
 )
 
-// normalized is what normalize returns (DESIGN §1.7): the friend's JSON as the engine will see it,
+// normalized is what normalize returns (docs/archive/DESIGN.md §1.7): the friend's JSON as the engine will see it,
 // plus the facts the later stages read instead of re-inspecting the map.
 type normalized struct {
 	body     map[string]any
@@ -285,7 +285,7 @@ func (q *request) readBody() *gwError {
 	return nil
 }
 
-// normalize is the one place the friend's JSON becomes the engine's (DESIGN §1.7): the function
+// normalize is the one place the friend's JSON becomes the engine's (docs/archive/DESIGN.md §1.7): the function
 // returns a value; the stage puts it on the record and the event. Shrink-to-fit (005) needs the
 // token count and so runs in checkBudgets.
 func (q *request) normalize() *gwError {
@@ -324,7 +324,7 @@ func (q *request) count() *gwError {
 
 // checkBudgets: the prompt must fit the effective context (max_tokens shrinks to what remains: 005),
 // then the request's worst case — prompt + max_tokens — must fit TPM and the daily budget the same
-// way (DESIGN §1.4: max_tokens shrinks to what the window has left, floor 16, else 429 with the
+// way (docs/archive/DESIGN.md §1.4: max_tokens shrinks to what the window has left, floor 16, else 429 with the
 // numbers), and exactly that worst case is reserved so concurrent requests from one key see each
 // other; finish settles the reservation to what the request cost. A chat with no cap anywhere is
 // unbounded, so a ceiling that is set becomes its cap.
@@ -346,7 +346,7 @@ func (q *request) checkBudgets() *gwError {
 	return nil
 }
 
-// acquireSlot joins the destination queue (DESIGN §1.5). Refused on the spot is a rejection (no place
+// acquireSlot joins the destination queue (docs/archive/DESIGN.md §1.5). Refused on the spot is a rejection (no place
 // was held); a place held and lost is QueueLost — the settle table counts the timeout, not the
 // friend leaving. A streaming request that has to wait says so to the friend while it does (018).
 func (q *request) acquireSlot() *gwError {
@@ -398,7 +398,7 @@ func (q *request) streamHead() {
 	q.writeHeader(http.StatusOK)
 }
 
-// callUpstream sends the normalized body through the engine seam (DESIGN §3.4: the engine adds
+// callUpstream sends the normalized body through the engine seam (docs/archive/DESIGN.md §3.4: the engine adds
 // its bearer, refuses redirects — promise 6 — and bounds its own first byte, §1.6). A 2xx puts the
 // response on the record; anything else is the engine's outcome — unless the friend left while
 // the engine was working for them, which is Cut.
@@ -411,7 +411,7 @@ func (q *request) callUpstream() *gwError {
 	q.cancelUpstream = cancel
 	// A friend who leaves before the engine was sent anything has no work to charge for: that is
 	// the QueueLost row — uncounted, charged 0 — not Cut (021 ruling). One who leaves while the
-	// engine is answering stays Cut, DESIGN §1.4's "the engine did the work". A cancelled Do reports
+	// engine is answering stays Cut, docs/archive/DESIGN.md §1.4's "the engine did the work". A cancelled Do reports
 	// the same error either way, so the trace is what tells them apart; it rides the context the
 	// engine seam already hands its transport, so §3.4 does not move. A write still in flight when
 	// Do returns reads as not-sent, which errs towards the friend.
@@ -439,7 +439,7 @@ func (q *request) callUpstream() *gwError {
 	return nil
 }
 
-// relay pipes the engine's response to the friend under the engine idle deadline (DESIGN §1.6: a
+// relay pipes the engine's response to the friend under the engine idle deadline (docs/archive/DESIGN.md §1.6: a
 // timer that cancels the upstream, re-armed by every read) and the per-line client write deadline.
 // The pipes set the outcome when either party stops; reaching the end is Served.
 func (q *request) relay() *gwError {
@@ -536,7 +536,7 @@ func (q *request) finish() {
 	}
 }
 
-// settleRow is the settle table (DESIGN §1.4), read by finish: whether the request counted against
+// settleRow is the settle table (docs/archive/DESIGN.md §1.4), read by finish: whether the request counted against
 // RPM and what it is charged against TPM and the daily budget.
 //
 //	Any /v1/models call               not counted; 0 (RPM is the message allowance — 014 promise 5)

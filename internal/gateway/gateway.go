@@ -25,7 +25,7 @@ import (
 )
 
 // Config is everything the gateway needs beyond its collaborators. The queue's capacity is not
-// here: it is the engine's slot count, read live (DESIGN §1.5). Deadlines and the body cap are
+// here: it is the engine's slot count, read live (docs/archive/DESIGN.md §1.5). Deadlines and the body cap are
 // constants (§1.6), each bounding one party's failure.
 type Config struct {
 	Search *Search
@@ -52,7 +52,7 @@ const (
 	retryAfterUpstreamDown = 10 // seconds; matches the CLI's 10 s upstream health poll
 	retryAfterQueueTimeout = 5  // seconds; the friend already waited the queue timeout
 
-	// DESIGN §1.6: one owner each, no general "request timeout".
+	// docs/archive/DESIGN.md §1.6: one owner each, no general "request timeout".
 	defaultQueueTimeout = 30 * time.Second // an engine that is full: wait for a slot, then 503 queue_timeout
 	defaultReadTimeout  = 30 * time.Second // a client that stalls its body: from handler entry to body in hand
 	defaultWriteTimeout = 60 * time.Second // a client that stops reading: any single write or flush
@@ -61,7 +61,7 @@ const (
 	defaultQueuedEvery  = 5 * time.Second  // a streaming request waiting for a slot says `: queued` this often (018)
 	maxEndpointLen      = 64               // usage.Event.Endpoint is the request path: bounded (006 promise 7)
 	// The engine's first byte (an engine that accepted a request but does not start) is the
-	// engine's own deadline, upstream.FirstByteTimeout, behind Engine.Do (DESIGN §3.4).
+	// engine's own deadline, upstream.FirstByteTimeout, behind Engine.Do (docs/archive/DESIGN.md §3.4).
 )
 
 // Gateway serves the API on any number of listeners (the tunnel, and loopback in dev mode) and
@@ -128,7 +128,7 @@ func New(cfg Config, up upstream.Engine, store keys.Store, rec usage.Recorder, l
 }
 
 // seedCounters gives the limiter today's history before anything is served: one Aggregate over
-// usage.jsonl since UTC midnight (DESIGN §4 item 5), no new file and no second lane of truth.
+// usage.jsonl since UTC midnight (docs/archive/DESIGN.md §4 item 5), no new file and no second lane of truth.
 // History that cannot be read is logged and skipped — a host must still start, and the only cost
 // is the pre-restart limitation, counters from zero.
 func (g *Gateway) seedCounters() {

@@ -11,7 +11,7 @@ import (
 
 // Per-key limits live entirely in memory. The sliding minute is genuinely empty after a restart —
 // RPM and TPM are questions about right now — but the day is not: `today` and `lastSeen` are seeded
-// from usage.jsonl at start (seedToday, DESIGN §4 item 5), so a restart no longer hands every friend
+// from usage.jsonl at start (seedToday, docs/archive/DESIGN.md §4 item 5), so a restart no longer hands every friend
 // a fresh daily budget or snaps their usage meter to zero mid-conversation.
 //
 // RPM and TPM share one mechanism: a sliding 60 s log of admissions and token charges per key.
@@ -21,7 +21,7 @@ import (
 //     as rpm_used — the friend's usage bar and the limiter never disagree.
 //   - TPM = prompt+completion tokens charged in the last 60 s, from real usage reported by the upstream,
 //     plus the worst case (prompt + max_tokens) reserved by requests still in flight, settled to the
-//     charge when they end (DESIGN §1.4). So Σ reservations + Σ charges never exceeds TPM: the limit
+//     charge when they end (docs/archive/DESIGN.md §1.4). So Σ reservations + Σ charges never exceeds TPM: the limit
 //     is a ceiling for tokens, not for prompts.
 // What a request counts and what it is charged is decided in one place, the settle table
 // (request.settleRow): an admission that did not count is removed from the log by its own seq, so a
@@ -229,7 +229,7 @@ func (l *limiter) admitResource(id string, lim keys.Limits, detached bool) (*adm
 // minOutputTokens is the floor when max_tokens is shrunk to fit the context or a token budget.
 const minOutputTokens = 16
 
-// fitBudget is the shrink-to-fit rule (DESIGN §1.4) against one ceiling: the request's worst case,
+// fitBudget is the shrink-to-fit rule (docs/archive/DESIGN.md §1.4) against one ceiling: the request's worst case,
 // prompt + out, must fit in what the ceiling has left; when it does not, out shrinks to the room
 // left when that is at least minOutputTokens — the rule context already applies — else the request
 // does not fit. out < 0 is an unbounded output (a chat with no cap anywhere): the ceiling becomes
@@ -310,7 +310,7 @@ func (l *limiter) reserve(a *admission, lim keys.Limits, prompt, out int) (int, 
 	return out, nil
 }
 
-// settle ends an admission exactly once, as the settle table decided (DESIGN §1.4): frees the
+// settle ends an admission exactly once, as the settle table decided (docs/archive/DESIGN.md §1.4): frees the
 // per-key slot, drops the reservation, removes the admission's own RPM entry when the request did
 // not count, and charges what the request cost against the window and the day. Nothing is
 // clamped at zero on purpose: a second settle would show up as a negative counter (I1).

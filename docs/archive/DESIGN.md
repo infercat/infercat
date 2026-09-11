@@ -1,3 +1,5 @@
+Archived 2026-09-14; superseded by ARCHITECTURE.md; kept as the decision record
+
 # DESIGN — architecture review and debt inventory after demo-1 (ticket 008)
 
 Base: `main` at `5456e59` (= `ed3033f`, where 006 landed, plus a HANDOFF-only commit). 001–006 are

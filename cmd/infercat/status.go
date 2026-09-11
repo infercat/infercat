@@ -354,7 +354,7 @@ func writeBridge(w io.Writer, st admin.Status) {
 }
 
 // healthWord and kindWord are the engine state as the host reads it, on the banner and in
-// `status` (DESIGN §3.2): an engine nobody has met is not called by a guessed name, and one that
+// `status` (docs/archive/DESIGN.md §3.2): an engine nobody has met is not called by a guessed name, and one that
 // stopped answering says since when.
 func healthWord(ok bool, since time.Time) string {
 	if ok {

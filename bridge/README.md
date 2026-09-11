@@ -168,7 +168,7 @@ usage provenance, framing at the cap, coalescing/backpressure, reload/reconnect/
 persistence and CLI control. V2 fixtures additionally cover client disconnect mid-stream, a stalled
 response consumer, queued abort, host ack-timeout cancellation, real gateway upstream cancellation,
 and upload completion/timeout before admission. The v1 real-preview evidence is retained in
-[the verification record](../docs/BRIDGE-072-VERIFICATION.md); v2's focused adversarial review remains
+[the verification record](../docs/spikes/BRIDGE-072-VERIFICATION.md); v2's focused adversarial review remains
 a gate. The verification record also labels the later, bounded v2 preview checks separately from
 v3's local concurrency-budget fixtures. The v3 fixtures check four simultaneous readers,
 16 MiB reserved capacity, immediate excess refusal, and release on every exit path.

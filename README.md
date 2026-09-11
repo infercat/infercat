@@ -204,7 +204,6 @@ Manage friends: `keys list` · `keys pause alice` (403 until `keys resume`) · `
 ## Status: beta
 
 The core works and is measured (`docs/MEASURE.md`: ~160 tokens/s through the relay, first token in 110–160 ms in the browser). Known limitations, honestly: browser traffic is always relayed; the macOS binaries are unsigned (see above); one host, one engine; the default public relay is rate-limited and revocable, so anything beyond a demo wants a self-hosted one. Load limits by layer are being measured in `docs/MEASURE.md` and stated in plain words in `docs/LIMITS.md`.
-<!-- TODO(028): link docs/LIMITS.md when it lands -->
 
 ## Quickstart (friend with an app)
 
