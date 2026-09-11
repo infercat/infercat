@@ -143,7 +143,7 @@ func (g *Gateway) executeChat(ctx context.Context, w *runstate.Work, input chatR
 			return nil, err
 		}
 		reply := &hostToolReply{}
-		result, err := w.Step(runstate.Step{Route: string(chatEndpoint), Input: raw, Observe: func(b []byte) error {
+		result, err := w.Step(runstate.Step{Purpose: "chat", Route: string(chatEndpoint), Input: raw, Observe: func(b []byte) error {
 			return reply.consume(b, func(delta chatDelta) error {
 				select {
 				case <-ctx.Done():
@@ -353,7 +353,9 @@ func (q *request) followChat(id string, d *chatDelivery) {
 				}
 				if r.State == runstate.Done || r.State == runstate.Failed || r.State == runstate.Cancelled {
 					if r.State != runstate.Done || d.err != nil {
-						q.fail(errf(CodeUpstreamError, 0, "host-tool chat ended: %s", r.Reason))
+						inner := errf(CodeUpstreamError, 0, "host-tool chat ended: %s", r.Reason)
+						_ = errors.As(d.err, &inner)
+						q.fail(inner)
 						return
 					}
 					if stream {

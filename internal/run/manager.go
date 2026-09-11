@@ -333,7 +333,12 @@ func (m *Manager) drive(ctx context.Context, r Run) {
 	for ctx.Err() == nil {
 		d, err := m.Kinds[r.Kind](ctx, r)
 		if err != nil {
-			m.finish(r.KeyID, r.ID, Failed, failureReason(err), nil)
+			reason := failureReason(err)
+			var detail interface{ RunReason() string }
+			if r.Kind == "chat" && errors.As(err, &detail) {
+				reason = detail.RunReason()
+			}
+			m.finish(r.KeyID, r.ID, Failed, reason, nil)
 			return
 		}
 		if d.Step == nil {

@@ -47,6 +47,9 @@ func (g *Gateway) ExecuteStep(ctx context.Context, keyID string, step runstate.S
 			err = errors.New("run step pipeline failed")
 		}
 		q.finish()
+		if step.Purpose == "chat" && q.innerError != nil {
+			err = q.innerError
+		}
 		result.Usage = q.ev
 		result.Settled = true
 		result.Dispatched = q.dispatched.Load() || q.resp != nil

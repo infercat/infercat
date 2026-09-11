@@ -72,6 +72,8 @@ type normalized struct {
 // rejection, client abort, timeout, and panic all leave through it; no stage releases anything
 // itself (ticket 006 design ruling).
 type request struct {
+	innerError *gwError
+
 	readRelease func()
 
 	continueChat   func()
@@ -567,6 +569,7 @@ func (q *request) settleRow() (counted bool, charged int) {
 // fail writes e as the response: a full error response if nothing was written yet, an SSE error
 // event if a stream is under way, or nothing if the friend has already gone (recorded as 499).
 func (q *request) fail(e *gwError) {
+	q.innerError = e
 	if q.image != nil {
 		if q.r.Context().Err() != nil && !q.dispatched.Load() {
 			q.ev.Status, q.ev.Code = 503, "interrupted" // Run reason, never an HTTP response.

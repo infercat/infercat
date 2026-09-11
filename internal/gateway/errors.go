@@ -80,6 +80,10 @@ type gwError struct {
 	Limit, InFlight int // per-key concurrency snapshot; absent for other errors
 }
 
+func (e *gwError) RunReason() string {
+	return fmt.Sprintf("%s retry_after=%d", e.Code, e.RetryAfter)
+}
+
 func (e *gwError) Error() string { return string(e.Code) + ": " + e.Message }
 
 func (e *gwError) Status() int {
