@@ -292,6 +292,7 @@ func TestPrepareOwnedEngineStopsAndPendingRefuses(t *testing.T) {
 func TestInstallationStrictRecord(t *testing.T) {
 	p := fixture(t)
 	in := Installation{Version: 1, Profile: p.ID, Digest: profileDigest(p), Members: []InstalledMember{{ID: "anchor", External: true, Paths: map[string]string{}}}, Artifacts: map[string]string{}, Files: map[string]string{}, Links: map[string]string{}}
+	in.Links["/Users/Example/profile/libggml-base.0.dylib"] = "libggml-base.dylib"
 	dir := t.TempDir()
 	name, e := SaveInstallation(dir, in)
 	if e != nil {
@@ -309,6 +310,27 @@ func TestInstallationStrictRecord(t *testing.T) {
 	os.WriteFile(filepath.Join(dir, name), b, 0600)
 	if _, e = LoadInstallation(dir, name); e == nil {
 		t.Fatal("content hash ignored")
+	}
+}
+
+func TestInstallationRejectsWrongCaseField(t *testing.T) {
+	p := fixture(t)
+	in := Installation{Version: 1, Profile: p.ID, Digest: profileDigest(p), Members: []InstalledMember{{ID: "anchor", External: true, Paths: map[string]string{}}}, Artifacts: map[string]string{}, Files: map[string]string{}, Links: map[string]string{}}
+	b, err := json.Marshal(in)
+	if err != nil {
+		t.Fatal(err)
+	}
+	b = bytes.Replace(b, []byte(`"links"`), []byte(`"Links"`), 1)
+	dir := t.TempDir()
+	if err := os.Mkdir(filepath.Join(dir, "profiles"), 0700); err != nil {
+		t.Fatal(err)
+	}
+	name := filepath.Join("profiles", fmt.Sprintf("install-%x.json", sha256.Sum256(b)))
+	if err := os.WriteFile(filepath.Join(dir, name), b, 0600); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := LoadInstallation(dir, name); err == nil || !strings.Contains(err.Error(), "case sensitive: Links") {
+		t.Fatalf("wrong-case field was not refused: %v", err)
 	}
 }
 

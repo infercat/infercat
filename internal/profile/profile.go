@@ -155,7 +155,7 @@ func unique(d *json.Decoder, depth int, parent string) error {
 				if !ok || seen[s] || !clean(s) {
 					return fmt.Errorf("duplicate or invalid key %v", k)
 				}
-				if parent != "env" && parent != "files" && parent != "paths" && parent != "artifacts" && s != strings.ToLower(s) {
+				if parent != "env" && parent != "files" && parent != "paths" && parent != "artifacts" && parent != "links" && s != strings.ToLower(s) {
 					return fmt.Errorf("profile fields are case sensitive: %s", s)
 				}
 				seen[s] = true
