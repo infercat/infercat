@@ -103,32 +103,11 @@ func (q *request) imageJobs() ([]imageJob, error) {
 	if e != nil {
 		return nil, e
 	}
-	positions := map[string]int{}
-	all, e := q.g.runs.Store.List("")
-	if e != nil {
-		return nil, e
+	ids := make([]string, len(rows))
+	for i, row := range rows {
+		ids[i] = row.ID
 	}
-	var queued []runstate.Run
-	for _, v := range all {
-		if v.Kind == "image" && v.State == runstate.Queued {
-			if r, e := q.g.runs.Store.Get(v.KeyID, v.ID); e == nil {
-				queued = append(queued, r)
-			}
-		}
-	}
-	sort.Slice(queued, func(i, j int) bool {
-		a, b := queued[i], queued[j]
-		if a.Priority != b.Priority {
-			return a.Priority == "interactive"
-		}
-		if a.Created.Equal(b.Created) {
-			return a.ID < b.ID
-		}
-		return a.Created.Before(b.Created)
-	})
-	for i, r := range queued {
-		positions[r.ID] = i + 1
-	}
+	positions := q.g.runs.Positions("image", ids...)
 	out := []imageJob{}
 	for _, v := range rows {
 		if v.Kind != "image" {

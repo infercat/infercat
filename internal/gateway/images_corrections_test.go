@@ -277,15 +277,24 @@ func TestImageUnlimitedEffectiveValues(t *testing.T) {
 func TestImageListAtRetainedBound(t *testing.T) {
 	h := imagesHarness(t, func(http.ResponseWriter, *http.Request) {})
 	h.setKey(func(k *keys.Key) { k.Limits.RPM = 100 })
-	for i := 0; i < 98; i++ {
+	for i := 0; i < 90; i++ {
 		r, e := h.gw.runs.Store.Create(h.key.ID, "image", "interactive", imageInputForTest(strings.Repeat("p", 100)))
 		if e != nil {
 			t.Fatal(e)
 		}
-		if i < 90 {
-			if _, e = h.gw.runs.Cancel(h.key.ID, r.ID); e != nil {
-				t.Fatal(e)
-			}
+		if _, e = h.gw.runs.Cancel(h.key.ID, r.ID); e != nil {
+			t.Fatal(e)
+		}
+	}
+	queue := &h.gw.router.route(string(imagesEndpoint)).Queue
+	if _, err := queue.acquire(context.Background(), time.Second, time.Second, nil); err != nil {
+		t.Fatal(err)
+	}
+	defer queue.release()
+	defer h.gw.runs.Close()
+	for range 8 {
+		if _, err := h.gw.runs.Submit(h.key.ID, "image", "interactive", imageInputForTest(strings.Repeat("p", 100))); err != nil {
+			t.Fatal(err)
 		}
 	}
 	start := time.Now()

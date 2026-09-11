@@ -642,8 +642,7 @@ precede any host-wide walk. Output GETs are RPM-exempt; list/per-run reads/cance
 and output DELETE spend RPM,
 without taking text/audio MaxConcurrent slots; missing run reads/cancels refund
 RPM. Output GETs hold a dedicated per-key read slot through delivery: 4 concurrent,
-then 429 with Retry-After 1. List positions use one snapshot;
-per-run positions use the scheduler's cached snapshot. Artifact reads release the
+then 429 with Retry-After 1. List and per-run positions use the scheduler's cached snapshot, including while quarantined. Artifact reads release the
 store mutex before reading bytes. Clients coalesce
 refreshes and respect 429. The 256 MiB image budget counts retained, servable bytes;
 unlinkable stale files are logged and retried, never marking a key broken. Status

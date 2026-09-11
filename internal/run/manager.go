@@ -183,6 +183,15 @@ func (m *Manager) Position(kind, rid string) int {
 	defer m.mu.Unlock()
 	return m.positions[kind][rid]
 }
+func (m *Manager) Positions(kind string, ids ...string) map[string]int {
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	out := make(map[string]int, len(ids))
+	for _, id := range ids {
+		out[id] = m.positions[kind][id]
+	}
+	return out
+}
 func (m *Manager) acquiredPosition(kind, rid string) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
