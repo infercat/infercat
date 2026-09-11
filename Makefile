@@ -11,7 +11,7 @@ export VITE_APP_VERSION := $(PRODUCT_VERSION)
 # image URL in index.html, which must be absolute to be picked up.
 export VITE_WEB_URL := $(shell sed -n 's/^[[:space:]]*WebURL[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' internal/product/product.go)
 
-.PHONY: console-deps web-deps web-typecheck web-browser build test vet wasm web web-test web-lint check clean release-dry notices notices-check brand launch-check deploy-web
+.PHONY: console-deps web-deps web-typecheck web-browser build test vet wasm web web-test web-lint size-check check clean release-dry notices notices-check brand launch-check deploy-web
 
 build:
 	go build -o bin/infercat ./cmd/infercat
@@ -25,7 +25,7 @@ test:
 vet:
 	go vet ./...
 
-check: console-check vet test client-check bridge-check web-lint host-compat
+check: size-check console-check vet test client-check bridge-check web-lint host-compat
 	# host-compat built web/dist; run every no-invite launch assertion against that exact build.
 	@set -eu; launch_shots=$$(mktemp -d); trap 'rm -rf "$$launch_shots"' EXIT; \
 		cd web && env -u INVITE -u APP LAUNCH_SHOTS="$$launch_shots" pnpm launch-check
@@ -33,6 +33,19 @@ check: console-check vet test client-check bridge-check web-lint host-compat
 	sh hack/install_test.sh
 	@if command -v shellcheck >/dev/null 2>&1; then shellcheck -s sh hack/install.sh; else echo "shellcheck: skipped (not installed)"; fi
 	@echo "CHECK OK"
+
+# Source caps live here (1000 lines) and in hack/size-allow.txt (per-file exceptions).
+size-check:
+	@find cmd internal web/src console bridge/src \
+		\( -name node_modules -o -path console/dist \) -prune -o -type f \
+		\( \( \( -path 'cmd/*.go' -o -path 'internal/*.go' \) ! -name '*_test.go' ! -path '*/testdata/*' \) -o \
+		\( \( -path 'web/src/*' -o -path 'console/*' -o -path 'bridge/src/*' \) \( -name '*.ts' -o -name '*.tsx' \) \
+		! -name '*.test.*' ! -path '*/test/*' ! -name '*.d.ts' ! -path 'web/src/i18n/*.ts' \) \) \
+		-exec awk 'FILENAME == ARGV[1] { caps[$$1] = $$2; next } \
+		FNR == 1 { check(); path = FILENAME } { lines = FNR } END { check(); exit failed } \
+		function check() { cap = path in caps ? caps[path] : 1000; \
+		if (lines > cap) { printf "%s: %d lines (cap %d)\n", path, lines, cap; failed = 1 } lines = 0 }' \
+		hack/size-allow.txt {} +
 
 # wasm bridge (ticket 001 owns web/wasm/build.sh)
 wasm:
