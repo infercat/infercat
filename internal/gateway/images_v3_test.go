@@ -112,7 +112,9 @@ func TestSyncCompletionIsIndependentOfProbeCadence(t *testing.T) {
 }
 func TestInvalidOutputsTripBreakerAndExposeRetryTime(t *testing.T) {
 	h := imagesHarness(t, func(w http.ResponseWriter, r *http.Request) { io.WriteString(w, `{"data":[{"b64_json":"bad"}]}`) })
-	h.gw.imageBackoffBase = 10 * time.Millisecond
+	// The worker waits 0.5 s then 1 s (at least 2 s below each row bound);
+	// retry_at stays visible for 2 s instead of racing a 40 ms window.
+	h.gw.imageBackoffBase = 500 * time.Millisecond
 	rows := submittedImages(t, h.post("/v1/images/jobs", `{"prompts":["a","b","c","d"]}`))
 	for i, row := range rows {
 		r := waitImageJob(t, h, row.ID, runstate.Failed)
