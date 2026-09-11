@@ -361,12 +361,15 @@ func TestMaterializeMemberKinds(t *testing.T) {
 			if m.Class == "speech" {
 				m.Command = []string{"infercat-speech", "--model-dir", "{asset:speech-support}", "--listen", "127.0.0.1:{port}"}
 			}
-			command, env, work, e := Materialize(p, m, InstalledMember{ID: m.ID, Paths: paths}, map[string]string{"fixture": root}, root)
+			command, env, work, e := Materialize(p, m, InstalledMember{ID: m.ID, Paths: paths}, map[string]string{"fixture": root, "sherpa": root}, root)
 			if e != nil {
 				t.Fatal(e)
 			}
 			if command[0] != filepath.Join(root, "bin/engine") || !strings.Contains(strings.Join(env, "\n"), "HOME="+work) {
 				t.Fatal(command, env)
+			}
+			if m.Class == "speech" && !strings.Contains(strings.Join(env, "\n"), "DYLD_LIBRARY_PATH="+filepath.Join(root, "lib")) {
+				t.Fatal("speech library path is not pinned", env)
 			}
 			for _, arg := range command {
 				if strings.ContainsAny(arg, "{}") {

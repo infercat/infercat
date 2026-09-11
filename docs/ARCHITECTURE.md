@@ -717,8 +717,12 @@ two minutes for model readiness, then send the anchor prompt once. Engines witho
 socket inheritance still perform their own bind after the port precheck. Each owned
 process stops before setup returns; descendants that escape its process group are
 outside this guardian's containment. Agent NDJSON and inherited-health semantics are
-unchanged. ASR/speech have no production helper artifact pin until the founder publishes
-that release. The generic fixture publisher proves the installation path meanwhile.
+unchanged. Speech selects the published helpers-v0.1.0 artifact for Darwin arm64
+or Linux amd64 and the separately pinned sherpa runtime. Its closed child environment
+points the library loader at that verified runtime; no system library installation
+is used. The complete pinned Kokoro support archive is extracted for --model-dir;
+existing individual model/voice asset ids remain accepted. ASR has no selected
+profile artifact yet.
 
 A content-addressed `profiles/install-<sha256>.json` records the profile version/digest,
 canonical model/artifact paths, regular-file hashes and symlink targets, external
@@ -758,8 +762,9 @@ metadata without waking engines; failed members are unavailable. `/v1/embeddings
 uses its own destination, queue and lease when a profile supplies one, preserving
 key model restrictions without applying the text anchor’s host pin to embeddings.
 `host.embeddings` is additive in `/me`; hosts without a separate embedding member
-retain the existing text-engine route. Native audio lifecycle/routes are fixture
-verified here; installation of the published native helpers is a separate follow-up.
+retain the existing text-engine route. Native speech installation and streaming WAV
+playback are proved on Darwin; Linux helper pins are verified, while native Linux
+execution and the NVIDIA profile remain unmeasured.
 
 ### Native speech helper and helper artifacts
 
