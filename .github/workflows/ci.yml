@@ -99,9 +99,9 @@ jobs:
             sh hack/install_test.sh
             ;;
           esac
-      # One rolling cache writer avoids nine copies of the shared Go/module cache.
+      # One rolling writer includes the gateway race test objects, not just production dependencies.
       - name: Save refreshed Go cache
-        if: github.ref == 'refs/heads/main' && matrix.shard == 'rest' && steps.gocache.outputs.cache-hit != 'true'
+        if: github.ref == 'refs/heads/main' && matrix.shard == 'gateway-race-a' && steps.gocache.outputs.cache-hit != 'true'
         uses: actions/cache/save@v5
         with:
           path: *go-cache-paths
