@@ -25,6 +25,7 @@ type Runtime struct {
 	cancel  context.CancelFunc
 }
 type managed struct {
+	testPort       func(reset bool) int // Test-only dynamic listener; nil for installed engines.
 	mu             sync.Mutex
 	ctx            context.Context
 	member         Member
@@ -203,9 +204,15 @@ func (m *managed) startLocked() {
 		if e == nil {
 			var cmd, env []string
 			var work string
-			cmd, env, work, e = Materialize(m.profile, m.member, m.installed, m.installation.Artifacts, m.dir)
+			m.mu.Lock()
+			member := m.member
+			if m.testPort != nil {
+				member.Port = m.testPort(true)
+			}
+			m.mu.Unlock()
+			cmd, env, work, e = Materialize(m.profile, member, m.installed, m.installation.Artifacts, m.dir)
 			if e == nil {
-				p, e = supervise.Start(cmd, env, work, strings.TrimPrefix(m.member.URL(), "http://"))
+				p, e = supervise.Start(cmd, env, work, strings.TrimPrefix(member.URL(), "http://"))
 			}
 		}
 		if e == nil {
@@ -236,7 +243,15 @@ func (m *managed) startLocked() {
 	}()
 }
 func (m *managed) probe(ctx context.Context) error {
+	m.mu.Lock()
 	member := m.member
+	if m.testPort != nil {
+		member.Port = m.testPort(false)
+		if member.Port > 0 && member.Port != m.member.Port {
+			m.member.Port = member.Port
+		}
+	}
+	m.mu.Unlock()
 	member.Class = "probe"
 	v := Check(ctx, member, nil, nil)
 	if v.Err != nil {

@@ -1,4 +1,4 @@
-# Every push and PR: the Go checks, the web checks, the notices gate, and a full release dry run —
+# Every push: the Go checks, the web checks, the notices gate, and a full release dry run —
 # all from this fresh checkout, which is the "green from nothing" law (docs/PRINCIPLES.md). Nothing here
 # publishes; release.yml is the only workflow that can, and only on a tag.
 name: CI
@@ -6,7 +6,10 @@ name: CI
 on:
   push:
     branches: ['**']
-  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 permissions:
   contents: read
@@ -48,7 +51,7 @@ jobs:
       - name: Playwright version
         id: playwright
         run: |
-          pnpm --dir web install --frozen-lockfile
+          make web-deps
           node -p '"version=" + require("./web/node_modules/playwright/package.json").version' >> "$GITHUB_OUTPUT"
 
       - name: Cache Playwright browsers
@@ -61,24 +64,8 @@ jobs:
       - name: Playwright system dependencies
         run: pnpm --dir web exec playwright install-deps chromium
 
-      - name: Go and Worker — build, vet, test
-        run: |
-          go build ./...
-          make check
-
-      - name: Web — install, typecheck, test, lint
-        working-directory: web
-        run: |
-          pnpm install --frozen-lockfile
-          pnpm typecheck
-          pnpm test
-          pnpm lint
-
       - name: go-licenses
-        run: go install github.com/google/go-licenses@latest
-
-      - name: Third-party notices are current
-        run: make notices-check
+        run: go install github.com/google/go-licenses@v1.6.0
 
       - uses: goreleaser/goreleaser-action@v7
         with:
@@ -87,8 +74,12 @@ jobs:
 
       - uses: docker/setup-buildx-action@v4
 
-      - name: Release dry run (every artifact, nothing published)
-        run: make release-dry
+      - name: Check and release dry run (every proof once, nothing published)
+        run: |
+          go build ./...
+          # The Playwright-version step already installed the locked workspace.
+          # One make graph shares all other prerequisites; no proof is skipped.
+          make -o web-deps check release-dry
 
       - name: Every artifact has a checksum
         run: |
