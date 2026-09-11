@@ -49,8 +49,8 @@ func TestEmbeddedProfiles(t *testing.T) {
 		})
 	}
 	p, _ := Builtin("apple-16g")
-	if p.Members[0].Pending != "pending founder decision" || len(p.Members[0].Candidates) != 2 {
-		t.Fatal("floor decision was made silently")
+	if p.Members[0].Pending != "" || len(p.Members[0].Candidates) != 0 || p.Members[0].Model.Name != "gemma4-e4b" || p.Members[0].Model.Quantization != "E4B UD-Q4_K_XL + F16 vision" {
+		t.Fatal("floor must carry the founder-selected Q4 vision model")
 	}
 	for _, m := range p.Members {
 		if m.Class == "image" {
@@ -90,7 +90,9 @@ func TestStrictProfile(t *testing.T) {
 		"fake measurement": func(p *Profile) { p.Members[3].Model.Measurement.RSSBytes = 123 }, "negative timing": func(p *Profile) { p.Members[0].Model.Measurement.TTFTMillis = -1 },
 		"hash": func(p *Profile) { p.Members[0].Model.Assets[0].SHA256 = "abc" }, "path traversal": func(p *Profile) { p.Members[0].Model.Assets[0].File = "../model.gguf" },
 		"URL auth": func(p *Profile) { p.Members[0].Model.Assets[0].URL = "https://key@example.com/model" }, "empty command": func(p *Profile) { p.Members[0].Command = []string{""} },
-		"no anchor": func(p *Profile) { p.Members = p.Members[1:] }, "candidate without decision": func(p *Profile) { p.Members[0].Candidates = []Model{p.Members[0].Model} },
+		"pending model": func(p *Profile) { p.Members[0].Pending = "pending founder decision" },
+		"missing model": func(p *Profile) { p.Members[0].Model = Model{} },
+		"no anchor":     func(p *Profile) { p.Members = p.Members[1:] }, "candidate without decision": func(p *Profile) { p.Members[0].Candidates = []Model{p.Members[0].Model} },
 	} {
 		t.Run(name, func(t *testing.T) {
 			p := fixture(t)

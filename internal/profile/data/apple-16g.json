@@ -7,7 +7,7 @@
     "gpu": "metal",
     "ram_bytes": 17179869184,
     "vram_bytes": 0,
-    "measured_on": "Not measured on 16 GiB hardware; candidate rows were measured on 64 GiB."
+    "measured_on": "Unverified on real 16 GiB hardware; anchor measurements are from a 64 GiB Mac."
   },
   "members": [
     {
@@ -15,83 +15,43 @@
       "class": "text",
       "engine": "llama.cpp",
       "engine_pin": "5266f24da (0.4.0 build 10809)",
-      "model": {},
-      "candidates": [
-        {
-          "name": "gemma4-e4b",
-          "quantization": "E4B UD-Q4_K_XL + F16 vision",
-          "assets": [
-            {
-              "id": "anchor-model",
-              "file": "gemma-4-E4B-it-qat-UD-Q4_K_XL.gguf",
-              "bytes": 4215695776,
-              "sha256": "df0fd4ee07072c607c29a0a1cb4f98918426cca12f45a2776bdd6ee6d09a4de3",
-              "url": "https://huggingface.co/unsloth/gemma-4-E4B-it-qat-GGUF/resolve/8c5a9e4fd5482e2be20fe0bf013b4c262a8f4265/gemma-4-E4B-it-qat-UD-Q4_K_XL.gguf",
-              "license": "Apache-2.0",
-              "revision": "8c5a9e4fd5482e2be20fe0bf013b4c262a8f4265"
-            },
-            {
-              "id": "anchor-projector",
-              "file": "mmproj-F16.gguf",
-              "bytes": 990372672,
-              "sha256": "6a255159ee4b01b304f633a57f017dd7d5a69d30fff52abb2614bf0813cef034",
-              "url": "https://huggingface.co/unsloth/gemma-4-E4B-it-qat-GGUF/resolve/8c5a9e4fd5482e2be20fe0bf013b4c262a8f4265/mmproj-F16.gguf",
-              "license": "Apache-2.0",
-              "revision": "8c5a9e4fd5482e2be20fe0bf013b4c262a8f4265"
-            }
-          ],
-          "extra_args": [],
-          "measurement": {
-            "status": "measured",
-            "date": "2026-09-12",
-            "source": "docs/spikes/153-floor-loadout.md (153b)",
-            "rss_bytes": 6325501952,
-            "tokens_per_second": 114.7,
-            "mixed_tokens_per_second": 40,
-            "ttft_ms": 74,
-            "note": "Two filled 16K slots, f16 KV. Mixed rate is with derived Q4 image, not this profile's Q8 image. Intended Apple-64 anchor class 27-32B is unmeasured; E4B is this slice's measured substitute."
+      "model": {
+        "name": "gemma4-e4b",
+        "quantization": "E4B UD-Q4_K_XL + F16 vision",
+        "assets": [
+          {
+            "id": "anchor-model",
+            "file": "gemma-4-E4B-it-qat-UD-Q4_K_XL.gguf",
+            "bytes": 4215695776,
+            "sha256": "df0fd4ee07072c607c29a0a1cb4f98918426cca12f45a2776bdd6ee6d09a4de3",
+            "url": "https://huggingface.co/unsloth/gemma-4-E4B-it-qat-GGUF/resolve/8c5a9e4fd5482e2be20fe0bf013b4c262a8f4265/gemma-4-E4B-it-qat-UD-Q4_K_XL.gguf",
+            "license": "Apache-2.0",
+            "revision": "8c5a9e4fd5482e2be20fe0bf013b4c262a8f4265"
+          },
+          {
+            "id": "anchor-projector",
+            "file": "mmproj-F16.gguf",
+            "bytes": 990372672,
+            "sha256": "6a255159ee4b01b304f633a57f017dd7d5a69d30fff52abb2614bf0813cef034",
+            "url": "https://huggingface.co/unsloth/gemma-4-E4B-it-qat-GGUF/resolve/8c5a9e4fd5482e2be20fe0bf013b4c262a8f4265/mmproj-F16.gguf",
+            "license": "Apache-2.0",
+            "revision": "8c5a9e4fd5482e2be20fe0bf013b4c262a8f4265"
           }
-        },
-        {
-          "name": "gemma4-e4b-mobile",
-          "quantization": "E4B MOBILE UD-Q2_K_XL + F16 vision; --lazy-mode on",
-          "assets": [
-            {
-              "id": "anchor-mobile-model",
-              "file": "gemma-4-E4B-it-qat-UD-Q2_K_XL.gguf",
-              "bytes": 3219532192,
-              "sha256": "79dde517866cfbb5c00230b530de17910fc7fc78f8827554d0e14281ce5faf03",
-              "url": "https://huggingface.co/unsloth/gemma-4-E4B-it-qat-mobile-GGUF/resolve/6a6e7121b977cefd85daa8fbc538fa485e7e8b1b/gemma-4-E4B-it-qat-UD-Q2_K_XL.gguf",
-              "license": "Apache-2.0",
-              "revision": "6a6e7121b977cefd85daa8fbc538fa485e7e8b1b"
-            },
-            {
-              "id": "anchor-projector",
-              "file": "mmproj-F16.gguf",
-              "bytes": 990372672,
-              "sha256": "6a255159ee4b01b304f633a57f017dd7d5a69d30fff52abb2614bf0813cef034",
-              "url": "https://huggingface.co/unsloth/gemma-4-E4B-it-qat-GGUF/resolve/8c5a9e4fd5482e2be20fe0bf013b4c262a8f4265/mmproj-F16.gguf",
-              "license": "Apache-2.0",
-              "revision": "8c5a9e4fd5482e2be20fe0bf013b4c262a8f4265"
-            }
-          ],
-          "extra_args": [
-            "--lazy-mode",
-            "on"
-          ],
-          "measurement": {
-            "status": "measured",
-            "date": "2026-09-12",
-            "source": "docs/spikes/153-floor-loadout.md (153c)",
-            "rss_bytes": 4602724352,
-            "tokens_per_second": 107.9,
-            "mixed_tokens_per_second": 46.5,
-            "ttft_ms": 91,
-            "note": "4.29 GiB with lazy PLE, measured on 64 GiB Mac only; 129 agent task 0/3. Mixed rate uses derived Q4 image."
-          }
+        ],
+        "extra_args": [],
+        "measurement": {
+          "status": "measured",
+          "date": "2026-09-12",
+          "source": "docs/spikes/153-floor-loadout.md (153b)",
+          "rss_bytes": 6325501952,
+          "tokens_per_second": 114.7,
+          "mixed_tokens_per_second": 40,
+          "ttft_ms": 74,
+          "note": "Measured on a 64 GiB Mac: two filled 16K slots, f16 KV. Mixed rate is with a derived Q4 image member, which is not included in this profile. The MOBILE lazy-PLE variant was declined by the founder."
         }
-      ],
-      "pending": "pending founder decision",
+      },
+      "candidates": [],
+      "pending": "",
       "command": [
         "llama-server",
         "-m",
@@ -124,7 +84,8 @@
         "kind": "resident",
         "idle_seconds": 0
       },
-      "unavailable": ""
+      "unavailable": "",
+      "artifact": "llama"
     },
     {
       "id": "asr",
@@ -320,8 +281,23 @@
     "friends": 2,
     "draft": true
   },
-  "promise": "Pending founder anchor decision: Q4 vision 5.89 GiB or MOBILE 4.29 GiB with --lazy-mode on (agent task 0/3). No image member. On-demand policy is draft, 600s idle; actual 16 GiB pressure and multilingual embedding RSS unmeasured. Setup cannot write config for this pending profile.",
+  "promise": "Q4 E4B with F16 vision is the anchor per the founder ruling. Ships in 0.1.5 unverified on real 16 GiB hardware; memory pressure and multilingual embedding RSS remain unmeasured (151c deferred). No image member. On-demand policy is draft, with 600s idle.",
   "artifacts": [
+    {
+      "id": "llama",
+      "file": "llama-b10809-bin-macos-arm64.tar.gz",
+      "bytes": 11123196,
+      "sha256": "7d692df9e1e386e62f1c12b843903218041e6cd74c9415aa39a7ed3176f9eaa2",
+      "url": "https://github.com/ggml-org/llama.cpp/releases/download/b10809/llama-b10809-bin-macos-arm64.tar.gz",
+      "license": "MIT",
+      "revision": "b10809",
+      "archive": {
+        "format": "tar.gz",
+        "strip": 1,
+        "bytes": 134217728
+      },
+      "executable": "llama-server"
+    },
     {
       "id": "sherpa",
       "file": "sherpa-onnx-v1.13.7-osx-arm64-shared.tar.bz2",

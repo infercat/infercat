@@ -215,36 +215,29 @@ func (p Profile) Validate() error {
 		if !slices.Contains([]string{"resident", "on-demand", "cpu"}, m.Policy.Kind) || (m.Policy.Kind == "on-demand") != (m.Policy.IdleSeconds > 0) || m.Policy.IdleSeconds > 86400 {
 			return bad("policy")
 		}
-		models := []Model{m.Model}
-		if m.Pending != "" {
-			if m.Class != "text" || m.Pending != "pending founder decision" || len(m.Candidates) != 2 || m.Model.Name != "" {
-				return bad("pending anchor")
-			}
-			models = m.Candidates
-		} else if len(m.Candidates) > 0 {
-			return bad("candidates require pending anchor")
+		if m.Pending != "" || len(m.Candidates) != 0 {
+			return bad("pending and candidates are unsupported; select a model")
 		}
-		for _, model := range models {
-			if model.Name == "" || model.Quantization == "" || len(model.Assets) == 0 || len(model.Assets) > 16 {
-				return bad("model")
+		model := m.Model
+		if model.Name == "" || model.Quantization == "" || len(model.Assets) == 0 || len(model.Assets) > 16 {
+			return bad("model")
+		}
+		v := model.Measurement
+		if v.TokensPerSecond < 0 || v.MixedTokensPerSecond < 0 || v.TTFTMillis < 0 || !slices.Contains([]string{"measured", "unmeasured"}, v.Status) || v.Note == "" || v.RSSBytes == 0 && v.Status == "measured" || v.Status == "unmeasured" && (v.RSSBytes != 0 || v.TokensPerSecond != 0 || v.MixedTokensPerSecond != 0 || v.TTFTMillis != 0) {
+			return bad("measurement")
+		}
+		if _, e := time.Parse("2006-01-02", v.Date); v.Status == "measured" && (e != nil || v.Source == "") {
+			return bad("measurement provenance")
+		}
+		assets := map[string]bool{}
+		for _, a := range model.Assets {
+			if assets[a.ID] {
+				return bad("duplicate asset")
 			}
-			v := model.Measurement
-			if v.TokensPerSecond < 0 || v.MixedTokensPerSecond < 0 || v.TTFTMillis < 0 || !slices.Contains([]string{"measured", "unmeasured"}, v.Status) || v.Note == "" || v.RSSBytes == 0 && v.Status == "measured" || v.Status == "unmeasured" && (v.RSSBytes != 0 || v.TokensPerSecond != 0 || v.MixedTokensPerSecond != 0 || v.TTFTMillis != 0) {
-				return bad("measurement")
+			if err := validAsset(a); err != nil {
+				return err
 			}
-			if _, e := time.Parse("2006-01-02", v.Date); v.Status == "measured" && (e != nil || v.Source == "") {
-				return bad("measurement provenance")
-			}
-			assets := map[string]bool{}
-			for _, a := range model.Assets {
-				if assets[a.ID] {
-					return bad("duplicate asset")
-				}
-				if err := validAsset(a); err != nil {
-					return err
-				}
-				assets[a.ID] = true
-			}
+			assets[a.ID] = true
 		}
 	}
 	if anchors != 1 {
