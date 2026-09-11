@@ -26,7 +26,7 @@ type imageRequest struct {
 	failure                     json.RawMessage
 	runID                       string
 	definitiveFailure, measured bool
-	suspect, abandoned          bool
+	suspect                     bool
 	oversized                   bool
 	charged                     float64
 	elapsed                     time.Duration
@@ -294,12 +294,7 @@ func (q *request) imageRoute() {
 	// Losing this HTTP waiter never cancels durable jobs and never causes replay.
 	data := []map[string]string{}
 	for _, r := range rows {
-		tick := time.NewTicker(func() time.Duration {
-			if q.g.imagePollEvery > 0 {
-				return q.g.imagePollEvery
-			}
-			return 100 * time.Millisecond
-		}())
+		tick := time.NewTicker(100 * time.Millisecond)
 		for {
 			v, e := q.g.runs.Store.Get(q.key.ID, r.ID)
 			if e != nil {
@@ -634,7 +629,6 @@ func (q *request) imageTransportError(err error) *gwError {
 	if !q.dispatched.Load() {
 		return q.upstreamErr(err)
 	}
-	q.image.abandoned = true
 	q.destination.imageProbeAfter.Store(time.Now().UnixNano())
 	q.g.logf("image request abandoned: %v", err)
 	var timeout net.Error

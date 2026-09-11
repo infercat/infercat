@@ -19,15 +19,19 @@ import (
 )
 
 // waitUntil polls cond for up to d.
-func waitUntil(t *testing.T, d time.Duration, what string, cond func() bool) {
+func waitUntil(t *testing.T, d time.Duration, what string, cond func() bool) bool {
 	t.Helper()
 	deadline := time.Now().Add(d)
 	for !cond() {
 		if time.Now().After(deadline) {
-			t.Fatalf("waited %s for %s", d, what)
+			if what != "" {
+				t.Fatalf("waited %s for %s", d, what)
+			}
+			return false
 		}
 		time.Sleep(5 * time.Millisecond)
 	}
+	return true
 }
 
 // ---- 1. alias bypass ----

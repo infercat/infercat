@@ -17,15 +17,15 @@ func imageIn(prompt string) json.RawMessage {
 }
 func untilImage(t *testing.T, s *Store, key, rid string, state State) Run {
 	t.Helper()
-	until := time.Now().Add(3 * time.Second)
-	for time.Now().Before(until) {
-		r, e := s.Get(key, rid)
-		if e == nil && r.State == state {
-			return r
-		}
-		time.Sleep(time.Millisecond)
+	var r Run
+	if awaitFor(t, 3*time.Second, "", func() bool {
+		var e error
+		r, e = s.Get(key, rid)
+		return e == nil && r.State == state
+	}) {
+		return r
 	}
-	r, _ := s.Get(key, rid)
+	r, _ = s.Get(key, rid)
 	t.Fatalf("wanted %s: %+v", state, r)
 	return r
 }
@@ -89,11 +89,11 @@ func TestImageWorkerPriorityAndDeferredCancel(t *testing.T) {
 }
 func TestImageBatchCapIsAtomic(t *testing.T) {
 	s, _ := NewStore(t.TempDir())
-	rows, e := s.CreateBatch("key", "image", "planted", []json.RawMessage{imageIn("a"), imageIn("b")}, 2)
+	rows, e := s.createBatch("key", "image", "planted", []json.RawMessage{imageIn("a"), imageIn("b")}, 2, nil)
 	if e != nil || len(rows) != 2 || rows[0].Batch.ID != rows[1].Batch.ID || rows[1].Batch.Index != 1 {
 		t.Fatal(rows, e)
 	}
-	if _, e = s.CreateBatch("key", "image", "planted", []json.RawMessage{imageIn("c"), imageIn("d")}, 2); !errors.Is(e, ErrQueueLimit) {
+	if _, e = s.createBatch("key", "image", "planted", []json.RawMessage{imageIn("c"), imageIn("d")}, 2, nil); !errors.Is(e, ErrQueueLimit) {
 		t.Fatal(e)
 	}
 	all, _ := s.List("key")
@@ -310,7 +310,7 @@ func TestImageAdmissionRollsBackFailedCommit(t *testing.T) {
 	s, _ := NewStore(t.TempDir())
 	held := 0
 	s.write = func(string, []byte) error { return errors.New("disk refusal") }
-	_, e := s.CreateBatch("key", "image", "interactive", []json.RawMessage{imageIn("a"), imageIn("b")}, 8, func(rows []Run) (func(), error) {
+	_, e := s.createBatch("key", "image", "interactive", []json.RawMessage{imageIn("a"), imageIn("b")}, 8, nil, func(rows []Run) (func(), error) {
 		held += len(rows)
 		return func() { held -= len(rows) }, nil
 	})
@@ -406,14 +406,14 @@ func TestImageKeyChecksAndDailyReservePrecedeHostCapacity(t *testing.T) {
 	daily := errors.New("daily budget exhausted")
 	calls, refunds := 0, 0
 	reserve := func([]Run) (func(), error) { calls++; return nil, daily }
-	if _, e = s.CreateBatch("key", "image", "interactive", []json.RawMessage{imageIn("refused")}, 1, reserve); !errors.Is(e, ErrQueueLimit) || calls != 0 {
+	if _, e = s.createBatch("key", "image", "interactive", []json.RawMessage{imageIn("refused")}, 1, nil, reserve); !errors.Is(e, ErrQueueLimit) || calls != 0 {
 		t.Fatal(e, calls)
 	}
-	if _, e = s.CreateBatch("key", "image", "interactive", []json.RawMessage{imageIn("refused")}, 8, reserve); !errors.Is(e, daily) || calls != 1 {
+	if _, e = s.createBatch("key", "image", "interactive", []json.RawMessage{imageIn("refused")}, 8, nil, reserve); !errors.Is(e, daily) || calls != 1 {
 		t.Fatal(e, calls)
 	}
 	reserve = func([]Run) (func(), error) { calls++; return func() { refunds++ }, nil }
-	if _, e = s.CreateBatch("key", "image", "interactive", []json.RawMessage{imageIn("host full")}, 8, reserve); !errors.Is(e, ErrLimit) || refunds != 1 {
+	if _, e = s.createBatch("key", "image", "interactive", []json.RawMessage{imageIn("host full")}, 8, nil, reserve); !errors.Is(e, ErrLimit) || refunds != 1 {
 		t.Fatal(e, refunds)
 	}
 	if len(s.data["key"].Runs) != 1 || s.data["key"].Runs[own.ID].State != Queued {
@@ -427,7 +427,7 @@ func TestImageQueueLimitDoesNotCountOtherKinds(t *testing.T) {
 			t.Fatal(e)
 		}
 	}
-	if _, e := s.CreateBatch("key", "image", "interactive", []json.RawMessage{imageIn("one"), imageIn("two")}, 8); !errors.Is(e, ErrLimit) || errors.Is(e, ErrQueueLimit) {
+	if _, e := s.createBatch("key", "image", "interactive", []json.RawMessage{imageIn("one"), imageIn("two")}, 8, nil); !errors.Is(e, ErrLimit) || errors.Is(e, ErrQueueLimit) {
 		t.Fatal(e)
 	}
 }

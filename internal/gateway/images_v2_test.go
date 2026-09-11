@@ -149,7 +149,7 @@ func TestDefinitiveFailureDoesNotAdvanceSuspectBackoff(t *testing.T) {
 	q := h.gw.newRequest(httptest.NewRecorder(), httptest.NewRequest("POST", "/v1/images/generations", nil))
 	q.destination = d
 	q.dispatched.Store(true)
-	q.image = &imageRequest{abandoned: true}
+	q.image = &imageRequest{}
 	q.recordImageResult()
 	q.recordImageResult()
 	if d.imageBackoff.Load() != int64(time.Millisecond) {

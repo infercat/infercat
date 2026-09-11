@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"fmt"
 	runstate "github.com/infercat/infercat/internal/run"
+	"github.com/infercat/infercat/internal/supervise"
 	"net"
 	"net/http"
 	"os"
@@ -29,7 +30,7 @@ func TestMain(m *testing.M) {
 		os.Exit(Confine(os.Args[2:]))
 	}
 	if len(os.Args) > 1 && os.Args[1] == "_agent-guardian" {
-		os.Exit(Guardian(os.Args[2:]))
+		os.Exit(supervise.Guardian(os.Args[2:], true))
 	}
 	os.Exit(m.Run())
 }

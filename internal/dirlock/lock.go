@@ -17,7 +17,7 @@ func Acquire(dir string) (*os.File, error) {
 	if err != nil {
 		return nil, err
 	}
-	if err := lock(f); err != nil {
+	if err := Lock(f); err != nil {
 		f.Close()
 		return nil, fmt.Errorf("data directory is in use or cannot be locked; stop serve before upgrading its identity: %w", err)
 	}

@@ -147,12 +147,12 @@ func (s *Store) load(key string) (*snapshot, error) {
 		if e != nil {
 			return nil, e
 		}
-		raw, e := io.ReadAll(io.LimitReader(f, int64(s.maxStored+MaxRuns*terminalBound+1)))
+		raw, e := io.ReadAll(io.LimitReader(f, int64(s.hardCap()+1)))
 		f.Close()
 		if e != nil {
 			return nil, e
 		}
-		if len(raw) > s.maxStored+MaxRuns*terminalBound {
+		if len(raw) > s.hardCap() {
 			return nil, ErrLimit
 		}
 		v.encodedBytes = len(raw)
@@ -209,7 +209,7 @@ func (s *Store) load(key string) (*snapshot, error) {
 		}
 		probe.Runs[rid] = r
 		raw, _ := json.Marshal(&probe)
-		if used+max(0, len(raw)-v.encodedBytes) > terminalBound || len(raw) > s.maxStored+MaxRuns*terminalBound {
+		if used+max(0, len(raw)-v.encodedBytes) > terminalBound || len(raw) > s.hardCap() {
 			s.log("runs for key %s fail closed: operator reclamation required; snapshot bytes preserved", key)
 			s.markBroken(key, ErrNeedsAttention)
 			return nil, ErrNeedsAttention
@@ -234,12 +234,16 @@ func (s *Store) load(key string) (*snapshot, error) {
 	return v, nil
 }
 func validState(st State) bool { return st == Queued || st == Running || st == Waiting || terminal(st) }
-func clone(v *snapshot) *snapshot {
+func deepCopy[T any](v T) T {
 	raw, _ := json.Marshal(v)
-	var out snapshot
+	var out T
 	_ = json.Unmarshal(raw, &out)
+	return out
+}
+func clone(v *snapshot) *snapshot {
+	out := deepCopy(v)
 	out.encodedBytes = v.encodedBytes
-	return &out
+	return out
 }
 func (s *Store) commit(key string, v *snapshot, event *Event) error {
 	rid := ""
@@ -321,7 +325,7 @@ func (s *Store) commitFor(key string, v *snapshot, event *Event, rid string) err
 		if !terminal(r.State) {
 			limit -= 512
 		}
-		if used+max(0, len(raw)-old.encodedBytes) > limit || len(raw) > s.maxStored+MaxRuns*terminalBound {
+		if used+max(0, len(raw)-old.encodedBytes) > limit || len(raw) > s.hardCap() {
 			r.State, r.Reason = Failed, "storage exhausted"
 			r.Expires = r.Updated.Add(Retention)
 			v.Runs[rid] = r
@@ -343,14 +347,14 @@ func (s *Store) commitFor(key string, v *snapshot, event *Event, rid string) err
 			}
 			raw, _ = json.Marshal(v)
 			// Replay is disposable; attempts, usage and captured outputs are not.
-			for (used+max(0, len(raw)-old.encodedBytes) > terminalBound || len(raw) > s.maxStored+MaxRuns*terminalBound) && len(v.Events) > 0 {
+			for (used+max(0, len(raw)-old.encodedBytes) > terminalBound || len(raw) > s.hardCap()) && len(v.Events) > 0 {
 				v.Events = v.Events[1:]
 				raw, _ = json.Marshal(v)
 			}
 			s.log("run %s/%s lifecycle refused: storage exhausted", key, rid)
 		}
 		charge := max(0, len(raw)-old.encodedBytes)
-		if used+charge <= terminalBound && len(raw) <= s.maxStored+MaxRuns*terminalBound {
+		if used+charge <= terminalBound && len(raw) <= s.hardCap() {
 			v.ExceptionBytes[rid] = used + charge
 			raw, _ = json.Marshal(v)
 			err, undo = nil, func() {}
@@ -443,9 +447,6 @@ func (s *Store) change(key, rid string, fn func(*Run) error, retain ...func(*Ret
 		return committed, &CommittedTerminal{Run: committed}
 	}
 	return committed, nil
-}
-func (s *Store) CreateBatch(key, kind, priority string, inputs []json.RawMessage, cap int, admit ...func([]Run) (func(), error)) ([]Run, error) {
-	return s.createBatch(key, kind, priority, inputs, cap, nil, admit...)
 }
 func (s *Store) createBatch(key, kind, priority string, inputs []json.RawMessage, cap int, correlation []string, admit ...func([]Run) (func(), error)) ([]Run, error) {
 	cid := ""
@@ -544,12 +545,12 @@ func (s *Store) createBatch(key, kind, priority string, inputs []json.RawMessage
 	}
 	committed = true
 	for i := range rows {
-		rows[i] = clone(next).Runs[rows[i].ID]
+		rows[i] = copyRun(next.Runs[rows[i].ID])
 	}
 	return rows, nil
 }
 func (s *Store) Create(key, kind, priority string, input json.RawMessage) (Run, error) {
-	rows, err := s.CreateBatch(key, kind, priority, []json.RawMessage{input}, MaxLiveKey)
+	rows, err := s.createBatch(key, kind, priority, []json.RawMessage{input}, MaxLiveKey, nil)
 	if err != nil {
 		return Run{}, err
 	}
