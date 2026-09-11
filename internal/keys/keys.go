@@ -70,20 +70,6 @@ type Store interface {
 	List(ctx context.Context) ([]*Key, error)
 }
 
-// Admin is the CLI-side write surface (ticket 003). Not used by the gateway.
-type Admin interface {
-	Store
-	// Add creates a key and returns it with the plaintext secret (shown once).
-	Add(ctx context.Context, name string, l Limits) (k *Key, secret string, err error)
-	SetStatus(ctx context.Context, id string, s Status) error
-	// Rotate replaces the secret, keeping id, limits, and history; returns the new plaintext secret.
-	Rotate(ctx context.Context, id string) (secret string, err error)
-	SetLimits(ctx context.Context, id string, l Limits) error
-}
-
-// HashSecret returns the canonical "sha256:<hex>" form used in keys.json.
-// Implemented in hash.go (PM-owned) so 002 and 003 share one definition.
-
 // AudioDefaults applies new fields to legacy keys in memory without rewriting the key file.
 func AudioDefaults(l Limits) Limits {
 	if l.DailyAudioSeconds == 0 {

@@ -15,6 +15,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/infercat/infercat/internal/fsx"
 )
 
 type State struct {
@@ -102,25 +104,7 @@ func (s *Store) Mint(rotate bool) (string, error) {
 	if err != nil {
 		return "", err
 	}
-	f, err := os.CreateTemp(filepath.Dir(s.path), ".admin-*")
-	if err != nil {
-		return "", err
-	}
-	defer os.Remove(f.Name())
-	defer f.Close()
-	if err = f.Chmod(0600); err == nil {
-		_, err = f.Write(b)
-	}
-	if err == nil {
-		err = f.Sync()
-	}
-	if err == nil {
-		err = f.Close()
-	}
-	if err == nil {
-		err = os.Rename(f.Name(), s.path)
-	}
-	if err != nil {
+	if err = fsx.WriteFile(s.path, b, 0600); err != nil {
 		return "", err
 	}
 	s.warning = false

@@ -42,7 +42,6 @@ type Config struct {
 	MaxTranscriptionSeconds      float64
 	ModelsPinned                 []string      // host-wide model allowlist; empty means all models
 	LogPrompts                   bool          // put prompt/completion text into usage events (Protection 3: opt-in)
-	HostName                     string        // shown in /me
 	RelayRegion                  func() string // shown in /me; nil → ""
 	// DataDir is where usage.jsonl lives; New reads it once to seed today's per-key counters.
 	// Empty means no history to seed from, and the counters start at zero as they always did.

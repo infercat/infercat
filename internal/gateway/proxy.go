@@ -398,7 +398,6 @@ func (q *request) me() {
 	m.Usage.TodaySearches = cnt.TodaySearches
 	m.Usage.RPMUsed, m.Usage.TPMUsed, m.Usage.TodayTokens, m.Usage.InFlight = cnt.RPMUsed, cnt.TPMUsed, cnt.TodayTokens, cnt.InFlight
 	info := q.g.router.text.Up.Info()
-	m.Host.Name = q.g.cfg.HostName
 	if q.g.cfg.LiveHostName != nil {
 		m.Host.Name = q.g.cfg.LiveHostName()
 	}

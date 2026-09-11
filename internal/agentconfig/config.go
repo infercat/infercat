@@ -12,6 +12,8 @@ import (
 	"path/filepath"
 	"runtime"
 	"strings"
+
+	"github.com/infercat/infercat/internal/fsx"
 )
 
 type Config struct{ Dir, DSH string }
@@ -136,25 +138,7 @@ func write(path string, raw []byte) error {
 	if fi, err := os.Stat(path); err == nil {
 		mode = fi.Mode().Perm()
 	}
-	f, err := os.CreateTemp(filepath.Dir(path), ".infercat-*")
-	if err != nil {
-		return err
-	}
-	defer os.Remove(f.Name())
-	defer f.Close()
-	if err = f.Chmod(mode); err == nil {
-		_, err = f.Write(raw)
-	}
-	if err == nil {
-		err = f.Sync()
-	}
-	if err == nil {
-		err = f.Close()
-	}
-	if err == nil {
-		err = os.Rename(f.Name(), path)
-	}
-	return err
+	return fsx.WriteFile(path, raw, mode)
 }
 func (c *Config) locked(fn func() error) error {
 	var err error

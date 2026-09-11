@@ -267,7 +267,7 @@ func writeStatus(w io.Writer, st admin.Status) {
 		return
 	}
 	fmt.Fprintln(w)
-	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
+	tw := newTable(w)
 	fmt.Fprintln(tw, "ID\tNAME\tSTATUS\tIN FLIGHT\tRPM\tTODAY\tLAST SEEN")
 	for _, k := range st.Keys {
 		fmt.Fprintf(tw, "%s\t%s\t%s\t%d\t%d\t%d\t%s\n", k.ID, k.Name, k.Status, k.InFlight, k.RPMUsed, k.TodayTokens, ago(k.LastSeen))
@@ -287,7 +287,7 @@ func writeSessions(w io.Writer, t admin.Tunnel) {
 		}
 	}
 	fmt.Fprintf(w, "sessions  %d active of %d seen  ·  in %s  out %s  ·  paths: the client's to measure, not visible to a host\n", active, len(t.Sessions), bytesWord(t.RxBytes), bytesWord(t.TxBytes))
-	tw := tabwriter.NewWriter(w, 0, 0, 2, ' ', 0)
+	tw := newTable(w)
 	for _, s := range t.Sessions {
 		if s.Active {
 			fmt.Fprintf(tw, "  %s\t%s\tin %s\tout %s\tlast byte %s\tage %s\n", shortKey(s.Key), plural(s.Conns, "conn"), bytesWord(s.RxBytes), bytesWord(s.TxBytes), ago(s.LastByte), shortDur(time.Since(s.Since)))
@@ -409,3 +409,5 @@ Flags:
   --watch          redraw in place every --interval and stream requests; Ctrl-C stops
   --interval D     how often --watch redraws (default 1s)
 `
+
+func newTable(w io.Writer) *tabwriter.Writer { return tabwriter.NewWriter(w, 0, 0, 2, ' ', 0) }

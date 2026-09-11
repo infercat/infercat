@@ -7,7 +7,6 @@ import (
 	"sort"
 	"strconv"
 	"strings"
-	"text/tabwriter"
 	"time"
 
 	"github.com/infercat/infercat/internal/keys"
@@ -76,7 +75,7 @@ func (e *env) writeUsage(rep *usage.Report, since, keyID string, names map[strin
 		fmt.Fprintln(e.out, "nothing yet")
 		return
 	}
-	fmt.Fprintf(e.out, "requests  %s%s%s\n", calls(t.ModelCalls), polls(t.AppPolls), errs(t.Errors, t.ErrorsByCode))
+	fmt.Fprintf(e.out, "requests  %s%s%s\n", plural(t.ModelCalls, "model call"), polls(t.AppPolls), errs(t.Errors, t.ErrorsByCode))
 	fmt.Fprintf(e.out, "charged   %s\n", meterTotals(t))
 	fmt.Fprintf(e.out, "observed  %s prompt  %s completion\n", comma(t.PromptTokens), comma(t.CompletionTokens))
 	fmt.Fprintf(e.out, "ttft      median %s  p95 %s\n", ms(t.TTFTMedianMS), ms(t.TTFTP95MS))
@@ -85,7 +84,7 @@ func (e *env) writeUsage(rep *usage.Report, since, keyID string, names map[strin
 	for _, via := range sortedVias(rep.ByVia) {
 		s := rep.ByVia[via]
 		fmt.Fprintf(e.out, "via %-6s %s%s%s · %s prompt  %s completion\n", via,
-			calls(s.ModelCalls), polls(s.AppPolls), errs(s.Errors, s.ErrorsByCode), comma(s.PromptTokens), comma(s.CompletionTokens))
+			plural(s.ModelCalls, "model call"), polls(s.AppPolls), errs(s.Errors, s.ErrorsByCode), comma(s.PromptTokens), comma(s.CompletionTokens))
 		fmt.Fprintf(e.out, "           charged %s\n", meterTotals(*s))
 	}
 	if rep.Malformed > 0 {
@@ -95,7 +94,7 @@ func (e *env) writeUsage(rep *usage.Report, since, keyID string, names map[strin
 		return
 	}
 	fmt.Fprintln(e.out)
-	tw := tabwriter.NewWriter(e.out, 0, 0, 2, ' ', 0)
+	tw := newTable(e.out)
 	fmt.Fprintln(tw, "ID\tNAME\tVIA\tCALLS\tPOLLS\tERR\tPROMPT\tCOMPLETION\tTTFT p50\tTOTAL p50\tLAST SEEN\tCHARGED")
 	for _, k := range rep.Keys {
 		for _, via := range sortedVias(k.ByVia) {
@@ -127,15 +126,9 @@ func sortedVias(by map[string]*usage.Stats) []string {
 	return vias
 }
 
-// calls, polls and errs write the headline the way a host reads it: what the friend did, then what
+// The model-call count, polls and errs write the headline the way a host reads it: what the friend did, then what
 // their browser did on its own, then what went wrong. A web app polls /me every 30 s, and counting
 // those as requests is what made one conversation read as 58 (ticket 009 promise 6).
-func calls(n int) string {
-	if n == 1 {
-		return "1 model call"
-	}
-	return fmt.Sprintf("%d model calls", n)
-}
 
 func polls(n int) string {
 	if n == 0 {
