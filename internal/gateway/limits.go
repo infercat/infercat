@@ -352,7 +352,7 @@ func (l *limiter) counters(id string) usage.KeyCounters {
 	st.prune(l.now())
 	reqs, tokens := st.used()
 	text, audio, speech := st.meter("tokens"), st.meter("audio"), st.meter("speech")
-	return usage.KeyCounters{TodaySearches: int(st.meter("search").today + st.meter("search").reserved), TodayImages: int(st.meter("images").today + st.meter("images").reserved), TodayAudioSeconds: audio.today + audio.reserved, TodaySpeechChars: int(speech.today + speech.reserved), InFlight: st.inFlight, RPMUsed: reqs, TPMUsed: tokens + int(text.reserved), TodayTokens: int(text.today + text.reserved), LastSeen: st.lastSeen}
+	return usage.KeyCounters{TodaySearches: int(st.meter("search").today + st.meter("search").reserved), TodayImages: int(st.meter("images").today) + len(st.imageHolds), TodayAudioSeconds: audio.today + audio.reserved, TodaySpeechChars: int(speech.today + speech.reserved), InFlight: st.inFlight, RPMUsed: reqs, TPMUsed: tokens + int(text.reserved), TodayTokens: int(text.today + text.reserved), LastSeen: st.lastSeen}
 }
 
 func (l *limiter) allCounters() map[string]usage.KeyCounters {

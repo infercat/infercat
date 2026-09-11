@@ -548,13 +548,14 @@ func (g *Gateway) prepareImageBatch(ctx context.Context, key string) (runstate.B
 			return runstate.BatchAdmission{}, e
 		}
 		limits := keys.ImageDefaults(k.Limits)
+		budgets := limits.Budgets()
 		return runstate.BatchAdmission{QueueLimit: ImageQueueCap(limits), Reserve: func(rows []runstate.Run) (func(), error) {
 			st := g.lim.state(key)
 			st.mu.Lock()
 			now := g.lim.now()
 			st.prune(now)
 			meter := st.meter("images")
-			if limits.DailyImages > 0 && meter.today+meter.reserved+float64(len(rows)) > float64(limits.DailyImages) {
+			if daily := budgets.Amount("images", "day"); daily > 0 && meter.today+float64(len(st.imageHolds)+len(rows)) > float64(daily) {
 				st.mu.Unlock()
 				return nil, errf(CodeImageBudgetExhausted, secondsUntil(now.UTC().Truncate(24*time.Hour).Add(24*time.Hour), now), "daily image budget exhausted")
 			}
@@ -564,7 +565,6 @@ func (g *Gateway) prepareImageBatch(ctx context.Context, key string) (runstate.B
 			for _, r := range rows {
 				st.imageHolds[r.ID] = true
 			}
-			meter.reserved += float64(len(rows))
 			st.mu.Unlock()
 			return func() {
 				for _, r := range rows {
@@ -581,7 +581,6 @@ func (g *Gateway) releaseImageReservation(key, rid string) {
 	defer st.mu.Unlock()
 	if st.imageHolds[rid] {
 		delete(st.imageHolds, rid)
-		st.meter("images").reserved--
 	}
 }
 func (q *request) reserveImage() *gwError {
@@ -603,7 +602,6 @@ func (q *request) settleImage() {
 	m := st.meter("images")
 	if st.imageHolds[q.image.runID] {
 		delete(st.imageHolds, q.image.runID)
-		m.reserved--
 	}
 	if q.dispatched.Load() && !q.image.definitiveFailure && !(q.image.suspect && !q.image.measured) {
 		q.image.charged = 1

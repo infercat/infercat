@@ -349,7 +349,7 @@ func TestDispatchHealthRetryKeepsOriginalHold(t *testing.T) {
 	waitUntil(t, time.Second, "bounded health retry", func() bool { return h.gw.router.route(string(imagesEndpoint)).imageProbeAfter.Load() != 0 })
 	st := h.gw.lim.state(h.key.ID)
 	st.mu.Lock()
-	held, reserved, charged := st.imageHolds[row.ID], st.meter("images").reserved, st.meter("images").today
+	held, reserved, charged := st.imageHolds[row.ID], len(st.imageHolds), st.meter("images").today
 	st.mu.Unlock()
 	if !held || reserved != 1 || charged != 0 || calls.Load() != 0 {
 		t.Fatal(held, reserved, charged, calls.Load())
