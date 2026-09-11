@@ -4,14 +4,27 @@ import type { Live } from '../session';
 import type { RunItem } from '../storage';
 import RunRow, { type RunView } from './Run';
 import { tr } from '../i18n/text';
+import { isDiffOutput } from './RunDiff';
 
+/** A weighted rate from host measurements, never run age or browser timing. */
+export function runThroughput(record: RunRecord): number | undefined {
+  if (!['done','failed','cancelled'].includes(record.state) || !record.attempts?.length) return;
+  let tokens = 0, milliseconds = 0;
+  for (const a of record.attempts) {
+    const u = a.usage;
+    if (!a.settled || a.accounting_uncertain || ![u.prompt_tokens,u.completion_tokens,u.total_ms,u.ttft_ms].every(v => typeof v === 'number' && Number.isFinite(v) && v >= 0) || !(u.ttft_ms! > 0) || !(u.total_ms! > u.ttft_ms!)) return;
+    tokens += u.completion_tokens!; milliseconds += u.total_ms! - u.ttft_ms!;
+  }
+  const rate = tokens * 1000 / milliseconds;
+  return Number.isFinite(rate) ? rate : undefined;
+}
 export function runView(record: RunRecord, now = Date.now()): RunView {
   const settled = record.attempts?.filter((a) => a.settled && !a.accounting_uncertain) ?? [];
   const measured = settled.length > 0 && settled.length === record.attempts.length && settled.every((a) => typeof a.usage.prompt_tokens === 'number' && typeof a.usage.completion_tokens === 'number');
   return {
     id: record.id, state: record.state, elapsed: Math.max(0, ((['done','failed','cancelled'].includes(record.state) ? Date.parse(record.updated) : now) - Date.parse(record.created)) / 1000), position: record.queue_position,
     steps: (record.steps ?? []).map((s) => ({ ...s, at: Math.max(0, (Date.parse(s.at) - Date.parse(record.created)) / 1000), complete: !['running', 'waiting'].includes(s.status) })),
-    outputs: [], text: record.text, ask: record.approval?.status === 'pending' ? { id: record.approval.id, text: record.approval.request } : undefined,
+    outputs: [], diffOutputs: (record.outputs ?? []).filter(isDiffOutput), tokensPerSecond: runThroughput(record), text: record.text, ask: record.approval?.status === 'pending' ? { id: record.approval.id, text: record.approval.request } : undefined,
     ...(measured ? { tokens: { in: settled.reduce((n, a) => n + a.usage.prompt_tokens!, 0), out: settled.reduce((n, a) => n + a.usage.completion_tokens!, 0) } } : {}), error: record.reason,
   };
 }
@@ -37,6 +50,7 @@ export default function RunItemView({ item, live, connected, disabled, pending, 
       try {
         let total = 0;
         for (const output of outputs ?? []) {
+          if (output.kind === 'diff') continue;
           total += output.size; if (total > 4 * 1024 * 1024) throw new Error('Run outputs exceed the display bound');
           const blob = await runOutput(live.transport, live.secret, runId, output.id, controller.signal);
           if (controller.signal.aborted) return;

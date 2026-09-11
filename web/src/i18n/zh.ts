@@ -1,5 +1,8 @@
 // Approved landing spec, with PM copy rulings. HTML is authored here, never user input.
 export const zh = {
+  app_run_diff_more: "共 {total} 行，显示 {shown} 行 · 查看完整差异",
+  app_run_diff_counts: "新增 {added} 行 · 删除 {removed} 行",
+  app_run_diff: "写入差异",
   app_job_daily_exhausted: "主机今天的图片额度已用完，明天再试。",
   app_job_meter_uncapped: "今日已用 {used} 张图片",
   app_privacy_images: "你请求生成的图片和所用的文字，会按你的密钥在主机上保留 {days} 天。",

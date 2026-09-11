@@ -6,6 +6,9 @@ import { FileChip, FileSheet } from './FileChip';
 import { Thinking, CopyButton } from './Message';
 import Markdown from './Markdown';
 import { bytesLabel } from '../images';
+import { rateText } from '../stream';
+import RunDiff from './RunDiff';
+import type { RunOutput } from '../api';
 
 export interface RunStep {
   id: string;
@@ -32,6 +35,8 @@ export interface RunView {
   images?: { name: string; url: string; size: number }[];
   text?: string;
   tokens?: { in: number; out: number };
+  tokensPerSecond?: number;
+  diffOutputs?: RunOutput[];
   error?: string;
   refused?: boolean;
 }
@@ -85,7 +90,7 @@ export default function RunRow({ run, host, connected, disabled, pending, onCanc
         <span className="at">{voiceTime(step.at)}</span><span>
           {current === step.id && !step.complete && live && <i className="live" aria-hidden="true" />}
           {step.result !== undefined ? <button className="ghost r" onClick={() => { void (step.output_id && loadText ? loadText(step.output_id) : Promise.resolve(step.text ?? step.result!)).then((text) => setOpened({ name: stepName(step), kind: 'TXT', text, source: 'file', lines: text.split('\n').length })).catch((error) => setOutputError(String(error))); }}>{tr('app_run_step_result', { step: stepName(step), result: stepResult(step) })}</button> : stepName(step)}
-        </span></div>{step.kind === 'think' && <RunThinking step={step} active={detailsOpen} loadText={loadText} />}</Fragment>)}
+        </span></div>{step.kind === 'think' && <RunThinking step={step} active={detailsOpen} loadText={loadText} />}{step.kind === 'write' && run.diffOutputs?.filter(o => o.id === step.output_id).map(output => <RunDiff key={`${run.id}:${output.id}`} output={output} active={detailsOpen} loadText={loadText} onOpen={setOpened} />)}</Fragment>)}
     </details>}
     {run.state === 'waiting' && run.ask && <><p className="waiting">{tr('app_run_ask')}</p><p className="ask">{run.ask.text}</p><div className="actions">
       <button className="ghost tiny" disabled={disabled || pending} onClick={() => onAnswer(run.ask!.id, true)}>{tr('app_run_allow')}</button>
@@ -96,7 +101,7 @@ export default function RunRow({ run, host, connected, disabled, pending, onCanc
     {outputError && <details className="host-said"><summary>{tr('app_details')}</summary><pre>{outputError}</pre></details>}
     {openedImage && <div className="sheet-wrap" onClick={() => setOpenedImage(null)}><figure className="sheet image" role="dialog" aria-modal="true" aria-label={openedImage.name} tabIndex={-1} ref={(el) => el?.focus()} onClick={(e) => e.stopPropagation()}><img src={openedImage.url} alt={openedImage.name} onLoad={(e) => setSize({ w: e.currentTarget.naturalWidth, h: e.currentTarget.naturalHeight })} />{size.w > 0 && <figcaption>{tr('app_run_output_image_caption', { ...size, size: bytesLabel(openedImage.size), host: who })}</figcaption>}{onSave && <div className="sheet-actions"><button className="ghost tiny" onClick={() => onSave(openedImage)}>{tr('app_job_save')}</button></div>}</figure></div>}
     {run.text && <Markdown text={run.text} />}
-    {terminal && <div className="meta"><span className="meta-text">{run.runKind === 'image' ? tr(run.state === 'done' ? 'app_run_meta_images_one' : 'app_job_meta_failed', { host: who, elapsed: voiceTime(run.elapsed) }) : run.tokens ? tr('app_run_meta_agent', { host: who, elapsed: voiceTime(run.elapsed), input: run.tokens.in.toLocaleString('en-US'), output: run.tokens.out.toLocaleString('en-US') }) : `${voiceTime(run.elapsed)} · ${who}`}</span><span className="actions">
+    {terminal && <div className="meta"><span className="meta-text">{run.runKind === 'image' ? tr(run.state === 'done' ? 'app_run_meta_images_one' : 'app_job_meta_failed', { host: who, elapsed: voiceTime(run.elapsed) }) : run.tokens ? tr('app_run_meta_agent', { host: who, elapsed: voiceTime(run.elapsed), input: run.tokens.in.toLocaleString('en-US'), output: run.tokens.out.toLocaleString('en-US') }) : `${voiceTime(run.elapsed)} · ${who}`}{run.runKind !== 'image' && run.tokensPerSecond !== undefined && Number.isFinite(run.tokensPerSecond) && run.tokensPerSecond >= 0 ? ` · ${rateText(run.tokensPerSecond)}` : ''}</span><span className="actions">
       {run.state === 'done' && run.runKind === 'image' && <button className="ghost tiny" disabled={disabled || pending} onClick={onRetry}>{tr('app_regenerate')}</button>}
       {run.state === 'done' && run.text && <CopyButton text={run.text} />}
       {run.state === 'failed' && <button className="ghost tiny" disabled={disabled || pending} onClick={onRetry}>{tr('app_try_again')}</button>}

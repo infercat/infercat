@@ -621,7 +621,7 @@ export interface RunStep {
   status: 'running' | 'waiting' | 'done' | 'failed' | 'cancelled';
   name?: string; tool?: string; result?: string; text?: string; output_id?: string;
 }
-export interface RunOutput { id: string; name: string; mime: string; size: number }
+export interface RunOutput { id: string; name: string; mime: string; size: number; kind?: string }
 export interface RunRecord {
   id: string;
   kind: string;
@@ -640,7 +640,7 @@ export interface RunRecord {
   reason?: string;
   input: unknown;
   output?: unknown;
-  attempts: { id: string; dispatched: boolean; settled: boolean; accounting_uncertain: boolean; usage: { prompt_tokens?: number; completion_tokens?: number } }[];
+  attempts: { id: string; dispatched: boolean; settled: boolean; accounting_uncertain: boolean; usage: { prompt_tokens?: number; completion_tokens?: number; total_ms?: number; ttft_ms?: number } }[];
 }
 export interface RunEvent {
   cursor: string;
