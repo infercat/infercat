@@ -487,8 +487,11 @@ func (g *fakeGateway) Shutdown(context.Context) error            { close(g.done)
 func (g *fakeGateway) Counters(string) usage.KeyCounters         { return usage.KeyCounters{} }
 func (g *fakeGateway) AllCounters() map[string]usage.KeyCounters { return nil }
 func (g *fakeGateway) Destinations() []gateway.DestinationStatus { return nil }
-func (g *fakeGateway) Sessions() map[string]int                  { return g.sessions }
-func (g *fakeGateway) Queue() (int, int)                         { return 0, 0 }
+func (g *fakeGateway) EngineRoutes() []string {
+	return gateway.New(gateway.Config{}, nil, nil, nil, nil).EngineRoutes()
+}
+func (g *fakeGateway) Sessions() map[string]int { return g.sessions }
+func (g *fakeGateway) Queue() (int, int)        { return 0, 0 }
 
 type fakeTunnel struct{}
 
@@ -674,7 +677,7 @@ func TestServeBannerTellsTheTruth(t *testing.T) {
 	first := serveOnce(t, dir, "--upstream", engine, "--name", "Max's laptop", "--web-url", "https://app.example")
 	for _, want := range []string{
 		"name      Max's laptop  (shown to your friends)",
-		"access    friends reach only /v1/models, /v1/chat/completions, /v1/responses and /v1/embeddings on " + engine,
+		"access    friends reach only /v1/chat/completions, /v1/embeddings, /v1/models and /v1/responses on " + engine,
 		"nothing else on this machine",
 		"data      " + dir,
 		"web       https://app.example",

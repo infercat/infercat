@@ -35,7 +35,7 @@ func TestHumanAddressSurfacesAreMaskedButInvitesAreNot(t *testing.T) {
 	want := tunnel.Display(addr)
 	var startupOut, statusOut, bridgeOut bytes.Buffer
 	e := env{out: &startupOut, errw: &startupOut}
-	e.printStartup(context.Background(), startup{tun: displayTunnel{addr: addr}, up: displayEngine{}, store: displayKeys{}, dataDir: t.TempDir()})
+	e.printStartup(context.Background(), startup{routes: (&fakeGateway{}).EngineRoutes(), tun: displayTunnel{addr: addr}, up: displayEngine{}, store: displayKeys{}, dataDir: t.TempDir()})
 	st := admin.Status{Tunnel: admin.Tunnel{Addr: addr}}
 	writeStatus(&statusOut, st)
 	st.Mode = "bridge"

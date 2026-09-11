@@ -5,13 +5,10 @@ import (
 	"github.com/infercat/infercat/internal/gateway"
 	"github.com/infercat/infercat/internal/upstream"
 	"github.com/infercat/infercat/internal/usage"
-	"reflect"
-	"sort"
-	"strings"
 	"testing"
 )
 
-func TestFriendRoutesMatchRouter(t *testing.T) {
+func TestModelEndpointLabelsMatchRouter(t *testing.T) {
 	audio, err := upstream.OpenAudio(context.Background(), fakeEngine(t), "")
 	if err != nil {
 		t.Fatal(err)
@@ -34,12 +31,7 @@ func TestFriendRoutesMatchRouter(t *testing.T) {
 					cfg.Speech = audio
 				}
 				g := gateway.New(cfg, nil, nil, nil, nil)
-				got := strings.Split(strings.ReplaceAll(friendRoutes(transcribe, speech, hasImages), " and ", ", "), ", ")
-				sort.Strings(got)
-				if want := g.EngineRoutes(); !reflect.DeepEqual(got, want) {
-					t.Fatalf("banner %v router %v", got, want)
-				}
-				for _, path := range got {
+				for _, path := range g.EngineRoutes() {
 					if word, class := usage.ModelEndpoint(path); class != "" && endpointWord(path) != word {
 						t.Fatalf("status classifier drift: %s", path)
 					}

@@ -52,6 +52,7 @@ type tunnelOptions = tunnel.Options
 type gatewayServer interface {
 	ExecuteStep(context.Context, string, runstate.Step, func() error) (runstate.StepResult, error)
 	SetRuns(*runstate.Manager) error
+	EngineRoutes() []string
 	Destinations() []gateway.DestinationStatus
 	Sessions() map[string]int
 	Handler() http.Handler
