@@ -29,6 +29,7 @@ check: console-check vet test client-check bridge-check web-lint host-compat
 	# host-compat built web/dist; run every no-invite launch assertion against that exact build.
 	@set -eu; launch_shots=$$(mktemp -d); trap 'rm -rf "$$launch_shots"' EXIT; \
 		cd web && env -u INVITE -u APP LAUNCH_SHOTS="$$launch_shots" pnpm launch-check
+	node --test hack/runtime-releases.test.mjs
 	sh hack/install_test.sh
 	@if command -v shellcheck >/dev/null 2>&1; then shellcheck -s sh hack/install.sh; else echo "shellcheck: skipped (not installed)"; fi
 	@echo "CHECK OK"
@@ -86,8 +87,7 @@ clean:
 deploy-web: web
 	test "$(PRODUCT_VERSION)" = "$$(node -p "require('./packages/client/package.json').version")"
 	rm -rf web/deploy && mkdir -p web/deploy && cp -R web/dist/. web/deploy/ && rm -f web/deploy/infercat.wasm
-	mkdir -p "web/deploy/v/$(PRODUCT_VERSION)"
-	cp web/deploy/infercat.wasm.gz web/deploy/wasm_exec.js "web/deploy/v/$(PRODUCT_VERSION)/"
+	node hack/runtime-releases.mjs web/deploy "$(PRODUCT_VERSION)"
 	cp hack/install.sh web/deploy/install.sh
 	cp docs/media/demo.mp4 docs/media/demo.zh.mp4 docs/media/demo-poster.png docs/media/demo-poster.zh.png web/deploy/
 	cp hosting/cloudflare/_headers hosting/cloudflare/_redirects hosting/cloudflare/_routes.json hosting/cloudflare/404.html hosting/cloudflare/derpmap.json web/deploy/ && cp -R hosting/cloudflare/functions web/deploy/

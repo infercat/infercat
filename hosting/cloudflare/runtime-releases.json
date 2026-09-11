@@ -1,0 +1,10 @@
+{
+  "0.1.3": {
+    "infercat.wasm.gz": "d944d5b5f843d8b55d4b165fd7067b957a90f69ed8b0556bd11614403343843e",
+    "wasm_exec.js": "0c949f4996f9a89698e4b5c586de32249c3b69b7baadb64d220073cc04acba14"
+  },
+  "0.1.4": {
+    "infercat.wasm.gz": "5437dda4f0bdde72b981ffcb27f898a819880e11c836d65b1e26c515bb3002dd",
+    "wasm_exec.js": "0c949f4996f9a89698e4b5c586de32249c3b69b7baadb64d220073cc04acba14"
+  }
+}

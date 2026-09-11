@@ -48,8 +48,20 @@ Attach `infercat.wasm.gz` and its matching Go `wasm_exec.js`, built from the tag
 1. Open the draft. Paste the `CHANGELOG.md` entry above the generated notes. Publish.
 2. `brew install infercat/tap/infercat` on a machine that has never had it; `infercat
    version` prints the tag.
-3. Deploy `web-0.1.0.zip` to the web app's host (F3) — the bundle is static; unzip at the site root.
-4. Bump `Version` in `product.go` and `version` in `packages/client/package.json` to the next
+3. Versioned client runtime (111): after publishing the matching `infercat.wasm.gz` and
+   `wasm_exec.js` release assets, append the version and each asset's SHA-256 to
+   `hosting/cloudflare/runtime-releases.json`. Retain every older entry. Obtain the digests with
+   `gh release view v<version> --repo infercat/infercat --json assets`; confirm the downloaded
+   bytes match. Commit the manifest before deploying.
+4. Run `make deploy-web` from the intended site commit. It fetches every listed release pair,
+   verifies its hashes, and stages `/v/<version>/` before invoking Pages. A missing asset, hash
+   mismatch, or unlisted stable current version stops publication. A dev build gets its own
+   `-dev` pair; it never replaces archived release bytes. Do not deploy the bare web zip to
+   production: that drops older clients' runtimes.
+5. After Pages reports success, run `node hack/runtime-releases.mjs --verify https://infercat.ai`.
+   Every listed pair (including 0.1.3 and 0.1.4) must return HTTP 200, public CORS, and its recorded
+   hash. Keep the output with the release evidence.
+6. Bump `Version` in `product.go` and `version` in `packages/client/package.json` to the next
    `-dev` (e.g. `0.1.1-dev`) on main.
 
 ## If the workflow is down
