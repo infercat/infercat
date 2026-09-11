@@ -282,6 +282,7 @@ func TestPrepareOwnedEngineStopsAndPendingRefuses(t *testing.T) {
 			}
 			// Pending anchor fails before another publisher request or installation.
 			floor, _ := Builtin("apple-16g")
+			floor.Members[0].Pending = "pending founder decision" // invalid legacy shape
 			if _, e = Prepare(context.Background(), floor, t.TempDir(), nil, nil, s.Client(), io.Discard); e == nil {
 				t.Fatal("pending anchor accepted")
 			}

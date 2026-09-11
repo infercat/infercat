@@ -91,6 +91,60 @@ func TestSetupMergesVerifiedSettings(t *testing.T) {
 		t.Fatal(st.Mode())
 	}
 }
+func TestApple16SetupConfigurationProof(t *testing.T) {
+	p, err := profile.Builtin("apple-16g")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if p.Members[0].Model.Name != "gemma4-e4b" || p.Members[0].Artifact != "llama" {
+		t.Fatal("selected anchor missing")
+	}
+	// Only ports change: published model and engine pins remain intact.
+	for i := range p.Members {
+		if p.Members[i].Unavailable == "" {
+			setupEngine(t, &p.Members[i], true)
+		}
+	}
+	if err := p.Validate(); err != nil {
+		t.Fatal(err)
+	}
+	dir := t.TempDir()
+	var out bytes.Buffer
+	e := env{out: &out, errw: &out}
+	machine := profile.Machine{Hardware: p.Hardware, GPUName: "fixture GPU", DiskBytes: 10 << 30}
+	if err := e.setup(context.Background(), dir, p, false, machine, nil, nil); err != nil {
+		t.Fatal(err, out.String())
+	}
+	cfg, err := loadConfig(dir)
+	if err != nil || cfg.Upstream != p.Members[0].URL() || cfg.Models != "gemma4-e4b" || cfg.Slots != 2 || cfg.ProfileInstall == "" {
+		t.Fatalf("config: %+v, error: %v", cfg, err)
+	}
+	b, err := os.ReadFile(filepath.Join(dir, cfg.ProfileInstall))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var record profile.Installation
+	if err := json.Unmarshal(b, &record); err != nil || len(record.Members) != len(p.Members) {
+		t.Fatal("bad installation", err)
+	}
+	for _, member := range record.Members {
+		if !member.External && member.Unavailable == "" {
+			t.Fatal("unexpected owned engine", member.ID)
+		}
+	}
+	for _, name := range []string{"downloads", "trees"} {
+		if _, err := os.Stat(filepath.Join(dir, "profiles", name)); !os.IsNotExist(err) {
+			t.Fatal("unexpected artifact download/extraction", name, err)
+		}
+	}
+	b, err = os.ReadFile(configPath(dir))
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Log("fixture-backed configuration proof, not a hardware proof")
+	t.Log(out.String())
+	t.Log("resulting config:", string(b))
+}
 func TestSetupRefusalNeverWrites(t *testing.T) {
 	for _, kind := range []string{"URL conflict", "key conflict", "model conflict", "empty answer", "pending", "wrong pin", "unknown path", "ambiguous path", "hardware", "offline optional conflict"} {
 		t.Run(kind, func(t *testing.T) {
@@ -107,6 +161,7 @@ func TestSetupRefusalNeverWrites(t *testing.T) {
 				cfg.Models = "other"
 			case "pending":
 				floor, _ := profile.Builtin("apple-16g")
+				floor.Members[0].Pending = "pending founder decision"
 				p.Members = floor.Members[:1]
 			case "wrong pin":
 				f := t.TempDir() + "/bad"

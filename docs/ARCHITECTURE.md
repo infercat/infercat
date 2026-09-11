@@ -676,17 +676,17 @@ M for review". The Go `ImageCleanupPending()` accessor remains their sum.
 
 `internal/profile/data/*.json` embeds one independent version-1 JSON file per tier.
 There is no online refresh. `apple-64g` uses the measured E4B Q4 substitute; the
-intended 27–32B anchor remains unmeasured. `apple-16g` carries both E4B candidates
-under `pending founder decision` and cannot write config. `nvidia-12g` is wholly
-unmeasured. BGE-M3 never inherits the measured BGE-small working set. Policy and
-headroom reservations are explicitly draft, not measured performance guarantees.
+intended 27–32B anchor remains unmeasured. `apple-16g` uses Q4 E4B with F16 vision
+and no image member. It ships in 0.1.5 unverified on real 16 GiB hardware; the
+151c proof on a rented 16 GB Mac is deferred. `nvidia-12g` is wholly unmeasured.
+BGE-M3 never inherits the measured BGE-small working set. Policy and headroom reservations are explicitly draft, not measured performance guarantees.
 
 | Object | Fields and units |
 | --- | --- |
 | Profile | `version`, `id`, `hardware`, `members`, `artifacts`, `headroom`, `promise` |
 | Hardware | `os`, `arch`, `gpu` (metal/nvidia/cpu), `ram_bytes`, `vram_bytes`, `measured_on`; RAM/VRAM are compatibility minima |
-| Member | `id`, `class` (text/transcribe/speech/embed/image), `engine`, `engine_pin`, optional `artifact` id, `model`, `command`, `env`, `port`, `context` tokens, `concurrency`, `policy`, `unavailable`; only a pending text anchor has `pending` and two `candidates` instead of a selected model |
-| Model/candidate | `name` is the advertised API model id; `quantization`, `assets`, `extra_args`, `measurement` |
+| Member | `id`, `class` (text/transcribe/speech/embed/image), `engine`, `engine_pin`, optional `artifact` id, `model`, `command`, `env`, `port`, `context` tokens, `concurrency`, `policy`, `unavailable`; every member has a selected model; retained `pending`/`candidates` keys must be empty |
+| Model | `name` is the advertised API model id; `quantization`, `assets`, `extra_args`, `measurement` |
 | Asset | `id`, basename `file`, `bytes`, lowercase `sha256`, HTTPS publisher `url`, `license`, `revision`; support bundles are pinned assets too; optional `archive` describes extraction |
 | Archive/artifact | `archive.format` is tar.gz/tar.bz2/zip, `strip` is 0–4 leading components, `bytes` is the expanded ceiling (at most 8 GiB). Profile `artifacts` contain asset pins plus an optional relative `executable`; a member selects one by id |
 | Measurement | `status` (measured/unmeasured), `date`, `source`, `rss_bytes`, `tokens_per_second`, `mixed_tokens_per_second`, `ttft_ms`, `note`; notes identify the measured workload/pair, and unmeasured numeric fields stay zero |
@@ -713,8 +713,8 @@ checked; neither filenames nor a running server attest loaded weight bytes.
 Only fixed loopback ports are probed, with no redirects/proxy credentials, a
 1 MiB response cap and a 15-second request timeout. `/v1/models` establishes health
 and advertised model identity. External engines are reused without lifecycle ownership;
-their active weights are not attested by health. Pending anchors and conflicting
-upstream settings refuse. Custom mode keeps the existing compatibility-only path.
+their active weights are not attested by health. Populated legacy pending/candidate
+fields and conflicting upstream settings refuse. Custom mode keeps the existing compatibility-only path.
 
 Built-in setup holds the data-directory lock, fetches missing assets and shows each
 model's licence names once per setup. Downloads use HTTPS, a one-hour request bound,
