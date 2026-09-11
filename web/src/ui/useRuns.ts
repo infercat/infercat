@@ -11,14 +11,14 @@ export function useRuns(live: Live, enabled: boolean, convs: Conversation[], set
   const latest = useRef({ live, enabled, convs, refresh, imagesChanged }); latest.current = { live, enabled, convs, refresh, imagesChanged };
   const active = useRef(new Set<string>()), requests = useRef(new Set<AbortController>());
   useEffect(() => { const held = requests.current; return () => { held.forEach((c) => c.abort()); }; }, [live.transport, live.secret, enabled]);
-  const merge = (records: RunRecord[]) => setConvs((prev) => mergeRunRecords(prev, records.filter((r) => r.kind === 'agent'), live.me.key.id));
+  const merge = (records: RunRecord[]) => setConvs((prev) => mergeRunRecords(prev, records.filter((r) => ['agent','chat'].includes(r.kind)), live.me.key.id));
   useEffect(() => {
     if (!enabled || live.offline || live.key !== 'active' || (!live.me.agent && !hostImages(live.me)?.model)) return;
     const ac = new AbortController();
     void followRuns({ transport: live.transport, secret: live.secret, signal: ac.signal,
       onEvent: (signal) => { void latest.current.imagesChanged?.(signal).catch((error) => { if (!signal.aborted) dispatch({ t: 'streamError', code: error instanceof GatewayError ? error.code : '', error: describeError(error, live.me.host.name) }); }); return Promise.resolve(); },
-      known: () => latest.current.convs.flatMap((c) => c.messages.flatMap((m) => m.kind === 'run' && m.runKind !== 'image' ? [m.run?.id ?? m.remoteId ?? ''].filter(Boolean) : [])),
-      changed(records, reset) { if (!ac.signal.aborted) { setObserved((old) => new Set([...(reset ? [] : old), ...records.map((r) => r.id)])); setConvs((prev) => mergeRunRecords(prev, records.filter((r) => r.kind === 'agent'), live.me.key.id)); if (records.some((r) => ['done','failed','cancelled'].includes(r.state))) void latest.current.refresh(); } },
+      known: () => latest.current.convs.flatMap((c) => c.messages.flatMap((m) => m.kind !== 'run' ? m.hostRun?.ids ?? [] : m.runKind !== 'image' ? [m.run?.id ?? m.remoteId ?? ''].filter(Boolean) : [])),
+      changed(records, reset) { if (!ac.signal.aborted) { setObserved((old) => new Set([...(reset ? [] : old), ...records.map((r) => r.id)])); setConvs((prev) => mergeRunRecords(prev, records.filter((r) => ['agent','chat'].includes(r.kind)), live.me.key.id)); if (records.some((r) => ['done','failed','cancelled'].includes(r.state))) void latest.current.refresh(); } },
       connected(value) { if (!ac.signal.aborted) { setConnected(value); if (!value) dispatch({ t: 'streamError', code: '', error: describeError(new Error('Run event stream ended'), live.me.host.name) }); } },
       failed(error) { if (!ac.signal.aborted) dispatch({ t: 'streamError', code: error instanceof GatewayError ? error.code : '', error: describeError(error, live.me.host.name) }); },
     });

@@ -29,6 +29,7 @@ export function reduceReply(r: Reply, e: StreamEvent, now = Date.now()): Reply {
   const timed = (next: Reply, fn: (t: Timing) => Timing): Reply => (next.timing ? { ...next, timing: fn(next.timing) } : next);
   const token = (t: Timing): Timing => ({ ...t, first: t.first ?? now, last: now });
   switch (e.kind) {
+    case 'run': return r;
     // Not an ending: a reply that has produced nothing for long enough that saying nothing would
     // itself be a lie. It clears on the first token and on every terminal event.
     // The newer of the two says what the silence is: a keepalive means the host has the request

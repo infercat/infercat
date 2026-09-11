@@ -154,6 +154,7 @@ export interface ChatMessage {
 }
 
 export interface ChatRequest {
+  host_tools?: string[]; conversation?: string; client_request_id?: string;
   model: string;
   messages: ChatMessage[];
   temperature?: number;
@@ -167,6 +168,7 @@ export interface ChatRequest {
  * ending, and `reduceReply` in stream.ts is what turns these into a terminal status.
  */
 export type StreamEvent =
+  | { kind: 'run'; id: string }
   | { kind: 'reasoning'; text: string }
   | { kind: 'content'; text: string }
   | { kind: 'usage'; in: number; out: number }
@@ -373,6 +375,7 @@ async function* rawChatEvents(
       } catch {
         continue; // a partial or non-JSON event; the next one carries the tokens
       }
+      if (block.event === 'run' && typeof chunk.run_id === 'string' && chunk.run_id.length <= 128) { yield { kind: 'run', id: chunk.run_id }; continue; }
       // An error can arrive inside a 200 stream: the head was flushed before it happened. With
       // the head out, Retry-After rides inside the event as `retry_after` (018).
       if (chunk.error) {
@@ -436,6 +439,7 @@ export function isAbort(err: unknown): boolean {
 }
 
 interface ChatChunk {
+  run_id?: string;
   choices?: { delta?: { content?: string; reasoning_content?: string; reasoning?: string }; finish_reason?: string | null }[];
   usage?: { prompt_tokens?: number; completion_tokens?: number };
   error?: { message?: string; code?: string; type?: string; retry_after?: number; limit?: number; in_flight?: number };
@@ -446,7 +450,7 @@ interface ChatChunk {
  * of its comment. Comments are invisible to every SSE consumer by design; the gateway's `: queued`
  * keepalive is the one this app reads (018).
  */
-export type SSEBlock = { data: string } | { comment: string };
+export type SSEBlock = { data: string; event?: string } | { comment: string };
 
 /** Yields each SSE block as it arrives. */
 export async function* sseData(
@@ -486,7 +490,7 @@ function parseBlock(block: string): SSEBlock | null {
     .filter((line) => line.startsWith('data:'))
     .map((line) => line.slice(5).replace(/^ /, ''))
     .join('\n');
-  if (data !== '') return { data };
+  if (data !== '') { const event = lines.find(line => line.startsWith('event:'))?.slice(6).trim(); return { data, ...(event ? { event } : {}) }; }
   const comment = lines
     .filter((line) => line.startsWith(':'))
     .map((line) => line.slice(1).trim())

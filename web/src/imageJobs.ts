@@ -6,7 +6,7 @@ import type { Transport } from './transport';
 import type { Conversation, RunItem } from './storage';
 export interface ImageJob extends RunRecord {
   kind: 'image'; position?: number; started?: string;
-  input: { prompt: string; conversation?: string; client_request_id?: string };
+  input: { prompt: string; conversation?: string; client_request_id?: string; parent_run_id?: string; tool_call_id?: string };
   batch: { id: string; index: number; count: number };
   output?: { url: string; mime: string; w: number; h: number; bytes: number; expiresAt: string; gone?: boolean };
 }
@@ -23,10 +23,27 @@ export function imageItem(job: ImageJob): RunItem { return { id: job.id, kind: '
 /** Correlation locates the asking, never chooses a winning batch or suppresses a duplicate. */
 export function mergeImageJobs(convs: Conversation[], jobs: ImageJob[], keyId: string): Conversation[] {
   const seen = new Set<string>();
+  // Parent ids are authoritative; correlation is a fallback only when one reply owns it.
+  const links = convs.flatMap(c => c.messages.flatMap(m => m.kind !== 'run' && m.hostRun?.keyId === keyId ? [{ c: c.id, m }] : []));
+  const placement = new Map<string, ImageJob[]>();
+  for (const j of jobs) if (j.input.parent_run_id) {
+    const exact = links.filter(({m}) => m.hostRun!.ids.includes(j.input.parent_run_id!));
+    const matches = exact.length ? exact : links.filter(({m}) => m.hostRun!.requestId === j.input.client_request_id);
+    if (matches.length !== 1) continue;
+    const id = matches[0]!.m.id, list = placement.get(id) ?? []; list.push(j); placement.set(id, list); seen.add(j.id);
+  }
+  convs = convs.filter(c => !(c.id.startsWith('images:') && c.messages.some(m => m.kind === 'run' && m.job && seen.has(m.job.id)))).map(c => ({ ...c, messages: c.messages.flatMap(m => {
+    if (m.kind === 'run' && m.job && seen.has(m.job.id)) return [];
+    const children = placement.get(m.id) ?? [];
+    children.sort((a,b) => a.batch.id.localeCompare(b.batch.id) || a.batch.index - b.batch.index);
+    return [m, ...children.map(imageItem)];
+  }) }));
+  const placed = new Set(seen);
   const owners = new Map<string, Set<string>>();
   for (const c of convs) for (const m of c.messages) if (m.kind === 'run' && m.runKind === 'image' && m.keyId === keyId && m.clientRequestId) { const ids = owners.get(m.clientRequestId) ?? new Set<string>(); ids.add(c.id); owners.set(m.clientRequestId, ids); }
   const next = convs.map((c) => ({ ...c, messages: c.messages.flatMap((m) => {
     if (m.kind !== 'run' || m.runKind !== 'image' || m.keyId !== keyId) return [m];
+    if (m.job && placed.has(m.job.id)) return [m];
     const matches = jobs.filter((j) => !seen.has(j.id) && (j.id === m.job?.id || (j.input.client_request_id && j.input.client_request_id === m.clientRequestId && owners.get(m.clientRequestId)?.size === 1))).sort((a,b) => a.batch.id.localeCompare(b.batch.id) || a.batch.index - b.batch.index);
     matches.forEach((j) => seen.add(j.id));
     if (matches.length) return matches.map(imageItem);

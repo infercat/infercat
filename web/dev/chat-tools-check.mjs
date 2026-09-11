@@ -1,0 +1,31 @@
+import { chromium } from 'playwright';
+import { createServer } from 'vite';
+import { mkdirSync, readFileSync } from 'node:fs';
+import assert from 'node:assert/strict';
+const out='/private/tmp/infercat-146-screens';mkdirSync(out,{recursive:true});
+const server=await createServer({server:{host:'127.0.0.1',port:0}});await server.listen();
+const base=`http://127.0.0.1:${server.httpServer.address().port}`,browser=await chromium.launch();let checks=0;
+const picture=readFileSync(process.env.IMAGE_FIXTURE ?? new URL('./fixtures/upload/color.png',import.meta.url)).toString('base64');
+const ok=(v,m)=>{assert.ok(v,m);checks++;};
+try {for(const width of [390,1280])for(const lang of ['en','zh']) {
+ const context=await browser.newContext({viewport:{width,height:width===390?844:900}}),page=await context.newPage(),errors=[];page.setDefaultTimeout(15000);page.on('pageerror',e=>errors.push(e.message));console.log('start',width,lang);
+ await page.addInitScript(lang=>window.localStorage.setItem('bn.language',JSON.stringify(lang)),lang);
+ await page.goto(`${base}/?fake&hostTools&imageJobs&connectMs=20&invite=ic1.tcRUNproofaddressRUNproofaddress.${'D'.repeat(43)}&autoconnect`);
+ await page.locator('.composer textarea').waitFor();await page.waitForFunction(()=>!document.querySelector('.composer textarea').disabled);
+ await page.evaluate(async()=>{const {TunnelTransport}=await import('/src/transport/index.ts');const original=TunnelTransport.prototype.fetch;window.__chatRequests=[];TunnelTransport.prototype.fetch=function(path,init){if(path==='/v1/chat/completions'){const body=JSON.parse(init.body);window.__chatRequests.push(body);const saved=Object.values(window.localStorage).some(value=>value.includes?.(body.client_request_id));if(!saved)throw new Error('association missing before POST');}return original.call(this,path,init);};});
+ await page.evaluate(png=>{window.__fakeImages.control.png=png;},picture);console.log('connected');await page.locator('.composer textarea').fill('Draw two fox pictures.');await page.locator('.composer .primary').click();
+ await page.waitForFunction(()=>document.querySelectorAll('.row.run[data-run-state]').length>=3);
+ ok(await page.evaluate(()=>window.__chatRequests.length===1&&window.__chatRequests[0].host_tools[0]==='make_image'),'one explicit chat opt-in');
+ ok(await page.locator('.thread').innerText().then(t=>t.includes('Your fox pictures are being made.')),'reply preserved');
+ await page.locator('.steps summary').click();await page.evaluate(()=>document.fonts.ready);
+ await page.screenshot({path:`${out}/running-${width}-${lang}.png`});
+ await page.evaluate(()=>{const job=window.__fakeImages.list()[0];window.__fakeImages.update(job.id,{state:'done',output:{url:'/untrusted',mime:'image/png',w:1024,h:1024,bytes:2436809,expiresAt:new Date(Date.now()+86400000).toISOString()}});});
+ await page.locator('.thread .shot img').waitFor();ok(await page.locator('.thread .row.run').count()===3,'one tool trace and two image rows');
+ await page.screenshot({path:`${out}/done-${width}-${lang}.png`});
+ if(width===390) await page.locator('.hamburger').click();
+ await page.locator('.conv.harvest button').click();await page.locator('.sheet.harvest .shot img').waitFor();ok(await page.locator('.asking-head button').count()===1,'Images links to asking');
+ await page.locator('.asking-head button').click();await page.waitForFunction(()=>!document.querySelector('.sheet.harvest'));ok(await page.locator('.thread').innerText().then(t=>t.includes('Your fox pictures')),'link returns to original reply');
+ await page.locator('.row.run[data-run-state="queued"] .spoken button').click();await page.locator('.row.run[data-run-state="cancelled"]').waitFor();ok(await page.locator('.thread .shot img').count()===1,'cancelling queued sibling preserves completed image');
+ await page.reload();await page.locator('.thread .shot img').waitFor();ok(await page.locator('.thread .row.run').count()===3,'reload has no duplicated jobs');
+ ok(await page.evaluate(()=>document.documentElement.scrollWidth<=window.innerWidth),'no overflow');ok(errors.length===0,errors.join('\n'));await context.close();
+}console.log(`${checks} passed / 0 failed; 8 captures; ${out}`);}finally{await browser.close();await server.close();}
