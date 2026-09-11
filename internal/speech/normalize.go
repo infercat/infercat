@@ -75,3 +75,17 @@ func hanInteger(s string) string {
 	}
 	return b.String()
 }
+
+// IsChinese counts Han letters using the shared 30-percent speech-language threshold.
+func IsChinese(text string) bool {
+	han, letters := 0, 0
+	for _, r := range text {
+		if unicode.Is(unicode.Han, r) {
+			han++
+			letters++
+		} else if unicode.IsLetter(r) {
+			letters++
+		}
+	}
+	return letters > 0 && han*10 >= letters*3
+}

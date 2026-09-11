@@ -152,7 +152,7 @@ func (s *Server) speech(w http.ResponseWriter, r *http.Request) {
 	}
 	if in.Voice == "" {
 		in.Voice = "af_maple"
-		if strings.ContainsFunc(in.Input, func(r rune) bool { return unicode.Is(unicode.Han, r) }) {
+		if IsChinese(in.Input) {
 			in.Voice = "zf_001"
 		}
 	}

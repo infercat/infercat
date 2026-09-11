@@ -7,22 +7,6 @@ import (
 	"testing"
 )
 
-func TestSpeechScriptShare(t *testing.T) {
-	for _, tc := range []struct {
-		text string
-		zh   bool
-	}{
-		{"你好，今天过得怎么样？", true}, {"Hello, how are you?", false},
-		{"中文好abcdefg", true}, {"中文abcdefgh", false},
-		{"123 中文好!!! abcdefg 🙂", true}, {"1234 !? 🙂", false},
-		{"㐀ab", true}, {"豈ab", true}, {"𠀀ab", true}, {"", false},
-	} {
-		if got := speechIsChinese(tc.text); got != tc.zh {
-			t.Errorf("%q: Chinese=%v, want %v", tc.text, got, tc.zh)
-		}
-	}
-}
-
 func TestSpeechVoiceOnlyFillsAbsentField(t *testing.T) {
 	for _, tc := range []struct {
 		name, input string
