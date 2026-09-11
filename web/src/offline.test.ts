@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
+import { fakeTransport, mountHost, typeInto } from './test/fakes';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { act, createElement, StrictMode } from 'react';
-import { createRoot, type Root } from 'react-dom/client';
 import App, { restoredSession, shellTransport } from './App';
 import { live, reduce, dropped, probing, type SessionState, type Live } from './session';
 import { KEYS, hostScope, scopedKeys, save, saveChat } from './storage';
@@ -13,17 +13,17 @@ vi.mock('./transport', async (original) => ({ ...await original<typeof import('.
 vi.mock('./storage', async (original) => ({ ...await original<typeof import('./storage')>(), electStore: (_scope: string, change: (leader: boolean) => void) => { change(true); return { release() {}, takeOver() {} }; } }));
 vi.mock('./image-store', async (original) => ({ ...await original<typeof import('./image-store')>(), readImages: async () => ({}) }));
 const addr = 'tcAgIBAqQFBgcICQoLDA0ODxAREhMUFRYXGBkaGxwdHh8', scope = hostScope(addr);
-let root: Root | undefined, container: HTMLDivElement;
+let host: ReturnType<typeof mountHost>, container: HTMLDivElement;
 function seed() {
   save(KEYS.invite, `ic1.${addr}.YWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXoxMjM0NTY3`);
   save(KEYS.lastHost, { scope, name: 'fixture' }); save(scopedKeys(scope).me, fixture);
   saveChat(scope, { id: 'saved', title: 'Saved conversation', createdAt: 1, updatedAt: 1, messages: [{ id: 'question', role: 'user', content: 'History remains readable' }] });
 }
 function candidate(): Transport {
-  return { kind: 'tunnel', close: vi.fn(), ping: async () => null, fetch: vi.fn(async (path: string, init?: RequestInit) => {
+  return fakeTransport(vi.fn(async (path: string, init?: RequestInit) => {
     if (path === '/v1/events') return new Promise<Response>((_resolve, reject) => { const stop = () => reject(new DOMException('Closed', 'AbortError')); init?.signal?.addEventListener('abort', stop, { once: true }); if (init?.signal?.aborted) stop(); });
     return new Response(JSON.stringify(fixture));
-  }) };
+  }), { kind: 'tunnel', close: vi.fn() });
 }
 beforeEach(() => {
   localStorage.clear(); seed(); vi.clearAllMocks();
@@ -33,10 +33,10 @@ beforeEach(() => {
   Object.defineProperty(document, 'hidden', { configurable: true, get: () => device.hidden });
   vi.spyOn(Date, 'now').mockImplementation(() => device.now);
   vi.mocked(openTransport).mockImplementation(async () => ({ transport: candidate(), path: null }));
-  container = document.createElement('div'); document.body.append(container);
+  host = mountHost(); container = host.container;
 });
-afterEach(async () => { if (root) await act(async () => root!.unmount()); root = undefined; container.remove(); vi.restoreAllMocks(); });
-async function mount(skipDelay = false) { root = createRoot(container); await act(async () => root!.render(createElement(StrictMode, null, createElement(App)))); await act(async () => { await import('./ui/Chat'); if (!skipDelay) await new Promise((resolve) => setTimeout(resolve, 30)); }); }
+afterEach(async () => { await host.unmount(); vi.restoreAllMocks(); });
+async function mount(skipDelay = false) { await host.render(createElement(StrictMode, null, createElement(App))); await act(async () => { await import('./ui/Chat'); if (!skipDelay) await new Promise((resolve) => setTimeout(resolve, 30)); }); }
 async function network(online: boolean) { device.online = online; await act(async () => window.dispatchEvent(new Event(online ? 'online' : 'offline'))); }
 async function visibility(hidden: boolean, elapsed = 0) { device.now += elapsed; device.hidden = hidden; await act(async () => document.dispatchEvent(new Event('visibilitychange'))); }
 it('restores only remembered, matching, un-disconnected history with a usable snapshot; links win', () => {
@@ -67,7 +67,7 @@ it('offline renders saved chat without a dial, allows drafting and recovers once
   await mount(); expect(container.textContent).toContain('History remains readable'); expect(container.textContent).toContain('No network on this device');
   expect(openTransport).not.toHaveBeenCalled();
   const field = container.querySelector('textarea')!; expect(field.disabled).toBe(false);
-  await act(async () => { Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!.call(field, 'Offline draft'); field.dispatchEvent(new Event('input', { bubbles: true })); });
+  await typeInto(field, 'Offline draft');
   expect(container.querySelector<HTMLButtonElement>('.composer button.primary')!.disabled).toBe(true);
   await network(true); await network(true);
   expect(openTransport).toHaveBeenCalledTimes(1); expect(field.value).toBe('Offline draft'); expect(field.disabled).toBe(false);
@@ -96,7 +96,7 @@ it('an offline empty card defers a typed invite until the network returns', asyn
   expect(container.textContent).toContain('No network on this device. The card will connect when it is back.');
   expect(openTransport).not.toHaveBeenCalled();
   const field = container.querySelector('textarea')!;
-  await act(async () => { Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!.call(field, `ic1.${addr}.YWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXoxMjM0NTY3`); field.dispatchEvent(new Event('input', { bubbles: true })); });
+  await typeInto(field, `ic1.${addr}.YWJjZGVmZ2hpamtsbW5vcHFyc3R1dnd4eXoxMjM0NTY3`);
   expect(container.querySelector<HTMLButtonElement>('.connect-actions button.primary')!.disabled).toBe(true);
   await network(true); expect(openTransport).toHaveBeenCalledTimes(1);
 });
@@ -120,7 +120,7 @@ it('an edited draft survives a refused replacement and stays available after rec
   await act(async () => edit.click());
   const field = container.querySelector<HTMLTextAreaElement>('.bubble.editing textarea')!;
   expect(field.disabled).toBe(false);
-  await act(async () => { Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!.call(field, 'Keep my edited draft'); field.dispatchEvent(new Event('input', { bubbles: true })); });
+  await typeInto(field, 'Keep my edited draft');
   const replace = container.querySelector<HTMLButtonElement>('.edit-actions .primary')!;
   expect(replace.disabled).toBe(true); await act(async () => replace.click());
   expect(container.querySelector('.bubble.editing textarea')).toBe(field); expect(field.value).toBe('Keep my edited draft');

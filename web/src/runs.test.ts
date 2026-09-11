@@ -1,39 +1,39 @@
+import { fakeTransport } from './test/fakes';
 import { expect, it } from 'vitest';
 import { followRuns } from './runs';
-import type { Transport } from './transport';
 const frame = (data: unknown) => new Response(`data: ${JSON.stringify(data)}\n\n`, { headers: { 'content-type': 'text/event-stream' } });
 it('reconnects with the cursor only after reading the changed run and returns the completed snapshot', async () => {
   const ac = new AbortController(); const cursors: (string | null)[] = [], states: string[] = [], paths: string[] = [];
   let n = 0;
-  const transport = { fetch: async (path: string, init?: RequestInit) => {
+  const transport = fakeTransport(async (path: string, init?: RequestInit) => {
     paths.push(path);
     if (path === '/v1/events') {
       cursors.push(new Headers(init?.headers).get('Last-Event-ID')); n++;
       return frame({ cursor: `epoch:${n}`, time: 'now', ...(n === 1 ? { reset: true, runs: [{ id: 'r', kind: 'agent', state: 'running' }] } : { run_id: 'r', state: 'done' }) });
     }
     return Response.json({ id: 'r', kind: 'agent', state: n === 1 ? 'running' : 'done' });
-  } } as Transport;
+  });
   await followRuns({ transport, secret: 'key', signal: ac.signal, connected() {}, failed(error) { throw error; }, delay: async () => {}, changed(runs) { states.push(runs[0]!.state); if (states.length === 2) ac.abort(); } });
   expect(cursors).toEqual([null, 'epoch:1']); expect(states).toEqual(['running', 'done']); expect(paths.every((p) => p.startsWith('/v1/'))).toBe(true);
 });
 it('does not advance the cursor if a snapshot read was disconnected', async () => {
   const ac = new AbortController(); let reads = 0; const cursors: (string | null)[] = [];
-  const transport = { fetch: async (path: string, init?: RequestInit) => {
+  const transport = fakeTransport(async (path: string, init?: RequestInit) => {
     if (path === '/v1/events') { cursors.push(new Headers(init?.headers).get('Last-Event-ID')); return frame({ cursor: 'e:1', run_id: 'r', time: 'now' }); }
     if (++reads === 1) throw new Error('offline'); return Response.json({ id: 'r', state: 'done' });
-  } } as Transport;
+  });
   await followRuns({ transport, secret: 'key', signal: ac.signal, connected() {}, failed() {}, delay: async () => {}, changed() { ac.abort(); } });
   expect(cursors).toEqual([null, null]);
 });
 it('clears a stale epoch through a read-only reset', async () => {
   const ac = new AbortController(); let n = 0; const cursors: (string | null)[] = [];
-  const transport = { fetch: async (path: string, init?: RequestInit) => {
+  const transport = fakeTransport(async (path: string, init?: RequestInit) => {
     expect(init?.method ?? 'GET').toBe('GET');
     if (path !== '/v1/events') return Response.json({ id: 'r', state: 'running' });
     cursors.push(new Headers(init?.headers).get('Last-Event-ID')); n++;
     if (n === 2) return Response.json({ error: { code: 'invalid_request', message: 'invalid cursor' } }, { status: 400 });
     return frame({ cursor: n === 1 ? 'old:1' : 'new:1', time: 'now', reset: true, runs: [] });
-  } } as Transport;
+  });
   await followRuns({ transport, secret: 'key', signal: ac.signal, connected() {}, failed(error) { throw error; }, delay: async () => {}, changed() { if (n === 3) ac.abort(); } });
   expect(cursors).toEqual([null, 'old:1', null]);
 });

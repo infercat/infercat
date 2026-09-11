@@ -12,6 +12,7 @@ export class GatewayError extends Error {
     readonly retryAfterS?: number,
     readonly limit?: number,
     readonly inFlight?: number,
+    readonly rawBody?: string,
   ) { super(message); }
 }
 

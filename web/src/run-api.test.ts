@@ -1,8 +1,9 @@
+import { fakeTransport } from './test/fakes';
 import { expect, it } from 'vitest';
 import { cancelRun, getRun, runEvents, submitRun } from './api';
 import type { Transport } from './transport';
 const signal = new AbortController().signal;
-function transport(fetch: Transport['fetch']) { return { fetch } as Transport; }
+function transport(fetch: Transport['fetch']) { return fakeTransport(fetch); }
 it('submits exactly once with the existing bearer and keeps Cancel independent', async () => {
   const calls: { path: string; init?: RequestInit }[] = [];
   const t = transport(async (path, init) => { calls.push({ path, init }); return Response.json({ id: 'r-1' }); });

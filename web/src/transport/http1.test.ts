@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { Http1Error, encodeRequest, fetchOverConn } from './http1';
+import { Http1Error, encodeRequest, fetchOverConn } from '../../../packages/client/src/transport/http1';
 import type { Conn } from './types';
 
 const enc = (s: string) => new TextEncoder().encode(s);

@@ -1,3 +1,4 @@
+import { fakeTransport } from './test/fakes';
 import { describe, expect, it, vi } from 'vitest';
 import { readFileSync } from 'node:fs';
 import { NEW_REPLY, reduceReply } from './stream';
@@ -33,16 +34,11 @@ function stream(parts: string[], gapMs = 0): ReadableStream<Uint8Array> {
 }
 
 function transportOf(res: Response, seen: { path?: string; init?: RequestInit } = {}): Transport {
-  return {
-    kind: 'direct',
-    fetch: (path, init) => {
+  return fakeTransport((path, init) => {
       seen.path = path;
       seen.init = init;
       return Promise.resolve(res);
-    },
-    ping: async () => null,
-    close: () => {},
-  };
+    });
 }
 
 /** Every block's data payload, with a comment-only block rendered as `:text` so it is visible. */
@@ -203,12 +199,7 @@ describe('streamChat', () => {
 
   it('turns an abort into an aborted event rather than a rejection', async () => {
     const ac = new AbortController();
-    const t: Transport = {
-      kind: 'direct',
-      fetch: () => Promise.reject(new DOMException('stopped', 'AbortError')),
-      ping: async () => null,
-      close: () => {},
-    };
+    const t: Transport = fakeTransport(() => Promise.reject(new DOMException('stopped', 'AbortError')));
     ac.abort();
     const events = await collect(chatEvents(t, 'k', { model: 'm', messages: [] }, ac.signal));
     expect(events).toEqual([{ kind: 'aborted' }]);
@@ -332,9 +323,7 @@ describe('describeError', () => {
  *  engine's reply or the queue's timeout — or nothing more, so the caller decides when to stop. */
 function busy(everyMs: number, forMs: number, then: 'reply' | 'timeout' | 'silence'): Transport {
   const enc = new TextEncoder();
-  return {
-    kind: 'tunnel',
-    fetch: (_path, init) => {
+  return fakeTransport((_path, init) => {
       const signal = init?.signal;
       const body = new ReadableStream<Uint8Array>({
         start(c) {
@@ -355,34 +344,24 @@ function busy(everyMs: number, forMs: number, then: 'reply' | 'timeout' | 'silen
         },
       });
       return Promise.resolve(new Response(body, { status: 200 }));
-    },
-    ping: () => Promise.resolve(null),
-    close: () => {},
-  };
+    }, { kind: 'tunnel' });
 }
 
 describe('a host that does not answer', () => {
   /** A transport whose request never answers. It honours abort, as both real transports do. */
   function silent(): Transport {
-    return {
-      kind: 'tunnel',
-      fetch: (_path, init) =>
+    return fakeTransport((_path, init) =>
         new Promise<Response>((_resolve, reject) => {
           const signal = init?.signal;
           if (signal?.aborted) reject(new DOMException('aborted', 'AbortError'));
           signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')));
-        }),
-      ping: () => Promise.resolve({ rttMs: 40, via: 'DERP(nyc)', direct: false }),
-      close: () => {},
-    };
+        }), { kind: 'tunnel', ping: () => Promise.resolve({ rttMs: 40, via: 'DERP(nyc)', direct: false }) });
   }
 
   /** A transport that answers the head at once and then streams nothing: a slow model, not a dead
    *  host. This is the case the deadline must never touch. */
   function slow(): Transport {
-    return {
-      kind: 'tunnel',
-      fetch: (_path, init) => {
+    return fakeTransport((_path, init) => {
         const signal = init?.signal;
         const body = new ReadableStream<Uint8Array>({
           start(c) {
@@ -390,10 +369,7 @@ describe('a host that does not answer', () => {
           },
         });
         return Promise.resolve(new Response(body, { status: 200 }));
-      },
-      ping: () => Promise.resolve(null),
-      close: () => {},
-    };
+      }, { kind: 'tunnel' });
   }
   const req = { model: 'm', messages: [{ role: 'user' as const, content: 'hi' }] };
   const fast = { noticeMs: 20, firstByteMs: 60, idleMs: 30 };
@@ -488,9 +464,7 @@ describe('a host that stops answering mid-reply', () => {
   /** Answers the head, streams two tokens, and then never another byte — a host killed mid-reply. */
   function stalls(): Transport {
     const enc = new TextEncoder();
-    return {
-      kind: 'tunnel',
-      fetch: (_path, init) => {
+    return fakeTransport((_path, init) => {
         const signal = init?.signal;
         const body = new ReadableStream<Uint8Array>({
           start(c) {
@@ -500,10 +474,7 @@ describe('a host that stops answering mid-reply', () => {
           },
         });
         return Promise.resolve(new Response(body, { status: 200 }));
-      },
-      ping: () => Promise.resolve(null),
-      close: () => {},
-    };
+      }, { kind: 'tunnel' });
   }
   const req = { model: 'm', messages: [{ role: 'user' as const, content: 'hi' }] };
   const fast = { noticeMs: 20, firstByteMs: 60, idleMs: 30 };
@@ -689,14 +660,10 @@ describe('cold-load first-byte patience', () => {
     try {
       let respond!: (response: Response) => void;
       let requestSignal: AbortSignal | null | undefined;
-      const transport: Transport = {
-        kind: 'tunnel',
-        fetch: (_path, init) => new Promise<Response>((resolve, reject) => {
+      const transport: Transport = fakeTransport((_path, init) => new Promise<Response>((resolve, reject) => {
           respond = resolve; requestSignal = init?.signal;
           requestSignal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')));
-        }),
-        ping: () => Promise.resolve(null), close: () => {},
-      };
+        }), { kind: 'tunnel' });
       const waiting = vi.fn(); const seen: StreamEvent[] = [];
       const done = (async () => { for await (const ev of chatEvents(transport, 's', req, ac.signal, undefined, 'Max', undefined, waiting)) seen.push(ev); })();
       await vi.advanceTimersByTimeAsync(4999);
@@ -723,12 +690,10 @@ describe('cold-load first-byte patience', () => {
     vi.useFakeTimers();
     try {
       let signal: AbortSignal | null | undefined;
-      const transport: Transport = {
-        kind: 'tunnel', fetch: (_path, init) => new Promise<Response>((_resolve, reject) => {
+      const transport: Transport = fakeTransport((_path, init) => new Promise<Response>((_resolve, reject) => {
           signal = init?.signal;
           signal?.addEventListener('abort', () => reject(new DOMException('aborted', 'AbortError')));
-        }), ping: () => Promise.resolve(null), close: () => {},
-      };
+        }), { kind: 'tunnel' });
       const seen: StreamEvent[] = [];
       const done = (async () => { for await (const ev of chatEvents(transport, 's', req)) seen.push(ev); })();
       await vi.advanceTimersByTimeAsync(FIRST_BYTE_TIMEOUT_MS - 1);

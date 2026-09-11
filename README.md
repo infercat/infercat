@@ -211,7 +211,7 @@ The core works and is measured (`docs/MEASURE.md`: ~160 tokens/s through the rel
 No browser needed: the same binary turns an invite into a local OpenAI-compatible endpoint, so Open WebUI, Cursor, Claude Code, the OpenAI SDKs or plain `curl` use your friend's model as if it were local. Between two machines the path goes direct once they find each other; the relay is only the rendezvous.
 
 ```
-bin/infercat connect ic1.tc….…          # paste the invite
+bin/infercat connect ic2.…          # paste the invite
 ```
 ```
 Infercat 0.1.0

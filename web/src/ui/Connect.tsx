@@ -678,7 +678,7 @@ function Hint({ text }: { text: string }) {
  * privacy sentence, so a page that only added the alert would state the promise and its correction
  * side by side, a few centimetres apart, at the moment of consent. The column's sentence is
  * therefore the `--log-prompts` variant of the same line — one sentence, opposite fact, said once
- * (007 promise 12; `privacyLine`). Below 900 px the card's own privacy line is not rendered at all
+ * (007 promise 12; `privacy`). Below 900 px the card's own privacy line is not rendered at all
  * in this state, which is the same promise kept the way the card keeps it.
  */
 function LogPromptsGate({ me, onAccept }: { me: Me; onAccept: () => void }) {

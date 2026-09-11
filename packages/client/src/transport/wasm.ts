@@ -2,7 +2,7 @@
 // Nothing here runs until the user presses Connect, so the landing page costs no wasm download.
 import { tunnelGlobal, type InfercatTunnel } from './types';
 
-export interface WasmProgress {
+interface WasmProgress {
   loaded: number;
   total: number;
   /** null while the total is unknown. */

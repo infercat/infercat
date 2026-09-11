@@ -266,11 +266,6 @@ export function titleFrom(text: string): string {
   return line.length > 40 ? `${line.slice(0, 40).trimEnd()}…` : line || 'Untitled chat';
 }
 
-/** Drops empty conversations and caps history so localStorage never becomes the bottleneck. */
-export function prune(convs: Conversation[], keep = 50): Conversation[] {
-  return convs.filter((c) => c.messages.length > 0).slice(0, keep);
-}
-
 // ---- one conversation, one key (014 promise 4) ------------------------------------------------
 
 /**

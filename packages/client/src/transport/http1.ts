@@ -10,7 +10,7 @@ export class Http1Error extends Error {
   }
 }
 
-export interface Http1Request {
+interface Http1Request {
   method: string;
   path: string;
   headers: Headers;
@@ -31,13 +31,13 @@ export function encodeRequest(req: Http1Request): Uint8Array {
   return out;
 }
 
-export interface ResponseHead {
+interface ResponseHead {
   status: number;
   statusText: string;
   headers: Headers;
 }
 
-export function parseResponseHead(head: string): ResponseHead {
+function parseResponseHead(head: string): ResponseHead {
   const lines = head.split('\r\n');
   const status = /^HTTP\/1\.[01] (\d{3})(?: (.*))?$/.exec(lines[0] ?? '');
   if (!status) {

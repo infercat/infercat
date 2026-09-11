@@ -1,3 +1,4 @@
+import { fakeTransport as makeTransport } from './test/fakes';
 // The session machine. These are the promises that used to be scattered flags: a transport is
 // never left open, a stale measurement is never presented as current, and a revoked key is never
 // swallowed by a background refresh.
@@ -29,15 +30,9 @@ import {
 import type { PingResult, Transport } from './transport';
 
 function fakeTransport(): Transport & { closes: number } {
-  const t = {
-    kind: 'tunnel' as const,
-    closes: 0,
-    fetch: () => Promise.resolve(new Response('{}')),
-    ping: async () => null,
-    close(): void {
+  const t = makeTransport(() => Promise.resolve(new Response('{}')), { kind: 'tunnel' as const, closes: 0, close(): void {
       t.closes++;
-    },
-  };
+    } });
   return t;
 }
 

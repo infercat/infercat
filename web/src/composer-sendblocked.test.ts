@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
+import { fakeTransport, mountHost, typeInto } from './test/fakes';
 import { afterEach, beforeEach, expect, it, vi } from 'vitest';
 import { act, createElement } from 'react';
-import { createRoot, type Root } from 'react-dom/client';
 import Chat from './ui/Chat';
 import { chatEvents, type Me } from './api';
 import { hostScope, loadChats } from './storage';
@@ -18,30 +18,25 @@ vi.mock('./image-store', async (original) => ({ ...await original<typeof import(
 vi.mock('./api', async (original) => ({ ...await original<typeof import('./api')>(),
   chatEvents: vi.fn(async function* () { yield* []; }), getMe: async () => me,
 }));
-let root: Root, container: HTMLDivElement;
+let host: ReturnType<typeof mountHost>, container: HTMLDivElement;
 const live: Live = {
   addr: 'composer-test', secret: 'test', me: me as Me, mode: 'direct',
-  transport: { kind: 'direct', close() {}, ping: async () => null, fetch: async () => { throw new Error('Unexpected transport I/O'); } },
+  transport: fakeTransport(async () => { throw new Error('Unexpected transport I/O'); }),
   path: null, pathAt: 0, pathOk: true, meOk: true, key: 'active', ephemeral: true, probed: 0,
 };
 beforeEach(() => {
   Object.assign(globalThis, { IS_REACT_ACT_ENVIRONMENT: true });
   localStorage.clear(); election.leader = true; vi.clearAllMocks();
-  container = document.createElement('div'); document.body.append(container); root = createRoot(container);
+  host = mountHost(); container = host.container;
 });
-afterEach(async () => { await act(async () => root.unmount()); container.remove(); });
+afterEach(async () => { await host.unmount(); });
 async function render(reconnecting: boolean, key: Live['key'] = 'active') {
   const current = { ...live, key };
-  await act(async () => root.render(createElement(Chat, { live: current, state: { name: 'connected', live: current }, reconnecting, dispatch() {}, onRedial() {} })));
+  await host.render(createElement(Chat, { live: current, state: { name: 'connected', live: current }, reconnecting, dispatch() {}, onRedial() {} }));
 }
 const field = () => container.querySelector('textarea')!;
 const sendButton = () => container.querySelector<HTMLButtonElement>('.composer button.primary')!;
-async function type(text: string) {
-  await act(async () => {
-    Object.getOwnPropertyDescriptor(HTMLTextAreaElement.prototype, 'value')!.set!.call(field(), text);
-    field().dispatchEvent(new Event('input', { bubbles: true }));
-  });
-}
+async function type(text: string) { await typeInto(field(), text); }
 async function enter(options: KeyboardEventInit = {}) {
   await act(async () => { field().dispatchEvent(new KeyboardEvent('keydown', { key: 'Enter', bubbles: true, cancelable: true, ...options })); });
 }

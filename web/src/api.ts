@@ -1,3 +1,5 @@
+import { GatewayError } from '../../packages/client/src/gateway';
+export { GatewayError } from '../../packages/client/src/gateway';
 import { tr } from './i18n/text';
 // The gateway HTTP API (docs/ARCHITECTURE.md §Gateway HTTP API) and the friendly copy for every
 // error code it can return. Nothing else in the app parses a gateway response.
@@ -47,22 +49,6 @@ export function modelLabel(id: string): string {
     out.push(/\d/.test(p) && p.length <= 4 ? p.toUpperCase() : p.charAt(0).toUpperCase() + p.slice(1));
   }
   return out.join(' ') || base;
-}
-
-export class GatewayError extends Error {
-  constructor(
-    readonly status: number,
-    readonly code: string,
-    readonly type: string,
-    message: string,
-    readonly retryAfterS?: number,
-    readonly limit?: number,
-    readonly inFlight?: number,
-    readonly rawBody?: string,
-  ) {
-    super(message);
-    this.name = 'GatewayError';
-  }
 }
 
 export async function call(
@@ -429,10 +415,6 @@ export function needsRedial(code: string): boolean {
   return code === 'host_asleep' || code === '';
 }
 
-/** The two codes that mean this invite is over for good, whatever the reader does next. */
-export function keyIsDead(code: string): boolean {
-  return code === 'key_revoked' || code === 'invalid_key';
-}
 
 export function isAbort(err: unknown): boolean {
   return (err as { name?: string } | null)?.name === 'AbortError';

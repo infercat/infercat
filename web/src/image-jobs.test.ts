@@ -1,3 +1,4 @@
+import { fakeTransport } from './test/fakes';
 import { expect, it } from 'vitest';
 import { imagePrompts } from './imageJobs';
 it('makes one image per nonempty paragraph, preserving lines within it', () => {
@@ -8,7 +9,6 @@ it('makes one image per nonempty paragraph, preserving lines within it', () => {
 });
 
 import { imageArtifact, imageElapsed, imageJobs, mergeImageJobs, type ImageJob } from './imageJobs';
-import type { Transport } from './transport';
 import type { Conversation } from './storage';
 const signal = new AbortController().signal;
 const job = (id: string, batch = 'batch', index = 0): ImageJob => ({ id, kind: 'image', key_id: 'key', state: 'done', position: 0, created: '2026-09-12T12:00:00Z', started: '2026-09-12T12:01:00Z', updated: '2026-09-12T12:01:30Z', expires: '2026-09-19T12:01:30Z', cancel_requested: false, input: { prompt: id, client_request_id: 'request' }, batch: { id: batch, index, count: 2 }, attempts: [] });
@@ -31,21 +31,21 @@ it('uses actual image execution age once started, and preserves terminal elapsed
   expect(imageElapsed({...job('a'),state:'running'},Date.parse('2026-09-12T12:01:45Z'))).toBe(45);
 });
 it('sends the atomic batch once, with correlation outside prompts',async()=>{
-  let count=0;const t={fetch:async(path:string,init:RequestInit)=>{count++;expect(path).toBe('/v1/images/jobs');expect(new Headers(init.headers).get('authorization')).toBe('Bearer secret');expect(JSON.parse(String(init.body))).toEqual({prompts:['a','b'],conversation:'chat',client_request_id:'request'});throw new Error('lost');}} as unknown as Transport;
+  let count=0;const t=fakeTransport(async(path:string,init:RequestInit)=>{count++;expect(path).toBe('/v1/images/jobs');expect(new Headers(init.headers).get('authorization')).toBe('Bearer secret');expect(JSON.parse(String(init.body))).toEqual({prompts:['a','b'],conversation:'chat',client_request_id:'request'});throw new Error('lost');});
   await expect(imageJobs(t,'secret',signal,{prompts:['a','b'],conversation:'chat',client_request_id:'request'})).rejects.toThrow('lost');expect(count).toBe(1);
 });
 it('image output is authenticated, fixed-route, PNG/JPEG-only and bounded at 8 MiB',async()=>{
-  const t={fetch:async(path:string,init:RequestInit)=>{expect(path).toBe('/v1/images/outputs/a%2Fb?download=1');expect(new Headers(init.headers).get('authorization')).toBe('Bearer secret');return new Response(new Uint8Array(8*1024*1024+1),{headers:{'content-type':'image/png'}});}} as unknown as Transport;
+  const t=fakeTransport(async(path:string,init:RequestInit)=>{expect(path).toBe('/v1/images/outputs/a%2Fb?download=1');expect(new Headers(init.headers).get('authorization')).toBe('Bearer secret');return new Response(new Uint8Array(8*1024*1024+1),{headers:{'content-type':'image/png'}});});
   await expect(imageArtifact(t,'secret','a/b',signal,true)).rejects.toThrow('exceeds 8 MiB');
-  const svg={fetch:async()=>new Response('<svg/>',{headers:{'content-type':'image/svg+xml'}})} as unknown as Transport;
+  const svg=fakeTransport(async()=>new Response('<svg/>',{headers:{'content-type':'image/svg+xml'}}));
   await expect(imageArtifact(svg,'secret','a',signal)).rejects.toThrow('Invalid image output');
-  const png={fetch:async()=>new Response(new Uint8Array(2*1024*1024),{headers:{'content-type':'image/png'}})} as unknown as Transport;
+  const png=fakeTransport(async()=>new Response(new Uint8Array(2*1024*1024),{headers:{'content-type':'image/png'}}));
   expect((await imageArtifact(png,'secret','a',signal)).size).toBe(2*1024*1024);
 });
 
 it('accepts a POST snapshot without a position and never invents queue rank', async () => {
   const created = { ...job('a'), state: 'queued' as const }; delete created.position;
-  const t = { fetch: async () => Response.json({ jobs: [created] }, { status: 202 }) } as unknown as Transport;
+  const t = fakeTransport(async () => Response.json({ jobs: [created] }, { status: 202 }));
   const result = await imageJobs(t, 'secret', signal, { prompts: ['a'], conversation: 'chat', client_request_id: 'request' });
   expect(result[0]!.position).toBeUndefined();
 });

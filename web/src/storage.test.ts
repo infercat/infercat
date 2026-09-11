@@ -20,7 +20,6 @@ import {
   reopenChats,
   undelivered,
   newConversation,
-  prune,
   save,
   saveChat,
   scopedKeys,
@@ -93,20 +92,6 @@ describe('conversation helpers', () => {
     expect(titleFrom('   ')).toBe('Untitled chat');
   });
 
-  it('drops empty conversations and caps history', () => {
-    const conv = (id: string, n: number): Conversation => ({
-      id,
-      title: id,
-      createdAt: 0,
-      updatedAt: 0,
-      messages: Array.from({ length: n }, (_, i) => ({ id: `${id}${i}`, role: 'user', content: 'x' })),
-    });
-    const list = [conv('a', 1), conv('b', 0), ...Array.from({ length: 60 }, (_, i) => conv(`c${i}`, 1))];
-    const kept = prune(list, 50);
-    expect(kept).toHaveLength(50);
-    expect(kept.map((c) => c.id)).not.toContain('b');
-    expect(kept[0]?.id).toBe('a');
-  });
 });
 
 // Promise 7: two hosts, or two invites on one host, never see each other's history or settings.

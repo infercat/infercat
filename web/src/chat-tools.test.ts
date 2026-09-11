@@ -1,3 +1,4 @@
+import { fakeTransport } from './test/fakes';
 import { expect, it } from 'vitest';
 import { offersHostTools, mergeChatRuns } from './chatTools';
 import { fakeMe } from '../dev/fake-backend';
@@ -5,7 +6,6 @@ import { scriptedRun } from '../dev/fake-runs';
 import { mergeImageJobs, type ImageJob } from './imageJobs';
 import { chatEvents } from './api';
 import type { Conversation } from './storage';
-import type { Transport } from './transport';
 import { NEW_REPLY, reduceReply } from './stream';
 const conv = (): Conversation => ({id:'c',title:'fox',createdAt:1,updatedAt:1,messages:[{id:'u',role:'user',content:'fox'},{id:'reply',role:'assistant',content:'Here it is.',hostRun:{keyId:'key',requestId:'request',ids:[],records:[]}}]});
 const parent = (id='parent') => ({...scriptedRun(id,'done'),kind:'chat',client_request_id:'request',key_id:'key'});
@@ -29,7 +29,7 @@ it('moves a recovered child only after the reply association exists',()=>{
  const orphan=mergeImageJobs([], [child()], 'key');const cs=mergeImageJobs([...orphan,conv()],[child()],'key');expect(cs).toHaveLength(1);expect(cs[0]!.id).toBe('c');
 });
 it('reads the explicit handoff then normal deltas and preserves the inner refusal Retry-After',async()=>{
- let sends=0;const t={fetch:async()=>{sends++;return new Response('data: {"code":"run_handoff","charged":0}\n\nevent: run\ndata: {"run_id":"parent"}\n\ndata: {"choices":[{"delta":{"content":"Fox"}}]}\n\ndata: {"error":{"code":"rate_limited","message":"wait","retry_after":60}}\n\n');}} as unknown as Transport;
+ let sends=0;const t=fakeTransport(async()=>{sends++;return new Response('data: {"code":"run_handoff","charged":0}\n\nevent: run\ndata: {"run_id":"parent"}\n\ndata: {"choices":[{"delta":{"content":"Fox"}}]}\n\ndata: {"error":{"code":"rate_limited","message":"wait","retry_after":60}}\n\n');});
  const events=[];for await(const e of chatEvents(t,'secret',{model:'m',messages:[]})) events.push(e);
  expect(events.map(e=>e.kind)).toEqual(['run','content','error']);expect(events[2]).toMatchObject({error:{retryAfterS:60}});expect(sends).toBe(1);expect(reduceReply(NEW_REPLY,{kind:'run',id:'parent'})).toEqual(NEW_REPLY);
 });

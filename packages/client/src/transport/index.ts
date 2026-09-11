@@ -4,7 +4,7 @@ import { loadInfercatTunnel } from './wasm';
 import { tunnelGlobal, type Conn, type PingResult, type Session, type Transport } from './types';
 
 export type { Conn, PingResult, Session, Transport, InfercatTunnel } from './types';
-export { Http1Error, fetchOverConn, encodeRequest, parseResponseHead } from './http1';
+export { Http1Error, fetchOverConn, encodeRequest } from './http1';
 
 /** Real fetch against `infercat serve --dev-listen` (or the fake gateway). */
 export class DirectTransport implements Transport {

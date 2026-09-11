@@ -1,9 +1,10 @@
+import { fakeTransport } from './test/fakes';
 import { expect, it } from 'vitest';
 import { acceptedVerification } from './App';
 import { reduce, type Live, type SessionState } from './session';
 import type { Me } from './api';
 import type { Transport } from './transport';
-const transport = (): Transport => ({ kind: 'tunnel', fetch: async () => new Response('{}'), ping: async () => null, close() {} });
+const transport = (): Transport => (fakeTransport(async () => new Response('{}'), { kind: 'tunnel' }));
 const me: Me = {
   key: { id: 'k', name: 'test', status: 'active' },
   limits: { rpm: 20, tpm: 20000, max_concurrent: 1, max_output_tokens: 2048, max_context: 0, daily_tokens: 200000 },

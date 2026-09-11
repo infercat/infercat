@@ -546,7 +546,6 @@ input[type='range']::-moz-range-thumb {
 @media (prefers-reduced-motion: reduce) {
   .row.streaming > .md > :last-child::after { animation: none; }
 }
-.msg-error { color: var(--danger); margin: 0; }
 
 /* A reply that stopped says how it stopped, right under what it managed to say. */
 .ended { color: var(--muted); font-size: 13px; margin: 6px 0 0; line-height: 1.45; }
@@ -1143,10 +1142,6 @@ body { overscroll-behavior-y: none; }
    happening now, said the way the app already says it. */
 .live { width: 7px; height: 7px; flex: none; display: inline-block; background: var(--text); animation: cursor-blink 1s steps(1, end) infinite; }
 @media (prefers-reduced-motion: reduce) { .live { animation: none; } }
-/* The input level while recording: the header's 3 px rule, ink fill, so the reader sees that the
-   device is hearing them before anything leaves it. */
-.level { display: block; width: 96px; height: 3px; background: var(--surface-2); flex: none; }
-.level-fill { display: block; height: 100%; background: var(--text); }
 
 /* In the reply: the same line, under the words and above the meta, while speech is being made on
    the host and while it plays. Position over duration, the characters that left the device, the
@@ -1260,7 +1255,6 @@ body { overscroll-behavior-y: none; }
 .output .prompt { margin: 0; font-size: 13.5px; line-height: 1.5; color: var(--text); overflow-wrap: anywhere; }
 .output .line { font-family: var(--mono); font-size: 10.5px; color: var(--muted); font-variant-numeric: tabular-nums; }
 .output .actions { display: flex; gap: 4px; flex-wrap: wrap; }
-.output .waitline { font-family: var(--mono); font-size: 10.5px; color: var(--muted); display: flex; gap: 8px; align-items: center; }
 @media (max-width: 760px) {
   .output { grid-template-columns: 1fr; }
   .output .shot { grid-row: auto; }
@@ -1269,7 +1263,7 @@ body { overscroll-behavior-y: none; }
 .output.pending { grid-template-columns: 1fr; }
 .output .spoken { margin: 0; }
 .sheet.harvest .empty-line { color: var(--muted); font-size: 13.5px; padding: 18px 0; margin: 0; }
-.app.zh :is(.conv.harvest .count, .sheet.harvest header .caption, .asking-head, .output .line, .output .waitline) { font-family: var(--mono-cjk); }
+.app.zh :is(.conv.harvest .count, .sheet.harvest header .caption, .asking-head, .output .line) { font-family: var(--mono-cjk); }
 
 /* Captured write diffs use the run's existing ink/mono register. */
 .row.run .run-diff, .row.run .run-diff-status { margin: 4px 0 8px 3.4rem; font: 12px var(--mono); }

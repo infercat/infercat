@@ -1,3 +1,4 @@
+import { fakeTransport } from './test/fakes';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { GatewayError } from './api';
 import { VoiceRecorder, transcribe, requestSpeech, recordingMime, voiceCharacters, voiceWords, voiceTime, type RecordingState } from './voice';
@@ -207,7 +208,7 @@ describe('voice recorder ownership', () => {
 });
 
 describe('voice requests and measurements', () => {
-  const transport = (fetch: Transport['fetch']): Transport => ({ kind: 'direct', fetch, ping: async () => null, close: () => {} });
+  const transport = (fetch: Transport['fetch']): Transport => (fakeTransport(fetch));
   it('serializes multipart bytes with the matching boundary and no model for the tunnel', async () => {
     const t = transport(async (_path, init) => {
       expect(_path).toBe('/v1/audio/transcriptions'); expect(new Headers(init?.headers).get('authorization')).toBe('Bearer test-key');

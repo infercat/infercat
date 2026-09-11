@@ -206,7 +206,7 @@ infercat keys limits alice --rpm 60 --daily-tokens 1000000 --max-output-tokens 8
 无需浏览器：同一个二进制文件可以直接把邀请码变成一个本地的 OpenAI 兼容接口。这样一来，Open WebUI、Cursor、Claude Code、OpenAI SDK 乃至直接用 `curl` 都能像调用本地模型一样使用朋友的模型。两台电脑一旦找到彼此，链路就会转成直连；中继只是它们碰头的地方。
 
 ```
-bin/infercat connect ic1.tc….…          # paste the invite
+bin/infercat connect ic2.…          # paste the invite
 ```
 ```
 Infercat 0.1.0
