@@ -41,7 +41,10 @@ func TestInProcessCancelSettlesOnceOnReturn(t *testing.T) {
 				}
 				return StepResult{Output: json.RawMessage(`{}`), Dispatched: true, Settled: true, Usage: usage.Event{Meters: []usage.Meter{{Class: "tokens", Unit: "tokens", Measured: 7, Charged: 7}}}}, ctx.Err()
 			}, nil)
-			m.joinTimeout = 20 * time.Millisecond
+			m.joinTimeout = 5 * time.Second // Cooperative settlement must tolerate scheduler/disk jitter.
+			if late {
+				m.joinTimeout = 20 * time.Millisecond // This case exercises the bounded wait.
+			}
 			if err := m.Register("chat", m.Consumer(func(_ context.Context, w *Work) (json.RawMessage, error) {
 				result, err := w.Step(Step{Input: json.RawMessage(`{}`)})
 				return result.Output, err
@@ -57,6 +60,9 @@ func TestInProcessCancelSettlesOnceOnReturn(t *testing.T) {
 				t.Fatal(err)
 			}
 			<-entered
+			m.mu.Lock()
+			joined := m.active[a.ID].joined
+			m.mu.Unlock()
 			if _, err = m.Cancel("a", a.ID); err != nil {
 				t.Fatal(err)
 			}
@@ -84,6 +90,11 @@ func TestInProcessCancelSettlesOnceOnReturn(t *testing.T) {
 				close(release)
 			}
 			await(t, func() bool { m.mu.Lock(); defer m.mu.Unlock(); return m.active[a.ID] == nil })
+			select {
+			case <-joined:
+			case <-time.After(5 * time.Second):
+				t.Fatal("cancel join observation timed out")
+			}
 			got, _ := s.Get("a", a.ID)
 			if got.State != Cancelled || len(got.Attempts) != 1 || !got.Attempts[0].Settled || got.Attempts[0].Usage.Meters[0].Charged != 7 || settlements.Load() != 1 || releases.Load() != 1 {
 				t.Fatal(got, settlements.Load(), releases.Load())

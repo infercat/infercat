@@ -40,6 +40,12 @@ func TestAgentRuntimeOptionalAndMissingInstallDoesNotBlockServe(t *testing.T) {
 			t.Fatalf("serve blocked: %s", errw.String())
 		}
 		st, err := admin.Fetch(ctx, dir)
+		if enabled && err == nil {
+			waitUntil(t, "agent preflight", func() bool {
+				st, err = admin.Fetch(ctx, dir)
+				return err != nil || (st.Agent != nil && st.Agent.State != "starting")
+			})
+		}
 		cancel()
 		select {
 		case <-done:
