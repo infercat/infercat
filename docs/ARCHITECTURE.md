@@ -431,15 +431,14 @@ usage history refuses audio rather than silently resetting its budget.
 capacity. The host constructs the store and manager before exposing the gateway, runs startup
 and periodic expiry sweeps, and cancels the manager before draining listeners.
 An explicitly configured image engine registers the image run kind. A trusted kind chooses a
-step, a tool/approval wait, or a terminal output; clients cannot submit executable
+step or a terminal output; a consumer waits through `Work.Approval`/`Answer`. Clients cannot submit executable
 code as a kind. Each engine step has a distinct attempt ID, persisted before
 execution, and an injected executor returns only after releasing and settling its
 resources. `StepResult.Usage` carries the resulting usage event (including meters
 when supplied by the gateway); run totals must not charge those steps again.
 
 States are queued, running, waiting, done, failed and cancelled. Waiting holds no
-engine or key capacity. Cancellation is cooperative, terminal states are final,
-and a waiting event is published only when an immediate internal resume is safe.
+engine or key capacity. Cancellation is cooperative and terminal states are final.
 Interactive/planted are stored labels; they do not change destination FIFO order.
 On restart, unfinished runs become failed/interrupted and unsettled attempts are
 marked accounting-uncertain. Engine work is never replayed. This does not promise

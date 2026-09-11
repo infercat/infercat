@@ -153,12 +153,19 @@ func waitRun(t *testing.T, m *runstate.Manager, key, id string, want runstate.St
 }
 func TestRunRoutesWaitAndOwnership(t *testing.T) {
 	h := newHarness(t, Config{}, nil)
-	m := runManager(t, h, func(_ context.Context, r runstate.Run) (runstate.Decision, error) {
-		if len(r.Attempts) == 0 {
-			return runstate.Decision{Step: ptrStep(stepInput(false))}, nil
+	m := runManager(t, h, nil)
+	if err := m.Register("test", m.Consumer(func(_ context.Context, w *runstate.Work) (json.RawMessage, error) {
+		result, err := w.Step(stepInput(false))
+		if err != nil {
+			return nil, err
 		}
-		return runstate.Decision{Wait: "tool"}, nil
-	})
+		if _, err = w.Approval("approval", "Continue?"); err != nil {
+			return nil, err
+		}
+		return result.Output, nil
+	}), runstate.Policy{InProcess: true, JoinCancel: true}); err != nil {
+		t.Fatal(err)
+	}
 	made := h.do("POST", "/v1/runs", "Bearer "+testSecret, `{"kind":"test","input":{}}`)
 	if made.status != 202 {
 		t.Fatal(made)

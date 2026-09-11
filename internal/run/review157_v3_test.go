@@ -155,7 +155,7 @@ func Test157V3WaitingQuarantineAndStopping(t *testing.T) {
 	m.mu.Lock()
 	m.blocked["test"] = 1
 	m.mu.Unlock()
-	if err = m.Resume("key", a.ID); !errors.Is(err, ErrStopping) {
+	if _, err = m.Submit("key", "test", "", json.RawMessage(`{}`)); !errors.Is(err, ErrStopping) {
 		t.Fatal(err)
 	}
 	m.mu.Lock()
@@ -171,7 +171,7 @@ func Test157V3WaitingQuarantineAndStopping(t *testing.T) {
 	if releases.Load() != 2 || len(ch) != 2 {
 		t.Fatal("release or events missing", releases.Load(), len(ch))
 	}
-	if err = m.Resume("key", a.ID); !errors.Is(err, ErrQuarantined) {
+	if _, err = m.Submit("key", "test", "", json.RawMessage(`{}`)); !errors.Is(err, ErrQuarantined) {
 		t.Fatal(err)
 	}
 }

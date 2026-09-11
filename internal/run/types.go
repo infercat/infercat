@@ -121,7 +121,6 @@ type StepResult struct {
 type Executor func(context.Context, string, Step, func() error) (StepResult, error)
 type Decision struct {
 	Step   *Step
-	Wait   string
 	Output json.RawMessage
 }
 

@@ -14,7 +14,7 @@ import (
 	"time"
 )
 
-func Test157V4ResumeUsesSerialSchedule(t *testing.T) {
+func Test157V4SubmitUsesSerialSchedule(t *testing.T) {
 	s := store(t)
 	m := manager(t, s, nil, nil)
 	entered, release := make(chan struct{}), make(chan struct{})
@@ -35,18 +35,15 @@ func Test157V4ResumeUsesSerialSchedule(t *testing.T) {
 	}
 	a := submit(t, m)
 	<-entered
-	b := create(t, s, "k_b")
-	if _, err := s.change(b.KeyID, b.ID, func(r *Run) error { r.State = Waiting; return nil }); err != nil {
-		t.Fatal(err)
-	}
-	if err := m.Resume(b.KeyID, b.ID); err != nil {
+	b, err := m.Submit("k_b", "test", "", json.RawMessage(`{}`))
+	if err != nil {
 		t.Fatal(err)
 	}
 	m.mu.Lock()
 	started := m.active[b.ID] != nil
 	m.mu.Unlock()
 	if started || calls.Load() != 1 || state(s, b) != Queued {
-		t.Fatal("Resume bypassed serial admission", started, calls.Load(), state(s, b))
+		t.Fatal("Submit bypassed serial admission", started, calls.Load(), state(s, b))
 	}
 	close(release)
 	await(t, func() bool { return state(s, a) == Done && state(s, b) == Done })

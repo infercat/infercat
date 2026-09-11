@@ -228,34 +228,6 @@ func (m *Manager) start(r Run) {
 		m.drive(ctx, r)
 	}()
 }
-func (m *Manager) Resume(key, rid string) error {
-	m.mu.Lock()
-	defer m.mu.Unlock()
-	if m.ctx.Err() != nil {
-		return ErrConflict
-	}
-	r, err := m.Store.change(key, rid, func(v *Run) error {
-		if err := m.availability(v.Kind); err != nil {
-			return err
-		}
-		if v.State != Waiting || m.active[rid] != nil {
-			return ErrConflict
-		}
-		v.State = Queued
-		v.Reason = ""
-		return nil
-	})
-	if err == nil {
-		if m.Policies[r.Kind].Serial {
-			m.schedule(r.Kind)
-		} else {
-			m.start(r)
-		}
-	} else if committedTerminal(err) {
-		m.stopTerminal(r)
-	}
-	return err
-}
 func (m *Manager) Cancel(key, rid string) (Run, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
@@ -320,9 +292,6 @@ func (m *Manager) finish(key, rid string, st State, reason string, output json.R
 		}
 		return nil
 	})
-	if err == nil && st == Waiting {
-		delete(m.active, rid)
-	}
 	if committedTerminal(err) {
 		m.stopTerminal(r)
 	}
@@ -355,11 +324,7 @@ func (m *Manager) drive(ctx context.Context, r Run) {
 				m.finish(r.KeyID, r.ID, Failed, "output limit or format", nil)
 				return
 			}
-			if d.Wait != "" {
-				m.finish(r.KeyID, r.ID, Waiting, d.Wait, nil)
-			} else {
-				m.finish(r.KeyID, r.ID, Done, "", d.Output)
-			}
+			m.finish(r.KeyID, r.ID, Done, "", d.Output)
 			return
 		}
 		original := r

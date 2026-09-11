@@ -53,7 +53,6 @@ func state(s *Store, r Run) State { v, _ := s.Get(r.KeyID, r.ID); return v.State
 func TestWaitReleasesStepAndResume(t *testing.T) {
 	s := store(t)
 	var slots atomic.Int32
-	var resume atomic.Bool
 	ex := func(ctx context.Context, key string, step Step, acquired func() error) (StepResult, error) {
 		slots.Add(1)
 		defer slots.Add(-1)
@@ -62,29 +61,25 @@ func TestWaitReleasesStepAndResume(t *testing.T) {
 		}
 		return StepResult{Output: json.RawMessage(`{"answer":1}`), Dispatched: true, Settled: true}, nil
 	}
-	k := func(_ context.Context, r Run) (Decision, error) {
-		if len(r.Attempts) == 0 {
-			return Decision{Step: &Step{Route: "/v1/chat/completions", Input: json.RawMessage(`{}`)}}, nil
+	m := manager(t, s, ex, nil)
+	if err := m.Register("test", m.Consumer(func(_ context.Context, w *Work) (json.RawMessage, error) {
+		result, err := w.Step(Step{Route: "/v1/chat/completions", Input: json.RawMessage(`{}`)})
+		if err != nil {
+			return nil, err
 		}
-		if !resume.Load() {
-			return Decision{Wait: "tool"}, nil
+		if _, err = w.Approval("approval", "Continue?"); err != nil {
+			return nil, err
 		}
-		return Decision{Output: r.Attempts[0].Output}, nil
+		return result.Output, nil
+	}), Policy{InProcess: true, JoinCancel: true}); err != nil {
+		t.Fatal(err)
 	}
-	m := manager(t, s, ex, k)
 	r := submit(t, m)
 	await(t, func() bool { return state(s, r) == Waiting })
 	if slots.Load() != 0 {
 		t.Fatal("capacity held while waiting")
 	}
-	m.mu.Lock()
-	active := m.active[r.ID] != nil
-	m.mu.Unlock()
-	if active {
-		await(t, func() bool { m.mu.Lock(); defer m.mu.Unlock(); return m.active[r.ID] == nil })
-	}
-	resume.Store(true)
-	if e := m.Resume(r.KeyID, r.ID); e != nil {
+	if _, e := m.Answer(r.KeyID, r.ID, "approval", true); e != nil {
 		t.Fatal(e)
 	}
 	await(t, func() bool { return state(s, r) == Done })
@@ -109,12 +104,20 @@ func TestCancelEveryLiveState(t *testing.T) {
 				return StepResult{Dispatched: st == Running, Settled: true}, ctx.Err()
 			}
 			k := func(_ context.Context, r Run) (Decision, error) {
-				if st == Waiting {
-					return Decision{Wait: "approval"}, nil
-				}
 				return Decision{Step: &Step{Input: json.RawMessage(`{}`)}}, nil
 			}
-			m := manager(t, s, ex, k)
+			m := manager(t, s, ex, nil)
+			policy := Policy{}
+			if st == Waiting {
+				k = m.Consumer(func(_ context.Context, w *Work) (json.RawMessage, error) {
+					_, err := w.Approval("approval", "Continue?")
+					return nil, err
+				})
+				policy = Policy{InProcess: true, JoinCancel: true}
+			}
+			if err := m.Register("test", k, policy); err != nil {
+				t.Fatal(err)
+			}
 			r := submit(t, m)
 			if st == Waiting {
 				await(t, func() bool { return state(s, r) == Waiting })
@@ -164,7 +167,13 @@ func TestRecoveryExpiryAndRefusedSubmit(t *testing.T) {
 }
 func TestAbandonedWait(t *testing.T) {
 	s := store(t)
-	m := manager(t, s, nil, func(context.Context, Run) (Decision, error) { return Decision{Wait: "approval"}, nil })
+	m := manager(t, s, nil, nil)
+	if err := m.Register("test", m.Consumer(func(_ context.Context, w *Work) (json.RawMessage, error) {
+		_, err := w.Approval("approval", "Continue?")
+		return nil, err
+	}), Policy{InProcess: true, JoinCancel: true}); err != nil {
+		t.Fatal(err)
+	}
 	r := submit(t, m)
 	await(t, func() bool { return state(s, r) == Waiting })
 	s.mu.Lock()
@@ -173,35 +182,7 @@ func TestAbandonedWait(t *testing.T) {
 	if e := m.Sweep(); e != nil {
 		t.Fatal(e)
 	}
-	if state(s, r) != Cancelled {
-		t.Fatal(state(s, r))
-	}
-}
-func TestWaitingEventIsImmediatelyResumable(t *testing.T) {
-	s := store(t)
-	var resume atomic.Bool
-	m := manager(t, s, nil, func(context.Context, Run) (Decision, error) {
-		if !resume.Load() {
-			return Decision{Wait: "tool"}, nil
-		}
-		return Decision{Output: json.RawMessage(`{}`)}, nil
-	})
-	_, events, stop, e := s.Subscribe("k_a", "")
-	if e != nil {
-		t.Fatal(e)
-	}
-	defer stop()
-	r := submit(t, m)
-	for event := range events {
-		if event.State == Waiting {
-			break
-		}
-	}
-	resume.Store(true)
-	if e = m.Resume(r.KeyID, r.ID); e != nil {
-		t.Fatalf("published waiting but Resume refused: %v", e)
-	}
-	await(t, func() bool { return state(s, r) == Done })
+	await(t, func() bool { return state(s, r) == Cancelled })
 }
 func TestOutputLimitAndStepFailurePreserveSettlement(t *testing.T) {
 	for _, oversize := range []bool{false, true} {
