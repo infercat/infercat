@@ -46,6 +46,7 @@ size-check:
 		function check() { cap = path in caps ? caps[path] : 1000; \
 		if (lines > cap) { printf "%s: %d lines (cap %d)\n", path, lines, cap; failed = 1 } lines = 0 }' \
 		hack/size-allow.txt {} +
+	@echo "size-check: PASS"
 
 # wasm bridge (ticket 001 owns web/wasm/build.sh)
 wasm:
