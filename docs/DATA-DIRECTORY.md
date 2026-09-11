@@ -15,7 +15,11 @@ English · [简体中文](DATA-DIRECTORY.zh-CN.md)
 | `admin.json` | Optional remote-console switch: SHA-256 admin-code hash and enabled-since time, mode 0600; never plaintext or a friend key. Removed when turned off. |
 | `bridge.json` | Public bridge endpoint, host id, and secret bridge token (0600). Created by `expose --register`; read by `serve` at startup/reload; removed by `expose --off`. Keep private. |
 | `runs/<key-id>/images/<run-id>` | Generated PNG/JPEG: up to 8 MiB each, 7-day expiry, separate 256 MiB per-key budget (oldest evicted first). See [image hosting](IMAGES.md). |
-| `config.json` | Remembered `serve` flags. |
+| `config.json` | Remembered `serve` flags and the active `profile_install` reference. |
+| `profiles/downloads/` | SHA-256-addressed verified downloads and resumable `.part` files; no system installation. |
+| `profiles/trees/` | Private extracted artifact/model trees; completed trees can remain after a failed check. |
+| `profiles/install-<sha256>.json` | The versioned installation record: profile digest, canonical paths, file hashes, symlink targets, and external ownership. Config points to the active record. |
+| `profiles/members/<id>/` | Generated engine config, isolated HOME, and `engine.log` (wraps at 1 MiB). |
 | `tunnel.log` | The tunnel engine's log (`serve --verbose` prints it instead). |
 
 `infercat serve -h` also lists these files. See the [host quickstart](../README.md#quickstart-host).

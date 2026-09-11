@@ -9,6 +9,7 @@ import (
 	"net/http/httptest"
 	"net/url"
 	"os"
+	"path/filepath"
 	"strconv"
 	"strings"
 	"testing"
@@ -188,5 +189,64 @@ func TestSetupNeverExecutesCommands(t *testing.T) {
 	}
 	if _, err := os.Stat(marker); !os.IsNotExist(err) {
 		t.Fatal("profile command executed")
+	}
+}
+
+func TestManagedSetupCommitAndRollback(t *testing.T) {
+	for _, kind := range []string{"success", "anchor fails", "manifest fails", "cancel", "conflict"} {
+		t.Run(kind, func(t *testing.T) {
+			p, m := setupFixture(t, false)
+			setupEngine(t, &p.Members[0], kind != "anchor fails")
+			dir := t.TempDir()
+			before := config{Name: "keep", Region: "region", WebURL: "https://example.com", ProfileInstall: "prior"}
+			if kind == "conflict" {
+				before.Upstream = "http://127.0.0.1:1"
+			}
+			if e := saveConfig(dir, before); e != nil {
+				t.Fatal(e)
+			}
+			original, _ := os.ReadFile(configPath(dir))
+			if kind == "manifest fails" {
+				os.WriteFile(filepath.Join(dir, "profiles"), []byte("occupied"), 0600)
+			}
+			ctx, cancel := context.WithCancel(context.Background())
+			defer cancel()
+			if kind == "cancel" {
+				cancel()
+			}
+			var out bytes.Buffer
+			e := env{out: &out, errw: &out}
+			err := e.setup(ctx, dir, p, false, m, nil, nil)
+			after, _ := os.ReadFile(configPath(dir))
+			if kind != "success" {
+				if err == nil || !bytes.Equal(original, after) {
+					t.Fatalf("%v rewrote config=%v", err, !bytes.Equal(original, after))
+				}
+				return
+			}
+			if err != nil {
+				t.Fatal(err, out.String())
+			}
+			cfg, err := loadConfig(dir)
+			if err != nil {
+				t.Fatal(err)
+			}
+			if cfg.Name != before.Name || cfg.Region != before.Region || cfg.WebURL != before.WebURL || cfg.Upstream != p.Members[0].URL() || cfg.ProfileInstall == before.ProfileInstall {
+				t.Fatal(cfg)
+			}
+			manifest, err := os.ReadFile(filepath.Join(dir, cfg.ProfileInstall))
+			if err != nil {
+				t.Fatal(err)
+			}
+			var record profile.Installation
+			if json.Unmarshal(manifest, &record) != nil || len(record.Members) != 1 || !record.Members[0].External {
+				t.Fatal("bad installation")
+			}
+			// The external endpoint is still serving after setup; setup never owns it.
+			check := profile.Check(context.Background(), p.Members[0], nil, nil)
+			if check.State != "running" || check.Err != nil {
+				t.Fatal(check)
+			}
+		})
 	}
 }

@@ -9,13 +9,14 @@ import (
 	"runtime"
 	"strings"
 
+	"github.com/infercat/infercat/internal/dirlock"
 	"github.com/infercat/infercat/internal/profile"
 )
 
 const setupHelp = `Usage: infercat setup [--profile ID | --custom FILE] [--model-path MEMBER=PATH] [--data-dir DIR]
 
-Inspect hardware and local pins, probe running engines, then save compatible host settings.
-No downloads, launches or supervision. --model-path is repeatable; asset ids also work.
+Inspect hardware, fetch verified built-in members, dry-start/probe/stop, then save settings.
+--model-path is repeatable; asset ids also work. No system installation.
 --custom checks compatibility only; it makes no performance promise.
 `
 
@@ -74,6 +75,11 @@ func (e *env) cmdSetup(ctx context.Context, pre string, args []string) error {
 	if home != "" {
 		roots = profile.Roots(home, os.Getenv)
 	}
+	guard, err := dirlock.Acquire(dataDir)
+	if err != nil {
+		return err
+	}
+	defer guard.Close()
 	return e.setup(ctx, dataDir, p, *custom != "", machine, paths, roots)
 }
 func (e *env) setup(ctx context.Context, dir string, p profile.Profile, custom bool, machine profile.Machine, paths map[string]string, roots []string) error {
@@ -118,9 +124,36 @@ func (e *env) setup(ctx context.Context, dir string, p profile.Profile, custom b
 	} else {
 		fmt.Fprintln(e.out, p.Promise)
 	}
+	var installation profile.Installation
+	if !custom {
+		for _, m := range p.Members {
+			endpoint, key, model := setupFields(&cfg, m.Class)
+			if endpoint != nil && (*endpoint != "" && *endpoint != m.URL() || *key != "" || *model != "" && *model != m.Model.Name) {
+				return fmt.Errorf("existing %s upstream settings conflict; config unchanged", m.Class)
+			}
+		}
+		installation, err = profile.Prepare(ctx, p, dir, paths, roots, nil, e.out)
+		if err != nil {
+			return err
+		}
+	}
 	var blocked error
 	for _, m := range p.Members {
-		r := profile.Check(ctx, m, paths, roots)
+		r := profile.Result{Member: m, State: "unavailable"}
+		if custom {
+			r = profile.Check(ctx, m, paths, roots)
+		} else {
+			for _, im := range installation.Members {
+				if im.ID == m.ID {
+					r.State = "checked"
+					r.Paths = im.Paths
+					if im.External {
+						r.State = "running"
+					}
+					break
+				}
+			}
+		}
 		fmt.Fprintf(e.out, "%-9s %-7s pins %d/%d · profile RSS %s", m.ID, r.State, len(r.Paths), len(m.Model.Assets), size(m.Model.Measurement.RSSBytes))
 		if m.Unavailable != "" {
 			fmt.Fprintf(e.out, " · %s", m.Unavailable)
@@ -137,27 +170,18 @@ func (e *env) setup(ctx context.Context, dir string, p profile.Profile, custom b
 			blocked = r.Err
 			continue
 		}
-		if m.Class == "text" && (m.Pending != "" || r.State != "running") {
+		if m.Class == "text" && (m.Pending != "" || r.State != "running" && r.State != "checked") {
 			blocked = fmt.Errorf("anchor unavailable or pending; config unchanged")
 		}
-		var endpoint, key, model *string
-		switch m.Class {
-		case "text":
-			endpoint, key, model = &cfg.Upstream, &cfg.UpstreamKey, &cfg.Models
-		case "transcribe":
-			endpoint, key, model = &cfg.UpstreamTranscribe, &cfg.UpstreamTranscribeKey, &cfg.UpstreamTranscribeModel
-		case "speech":
-			endpoint, key, model = &cfg.UpstreamSpeech, &cfg.UpstreamSpeechKey, &cfg.UpstreamSpeechModel
-		case "image":
-			endpoint, key, model = &cfg.UpstreamImages, &cfg.UpstreamImagesKey, &cfg.UpstreamImagesModel
-		default:
+		endpoint, key, model := setupFields(&cfg, m.Class)
+		if endpoint == nil {
 			continue
 		}
 		if *endpoint != "" && *endpoint != m.URL() || *key != "" || *model != "" && *model != m.Model.Name || m.Unavailable != "" && *endpoint != "" {
 			blocked = fmt.Errorf("existing %s upstream settings conflict; config unchanged (use a separate --data-dir)", m.Class)
 			continue
 		}
-		if r.State != "running" || m.Unavailable != "" {
+		if r.State != "running" && r.State != "checked" || m.Unavailable != "" {
 			continue
 		}
 		*endpoint = m.URL()
@@ -166,9 +190,21 @@ func (e *env) setup(ctx context.Context, dir string, p profile.Profile, custom b
 			cfg.Slots = m.Concurrency
 		}
 	}
-	fmt.Fprintln(e.out, "Pins verify local files; health does not attest the engine's active weights. No members started or fetched.")
+	if custom {
+		fmt.Fprintln(e.out, "Pins verify local files; health does not attest the engine's active weights. No members started or fetched.")
+	}
 	if blocked != nil {
 		return blocked
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	if !custom {
+		name, err := profile.SaveInstallation(dir, installation)
+		if err != nil {
+			return err
+		}
+		cfg.ProfileInstall = name
 	}
 	if err := ctx.Err(); err != nil {
 		return err
@@ -178,4 +214,20 @@ func (e *env) setup(ctx context.Context, dir string, p profile.Profile, custom b
 	}
 	fmt.Fprintf(e.out, "Saved %s; infercat serve reuses these settings.\n", configPath(dir))
 	return nil
+}
+
+func setupFields(cfg *config, class string) (endpoint, key, model *string) {
+	switch class {
+	case "text":
+		endpoint, key, model = &cfg.Upstream, &cfg.UpstreamKey, &cfg.Models
+	case "transcribe":
+		endpoint, key, model = &cfg.UpstreamTranscribe, &cfg.UpstreamTranscribeKey, &cfg.UpstreamTranscribeModel
+	case "speech":
+		endpoint, key, model = &cfg.UpstreamSpeech, &cfg.UpstreamSpeechKey, &cfg.UpstreamSpeechModel
+	case "image":
+		endpoint, key, model = &cfg.UpstreamImages, &cfg.UpstreamImagesKey, &cfg.UpstreamImagesModel
+	default:
+		return nil, nil, nil
+	}
+	return
 }

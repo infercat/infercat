@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"errors"
+	"github.com/infercat/infercat/internal/supervise"
 	"io"
 	"net"
 	"net/http"
@@ -217,7 +218,7 @@ func (r *Runtime) once(ctx context.Context) error {
 	cmd.Stdin = inputRead
 	cmd.Dir = o.Dir
 	cmd.Env = o.Env
-	cmd.Stderr = &limitedLog{file: logFile}
+	cmd.Stderr = supervise.NewLog(logFile)
 	cmd.WaitDelay = time.Second
 	output, err := cmd.StdoutPipe()
 	if err != nil {
@@ -313,31 +314,4 @@ func boundAddress(f *os.File) (string, error) {
 	}
 	defer l.Close()
 	return l.Addr().String(), nil
-}
-
-type limitedLog struct {
-	file *os.File
-	n    int
-}
-
-func (l *limitedLog) Write(p []byte) (int, error) {
-	n := len(p)
-	if len(p) > 1<<20 {
-		p = p[len(p)-(1<<20):]
-	}
-	if l.n+len(p) > 1<<20 {
-		if err := l.file.Truncate(0); err != nil {
-			return 0, err
-		}
-		if _, err := l.file.Seek(0, 0); err != nil {
-			return 0, err
-		}
-		l.n = 0
-	}
-	wrote, err := l.file.Write(p)
-	l.n += wrote
-	if err != nil {
-		return 0, err
-	}
-	return n, nil
 }
