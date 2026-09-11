@@ -48,6 +48,9 @@ func sandboxCanary(args []string) int {
 		{node, "-e", `try{require('fs').readFileSync(process.argv[1]);process.exit(9)}catch(e){if(!['EPERM','EACCES'].includes(e.code))throw e;console.log('node-ok')}`, canary},
 		{"curl", "--max-time", "5", "--fail", "--silent", "--cacert", cert, endpoint},
 	}
+	if runtime.GOOS == "linux" {
+		commands = append(commands, []string{node, "-e", `require('child_process').execFileSync('python3',['-c',"print(open('/proc/self/status').read().splitlines()[0])"],{stdio:'inherit'});console.log('grandchild-proc-ok')`})
+	}
 	if os.Getenv("INFERCAT_REQUIRE_SANDBOX") == "1" {
 		commands = append(commands, []string{"curl", "--max-time", "10", "--fail", "--silent", "--head", "https://example.com"})
 	}
@@ -166,5 +169,32 @@ func Test161LayoutGuard(t *testing.T) {
 	}
 	if sandboxLayout("/data/host", "/data/host/agent/runtime") != nil {
 		t.Fatal("ordinary layout refused")
+	}
+}
+
+func Test161PreflightDiagnostics(t *testing.T) {
+	cmd := exec.CommandContext(context.Background(), "/bin/sh", "-c", "printf profile-fixture-denial >&2; exit 7")
+	err := checkSandbox(context.Background(), cmd)
+	if err == nil || !strings.Contains(err.Error(), "profile-fixture-denial") || !strings.Contains(err.Error(), "exit status 7") {
+		t.Fatalf("lost stderr or cause: %v", err)
+	}
+	if runtime.GOOS == "darwin" && strings.Contains(err.Error(), "Landlock") {
+		t.Fatal("Linux advice on Mac", err)
+	}
+	if runtime.GOOS == "linux" && !strings.Contains(err.Error(), "Landlock ABI 3") {
+		t.Fatal("missing Linux advice", err)
+	}
+	var exit *exec.ExitError
+	if !errors.As(err, &exit) || exit.ExitCode() != 7 {
+		t.Fatal("lost wrapped run error", err)
+	}
+	ctx, cancel := context.WithDeadline(context.Background(), time.Now().Add(-time.Second))
+	defer cancel()
+	err = checkSandbox(ctx, exec.CommandContext(ctx, "/bin/sh", "-c", "exit 0"))
+	if err == nil || !strings.Contains(err.Error(), "timeout") || !errors.Is(err, context.DeadlineExceeded) {
+		t.Fatalf("timeout not named: %v", err)
+	}
+	if err = checkSandbox(context.Background(), exec.Command("/bin/sh", "-c", "exit 0")); err != nil {
+		t.Fatal(err)
 	}
 }
