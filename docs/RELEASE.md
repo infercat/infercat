@@ -28,6 +28,13 @@ git tag -a v0.1.0 -m "v0.1.0"
 git push origin v0.1.0
 ```
 
+A release cut **behind** main's HEAD is made on a `release/<version>` branch created from the
+chosen commit: the single `Version <version>` commit (CHANGELOG section, `product.go`,
+`packages/client/package.json`, the rebuilt `console/dist`) lands there, the tag is created on
+that branch's commit and pushed from it, and everything downstream reads the tag as usual. Main
+then receives the same CHANGELOG section and the next `-dev` bump in its own commit, so the two
+histories agree on what shipped without main having to wait for the cut.
+
 The tag runs `.github/workflows/release.yml`: `make release-publish` → goreleaser builds the five
 binaries, the six archives, the checksums file, and a **draft** GitHub Release named
 `infercat 0.1.0`. Until `HOMEBREW_TAP_GITHUB_TOKEN` exists (`brews[].skip_upload` is still `true`),
