@@ -1,0 +1,45 @@
+=== RUN   TestPinnedAdapterAcknowledgesBeforeModelAndCapturesNativeWrite
+    adapter_test.go:189: native write: 7 model attempts, 43 raw events, 11 steps, 12 captured outputs; final text {"text":"Created notes.md."}
+--- PASS: TestPinnedAdapterAcknowledgesBeforeModelAndCapturesNativeWrite (2.00s)
+=== RUN   TestPinnedAdapterCancellationRetainsFinalPrefix
+    adapter_test.go:280: native cancel settled in 106.826916ms; final turn/end retained; per-run child joined
+--- PASS: TestPinnedAdapterCancellationRetainsFinalPrefix (0.70s)
+=== RUN   TestPinnedNativeApprovalAllowAndDeny
+=== RUN   TestPinnedNativeApprovalAllowAndDeny/true
+    adapter_test.go:425: native ask "escalate sandbox to danger-full-access: Write the isolated proof file." -> allowed-once; captured=true; run=done
+=== RUN   TestPinnedNativeApprovalAllowAndDeny/false
+    adapter_test.go:425: native ask "escalate sandbox to danger-full-access: Write the isolated proof file." -> rejected; captured=false; run=done
+--- PASS: TestPinnedNativeApprovalAllowAndDeny (2.02s)
+    --- PASS: TestPinnedNativeApprovalAllowAndDeny/true (1.03s)
+    --- PASS: TestPinnedNativeApprovalAllowAndDeny/false (0.99s)
+=== RUN   TestPinnedForceStopRestartsSupervisor
+    adapter_test.go:528: owned child stopped; active run failed without replay; fresh serial successors completed; old workspace removed
+--- PASS: TestPinnedForceStopRestartsSupervisor (2.06s)
+=== RUN   TestPinnedCompositionDisablesBothOwnersWithoutLiveInstall
+--- PASS: TestPinnedCompositionDisablesBothOwnersWithoutLiveInstall (0.00s)
+=== RUN   TestPinned161ReadCanariesAndEphemeralWorkspace
+    confine_native_test.go:167: native read/bash/Python denied host/home canaries; descriptor absent from subprocess and initial environment; captured output survived workspace deletion
+--- PASS: TestPinned161ReadCanariesAndEphemeralWorkspace (1.47s)
+=== RUN   TestPinned161InheritedProviderRefusesOtherPolicies
+    confine_native_test.go:208: exact root accepted; missing outer marker and other policies refused
+
+--- PASS: TestPinned161InheritedProviderRefusesOtherPolicies (0.04s)
+=== RUN   Test161SandboxCanaries
+    confine_test.go:160: tool-ok
+        bash-ok
+        python-ok
+
+        node-ok
+
+        https-ok
+        canaries denied; workspace, tmp, tools, TLS and child cancellation passed
+
+--- PASS: Test161SandboxCanaries (1.40s)
+=== RUN   Test161LayoutGuard
+--- PASS: Test161LayoutGuard (0.00s)
+=== RUN   Test161PreflightDiagnostics
+--- PASS: Test161PreflightDiagnostics (0.01s)
+=== RUN   Test161ResolverLeafIsOptionalAndFresh
+--- PASS: Test161ResolverLeafIsOptionalAndFresh (0.01s)
+PASS
+ok  	github.com/infercat/infercat/internal/agent	10.930s

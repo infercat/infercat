@@ -1,0 +1,12 @@
+check · web · notices · release-dry	Go and Worker — build, vet, test	2026-09-11T06:19:21.7172211Z --- FAIL: Test161SandboxCanaries (0.18s)
+check · web · notices · release-dry	Go and Worker — build, vet, test	2026-09-11T06:19:21.7173235Z     confine_test.go:143: sandbox canaries: exit status 1
+check · web · notices · release-dry	Go and Worker — build, vet, test	2026-09-11T06:19:21.7173767Z         tool-ok
+check · web · notices · release-dry	Go and Worker — build, vet, test	2026-09-11T06:19:21.7174050Z         bash-ok
+check · web · notices · release-dry	Go and Worker — build, vet, test	2026-09-11T06:19:21.7174439Z         python-ok
+check · web · notices · release-dry	Go and Worker — build, vet, test	2026-09-11T06:19:21.7174701Z
+check · web · notices · release-dry	Go and Worker — build, vet, test	2026-09-11T06:19:21.7175026Z         node-ok
+check · web · notices · release-dry	Go and Worker — build, vet, test	2026-09-11T06:19:21.7175363Z
+check · web · notices · release-dry	Go and Worker — build, vet, test	2026-09-11T06:19:21.7175614Z         https-ok
+check · web · notices · release-dry	Go and Worker — build, vet, test	2026-09-11T06:19:21.7176081Z         curl exit status 6
+check · web · notices · release-dry	Go and Worker — build, vet, test	2026-09-11T06:19:21.7176471Z FAIL
+check · web · notices · release-dry	Go and Worker — build, vet, test	2026-09-11T06:19:21.7177055Z FAIL	github.com/infercat/infercat/internal/agent	42.131s
