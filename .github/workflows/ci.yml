@@ -1,6 +1,5 @@
-# Every push: the Go checks, the web checks, the notices gate, and a full release dry run —
-# all from this fresh checkout, which is the "green from nothing" law (docs/PRINCIPLES.md). Nothing here
-# publishes; release.yml is the only workflow that can, and only on a tag.
+# The eleven jobs preserve every check/release-dry proof; make check stays the local entrypoint.
+# No publishing or secrets: only release.yml on a tag can publish.
 name: CI
 
 on:
@@ -16,86 +15,233 @@ permissions:
 
 env:
   GOTOOLCHAIN: auto
+  INFERCAT_REQUIRE_SANDBOX: "1"
 
 jobs:
-  check:
-    name: check · web · notices · release-dry
+  go:
+    name: go · ${{ matrix.shard }}
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        shard: [gateway-race-a, gateway-race-b, gateway-whole, run-agent, rest]
     steps:
-      - uses: actions/checkout@v5
+      - &checkout
+        uses: actions/checkout@v5
         with:
-          fetch-depth: 0 # goreleaser reads the commit and its date for the version stamp
-
-      - uses: actions/setup-go@v6
+          persist-credentials: false
+      - &go
+        uses: actions/setup-go@v6
+        id: go
         with:
           go-version-file: go.mod
-          cache: true
+          cache: false
+      - &go-paths
+        name: Go cache paths
+        id: go-paths
+        env:
+          GO_VERSION: ${{ steps.go.outputs.go-version }}
+        run: |
+          arch=$(printf '%s' "$RUNNER_ARCH" | tr '[:upper:]' '[:lower:]')
+          {
+            echo "modules=$(go env GOMODCACHE)"
+            echo "build=$(go env GOCACHE)"
+            echo "image=$ImageOS"
+            echo "legacy=setup-go-$RUNNER_OS-$arch-$ImageOS-go-$GO_VERSION-"
+          } >> "$GITHUB_OUTPUT"
+      - &go-cache
+        name: Restore Go cache
+        uses: actions/cache/restore@v5
+        id: gocache
+        with:
+          # Match setup-go's absolute paths and order, including for its bootstrap fallback.
+          path: &go-cache-paths |
+            ${{ steps.go-paths.outputs.modules }}
+            ${{ steps.go-paths.outputs.build }}
+          key: go-${{ runner.os }}-${{ runner.arch }}-${{ steps.go-paths.outputs.image }}-${{ steps.go.outputs.go-version }}-${{ hashFiles('go.sum') }}-${{ github.sha }}
+          restore-keys: |
+            go-${{ runner.os }}-${{ runner.arch }}-${{ steps.go-paths.outputs.image }}-${{ steps.go.outputs.go-version }}-${{ hashFiles('go.sum') }}-
+            go-${{ runner.os }}-${{ runner.arch }}-${{ steps.go-paths.outputs.image }}-${{ steps.go.outputs.go-version }}-
+            ${{ steps.go-paths.outputs.legacy }}${{ hashFiles('go.sum') }}
+            ${{ steps.go-paths.outputs.legacy }}
+      - name: Go proofs
+        env:
+          SHARD: ${{ matrix.shard }}
+        run: |
+          set -euo pipefail
+          case "$SHARD" in
+          gateway-race-a | gateway-race-b)
+            # Listing must disable the whole-package TestMain assertions; it runs no tests.
+            go test -race -count=1 -run '^$' -list '.*' ./internal/gateway | grep -E '^(Test|Example|Fuzz)' > "$RUNNER_TEMP/gateway-tests.txt"
+            test -s "$RUNNER_TEMP/gateway-tests.txt"
+            parity=$([ "$SHARD" = gateway-race-a ] && echo 1 || echo 0)
+            awk -v p="$parity" 'NR % 2 == p' "$RUNNER_TEMP/gateway-tests.txt" > "$RUNNER_TEMP/shard-tests.txt"
+            names=$(paste -sd '|' "$RUNNER_TEMP/shard-tests.txt")
+            test -n "$names"
+            echo "$SHARD: $(wc -l < "$RUNNER_TEMP/shard-tests.txt") of $(wc -l < "$RUNNER_TEMP/gateway-tests.txt") tests"
+            go test -race -count=1 -run "^(${names})$" ./internal/gateway
+            ;;
+          gateway-whole)
+            # No -run: TestMain must prove every error code was exercised and the secret was absent.
+            # Both halves above cover every test under -race; these whole-package proofs need one process.
+            go test -count=1 -v ./internal/gateway
+            ;;
+          run-agent)
+            go test -race -count=1 ./internal/run ./internal/agent
+            ;;
+          rest)
+            go build ./...
+            go vet ./...
+            go list ./... | grep -vE '/internal/(gateway|run|agent)$' > "$RUNNER_TEMP/rest-packages.txt"
+            mapfile -t packages < "$RUNNER_TEMP/rest-packages.txt"
+            go test -race -count=1 "${packages[@]}"
+            sh hack/install_test.sh
+            ;;
+          esac
+      # One rolling cache writer avoids nine copies of the shared Go/module cache.
+      - name: Save refreshed Go cache
+        if: github.ref == 'refs/heads/main' && matrix.shard == 'rest' && steps.gocache.outputs.cache-hit != 'true'
+        uses: actions/cache/save@v5
+        with:
+          path: *go-cache-paths
+          key: ${{ steps.gocache.outputs.cache-primary-key }}
 
-      - uses: pnpm/action-setup@v5
+  ts:
+    name: ts · console · client · bridge · lint
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - *checkout
+      - &pnpm
+        uses: pnpm/action-setup@v5
         with:
           version: 11
-
-      - uses: actions/setup-node@v5
+      - &node
+        uses: actions/setup-node@v5
         with:
           node-version: 22
           cache: pnpm
           cache-dependency-path: web/pnpm-lock.yaml
-
       - name: Cache Worker npm packages
         uses: actions/cache@v5
         with:
           path: ~/.npm
           key: ${{ runner.os }}-${{ runner.arch }}-node22-bridge-${{ hashFiles('bridge/package-lock.json') }}
+      - name: Source caps, TypeScript, lint
+        run: make size-check console-check client-check bridge-check web-lint
+      - name: Node and shell proofs
+        run: |
+          node --test internal/agent/assets/adapter.test.mjs
+          node --test hack/runtime-releases.test.mjs
+          shellcheck -s sh hack/install.sh
 
-      - name: Playwright version
+  browser-compat:
+    name: browser · host-compat
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - *checkout
+      - *go
+      - *go-paths
+      - *go-cache
+      - *pnpm
+      - *node
+      - &playwright-version
+        name: Playwright version
         id: playwright
         run: |
           make web-deps
           node -p '"version=" + require("./web/node_modules/playwright/package.json").version' >> "$GITHUB_OUTPUT"
-
-      - name: Cache Playwright browsers
+      - &playwright-cache
+        name: Cache Playwright browsers
         uses: actions/cache@v5
         with:
           path: ~/.cache/ms-playwright
           key: ${{ runner.os }}-${{ runner.arch }}-playwright-${{ steps.playwright.outputs.version }}
-
-      # Browser binaries are cached; each fresh runner still needs its OS packages.
-      - name: Playwright system dependencies
+      - &playwright-deps
+        name: Playwright system dependencies
         run: pnpm --dir web exec playwright install-deps chromium
+      - name: Shipped host shapes and console chunk
+        run: |
+          make -o web-deps web-browser
+          # The ts job checks committed console/dist; browser-launch owns web vitest.
+          make -o web-deps -o console-check web
+          cd web
+          pnpm exec node dev/host-compat.mjs || pnpm exec node dev/host-compat.mjs
+          pnpm exec node dev/console-chunk-check.mjs
 
-      - name: go-licenses
+  browser-launch:
+    name: browser · web tests · launch
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - *checkout
+      - *go
+      - *go-paths
+      - *go-cache
+      - *pnpm
+      - *node
+      - *playwright-version
+      - *playwright-cache
+      - *playwright-deps
+      - name: Web tests and every no-invite launch assertion
+        run: |
+          set -eu
+          make -o web-deps web-test
+          make -o web-deps -o console-check web
+          launch_shots=$(mktemp -d)
+          trap 'rm -rf "$launch_shots"' EXIT
+          cd web && env -u INVITE -u APP LAUNCH_SHOTS="$launch_shots" pnpm launch-check
+
+  notices:
+    name: notices
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - *checkout
+      - *go
+      - *go-paths
+      - *go-cache
+      - *pnpm
+      - *node
+      - &licenses
+        name: go-licenses
         run: go install github.com/google/go-licenses@v1.6.0
+      - name: Notices and licence policy
+        run: |
+          make web-deps
+          make notices-check
 
+  release-dry:
+    name: release dry run
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v5
+        with:
+          fetch-depth: 0 # goreleaser reads the commit and date for the version stamp
+          persist-credentials: false
+      - *go
+      - *go-paths
+      - *go-cache
+      - *pnpm
+      - *node
+      - *licenses
       - uses: goreleaser/goreleaser-action@v7
         with:
           version: v2.18.0
           install-only: true
-
       - uses: docker/setup-buildx-action@v4
-
-      - name: Check and release dry run (every proof once, nothing published)
-        env:
-          INFERCAT_REQUIRE_SANDBOX: "1"
+      - name: Build every release artifact without publishing
         run: |
-          go build ./...
-          # The Playwright-version step already installed the locked workspace.
-          # One make graph shares all other prerequisites; no proof is skipped.
-          make -o web-deps check release-dry
-
-      - name: Linux agent confinement — pinned harness and canaries
-        env:
-          INFERCAT_REQUIRE_SANDBOX: "1"
-        run: |
-          go build -o "$RUNNER_TEMP/infercat-agent-probe" ./cmd/infercat
-          "$RUNNER_TEMP/infercat-agent-probe" --data-dir "$RUNNER_TEMP/agent-fixture" agent install
-          INFERCAT_AGENT_TEST_INSTALL="$RUNNER_TEMP/agent-fixture" go test -race -v -count=1 ./internal/agent -run '^Test161|^TestPinned'
-
+          make web-deps
+          # The notices and ts jobs own these checks; each consumer builds its own web bundle.
+          make -o web-deps -o console-check -o notices-check release-dry
       - name: Every artifact has a checksum
         run: |
           cd dist
-          shasum -a 256 -c *_checksums.txt
-
+          shasum -a 256 -c ./*_checksums.txt
       - uses: actions/upload-artifact@v6
         with:
           name: release-dry-${{ github.sha }}
@@ -107,3 +253,18 @@ jobs:
             dist/*_checksums.txt
             dist/homebrew/**
           retention-days: 7
+
+  confinement:
+    name: Linux agent confinement — pinned harness and canaries
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - *checkout
+      - *go
+      - *go-paths
+      - *go-cache
+      - name: Pinned harness and canaries
+        run: |
+          go build -o "$RUNNER_TEMP/infercat-agent-probe" ./cmd/infercat
+          "$RUNNER_TEMP/infercat-agent-probe" --data-dir "$RUNNER_TEMP/agent-fixture" agent install
+          INFERCAT_AGENT_TEST_INSTALL="$RUNNER_TEMP/agent-fixture" go test -race -v -count=1 ./internal/agent -run '^Test161|^TestPinned'
