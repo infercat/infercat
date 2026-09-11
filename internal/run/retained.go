@@ -18,6 +18,7 @@ type Retained struct {
 	Approval   *Approval           `json:"approval,omitempty"`
 }
 type Captured struct {
+	Kind string `json:"kind,omitempty"`
 	Name string `json:"name"`
 	MIME string `json:"mime"`
 	Data []byte `json:"data"`
@@ -136,7 +137,7 @@ func (s *Store) Retain(key, rid string, state json.RawMessage, events []json.Raw
 	}
 	for id, o := range outputs {
 		_, _, mimeErr := mime.ParseMediaType(o.MIME)
-		if !safeID.MatchString(id) || o.Name == "" || o.Name == "." || o.Name == ".." || len(o.Name) > 255 || filepath.Base(o.Name) != o.Name || strings.ContainsAny(o.Name, "\\\r\n\x00") || mimeErr != nil {
+		if (o.Kind != "" && (o.Kind != "diff" || o.MIME != "text/x-diff")) || !safeID.MatchString(id) || o.Name == "" || o.Name == "." || o.Name == ".." || len(o.Name) > 255 || filepath.Base(o.Name) != o.Name || strings.ContainsAny(o.Name, "\\\r\n\x00") || mimeErr != nil {
 			return ErrInvalid
 		}
 	}

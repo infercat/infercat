@@ -227,6 +227,8 @@ func (a *Adapter) run(ctx context.Context, w *runstate.Work) (json.RawMessage, e
 	}()
 	steps := map[string][]runstate.StepEvent{}
 	writes := map[string]string{}
+	before := map[string][]byte{}
+	beforeBytes := 0
 	text := ""
 	modelDone := make(chan error, 1)
 	modelActive := false
@@ -390,6 +392,13 @@ func (a *Adapter) run(ctx context.Context, w *runstate.Work) (json.RawMessage, e
 							}
 							_ = json.Unmarshal([]byte(e.Data.Arguments), &args)
 							writes[v.ID] = args.Path
+							if len(before) < 64 && beforeBytes < diffLimit {
+								prior, e := captureLimit(workspace, args.Path, diffLimit-beforeBytes)
+								if e == nil || errors.Is(e, os.ErrNotExist) {
+									before[v.ID] = prior.Data
+									beforeBytes += len(prior.Data)
+								}
+							}
 						}
 					}
 					if e.Type == "tool/result" {
@@ -420,8 +429,16 @@ func (a *Adapter) run(ctx context.Context, w *runstate.Work) (json.RawMessage, e
 									v.Result = v.Result[:min(len(v.Result), 160)] + " · not captured: outside the workspace or unavailable"
 								} else {
 									outputs["file_"+v.ID] = captured
+									if prior, ok := before[v.ID]; ok {
+										if diff := writeDiff(prior, captured.Data); diff != nil {
+											v.OutputID = "diff_" + v.ID
+											outputs[v.OutputID] = runstate.Captured{Kind: "diff", Name: "Write diff", MIME: "text/x-diff", Data: diff}
+										}
+									}
 								}
 							}
+							beforeBytes -= len(before[v.ID])
+							delete(before, v.ID)
 							err = flush(nil, outputs, v)
 							outputs = map[string]runstate.Captured{}
 							if err != nil {
@@ -570,6 +587,10 @@ func (a *Adapter) run(ctx context.Context, w *runstate.Work) (json.RawMessage, e
 }
 
 func capture(workspace, path string) (runstate.Captured, error) {
+	return captureLimit(workspace, path, runstate.MaxOutput)
+}
+
+func captureLimit(workspace, path string, limit int) (runstate.Captured, error) {
 	if filepath.IsAbs(path) {
 		relative, err := filepath.Rel(workspace, path)
 		if err != nil {
@@ -591,8 +612,8 @@ func capture(workspace, path string) (runstate.Captured, error) {
 	if err != nil || !info.Mode().IsRegular() {
 		return runstate.Captured{}, runstate.ErrInvalid
 	}
-	raw, err := io.ReadAll(io.LimitReader(f, runstate.MaxOutput+1))
-	if err != nil || len(raw) > runstate.MaxOutput {
+	raw, err := io.ReadAll(io.LimitReader(f, int64(limit)+1))
+	if err != nil || len(raw) > limit {
 		return runstate.Captured{}, runstate.ErrLimit
 	}
 	return runstate.Captured{Name: filepath.Base(path), MIME: "application/octet-stream", Data: raw}, nil

@@ -60,11 +60,25 @@ func TestPinnedAdapterAcknowledgesBeforeModelAndCapturesNativeWrite(t *testing.T
 			n = calls.Add(1)
 		}
 		var event string
-		if n == 1 || n == 2 {
-			event = `{"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call:write","type":"function","function":{"name":"write","arguments":"{\"file_path\":\"notes.md\",\"content\":\"Line one\\nLine two\\n\"}"}}]},"finish_reason":"tool_calls"}]}`
-			if n == 2 {
-				event = strings.ReplaceAll(event, "notes.md", "other.md")
+		if n >= 1 && n <= 4 {
+			tool, path, content := "write", "notes.md", "Line one\nLine two\n"
+			if n == 1 {
+				tool = "read"
 			}
+			if n == 3 {
+				path = "other.md"
+			}
+			if n == 4 {
+				path = "binary.dat"
+				content = "\x00binary\n"
+			}
+			args := map[string]string{"file_path": path}
+			if tool == "write" {
+				args["content"] = content
+			}
+			raw, _ := json.Marshal(args)
+			value, _ := json.Marshal(map[string]any{"choices": []any{map[string]any{"delta": map[string]any{"tool_calls": []any{map[string]any{"index": 0, "id": "call:write", "type": "function", "function": map[string]string{"name": tool, "arguments": string(raw)}}}}, "finish_reason": "tool_calls"}}})
+			event = string(value)
 		} else {
 			event = `{"choices":[{"delta":{"content":"Created notes.md."},"finish_reason":"stop"}]}`
 		}
@@ -78,6 +92,13 @@ func TestPinnedAdapterAcknowledgesBeforeModelAndCapturesNativeWrite(t *testing.T
 		return runstate.StepResult{Output: output, Dispatched: true, Settled: true}, nil
 	}, nil)
 	if err != nil {
+		t.Fatal(err)
+	}
+	workspace, err := workspaceFor(dir, k.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = os.WriteFile(filepath.Join(workspace, "notes.md"), []byte("Old line\n"), 0600); err != nil {
 		t.Fatal(err)
 	}
 	a := StartAdapter(context.Background(), dir, m, ks)
@@ -113,7 +134,7 @@ func TestPinnedAdapterAcknowledgesBeforeModelAndCapturesNativeWrite(t *testing.T
 		log, _ := os.ReadFile(filepath.Join(dir, "agent/host/runtime.log"))
 		t.Fatalf("run=%+v\nretained=%s\nlog=%s", r, formatJSON(d), log)
 	}
-	if calls.Load() != 3 || len(r.Attempts) < 3 {
+	if calls.Load() != 5 || len(r.Attempts) < 5 {
 		t.Fatal("wrong model attempts", calls.Load(), r.Attempts)
 	}
 	if len(d.Steps) < 2 || d.Steps[0].Kind != "think" || d.Steps[0].Status != "done" {
@@ -130,8 +151,41 @@ func TestPinnedAdapterAcknowledgesBeforeModelAndCapturesNativeWrite(t *testing.T
 	if !ok || string(file.Data) != "Line one\nLine two\n" {
 		t.Fatalf("native file not captured: %s", formatJSON(d))
 	}
-	if len(d.Outputs) != 4 {
+	if len(d.Outputs) != 9 {
 		t.Fatal("repeated native id lost a capture", len(d.Outputs))
+	}
+	view, err := s.Detail(k.ID, r.ID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	diffCount := 0
+	for _, o := range view.Outputs {
+		if o.Kind == "diff" {
+			diffCount++
+			if o.MIME != "text/x-diff" || o.Size > diffLimit {
+				t.Fatal(o)
+			}
+		}
+	}
+	if diffCount != 2 {
+		t.Fatal("existing/new diffs or binary fallback missing", view.Outputs)
+	}
+	var existing, added bool
+	for _, step := range view.Steps {
+		if step.Kind != "write" {
+			continue
+		}
+		output, e := s.CapturedOutput(k.ID, r.ID, step.OutputID)
+		if e != nil {
+			t.Fatal(e)
+		}
+		if output.Kind == "diff" {
+			existing = existing || strings.Contains(string(output.Data), "-Old line\n")
+			added = added || strings.Contains(string(output.Data), "@@ -0,0 +1,2 @@")
+		}
+	}
+	if !existing || !added {
+		t.Fatal("prior capture was not before native write", existing, added)
 	}
 	if !strings.Contains(string(r.Output), "Created notes.md.") {
 		t.Fatal("final output missing", string(r.Output))
