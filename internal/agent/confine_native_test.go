@@ -23,7 +23,7 @@ func TestPinned161ReadCanariesAndEphemeralWorkspace(t *testing.T) {
 	if installed == "" {
 		t.Skip("explicit pinned sandbox fixture")
 	}
-	t.Setenv("EXA_API_KEY", "synthetic-161-secret-descriptor")
+	t.Setenv("EXA_API_KEY", "legacy-env-must-not-be-used")
 	dir := t.TempDir()
 	if err := os.Mkdir(filepath.Join(dir, "agent"), 0700); err != nil {
 		t.Fatal(err)
@@ -97,7 +97,15 @@ func TestPinned161ReadCanariesAndEphemeralWorkspace(t *testing.T) {
 		e := step.Observe([]byte("data: " + string(event) + "\n\ndata: [DONE]\n\n"))
 		return runstate.StepResult{Output: json.RawMessage(`{}`), Dispatched: true, Settled: true}, e
 	}, nil)
-	a := StartAdapter(context.Background(), dir, m, ks)
+	keyPath := filepath.Join(dir, "search.key")
+	if err = os.WriteFile(keyPath, []byte("synthetic-161-secret-descriptor"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	searchKey, err := os.ReadFile(keyPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	a := StartAdapter(context.Background(), dir, m, ks, string(searchKey))
 	defer a.Close()
 	defer m.Close()
 	until := time.Now().Add(10 * time.Second)

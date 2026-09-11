@@ -101,7 +101,7 @@ func (a *Adapter) runtimeForRun(ctx context.Context, key string) (*Runtime, stri
 		a.mu.Unlock()
 		a.workers.Done()
 	}
-	options, err := sandboxOptions(a.dir, workspace)
+	options, err := sandboxOptions(a.dir, workspace, a.searchKey)
 	if err != nil {
 		return nil, workspace, cleanup, runstate.Failure("workspace_unavailable")
 	}

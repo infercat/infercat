@@ -1,0 +1,119 @@
+{
+  "configuration": "search.key_file; no EXA_API_KEY in host environment",
+  "key_file_removed_after_startup": true,
+  "probes": [
+    {
+      "name": "missing-search",
+      "state": "done",
+      "start": "2026-09-11T06:22:15.910521+00:00",
+      "end": "2026-09-11T06:22:20.989261+00:00",
+      "steps": [
+        [
+          "think",
+          "done"
+        ],
+        [
+          "search",
+          "failed"
+        ],
+        [
+          "think",
+          "done"
+        ]
+      ],
+      "sse_steps": 6,
+      "attempts": 3
+    },
+    {
+      "name": "search-write",
+      "state": "done",
+      "start": "2026-09-11T06:22:23.996616+00:00",
+      "end": "2026-09-11T06:22:35.176108+00:00",
+      "steps": [
+        [
+          "think",
+          "done"
+        ],
+        [
+          "search",
+          "done"
+        ],
+        [
+          "think",
+          "done"
+        ],
+        [
+          "write",
+          "done"
+        ],
+        [
+          "think",
+          "done"
+        ]
+      ],
+      "sse_steps": 13,
+      "attempts": 4
+    }
+  ],
+  "usage": [
+    {
+      "key_id": "k_e166f2",
+      "ts": "2026-09-11T02:22:16.421444-04:00",
+      "model": "e4b-116c",
+      "prompt_tokens": 6988,
+      "completion_tokens": 81,
+      "status": 200
+    },
+    {
+      "key_id": "k_e166f2",
+      "ts": "2026-09-11T02:22:19.255828-04:00",
+      "model": "e4b-116c",
+      "prompt_tokens": 153,
+      "completion_tokens": 5,
+      "status": 200
+    },
+    {
+      "key_id": "k_e166f2",
+      "ts": "2026-09-11T02:22:19.484944-04:00",
+      "model": "e4b-116c",
+      "prompt_tokens": 7096,
+      "completion_tokens": 100,
+      "status": 200
+    },
+    {
+      "key_id": "k_e166f2",
+      "ts": "2026-09-11T02:22:24.488672-04:00",
+      "model": "e4b-116c",
+      "prompt_tokens": 7023,
+      "completion_tokens": 141,
+      "status": 200
+    },
+    {
+      "key_id": "k_e166f2",
+      "ts": "2026-09-11T02:22:27.931408-04:00",
+      "model": "e4b-116c",
+      "prompt_tokens": 188,
+      "completion_tokens": 7,
+      "status": 200
+    },
+    {
+      "key_id": "k_e166f2",
+      "ts": "2026-09-11T02:22:29.186177-04:00",
+      "model": "e4b-116c",
+      "prompt_tokens": 9924,
+      "completion_tokens": 310,
+      "status": 200
+    },
+    {
+      "key_id": "k_e166f2",
+      "ts": "2026-09-11T02:22:33.309234-04:00",
+      "model": "e4b-116c",
+      "prompt_tokens": 10340,
+      "completion_tokens": 127,
+      "status": 200
+    }
+  ],
+  "attempts_matching_usage": 7,
+  "workspace_entries_after_settlement": [],
+  "owned_host_and_engine_stopped": true
+}

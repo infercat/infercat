@@ -27,6 +27,14 @@ type Search struct {
 	client        *http.Client
 }
 
+// AgentKey supplies the same startup-loaded credential to the confined child pipe.
+func (s *Search) AgentKey() string {
+	if s == nil {
+		return ""
+	}
+	return s.key
+}
+
 func OpenSearch(path string) (*Search, error) {
 	f, err := os.Open(path)
 	if err != nil {

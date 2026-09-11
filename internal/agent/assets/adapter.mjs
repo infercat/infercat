@@ -61,7 +61,7 @@ export function apply(ctx) {
     await ctx.get('loader')?.await();
     const searchKey=process.env.INFERCAT_EXA_FD==='4'?readFileSync(4,'utf8'):'';
     if(process.env.INFERCAT_EXA_FD==='4')closeSync(4);
-    exaApply(ctx,{apiKey:searchKey,numResults:3});
+    if(searchKey)exaApply(ctx,{apiKey:searchKey,numResults:3});
     const runs = new Map(), calls = new Map();
     const send = message => {
       const raw = JSON.stringify(message) + '\n';

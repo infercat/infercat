@@ -171,3 +171,25 @@ func TestSearchCancelBeforeDispatchAndDefaults(t *testing.T) {
 		}
 	}
 }
+
+func Test161AgentSearchUsesStartupFileSnapshot(t *testing.T) {
+	t.Setenv("EXA_API_KEY", "legacy-environment-must-not-be-used")
+	var missing *Search
+	if missing.AgentKey() != "" {
+		t.Fatal("missing configuration used environment")
+	}
+	path := filepath.Join(t.TempDir(), "search.key")
+	if err := os.WriteFile(path, []byte("file-key\n"), 0600); err != nil {
+		t.Fatal(err)
+	}
+	search, err := OpenSearch(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err = os.Remove(path); err != nil {
+		t.Fatal(err)
+	}
+	if search.AgentKey() != "file-key" || search.AgentKey() != search.key {
+		t.Fatal("agent did not share the startup snapshot")
+	}
+}

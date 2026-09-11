@@ -55,7 +55,7 @@ func sandboxWorkspace(data string) (string, error) {
 	}
 	return canonical, nil
 }
-func sandboxOptions(data, workspace string) (RuntimeOptions, error) {
+func sandboxOptions(data, workspace, searchKey string) (RuntimeOptions, error) {
 	canonical, err := canonicalPath(data)
 	if err != nil {
 		return RuntimeOptions{}, err
@@ -71,7 +71,7 @@ func sandboxOptions(data, workspace string) (RuntimeOptions, error) {
 	if err = sandboxLayout(canonical, runtime); err != nil {
 		return RuntimeOptions{}, err
 	}
-	options, err := harnessOptions(canonical, filepath.Join(workspace, ".runtime"), workspace)
+	options, err := harnessOptions(canonical, filepath.Join(workspace, ".runtime"), workspace, searchKey)
 	if err != nil {
 		return options, err
 	}
@@ -94,7 +94,7 @@ func sandboxPreflight(ctx context.Context, data string) error {
 		return err
 	}
 	defer os.RemoveAll(workspace)
-	options, err := sandboxOptions(data, workspace)
+	options, err := sandboxOptions(data, workspace, "")
 	if err != nil {
 		return err
 	}

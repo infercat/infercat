@@ -29,6 +29,7 @@ type Adapter struct {
 	manager        *runstate.Manager
 	keys           keys.Store
 	dir            string
+	searchKey      string
 	mu             sync.Mutex
 	live           map[string]*session
 }
@@ -56,8 +57,8 @@ type session struct {
 	once       sync.Once
 }
 
-func StartAdapter(ctx context.Context, dir string, m *runstate.Manager, ks keys.Store) *Adapter {
-	a := &Adapter{manager: m, keys: ks, dir: dir, live: map[string]*session{}}
+func StartAdapter(ctx context.Context, dir string, m *runstate.Manager, ks keys.Store, searchKey string) *Adapter {
+	a := &Adapter{manager: m, keys: ks, dir: dir, searchKey: searchKey, live: map[string]*session{}}
 	a.ctx, a.cancel = context.WithCancel(ctx)
 	a.perRun = true
 	a.status = RuntimeStatus{State: "starting"}
