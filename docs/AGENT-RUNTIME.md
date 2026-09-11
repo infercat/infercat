@@ -78,8 +78,11 @@ The read sandbox is an allow-list on both shipped platforms:
   `/lib*`, `/bin`, `/sbin`, `/etc`, `/opt`, the pinned runtime, and the current
   workspace. Only that workspace/tmp is writable, plus `/dev/null` and optional
   `/dev/tty`; zero/random/urandom are readable. Device-node creation is denied.
-  Only the initial child's `/proc/<pid>` is readable, not the host's or unrelated
-  processes' proc directories. Ordinary Unix file permissions still apply.
+  `/proc` is readable so descendant tools can read their own process information.
+  Other same-uid processes' `/proc/<pid>/environ` remains readable wherever ordinary
+  Linux permissions permit it; those processes may expose their own environment
+  secrets. The harness receives its Exa key by descriptor, not environment.
+  Ordinary Unix file permissions still apply.
 
 Data/runtime layouts under a broadly readable tool tree are refused, as is a
 runtime that contains the data directory: an allow-list cannot promise to hide a

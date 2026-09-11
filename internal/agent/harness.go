@@ -2,7 +2,6 @@ package agent
 
 import (
 	"bytes"
-	"context"
 	_ "embed"
 	"encoding/json"
 	"errors"
@@ -22,11 +21,6 @@ var adapter []byte
 //go:embed assets/inherited-sandbox.mjs
 var inheritedSandbox []byte
 
-// HarnessOptions materializes only our plugin/config. The integrity-locked vendor
-// tree stays unchanged. No external model credentials or host bearer is inherited.
-func HarnessOptions(dataDir string) (RuntimeOptions, error) {
-	return harnessOptions(dataDir, filepath.Join(dataDir, "agent", "host"), "")
-}
 func harnessOptions(dataDir, dir, outerWorkspace string) (RuntimeOptions, error) {
 	runtime, err := Installed(dataDir)
 	if err != nil {
@@ -94,15 +88,4 @@ func harnessOptions(dataDir, dir, outerWorkspace string) (RuntimeOptions, error)
 		filepath.Join(runtime, "node/bin/node"), filepath.Join(runtime, "node_modules/@deepseek-ai/dsh/lib/bin.js"),
 		"--profile", "headless", "--patch", patch,
 	}}, nil
-}
-
-// StartHarness failure is a runtime status, never a reason to stop normal serving.
-func StartHarness(ctx context.Context, dataDir string) *Runtime {
-	options, err := HarnessOptions(dataDir)
-	if err != nil {
-		done := make(chan struct{})
-		close(done)
-		return &Runtime{status: RuntimeStatus{State: "failed", LastError: err.Error()}, done: done, cancel: func() {}}
-	}
-	return StartRuntime(ctx, options)
 }

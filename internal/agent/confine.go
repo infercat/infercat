@@ -1,12 +1,14 @@
 package agent
 
 import (
+	"bytes"
 	"context"
 	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"time"
 )
@@ -114,8 +116,22 @@ func sandboxPreflight(ctx context.Context, data string) error {
 	cmd := exec.CommandContext(check, command[0], command[1:]...)
 	cmd.Dir = options.Dir
 	cmd.Env = options.Env
-	if err = cmd.Run(); err != nil {
-		return errors.New("agent sandbox could not be applied (Linux requires Landlock ABI 3 or newer)")
+	return checkSandbox(check, cmd)
+}
+func checkSandbox(ctx context.Context, cmd *exec.Cmd) error {
+	var stderr bytes.Buffer
+	cmd.Stderr = &stderr
+	if err := cmd.Run(); err != nil {
+		message := "the sandbox profile could not be applied"
+		if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+			message = "agent sandbox preflight timeout"
+		} else if runtime.GOOS == "linux" {
+			message = "agent sandbox could not be applied (Landlock ABI 3 or newer is required)"
+		}
+		if detail := strings.TrimSpace(stderr.String()); detail != "" {
+			message += ": " + detail
+		}
+		return fmt.Errorf("%s: %w", message, err)
 	}
 	return nil
 }

@@ -45,10 +45,6 @@ func landlockExec(workspace, installed string, command []string) error {
 	if abi >= 5 {
 		handled |= unix.LANDLOCK_ACCESS_FS_IOCTL_DEV
 	}
-	// Linux ABI9 adds RESOLVE_UNIX; no filesystem socket bypass for new kernels.
-	if abi >= 9 {
-		handled |= 1 << 16
-	}
 	fd, _, errno := unix.Syscall(unix.SYS_LANDLOCK_CREATE_RULESET, uintptr(unsafe.Pointer(&handled)), unsafe.Sizeof(handled), 0)
 	if errno != 0 {
 		return errno
@@ -96,7 +92,7 @@ func landlockExec(workspace, installed string, command []string) error {
 	if err := add(filepath.Join(workspace, "tmp"), writable, false); err != nil {
 		return err
 	}
-	if err := add(fmt.Sprintf("/proc/%d", os.Getpid()), read, false); err != nil {
+	if err := add("/proc", read, false); err != nil {
 		return err
 	}
 	for _, path := range []string{"/dev/zero", "/dev/random", "/dev/urandom"} {

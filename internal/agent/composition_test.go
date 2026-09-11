@@ -37,7 +37,7 @@ func TestPinnedCompositionDisablesBothOwnersWithoutLiveInstall(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	options, err := HarnessOptions(dir)
+	options, err := unconfinedHarnessOptionsForTests(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -88,13 +88,13 @@ func TestPinnedCompositionDisablesBothOwnersWithoutLiveInstall(t *testing.T) {
 	if err = os.Remove(filepath.Join(root, "node_modules/@deepseek-ai/dsh-base/cordis.patch.yml")); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = HarnessOptions(dir); err == nil {
+	if _, err = unconfinedHarnessOptionsForTests(dir); err == nil {
 		t.Fatal("missing manifest accepted")
 	}
 	if err = os.WriteFile(filepath.Join(root, "node_modules/@deepseek-ai/dsh-base/cordis.patch.yml"), []byte("renamed"), 0600); err != nil {
 		t.Fatal(err)
 	}
-	if _, err = HarnessOptions(dir); err == nil {
+	if _, err = unconfinedHarnessOptionsForTests(dir); err == nil {
 		t.Fatal("changed manifest accepted")
 	}
 }

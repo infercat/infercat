@@ -10,12 +10,9 @@ import (
 	"time"
 )
 
-func TestMissingHarnessIsStatusFailure(t *testing.T) {
-	r := StartHarness(context.Background(), t.TempDir())
-	defer r.Close()
-	if s := r.Status(); s.State != "failed" || s.LastError == "" {
-		t.Fatalf("missing runtime: %+v", s)
-	}
+// This legacy IPC-only fixture deliberately does not exercise a production spawn path.
+func unconfinedHarnessOptionsForTests(dir string) (RuntimeOptions, error) {
+	return harnessOptions(dir, filepath.Join(dir, "agent", "host"), "")
 }
 
 // Explicit live fixture: uses a separate host directory and the installed,
@@ -32,7 +29,7 @@ func TestPinnedHarnessIPC(t *testing.T) {
 	if err := os.Symlink(runtimeDir(installed), runtimeDir(dir)); err != nil {
 		t.Fatal(err)
 	}
-	options, err := HarnessOptions(dir)
+	options, err := unconfinedHarnessOptionsForTests(dir)
 	if err != nil {
 		t.Fatal(err)
 	}
