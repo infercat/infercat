@@ -10,6 +10,7 @@ import (
 	"github.com/infercat/infercat/internal/keys"
 	runstate "github.com/infercat/infercat/internal/run"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync/atomic"
@@ -158,3 +159,44 @@ func TestPinned161ReadCanariesAndEphemeralWorkspace(t *testing.T) {
 	t.Log("native read/bash/Python denied host/home canaries; descriptor absent from subprocess and initial environment; captured output survived workspace deletion")
 }
 func shellQuote(s string) string { return "'" + strings.ReplaceAll(s, "'", "'\\''") + "'" }
+
+func TestPinned161InheritedProviderRefusesOtherPolicies(t *testing.T) {
+	installed := os.Getenv("INFERCAT_AGENT_TEST_INSTALL")
+	if installed == "" {
+		t.Skip("explicit pinned sandbox fixture")
+	}
+	root, err := Installed(installed)
+	if err != nil {
+		t.Fatal(err)
+	}
+	workspace, err := canonicalPath(t.TempDir())
+	if err != nil {
+		t.Fatal(err)
+	}
+	provider := filepath.Join(workspace, "provider.mjs")
+	if err = os.WriteFile(provider, inheritedSandbox, 0600); err != nil {
+		t.Fatal(err)
+	}
+	script := `import assert from 'node:assert/strict';
+import {createRequire} from 'node:module';
+import {pathToFileURL} from 'node:url';
+const require=createRequire(process.env.INFERCAT_AGENT_RUNTIME+'/package.json');
+const {Context}=await import(pathToFileURL(require.resolve('@deepseek-ai/cordis')).href);
+const {default:Provider}=await import(pathToFileURL(process.argv[1]).href);
+const workspace=process.argv[2];
+assert.throws(()=>new Provider(new Context(),{workspace}),/outer confinement/);
+process.env.INFERCAT_CONFINED_WORKSPACE=workspace;
+const p=new Provider(new Context(),{workspace});
+const argv=['python3','-c','print("ok")'];
+assert.deepEqual(p.confine(argv,{mode:'workspace-write',workspaceRoot:workspace}).argv,argv);
+for(const mode of ['read-only','danger-full-access']) assert.throws(()=>p.confine(argv,{mode,workspaceRoot:workspace}),/unsupported policy/);
+assert.throws(()=>p.confine(argv,{mode:'workspace-write',workspaceRoot:'/'}),/unsupported policy/);
+console.log('exact root accepted; missing outer marker and other policies refused');`
+	cmd := exec.Command(filepath.Join(root, "node/bin/node"), "--input-type=module", "-e", script, provider, workspace)
+	cmd.Env = []string{"INFERCAT_AGENT_RUNTIME=" + root}
+	if out, err := cmd.CombinedOutput(); err != nil {
+		t.Fatalf("%s: %v", out, err)
+	} else {
+		t.Log(string(out))
+	}
+}

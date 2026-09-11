@@ -1,0 +1,406 @@
+cd console && pnpm install --frozen-lockfile && pnpm typecheck && pnpm lint && pnpm test && pnpm check-dist
+✓ Lockfile passes supply-chain policies (verified 1d ago)
+Lockfile is up to date, resolution step is skipped
+Progress: resolved 1, reused 0, downloaded 0, added 0
+Packages: +210
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+Progress: resolved 210, reused 210, downloaded 0, added 210, done
+
+dependencies:
++ qrcode-generator 2.0.4
+
+devDependencies:
++ eslint 9.36.0
++ jsdom 26.1.0
++ jsqr 1.4.0
++ playwright 1.56.1
++ typescript 5.9.3
++ typescript-eslint 8.45.0
++ vite 7.1.7
++ vitest 3.2.4
+
+Done in 745ms using pnpm v11.13.0
+$ tsc --noEmit
+$ eslint .
+$ vitest run
+
+ RUN  v3.2.4 /private/tmp/infercat-wt-161/console
+
+ ✓ fonts.test.js (1 test) 6ms
+ ✓ bridge-audio.test.js (2 tests) 16ms
+ ✓ bridge-audio-render.test.js (17 tests) 343ms
+ ✓ remote.test.js (7 tests) 465ms
+ ✓ page.test.js (18 tests) 496ms
+ ✓ stored.test.js (16 tests) 753ms
+ ✓ settings.test.js (14 tests) 865ms
+ ✓ actions.test.js (30 tests) 2053ms
+
+ Test Files  8 passed (8)
+      Tests  105 passed (105)
+   Start at  01:45:17
+   Duration  2.66s (transform 191ms, setup 0ms, collect 547ms, tests 5.00s, environment 1.94s, prepare 571ms)
+
+$ node check-dist.mjs
+vite v7.1.7 building for production...
+transforming...
+✓ 14 modules transformed.
+rendering chunks...
+computing gzip size...
+../../../../var/folders/py/4kyvk9wx1gg1ljrx0g0wl8000000gn/T/infercat-console-build-ICN8t2/index.html                  0.41 kB │ gzip:  0.29 kB
+../../../../var/folders/py/4kyvk9wx1gg1ljrx0g0wl8000000gn/T/infercat-console-build-ICN8t2/assets/index-B_x6wfxx.css  21.89 kB │ gzip:  4.96 kB
+../../../../var/folders/py/4kyvk9wx1gg1ljrx0g0wl8000000gn/T/infercat-console-build-ICN8t2/assets/index-B9FQYwqo.js   84.47 kB │ gzip: 30.82 kB
+✓ built in 126ms
+committed console/dist matches a fresh build
+go vet ./...
+# Race detection also runs in CI; cold instrumented builds can exceed a minute.
+# Warm full race runs take about 25 seconds on the development Mac.
+go test -race ./...
+ok  	github.com/infercat/infercat/cmd/infercat	12.000s
+?   	github.com/infercat/infercat/console	[no test files]
+?   	github.com/infercat/infercat/console/test	[no test files]
+?   	github.com/infercat/infercat/hack/install-fixture	[no test files]
+ok  	github.com/infercat/infercat/hack/load	3.082s
+?   	github.com/infercat/infercat/hack/tunneldemo	[no test files]
+ok  	github.com/infercat/infercat/internal/admin	3.204s
+ok  	github.com/infercat/infercat/internal/adminkey	3.523s
+ok  	github.com/infercat/infercat/internal/agent	46.475s
+ok  	github.com/infercat/infercat/internal/agentconfig	3.296s
+ok  	github.com/infercat/infercat/internal/bridge	4.299s
+ok  	github.com/infercat/infercat/internal/dirlock	1.855s
+ok  	github.com/infercat/infercat/internal/gateway	103.733s
+ok  	github.com/infercat/infercat/internal/invite	2.660s
+ok  	github.com/infercat/infercat/internal/keys	2.053s
+?   	github.com/infercat/infercat/internal/product	[no test files]
+ok  	github.com/infercat/infercat/internal/profile	24.688s
+ok  	github.com/infercat/infercat/internal/run	250.455s
+ok  	github.com/infercat/infercat/internal/speech	3.241s
+ok  	github.com/infercat/infercat/internal/supervise	(cached)
+ok  	github.com/infercat/infercat/internal/tunnel	22.495s
+ok  	github.com/infercat/infercat/internal/upstream	4.562s
+ok  	github.com/infercat/infercat/internal/usage	3.178s
+ok  	github.com/infercat/infercat/web/wasm	5.541s
+node --test internal/agent/assets/adapter.test.mjs
+TAP version 13
+# Subtest: private frames handle split input and multiple messages in one chunk
+ok 1 - private frames handle split input and multiple messages in one chunk
+  ---
+  duration_ms: 3.034167
+  type: 'test'
+  ...
+# Subtest: native mapping preserves original conversation, images and chat settings
+ok 2 - native mapping preserves original conversation, images and chat settings
+  ---
+  duration_ms: 0.1675
+  type: 'test'
+  ...
+# Subtest: stream translation joins split tool arguments and keeps usage before final finish
+ok 3 - stream translation joins split tool arguments and keeps usage before final finish
+  ---
+  duration_ms: 1.071709
+  type: 'test'
+  ...
+# Subtest: unterminated frames are bounded before JSON parsing
+ok 4 - unterminated frames are bounded before JSON parsing
+  ---
+  duration_ms: 2.885791
+  type: 'test'
+  ...
+# Subtest: incomplete and malformed frames end the generation
+ok 5 - incomplete and malformed frames end the generation
+  ---
+  duration_ms: 0.5635
+  type: 'test'
+  ...
+# Subtest: 129 wording changes descriptions only and leaves the native schema intact
+ok 6 - 129 wording changes descriptions only and leaves the native schema intact
+  ---
+  duration_ms: 0.524208
+  type: 'test'
+  ...
+# Subtest: approval shapes preserve verbatim text and fail closed
+ok 7 - approval shapes preserve verbatim text and fail closed
+  ---
+  duration_ms: 0.266875
+  type: 'test'
+  ...
+# Subtest: helper purposes use native options without friend reasoning or temperature
+ok 8 - helper purposes use native options without friend reasoning or temperature
+  ---
+  duration_ms: 0.076208
+  type: 'test'
+  ...
+# Subtest: stream identity uses first nonempty value, only arguments concatenate
+ok 9 - stream identity uses first nonempty value, only arguments concatenate
+  ---
+  duration_ms: 0.620875
+  type: 'test'
+  ...
+1..9
+# tests 9
+# suites 0
+# pass 9
+# fail 0
+# cancelled 0
+# skipped 0
+# todo 0
+# duration_ms 106.306041
+test "0.1.4-dev" = "$(node -p "require('./packages/client/package.json').version")"
+cd web && pnpm install --frozen-lockfile
+Scope: all 3 workspace projects
+✓ Lockfile passes supply-chain policies (verified 1d ago)
+Lockfile is up to date, resolution step is skipped
+Progress: resolved 1, reused 0, downloaded 0, added 0
+Packages: +463
+++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++
+Progress: resolved 463, reused 462, downloaded 0, added 459
+Progress: resolved 463, reused 462, downloaded 0, added 463, done
+
+dependencies:
++ @infercat/console 0.0.0 <- ../console
++ mammoth 1.12.2
++ pdfjs-dist 6.3.289
++ react 19.2.8
++ react-dom 19.2.8
++ react-markdown 10.1.0
++ rehype-highlight 7.0.2
++ remark-gfm 4.0.1
+
+devDependencies:
++ @eslint/js 9.39.5
++ @types/node 22.20.1
++ @types/pngjs 6.0.5
++ @types/react 19.2.18
++ @types/react-dom 19.2.5
++ @vitejs/plugin-react 5.2.0
++ eslint 9.39.5
++ eslint-plugin-react-hooks 6.1.1
++ playwright 1.62.1
++ pngjs 7.0.0
++ typescript 5.9.3
++ typescript-eslint 8.69.0
++ vite 7.3.6
++ vitest 3.2.7
+
+Done in 1.8s using pnpm v11.13.0
+cd web && pnpm --filter @infercat/client build && pnpm --filter @infercat/client typecheck && pnpm --filter @infercat/client lint && pnpm --filter @infercat/client test
+$ esbuild src/index.ts --bundle --format=esm --platform=browser --target=es2022 --outfile=dist/index.js && tsc --emitDeclarationOnly
+
+  dist/index.js  16.7kb
+
+⚡ Done in 9ms
+$ tsc --noEmit && tsc -p tsconfig.test.json
+$ eslint src test
+$ vitest run
+
+ RUN  v3.2.7 /private/tmp/infercat-wt-161/packages/client
+
+ ✓ test/wasm.test.ts (5 tests) 29ms
+ ✓ test/default-artifact.test.ts (2 tests) 3ms
+ ✓ test/client.test.ts (23 tests) 39ms
+ ↓ test/integration.test.ts (1 test | 1 skipped)
+
+ Test Files  3 passed | 1 skipped (4)
+      Tests  30 passed | 1 skipped (31)
+   Start at  01:49:42
+   Duration  553ms (transform 82ms, setup 0ms, collect 435ms, tests 71ms, environment 1ms, prepare 276ms)
+
+cd bridge && npm ci --legacy-peer-deps && npm run typecheck && npm test
+
+added 82 packages, and audited 83 packages in 3s
+
+24 packages are looking for funding
+  run `npm fund` for details
+
+found 0 vulnerabilities
+
+> typecheck
+> tsc --noEmit
+
+
+> test
+> npm run build && vitest run
+
+
+> build
+> wrangler deploy --dry-run --outdir dist
+
+
+ ⛅️ wrangler 4.130.0 (update available 4.131.0)
+───────────────────────────────────────────────
+Total Upload: 16.00 KiB / gzip: 4.81 KiB
+Your Worker has access to the following bindings:
+Binding                                              Resource
+env.HOSTS (Host)                                     Durable Object
+env.REGISTRY (00000000000000000000000000000000)      KV Namespace
+
+--dry-run: exiting now.
+
+ RUN  v4.1.11 /private/tmp/infercat-wt-161/bridge
+
+
+ Test Files  4 passed (4)
+      Tests  59 passed (59)
+   Start at  01:49:49
+   Duration  1.53s (transform 216ms, setup 0ms, import 434ms, tests 1.33s, environment 0ms)
+
+cd web && pnpm install --frozen-lockfile && pnpm lint
+Scope: all 3 workspace projects
+Already up to date
+Done in 195ms using pnpm v11.13.0
+$ eslint .
+sh web/wasm/build.sh
+ 26938212 web/public/infercat.wasm
+ 6188328 web/public/infercat.wasm.gz
+ 33126540 total
+cd web && pnpm typecheck && pnpm exec vitest run src/host-compat.test.ts src/console-compat.test.ts src/admin-route.test.ts src/voice.test.ts src/voice-ui.test.ts
+$ tsc --noEmit
+
+ RUN  v3.2.7 /private/tmp/infercat-wt-161/web
+
+ ✓ src/admin-route.test.ts (3 tests) 2ms
+ ✓ src/console-compat.test.ts (2 tests) 8ms
+ ✓ src/voice-ui.test.ts (5 tests) 43ms
+ ✓ src/voice.test.ts (43 tests) 296ms
+ ✓ src/host-compat.test.ts (4 tests) 975ms
+   ✓ shipped host capabilities > keeps capability property reads inside the API accessor boundary  973ms
+
+ Test Files  5 passed (5)
+      Tests  57 passed (57)
+   Start at  01:49:58
+   Duration  1.47s (transform 174ms, setup 0ms, collect 1.19s, tests 1.32s, environment 0ms, prepare 384ms)
+
+cd web && pnpm exec playwright install chromium
+cd web && pnpm exec node dev/host-compat.mjs
+COMPAT 0.1.0 PASS {"composer":true,"images":false,"microphone":false,"listen":false}
+LIVE rejects console PASS
+LIVE rejects pageerror PASS
+COMPAT 0.1.1 PASS {"composer":true,"images":false,"microphone":false,"listen":false}
+COMPAT current PASS {"composer":true,"images":true,"microphone":false,"listen":false}
+CONSOLE COMPAT current-085-dev PASS (storage, fonts, styles, route)
+CONSOLE COMPAT legacy-optionals PASS (storage, fonts, styles, route)
+CONSOLE COMPAT refused PASS (storage, fonts, styles, route)
+CONSOLE COMPAT closed PASS (storage, fonts, styles, route)
+CONSOLE COMPAT budget PASS (storage, fonts, styles, route)
+CONSOLE COMPAT pasted ia1 PASS
+Host compatibility: 11 passed / 0 failed / 0 skipped
+cd web && pnpm build && pnpm exec node dev/console-chunk-check.mjs
+$ vite build
+vite v7.3.6 building client environment for production...
+transforming...
+✓ 920 modules transformed.
+rendering chunks...
+computing gzip size...
+dist/manifest.webmanifest                               1.07 kB
+dist/.vite/manifest.json                                2.99 kB │ gzip:   0.59 kB
+dist/index.html                                         3.05 kB │ gzip:   1.05 kB
+dist/assets/ibm-plex-mono-400-latin-BJoXLJYV.woff2     10.05 kB
+dist/assets/ibm-plex-mono-500-latin-C820gu2e.woff2     10.06 kB
+dist/assets/archivo-latin-var-BEIDiHaE.woff2           34.94 kB
+dist/assets/noto-sans-sc-z9dQosjm.woff2               112.80 kB
+dist/assets/pdf.worker.min-BmVo14Nb.mjs             1,317.03 kB
+dist/assets/index-BQBJdrdr.css                         51.02 kB │ gzip:  10.79 kB
+dist/assets/pdf.worker.min-LAOCk-LR.js                  0.07 kB │ gzip:   0.09 kB
+dist/assets/RemoteConsole-DvO6VtU0.js                 110.73 kB │ gzip:  37.43 kB
+dist/assets/index-Bacn9l-b.js                         340.41 kB │ gzip: 109.59 kB
+dist/assets/Chat-Of0SfPZa.js                          444.28 kB │ gzip: 136.53 kB
+dist/assets/pdf-B7Nbt9FO.js                           494.57 kB │ gzip: 150.55 kB
+dist/assets/index-9ZhowNAU.js                         504.09 kB │ gzip: 131.48 kB
+✓ built in 1.94s
+Lazy console chunk: assets/RemoteConsole-DvO6VtU0.js, 110732 bytes / 37425 gzip; absent from initial import graph. Console CJK: 112800 bytes, distinct from chat CJK.
+
+# host-compat built web/dist; run every no-invite launch assertion against that exact build.
+$ node dev/launch-check.mjs
+  asset fixtures: 7 passed / 0 failed / 0 skipped
+launch-check on http://127.0.0.1:6833
+  connect: head links resolved; manifest "Infercat" (5 icons); 10 assets have valid content types and non-empty bodies
+  30-connect-desktop: 9 requests, 0 to a third party — none, all same-origin
+  30-connect-desktop: 25 controls in the accessibility tree, 0 unnamed
+  30-connect-desktop: 118 text runs, lowest 6.31:1 (span) — AA met
+  30-connect-desktop: Tab → a[Host your own] → a[Source] → a[EN] → a[中文] → textarea[Invite code] → button[Paste]
+  /var/folders/py/4kyvk9wx1gg1ljrx0g0wl8000000gn/T/tmp.76x28LZM0r/30-connect-desktop.png  61 KB
+  30-connect-phone: 9 requests, 0 to a third party — none, all same-origin
+  30-connect-phone: 23 controls in the accessibility tree, 0 unnamed
+  30-connect-phone: 110 text runs, lowest 6.31:1 (span) — AA met
+  30-connect-phone: Tab → textarea[Invite code] → button[Paste] → a[host your own] → a[How it works ↓] → a[EN] → a[中文]
+  30-connect-phone: no horizontal overflow at 390px
+  /var/folders/py/4kyvk9wx1gg1ljrx0g0wl8000000gn/T/tmp.76x28LZM0r/30-connect-phone.png  89 KB
+  /var/folders/py/4kyvk9wx1gg1ljrx0g0wl8000000gn/T/tmp.76x28LZM0r/30-og-preview.png  80 KB
+  /var/folders/py/4kyvk9wx1gg1ljrx0g0wl8000000gn/T/tmp.76x28LZM0r/30-home-screen-icon.png  169 KB
+  047-1280-idle-zh: 25 controls in the accessibility tree, 0 unnamed
+  047-1280-idle-zh: 114 text runs, lowest 6.31:1 (span) — AA met
+  047-1280-idle-zh: no horizontal overflow at 1280px
+  047-1280-idle-zh: 9 requests, 0 to a third party — none, all same-origin
+  /var/folders/py/4kyvk9wx1gg1ljrx0g0wl8000000gn/T/tmp.76x28LZM0r/047-1280-idle-zh.png  68 KB
+  047-1280-invalid-zh: 25 controls in the accessibility tree, 0 unnamed
+  047-1280-invalid-zh: 116 text runs, lowest 5.25:1 (p.code-hint) — AA met
+  047-1280-invalid-zh: no horizontal overflow at 1280px
+  047-1280-invalid-zh: 10 requests, 0 to a third party — none, all same-origin
+  /var/folders/py/4kyvk9wx1gg1ljrx0g0wl8000000gn/T/tmp.76x28LZM0r/047-1280-invalid-zh.png  75 KB
+  047-1280-returning-zh: 25 controls in the accessibility tree, 0 unnamed
+  047-1280-returning-zh: 119 text runs, lowest 5.48:1 (button.ghost) — AA met
+  047-1280-returning-zh: no horizontal overflow at 1280px
+  047-1280-returning-zh: 9 requests, 0 to a third party — none, all same-origin
+  /var/folders/py/4kyvk9wx1gg1ljrx0g0wl8000000gn/T/tmp.76x28LZM0r/047-1280-returning-zh.png  84 KB
+  047-390-idle-zh: 23 controls in the accessibility tree, 0 unnamed
+  047-390-idle-zh: 106 text runs, lowest 6.31:1 (span) — AA met
+  047-390-idle-zh: no horizontal overflow at 390px
+  047-390-idle-zh: 9 requests, 0 to a third party — none, all same-origin
+  /var/folders/py/4kyvk9wx1gg1ljrx0g0wl8000000gn/T/tmp.76x28LZM0r/047-390-idle-zh.png  45 KB
+  047-390-invalid-zh: 23 controls in the accessibility tree, 0 unnamed
+  047-390-invalid-zh: 108 text runs, lowest 5.25:1 (p.code-hint) — AA met
+  047-390-invalid-zh: no horizontal overflow at 390px
+  047-390-invalid-zh: 10 requests, 0 to a third party — none, all same-origin
+  /var/folders/py/4kyvk9wx1gg1ljrx0g0wl8000000gn/T/tmp.76x28LZM0r/047-390-invalid-zh.png  51 KB
+  047-390-returning-zh: 23 controls in the accessibility tree, 0 unnamed
+  047-390-returning-zh: 110 text runs, lowest 5.48:1 (button.ghost) — AA met
+  047-390-returning-zh: no horizontal overflow at 390px
+  047-390-returning-zh: 9 requests, 0 to a third party — none, all same-origin
+  /var/folders/py/4kyvk9wx1gg1ljrx0g0wl8000000gn/T/tmp.76x28LZM0r/047-390-returning-zh.png  59 KB
+  047 Chinese cards: 6 passed / 0 failed / 0 skipped of 6
+  043-1280-light-en: 120 text runs, lowest 6.31:1 (span) — AA met
+  043-1280-light-en: 25 controls in the accessibility tree, 0 unnamed
+  043-1280-light-en: PASS — layout, labels, language, controls, signup, same-origin
+  043-1280-light-zh: 116 text runs, lowest 6.31:1 (span) — AA met
+  043-1280-light-zh: 25 controls in the accessibility tree, 0 unnamed
+  043-1280-light-zh: PASS — layout, labels, language, controls, signup, same-origin
+  043-1024-light-en: 120 text runs, lowest 6.31:1 (span) — AA met
+  043-1024-light-en: 25 controls in the accessibility tree, 0 unnamed
+  043-1024-light-en: PASS — layout, labels, language, controls, signup, same-origin
+  043-1024-light-zh: 116 text runs, lowest 6.31:1 (span) — AA met
+  043-1024-light-zh: 25 controls in the accessibility tree, 0 unnamed
+  043-1024-light-zh: PASS — layout, labels, language, controls, signup, same-origin
+  043-390-light-en: 112 text runs, lowest 6.31:1 (span) — AA met
+  043-390-light-en: 23 controls in the accessibility tree, 0 unnamed
+  043-390-light-en: PASS — layout, labels, language, controls, signup, same-origin
+  043-390-light-zh: 108 text runs, lowest 6.31:1 (span) — AA met
+  043-390-light-zh: 23 controls in the accessibility tree, 0 unnamed
+  043-390-light-zh: PASS — layout, labels, language, controls, signup, same-origin
+049 video: 6 passed / 0 failed / 0 skipped of 6
+052 anatomy: 6 passed / 0 failed / 0 skipped of 6
+068 try row: 6 passed / 0 failed / 0 skipped of 6
+053 layout: 6 passed / 0 failed / 0 skipped of 6
+043 landing: 6 passed / 0 failed / 0 skipped of 6
+  no INVITE: the chat was not exercised (set INVITE=ic1.… APP=… against a running host)
+
+launch-check: OK
+sh hack/install_test.sh
+PASS: linux/amd64 latest: installed, version and PATH/quickstart printed, temp cleaned
+PASS: darwin/arm64 pinned: installed and executable, temp cleaned
+PASS: bad-checksum: refused before extraction, nothing installed, temp cleaned
+PASS: short-download: refused before extraction, nothing installed, temp cleaned
+PASS: missing-checksum: refused before extraction, nothing installed, temp cleaned
+PASS: truncated archive with matching checksum: tar refused, nothing installed, temp cleaned
+PASS: unknown arch: one-line Releases refusal
+PASS: checksum refusal preserves existing install
+PASS: install directory with spaces
+PASS: directory target refused without mutation
+PASS: wget without curl: verified install and version output
+PASS: writable system destination, large single-line latest response
+PASS: default home fallback created
+PASS: PATH shadow names both paths and full-path quickstart
+PASS: symlink install refused with brew upgrade advice
+PASS: quickstart shell-quotes destination
+PASS: resolve failure names causes and pin escape hatch
+PASS: non-loopback HTTP refused before download
+install tests: 18 passed / 0 failed / 0 skipped of 18 total
+CHECK OK

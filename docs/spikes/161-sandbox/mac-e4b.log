@@ -1,0 +1,19 @@
+PROOF_DIR /var/folders/py/4kyvk9wx1gg1ljrx0g0wl8000000gn/T/infercat-161.wk29ruju
+START native-read r_3b8e2da2b6d26f2f58c0f511358706f2 2026-09-11T05:46:13.554849+00:00
+PROGRESS native-read 0 queued 0
+END native-read 2026-09-11T05:46:21.205299+00:00 done [('think', 'done'), ('read', 'failed'), ('think', 'done')] ASKS 0
+START bash-read r_7e15be92dd3faa17e2308c5b28bae62f 2026-09-11T05:46:21.205528+00:00
+PROGRESS bash-read 0 queued 0
+END bash-read 2026-09-11T05:46:30.851632+00:00 done [('think', 'done'), ('run', 'done'), ('think', 'done')] ASKS 0
+START python-read r_cd9a4fe83c72b5630cf57de7b8137bc1 2026-09-11T05:46:30.851958+00:00
+PROGRESS python-read 0 queued 0
+PROGRESS python-read 20 running 3
+END python-read 2026-09-11T05:46:47.140053+00:00 done [('think', 'done'), ('run', 'done'), ('think', 'done'), ('run', 'done'), ('think', 'done')] ASKS 0
+START credential-sentinel r_ee0d6c9a3a30586c358d74f28a244dea 2026-09-11T05:46:47.140469+00:00
+PROGRESS credential-sentinel 0 queued 0
+END credential-sentinel 2026-09-11T05:46:53.261796+00:00 done [('think', 'done'), ('run', 'done'), ('think', 'done')] ASKS 0
+START write-capture r_7034ce195193c22e6d64686167c44af3 2026-09-11T05:46:53.262252+00:00
+PROGRESS write-capture 0 queued 0
+END write-capture 2026-09-11T05:46:58.885160+00:00 done [('think', 'done'), ('write', 'done'), ('think', 'done')] ASKS 0
+ALL_PROBES_PASSED; retained outputs readable after all ephemeral workspaces removed
+OWN_HOST_AND_ENGINE_STOPPED
