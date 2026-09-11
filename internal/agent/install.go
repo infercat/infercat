@@ -2,8 +2,6 @@
 package agent
 
 import (
-	"archive/tar"
-	"compress/gzip"
 	"context"
 	"crypto/sha256"
 	"embed"
@@ -19,10 +17,11 @@ import (
 	"runtime"
 	"strings"
 	"time"
+
+	"github.com/infercat/infercat/internal/profile"
 )
 
 const HarnessVersion = "0.1.5-alpha.1"
-const HarnessRevision = "5dda764ed3aa172535a7967b06ff95d9cbfe536a"
 const NodeVersion = "22.23.2"
 const LockSHA256 = "9b053e130bd71c2950eb106f6ca7ad9043368d969532ae233df1c0579b75b90d"
 
@@ -106,7 +105,7 @@ func Install(ctx context.Context, dataDir string, out io.Writer) error {
 	if err = download(ctx, url, archive, want); err != nil {
 		return err
 	}
-	if err = extractNode(archive, filepath.Join(stage, "node")); err != nil {
+	if err = profile.Unpack(ctx, archive, filepath.Join(stage, "node"), profile.Archive{Format: "tar.gz", Strip: 1, Bytes: 512 << 20}); err != nil {
 		return err
 	}
 	if err = os.Remove(archive); err != nil {
@@ -194,78 +193,6 @@ func download(ctx context.Context, url, path, want string) error {
 	}
 	if n > 128<<20 || hex.EncodeToString(h.Sum(nil)) != want {
 		return errors.New("runtime download integrity mismatch")
-	}
-	return nil
-}
-func extractNode(archive, root string) error {
-	f, err := os.Open(archive)
-	if err != nil {
-		return err
-	}
-	defer f.Close()
-	gz, err := gzip.NewReader(f)
-	if err != nil {
-		return err
-	}
-	defer gz.Close()
-	tr := tar.NewReader(gz)
-	var total int64
-	var links [][2]string
-	for {
-		h, err := tr.Next()
-		if err == io.EOF {
-			break
-		}
-		if err != nil {
-			return err
-		}
-		_, rel, ok := strings.Cut(h.Name, "/")
-		if !ok || rel == "" {
-			continue
-		}
-		rel = filepath.Clean(rel)
-		if !filepath.IsLocal(rel) {
-			return errors.New("runtime archive path escapes destination")
-		}
-		path := filepath.Join(root, rel)
-		switch h.Typeflag {
-		case tar.TypeDir:
-			err = os.MkdirAll(path, 0700)
-		case tar.TypeReg:
-			if h.Size < 0 || h.Size > (512<<20)-total {
-				return errors.New("runtime archive exceeds size bound")
-			}
-			total += h.Size
-			if err = os.MkdirAll(filepath.Dir(path), 0700); err != nil {
-				return err
-			}
-			var out *os.File
-			out, err = os.OpenFile(path, os.O_CREATE|os.O_EXCL|os.O_WRONLY, os.FileMode(h.Mode)&0755)
-			if err == nil {
-				_, err = io.CopyN(out, tr, h.Size)
-				e := out.Close()
-				if err == nil {
-					err = e
-				}
-			}
-		case tar.TypeSymlink:
-			target := filepath.Clean(filepath.Join(filepath.Dir(rel), h.Linkname))
-			if filepath.IsAbs(h.Linkname) || !filepath.IsLocal(target) {
-				return errors.New("runtime archive symlink escapes destination")
-			}
-			links = append(links, [2]string{path, h.Linkname})
-		default:
-			return errors.New("unsupported runtime archive entry")
-		}
-		if err != nil {
-			return err
-		}
-	}
-	// Publish links last, so archive entries cannot traverse an earlier symlink.
-	for _, link := range links {
-		if err = os.Symlink(link[1], link[0]); err != nil {
-			return err
-		}
 	}
 	return nil
 }

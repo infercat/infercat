@@ -1,9 +1,6 @@
 package agent
 
 import (
-	"archive/tar"
-	"bytes"
-	"compress/gzip"
 	"context"
 	"crypto/sha256"
 	"encoding/hex"
@@ -43,48 +40,6 @@ func TestDownloadIntegrity(t *testing.T) {
 	}
 	if download(context.Background(), srv.URL, filepath.Join(t.TempDir(), "bad"), "incorrect") == nil {
 		t.Fatal("accepted wrong bytes")
-	}
-}
-func fixtureArchive(t *testing.T, headers []*tar.Header) string {
-	t.Helper()
-	var b bytes.Buffer
-	gz := gzip.NewWriter(&b)
-	tw := tar.NewWriter(gz)
-	for _, h := range headers {
-		if err := tw.WriteHeader(h); err != nil {
-			t.Fatal(err)
-		}
-		if h.Typeflag == tar.TypeReg {
-			if _, err := tw.Write(bytes.Repeat([]byte("x"), int(h.Size))); err != nil {
-				t.Fatal(err)
-			}
-		}
-	}
-	if err := tw.Close(); err != nil {
-		t.Fatal(err)
-	}
-	if err := gz.Close(); err != nil {
-		t.Fatal(err)
-	}
-	p := filepath.Join(t.TempDir(), "node.tgz")
-	if err := os.WriteFile(p, b.Bytes(), 0600); err != nil {
-		t.Fatal(err)
-	}
-	return p
-}
-func TestExtractNode(t *testing.T) {
-	archive := fixtureArchive(t, []*tar.Header{{Name: "node/bin/", Typeflag: tar.TypeDir, Mode: 0755}, {Name: "node/bin/node", Typeflag: tar.TypeReg, Mode: 0755, Size: 4}, {Name: "node/bin/alias", Typeflag: tar.TypeSymlink, Linkname: "node"}})
-	root := filepath.Join(t.TempDir(), "node")
-	if err := extractNode(archive, root); err != nil {
-		t.Fatal(err)
-	}
-	if b, err := os.ReadFile(filepath.Join(root, "bin/alias")); err != nil || string(b) != "xxxx" {
-		t.Fatalf("internal link: %q %v", b, err)
-	}
-	for _, header := range []*tar.Header{{Name: "node/../escape", Typeflag: tar.TypeReg, Size: 1}, {Name: "node/bin/alias", Typeflag: tar.TypeSymlink, Linkname: "../../../escape"}} {
-		if extractNode(fixtureArchive(t, []*tar.Header{header}), filepath.Join(t.TempDir(), "node")) == nil {
-			t.Fatal("accepted escaping archive entry")
-		}
 	}
 }
 func TestIncompleteInstallIsNotReady(t *testing.T) {
