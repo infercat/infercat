@@ -299,12 +299,7 @@ func (m *managed) loop() {
 			continue
 		}
 		if m.process != nil && m.process.Exited() {
-			m.process.Close()
-			m.process = nil
-			m.status.State = "backoff"
-			m.status.Healthy = false
-			m.retry = time.Now().Add(time.Second)
-			m.status.Restarts++
+			m.failedLocked(time.Second)
 		}
 		if m.process == nil && (m.member.Policy.Kind != "on-demand" || m.refs > 0) && !time.Now().Before(m.retry) {
 			m.startLocked()
@@ -323,12 +318,7 @@ func (m *managed) loop() {
 			} else {
 				m.failures++
 				if m.failures >= 3 && m.refs == 0 && m.process != nil {
-					m.process.Close()
-					m.process = nil
-					m.status.State = "backoff"
-					m.status.Healthy = false
-					m.retry = time.Now().Add(time.Second)
-					m.status.Restarts++
+					m.failedLocked(time.Second)
 				}
 			}
 			m.mu.Unlock()
@@ -382,4 +372,13 @@ func (m *managed) verify(ctx context.Context) error {
 func (r *Runtime) Owns(class string) bool {
 	m := r.members[class]
 	return m != nil && !m.installed.External && m.installed.Unavailable == ""
+}
+
+func (m *managed) failedLocked(wait time.Duration) {
+	m.process.Close()
+	m.process = nil
+	m.status.State = "backoff"
+	m.status.Healthy = false
+	m.retry = time.Now().Add(wait)
+	m.status.Restarts++
 }

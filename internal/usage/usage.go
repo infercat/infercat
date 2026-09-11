@@ -61,7 +61,6 @@ type KeyCounters struct {
 
 // Snapshot is what the admin API reads from the running gateway.
 type Snapshot interface {
-	Counters(keyID string) KeyCounters
 	AllCounters() map[string]KeyCounters
 	Queue() (inFlight, waiting int)
 }

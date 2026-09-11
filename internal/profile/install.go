@@ -13,6 +13,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/infercat/infercat/internal/fsx"
 	"github.com/infercat/infercat/internal/supervise"
 )
 
@@ -224,22 +225,12 @@ func SaveInstallation(dir string, in Installation) (string, error) {
 	if e = os.MkdirAll(filepath.Dir(path), 0700); e != nil {
 		return "", e
 	}
-	f, e := os.CreateTemp(filepath.Dir(path), ".manifest-")
-	if e != nil {
+	e = fsx.WriteFile(path, b, 0600)
+	// Preserve the existing returned name even when the final rename fails.
+	if _, rename := e.(*os.LinkError); e != nil && !rename {
 		return "", e
 	}
-	defer os.Remove(f.Name())
-	if _, e = f.Write(b); e == nil {
-		e = f.Sync()
-	}
-	ce := f.Close()
-	if e != nil {
-		return "", e
-	}
-	if ce != nil {
-		return "", ce
-	}
-	return name, os.Rename(f.Name(), path)
+	return name, e
 }
 func LoadInstallation(dir, name string) (Installation, error) {
 	var in Installation

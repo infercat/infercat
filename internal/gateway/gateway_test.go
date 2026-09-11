@@ -96,7 +96,7 @@ func TestNotFound(t *testing.T) {
 }
 
 func TestMeShape(t *testing.T) {
-	h := newHarness(t, Config{HostName: "maxbox", RelayRegion: func() string { return "sfo" }}, nil)
+	h := newHarness(t, Config{LiveHostName: func() string { return "maxbox" }, RelayRegion: func() string { return "sfo" }}, nil)
 	h.setKey(func(k *keys.Key) { k.Limits.Models = []string{"m2", "ghost"}; k.Limits.RPM = 20 })
 	h.up.setInfo(func(i *upstream.Info) { i.ModelContext = 8192 })
 	r := h.get("/me")
@@ -521,7 +521,7 @@ func TestRestartKeepsTodaysCountersAndLastSeen(t *testing.T) {
 	if err := h.file.Close(); err != nil {
 		t.Fatal(err)
 	}
-	h.gw = New(Config{DataDir: dir, HostName: "max-laptop"}, h.up, h.store, h.rec, globalLogs.logf)
+	h.gw = New(Config{DataDir: dir, LiveHostName: func() string { return "max-laptop" }}, h.up, h.store, h.rec, globalLogs.logf)
 	h.srv = httptest.NewServer(h.gw.Handler())
 	defer h.srv.Close()
 

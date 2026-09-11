@@ -16,6 +16,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/infercat/infercat/internal/fsx"
 )
 
 type snapshot struct {
@@ -92,32 +94,9 @@ func privateDir(path string) error {
 	return nil
 }
 func atomicWrite(path string, raw []byte) error {
-	f, err := os.CreateTemp(filepath.Dir(path), ".run-*")
-	if err != nil {
-		return err
-	}
-	name := f.Name()
-	defer os.Remove(name)
-	if _, err = f.Write(raw); err == nil {
-		err = f.Sync()
-	}
-	closeErr := f.Close()
-	if err == nil {
-		err = closeErr
-	}
-	if err != nil {
-		return err
-	}
-	if err = os.Rename(name, path); err != nil {
-		return err
-	}
-	d, err := os.Open(filepath.Dir(path))
-	if err != nil {
-		return err
-	}
-	defer d.Close()
-	return d.Sync()
+	return fsx.WriteFileSyncDir(path, raw, 0600)
 }
+
 func (s *Store) load(key string) (*snapshot, error) {
 	if !safeID.MatchString(key) {
 		return nil, ErrInvalid

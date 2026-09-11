@@ -8,7 +8,6 @@ import (
 	"flag"
 	"fmt"
 	"strings"
-	"text/tabwriter"
 	"time"
 
 	"github.com/infercat/infercat/internal/admin"
@@ -239,17 +238,19 @@ func inviteLink(dataDir, inv string) string {
 	return strings.TrimRight(base, "#") + "#" + inv
 }
 
+type inviteJSON struct {
+	KeyID  string `json:"key_id"`
+	Name   string `json:"name"`
+	Invite string `json:"invite"`
+	Link   string `json:"link"`
+}
+
 // printInviteJSON is `keys add --json`: the four fields a script needs and nothing else, so the
 // invite can be handed to a chat bot or a provisioning script without scraping the human output.
 func (e *env) printInviteJSON(dataDir string, k *keys.Key, inv string) error {
 	enc := json.NewEncoder(e.out)
 	enc.SetIndent("", "  ")
-	return enc.Encode(struct {
-		KeyID  string `json:"key_id"`
-		Name   string `json:"name"`
-		Invite string `json:"invite"`
-		Link   string `json:"link"`
-	}{k.ID, k.Name, inv, inviteLink(dataDir, inv)})
+	return enc.Encode(inviteJSON{k.ID, k.Name, inv, inviteLink(dataDir, inv)})
 }
 
 // reloadHost pushes a key change to the running host over the admin socket so it is in force
@@ -290,7 +291,7 @@ func (e *env) keysList(ctx context.Context, pre string, args []string) error {
 		return err
 	}
 	seen := rep.LastSeen()
-	tw := tabwriter.NewWriter(e.out, 0, 0, 2, ' ', 0)
+	tw := newTable(e.out)
 	fmt.Fprintln(tw, "ID\tNAME\tSTATUS\tRPM\tTPM\tDAILY\tAUDIO S/DAY\tSPEECH CHARS/DAY\tIMAGES/DAY\tIMAGE QUEUE\tCREATED\tLAST SEEN")
 	for _, k := range list {
 		fmt.Fprintf(tw, "%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\t%s\n",

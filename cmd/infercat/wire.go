@@ -19,13 +19,7 @@ import (
 func newPlatform() platform {
 	return platform{
 		startTunnel: func(ctx context.Context, o tunnelOptions) (tunnelServer, error) {
-			s, err := tunnel.Start(ctx, tunnel.Options{
-				DataDir:    o.DataDir,
-				Ephemeral:  o.Ephemeral,
-				DERPMapURL: o.DERPMapURL,
-				Region:     o.Region,
-				Logf:       o.Logf,
-			})
+			s, err := tunnel.Start(ctx, o)
 			if err != nil {
 				return nil, err
 			}
@@ -41,26 +35,12 @@ func newPlatform() platform {
 		savedAddr:    tunnel.SavedAddr,
 		encodeInvite: invite.Encode,
 		newGateway: func(o gatewayOptions, up upstream.Upstream, store keys.Store, rec usage.Recorder, logf func(string, ...any)) (gatewayServer, error) {
-			return gateway.New(gateway.Config{
-				Search: o.Search,
-				Embed:  o.Embed, Managed: o.Managed,
-				RemoteConsole: o.RemoteConsole, LiveHostName: o.LiveHostName,
-				Images: o.Images, ImageModel: o.ImageModel,
-				ModelsPinned:    o.ModelsPinned,
-				SpeechVoices:    o.SpeechVoices,
-				TranscribeModel: o.TranscribeModel, SpeechModel: o.SpeechModel,
-				Transcribe: o.Transcribe, Speech: o.Speech, MaxTranscriptionSeconds: o.MaxTranscriptionSeconds,
-				LogPrompts:  o.LogPrompts,
-				HostName:    o.HostName,
-				RelayRegion: o.RelayRegion,
-				DataDir:     o.DataDir,
-			}, up, store, rec, logf), nil
+			return gateway.New(o, up, store, rec, logf), nil
 		},
 	}
 }
 
-// realTunnel adapts tunnel.Status to the CLI's own struct so nothing outside this file needs
-// the tunnel package.
+// realTunnel adapts tunnel.Status to the CLI's status view.
 type realTunnel struct{ s *tunnel.Server }
 
 func (t realTunnel) Listener() net.Listener { return t.s.Listener() }

@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"github.com/infercat/infercat/internal/fsx"
 	"github.com/infercat/infercat/internal/product"
 )
 
@@ -87,31 +88,8 @@ func saveConfig(dataDir string, c config) error {
 	return writeFileAtomic(filepath.Join(dataDir, configName), append(b, '\n'))
 }
 
-// writeFileAtomic writes through a sibling temp file so a crash never leaves a half file.
 func writeFileAtomic(path string, b []byte) error {
-	dir := filepath.Dir(path)
-	f, err := os.CreateTemp(dir, "."+filepath.Base(path)+"-*")
-	if err != nil {
-		return err
-	}
-	name := f.Name()
-	defer os.Remove(name)
-	if err := f.Chmod(0o600); err != nil {
-		f.Close()
-		return err
-	}
-	if _, err := f.Write(b); err != nil {
-		f.Close()
-		return err
-	}
-	if err := f.Sync(); err != nil {
-		f.Close()
-		return err
-	}
-	if err := f.Close(); err != nil {
-		return err
-	}
-	return os.Rename(name, path)
+	return fsx.WriteFile(path, b, 0600)
 }
 
 func intOr(v, def int) int {

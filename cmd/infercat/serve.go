@@ -169,9 +169,6 @@ func (e *env) cmdServe(ctx context.Context, pre string, args []string) error {
 	_, keyErr := os.Stat(filepath.Join(dataDir, tunnel.KeyFile))
 	newIdentity := errors.Is(keyErr, os.ErrNotExist) && !*ephemeral
 
-	if e.plat.warn != "" {
-		e.logf("%s", e.plat.warn)
-	}
 	if *logPrompts {
 		e.logf("--log-prompts is ON: your friends' prompts and completions are being written to %s/%s.", dataDir, usage.FileName)
 	}
@@ -235,7 +232,6 @@ func (e *env) cmdServe(ctx context.Context, pre string, args []string) error {
 		Images:       images, ImageModel: *imageModel,
 		Transcribe: transcribe, Speech: speech, MaxTranscriptionSeconds: float64(*maxAudio),
 		LogPrompts:  *logPrompts,
-		HostName:    hostName,
 		RelayRegion: func() string { return tun.Status().Region },
 		DataDir:     dataDir, // today's counters are seeded from usage.jsonl there
 	}, up, store, bridge.Recorder{Next: events, Count: public.Count}, e.logf)

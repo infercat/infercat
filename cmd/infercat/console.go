@@ -251,7 +251,7 @@ func (e *env) consoleAPI(store *keys.FileStore, addr string, up upstream.Upstrea
 		return map[string]bool{"ok": true}, nil
 	}
 	result := func(k *keys.Key, inv string) any {
-		return map[string]string{"key_id": k.ID, "name": k.Name, "invite": inv, "link": inviteLink(settings.DataDir, inv)}
+		return inviteJSON{k.ID, k.Name, inv, inviteLink(settings.DataDir, inv)}
 	}
 	route("POST /keys", func(w http.ResponseWriter, r *http.Request) (any, error) {
 		var in struct {

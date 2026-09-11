@@ -24,13 +24,13 @@ import (
 	"github.com/infercat/infercat/internal/product"
 	runstate "github.com/infercat/infercat/internal/run"
 	"github.com/infercat/infercat/internal/supervise"
+	"github.com/infercat/infercat/internal/tunnel"
 	"github.com/infercat/infercat/internal/upstream"
 	"github.com/infercat/infercat/internal/usage"
 )
 
-// The tunnel (ticket 001) and the gateway (ticket 002) land in parallel with this CLI, so the
-// command talks to them through these two small interfaces. wire.go binds them to the real
-// packages; wire_stub.go stands in until those tickets land.
+// Injectable factories and narrow output interfaces keep the CLI testable.
+// wire.go binds them to the real tunnel and gateway.
 
 type tunnelStatus struct {
 	Addr    string
@@ -47,13 +47,7 @@ type tunnelServer interface {
 	Close() error
 }
 
-type tunnelOptions struct {
-	DataDir    string
-	Ephemeral  bool
-	DERPMapURL string
-	Region     string
-	Logf       func(string, ...any)
-}
+type tunnelOptions = tunnel.Options
 
 type gatewayServer interface {
 	ExecuteStep(context.Context, string, runstate.Step, func() error) (runstate.StepResult, error)
@@ -67,26 +61,7 @@ type gatewayServer interface {
 	Shutdown(ctx context.Context) error
 }
 
-type gatewayOptions struct {
-	Search *gateway.Search
-
-	Embed                        upstream.Engine
-	Managed                      map[string]gateway.ManagedMember
-	Images                       upstream.ImageEngine
-	ImageModel                   string
-	RemoteConsole                http.Handler
-	LiveHostName                 func() string
-	SpeechVoices                 map[string]string
-	Transcribe, Speech           upstream.AudioEngine
-	TranscribeModel, SpeechModel string
-	MaxTranscriptionSeconds      float64
-	ModelsPinned                 []string
-
-	LogPrompts  bool
-	HostName    string
-	RelayRegion func() string
-	DataDir     string // usage.jsonl, for the daily counters the gateway seeds at start
-}
+type gatewayOptions = gateway.Config
 
 // platform is everything this command cannot build for itself.
 type platform struct {
@@ -95,8 +70,6 @@ type platform struct {
 	savedAddr    func(dataDir string) (string, error)
 	encodeInvite func(addr, secret string) string
 	newGateway   func(o gatewayOptions, up upstream.Upstream, store keys.Store, rec usage.Recorder, logf func(string, ...any)) (gatewayServer, error)
-	// warn is printed once at the top of `serve` when this is not a real build.
-	warn string
 }
 
 // errDone means the command finished and printed everything it had to say (exit 0).

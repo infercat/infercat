@@ -492,8 +492,8 @@ func newHarness(t *testing.T, cfg Config, up upstream.Engine) *harness {
 	}
 	h.key = defaultKey()
 	h.store.set(testSecret, h.key)
-	if cfg.HostName == "" {
-		cfg.HostName = "max-laptop"
+	if cfg.LiveHostName == nil {
+		cfg.LiveHostName = func() string { return "max-laptop" }
 	}
 	var rec usage.Recorder = h.rec
 	if cfg.DataDir != "" {

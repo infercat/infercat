@@ -14,6 +14,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/infercat/infercat/internal/fsx"
 )
 
 // ErrNotFound is returned when no key matches the given id or name.
@@ -36,7 +38,7 @@ type stamp struct {
 	size int64
 }
 
-// FileStore implements Admin (and therefore Store) over keys.json.
+// FileStore implements Store over keys.json.
 //
 // Reads are hot: the file is re-stat'ed at most once per second and re-read when the stamp
 // changes, so `keys add` in one process is visible to a running gateway in another without a
@@ -75,9 +77,6 @@ func (s *FileStore) Changes() <-chan struct{} {
 	}
 	return s.changes
 }
-
-// Path is the file this store reads and writes.
-func (s *FileStore) Path() string { return s.path }
 
 // Reload re-reads keys.json now, past the once-per-second throttle. The CLI pokes a running host
 // through the admin socket after every key write so a pause, resume, revoke, or rotate is in
@@ -369,7 +368,6 @@ func (s *FileStore) newID() (string, error) {
 	return "", errors.New("could not find a free key id")
 }
 
-// save writes keys.json atomically: a sibling temp file, fsync, rename.
 func (s *FileStore) save() error {
 	dir := filepath.Dir(s.path)
 	if err := os.MkdirAll(dir, 0o700); err != nil {
@@ -380,28 +378,7 @@ func (s *FileStore) save() error {
 		return err
 	}
 	b = append(b, '\n')
-	tmp, err := os.CreateTemp(dir, ".keys-*.json")
-	if err != nil {
-		return err
-	}
-	name := tmp.Name()
-	defer os.Remove(name) // no-op once the rename has happened
-	if err := tmp.Chmod(0o600); err != nil {
-		tmp.Close()
-		return err
-	}
-	if _, err := tmp.Write(b); err != nil {
-		tmp.Close()
-		return err
-	}
-	if err := tmp.Sync(); err != nil {
-		tmp.Close()
-		return err
-	}
-	if err := tmp.Close(); err != nil {
-		return err
-	}
-	if err := os.Rename(name, s.path); err != nil {
+	if err := fsx.WriteFile(s.path, b, 0600); err != nil {
 		return err
 	}
 	if fi, err := os.Stat(s.path); err == nil {
