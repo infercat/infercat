@@ -3,15 +3,74 @@
 Versions are tags (`v0.1.0`); the binary prints its own with `infercat version` and the web
 app shows the same one under Settings. Dates are the tag's.
 
-## Unreleased — 0.1.4
+## v0.1.4 — 2026-09-13
 
-- New hosts use PSK tunnel addresses and `ic2` invites. Existing identities stay unchanged until
-  the host stops `serve` and runs `infercat identity upgrade`, then restarts and re-issues invites.
-  The old identity is backed up once; the temporary upgrade command exists until its planned
-  retirement after **2026-09-25** (137). Old clients need an update to accept `ic2`.
-- An exclusive OS data-directory lock prevents concurrent hosts and identity upgrades; it is
-  released automatically on process exit. Keep the whole invite private: its address now carries
-  a shared secret as well as the host's public key.
+Two days after 0.1.3: friends can ask a host for pictures, third-party coding clients can talk to a
+host through the Responses API, a host can describe its whole loadout as a profile and check it,
+and the console shows what the host keeps for each friend. Every slice was gated, reviewed and
+proved against a real engine before it landed. Landed after this cut (the agent route, one-command
+setup, host tools in chat) ships in 0.1.5.
+
+**Friends (the chat app)**
+
+- **Pictures.** A friend asks for an image and the host draws it with its image engine
+  (stable-diffusion.cpp). Image jobs are durable per key: they queue, survive a host restart without
+  re-running, show their place in the queue, and finish in place; the reply gets an image row and the
+  Images sheet collects a friend's pictures. Outputs are kept per key within a bounded budget. The
+  gallery loads a grid of any size four reads at a time with a polite retry when the host is busy.
+  (144a, 144b, 144c, 155)
+- **Honest image accounting.** The host measures image time and charges only images it stored. A
+  storage fault on the host is the host's fault (`storage_failed`, no charge, a next step in the
+  app). An engine that keeps failing goes "recovering" with a visible retry time instead of failing
+  every request; oversized or empty engine answers never count against the friend. (156, 159)
+- **Run rows.** A long job appears under the chat as a row with a live state (queued, running,
+  done) and a Details view — the shape agent runs will use. (139)
+- **Voice playback** picks the audio format from the host's response, so WAV and MP3 speech
+  engines both play. (123)
+- **Uploads** accept exactly what the host admits, and SVG images are rasterised before upload. (132)
+
+**Hosts**
+
+- **Loadout profiles.** `infercat setup` lists the embedded profiles (a 64 GB Apple machine first),
+  finds what the machine already has (the Hugging Face cache, Ollama, LM Studio, a local checkpoint
+  file) and dry-checks the engines you started by hand; it writes config only if the anchor model
+  passes. Downloading and supervising the members is 0.1.5. (151a)
+- **A native speech helper.** `infercat-speech` serves Kokoro v1.1-zh over `/v1/audio/speech` with
+  streaming WAV and no Python (sherpa-onnx's C API; first audio under a second in English on an
+  M-series Mac). It is built and published for macOS arm64 and Linux amd64 with checksums; `setup`
+  fetches it in 0.1.5. (151b-1)
+- **Image hosting recipe.** `docs/IMAGES.md` (English and Chinese): stable-diffusion.cpp at a pinned
+  build with FLUX.2 klein 4B Q8, the flags, the budgets, the measured 15–22 s per 1024² image. (155)
+- **The Stored drawer.** The console shows what the host keeps for each key — finished runs, images,
+  bytes, files awaiting cleanup and files for review — and clears a key's finished runs in one
+  action; `infercat status` prints the two cleanup counts. (158)
+- **Run store hardening.** Settlement is bounded and per-key failures stay per key; a key at the
+  storage ceiling fails closed with its bytes preserved and the operator told; interrupted runs stay
+  failed after a restart and are never replayed; a stuck external runtime is quarantined instead of
+  wedging the host. (154, 157)
+- **Identity upgrade to `ic2`.** New hosts use pre-shared-key tunnel addresses and `ic2` invites.
+  Existing identities stay unchanged until the host stops `serve` and runs `infercat identity
+  upgrade`, then restarts and re-issues invites. The old identity is backed up once; the temporary
+  upgrade command exists until its planned retirement after **2026-09-25**. Old clients need an
+  update to accept `ic2`. (136, 137)
+- An exclusive OS data-directory lock prevents concurrent hosts, and an identity upgrade while
+  `serve` is running; it is released automatically on process exit. Keep the whole invite private:
+  its address now carries a shared secret as well as the host's public key. (137)
+- `infercat status` shows the public bridge slots the gateway negotiated. (138)
+- Logs and human output mask pre-shared-key addresses. (145)
+- **Agent runtime groundwork.** The host installs and supervises the pinned DeepSeek harness runtime
+  and shares durable consumer settlement with image jobs. No agent route yet — it lands in 0.1.5.
+  (116a, 116b)
+
+**Developers and third-party clients**
+
+- **`/v1/responses`.** The stateless Responses API is adapted to chat completions, so Codex-style
+  clients work against a host; streamed tool arguments are counted before usage; termination and
+  model accounting are exact. (142, 150)
+- **`infercat configure codex`** writes a managed Codex profile (`$CODEX_HOME/infercat.config.toml`);
+  connect also manages OpenCode and Harness provider blocks and reports agent status honestly. (140,
+  147, 149)
+- CI bounds its compiler and reconnect integration tests. (131)
 
 ## v0.1.3 — 2026-09-11
 
