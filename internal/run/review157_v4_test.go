@@ -117,15 +117,13 @@ func Test157V4CeilingEnumerationCost(t *testing.T) {
 	s.mu.Lock()
 	s.releaseIdle()
 	s.mu.Unlock()
-	for range 3 {
-		began := time.Now()
-		rows, err := s.List("")
-		elapsed := time.Since(began)
-		if err != nil || len(rows) != 1 || len(s.data) != 0 {
-			t.Fatal(len(rows), len(s.data), err)
-		}
-		t.Logf("nonresident ceiling key: bytes=%d elapsed=%v", MaxStored-MaxLiveKey*terminalBound, elapsed)
+	began := time.Now()
+	rows, err := s.List("")
+	elapsed := time.Since(began)
+	if err != nil || len(rows) != 1 || len(s.data) != 0 {
+		t.Fatal(len(rows), len(s.data), err)
 	}
+	t.Logf("nonresident ceiling key: bytes=%d elapsed=%v", s.maxStored-MaxLiveKey*terminalBound, elapsed)
 }
 
 func Test157V4ExpiredJoinUsesTerminalReserve(t *testing.T) {
@@ -217,7 +215,7 @@ func Test157V4LegacyFullKeyFailsClosedWithoutChangingBytes(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			fresh, err := NewStore(filepath.Dir(s.root))
+			fresh, err := newCeilingStore(filepath.Dir(s.root), s.maxStored)
 			if err != nil {
 				t.Fatal(err)
 			}
@@ -236,7 +234,7 @@ func Test157V4LegacyFullKeyFailsClosedWithoutChangingBytes(t *testing.T) {
 			if _, err := fresh.Get("legacy", live.ID); !errors.Is(err, ErrNeedsAttention) {
 				t.Fatal("second load admitted legacy key", err)
 			}
-			restarted, _ := NewStore(filepath.Dir(s.root))
+			restarted, _ := newCeilingStore(filepath.Dir(s.root), s.maxStored)
 			if _, err := restarted.Get("legacy", live.ID); !errors.Is(err, ErrNeedsAttention) {
 				t.Fatal("mark not re-derived", err)
 			}

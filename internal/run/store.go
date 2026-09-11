@@ -38,6 +38,7 @@ type Store struct {
 	write           func(string, []byte) error
 	reserved        map[string]map[string]*reservation
 	imageBudget     int
+	maxStored       int // Test-injectable before use; production always starts at MaxStored.
 	imageCleanup    map[string]bool
 	imageOrphans    map[string]bool
 	emptyImageStamp map[string]time.Time
@@ -62,7 +63,7 @@ func NewStore(dataDir string) (*Store, error) {
 	if dataDir == "" {
 		return nil, ErrInvalid
 	}
-	s := &Store{root: filepath.Join(dataDir, "runs"), data: map[string]*snapshot{}, broken: map[string]error{}, subs: map[string]map[chan Event]bool{}, now: time.Now, write: atomicWrite, known: map[string]bool{}, accessed: map[string]time.Time{}, recovered: map[string]bool{}}
+	s := &Store{maxStored: MaxStored, root: filepath.Join(dataDir, "runs"), data: map[string]*snapshot{}, broken: map[string]error{}, subs: map[string]map[chan Event]bool{}, now: time.Now, write: atomicWrite, known: map[string]bool{}, accessed: map[string]time.Time{}, recovered: map[string]bool{}}
 	if err := privateDir(s.root); err != nil {
 		return nil, err
 	}
@@ -146,12 +147,12 @@ func (s *Store) load(key string) (*snapshot, error) {
 		if e != nil {
 			return nil, e
 		}
-		raw, e := io.ReadAll(io.LimitReader(f, MaxStored+MaxRuns*terminalBound+1))
+		raw, e := io.ReadAll(io.LimitReader(f, int64(s.maxStored+MaxRuns*terminalBound+1)))
 		f.Close()
 		if e != nil {
 			return nil, e
 		}
-		if len(raw) > MaxStored+MaxRuns*terminalBound {
+		if len(raw) > s.maxStored+MaxRuns*terminalBound {
 			return nil, ErrLimit
 		}
 		v.encodedBytes = len(raw)
@@ -208,7 +209,7 @@ func (s *Store) load(key string) (*snapshot, error) {
 		}
 		probe.Runs[rid] = r
 		raw, _ := json.Marshal(&probe)
-		if used+max(0, len(raw)-v.encodedBytes) > terminalBound || len(raw) > MaxStored+MaxRuns*terminalBound {
+		if used+max(0, len(raw)-v.encodedBytes) > terminalBound || len(raw) > s.maxStored+MaxRuns*terminalBound {
 			s.log("runs for key %s fail closed: operator reclamation required; snapshot bytes preserved", key)
 			s.markBroken(key, ErrNeedsAttention)
 			return nil, ErrNeedsAttention
@@ -320,7 +321,7 @@ func (s *Store) commitFor(key string, v *snapshot, event *Event, rid string) err
 		if !terminal(r.State) {
 			limit -= 512
 		}
-		if used+max(0, len(raw)-old.encodedBytes) > limit || len(raw) > MaxStored+MaxRuns*terminalBound {
+		if used+max(0, len(raw)-old.encodedBytes) > limit || len(raw) > s.maxStored+MaxRuns*terminalBound {
 			r.State, r.Reason = Failed, "storage exhausted"
 			r.Expires = r.Updated.Add(Retention)
 			v.Runs[rid] = r
@@ -342,14 +343,14 @@ func (s *Store) commitFor(key string, v *snapshot, event *Event, rid string) err
 			}
 			raw, _ = json.Marshal(v)
 			// Replay is disposable; attempts, usage and captured outputs are not.
-			for (used+max(0, len(raw)-old.encodedBytes) > terminalBound || len(raw) > MaxStored+MaxRuns*terminalBound) && len(v.Events) > 0 {
+			for (used+max(0, len(raw)-old.encodedBytes) > terminalBound || len(raw) > s.maxStored+MaxRuns*terminalBound) && len(v.Events) > 0 {
 				v.Events = v.Events[1:]
 				raw, _ = json.Marshal(v)
 			}
 			s.log("run %s/%s lifecycle refused: storage exhausted", key, rid)
 		}
 		charge := max(0, len(raw)-old.encodedBytes)
-		if used+charge <= terminalBound && len(raw) <= MaxStored+MaxRuns*terminalBound {
+		if used+charge <= terminalBound && len(raw) <= s.maxStored+MaxRuns*terminalBound {
 			v.ExceptionBytes[rid] = used + charge
 			raw, _ = json.Marshal(v)
 			err, undo = nil, func() {}

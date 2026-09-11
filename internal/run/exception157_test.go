@@ -58,7 +58,7 @@ func Test157V2ExceptionPerRunSurvivesRestart(t *testing.T) {
 			break
 		}
 		if i == 3 {
-			reopened, e := NewStore(filepath.Dir(s.root))
+			reopened, e := newCeilingStore(filepath.Dir(s.root), s.maxStored)
 			if e != nil {
 				t.Fatal(e)
 			}
@@ -134,7 +134,7 @@ func Test157V2AbsoluteCapTrimsReplayNotEvidence(t *testing.T) {
 	if _, _, err = s.ReadImage("key", r.ID); err != nil {
 		t.Fatal(err)
 	}
-	if logs == 0 || s.data["key"].encodedBytes > MaxStored+MaxRuns*terminalBound {
+	if logs == 0 || s.data["key"].encodedBytes > s.maxStored+MaxRuns*terminalBound {
 		t.Fatal("unlogged or oversized")
 	}
 	select {
@@ -153,7 +153,7 @@ func Test157V2AbsoluteCapTrimsReplayNotEvidence(t *testing.T) {
 	if len(replay) != 1 || !replay[0].Reset {
 		t.Fatal("trim did not reset old cursor", replay)
 	}
-	reopened, err := NewStore(filepath.Dir(s.root))
+	reopened, err := newCeilingStore(filepath.Dir(s.root), s.maxStored)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -168,7 +168,7 @@ func Test157V2FullRecoveryContinuesAfterMinimalTerminal(t *testing.T) {
 	filler, a, b := create(t, s, "key"), create(t, s, "key"), create(t, s, "key")
 	s.change(filler.KeyID, filler.ID, func(v *Run) error { v.State = Done; return nil })
 	ceilingFixture(t, s, filler, -MaxRuns*terminalBound)
-	reopened, err := NewStore(filepath.Dir(s.root))
+	reopened, err := newCeilingStore(filepath.Dir(s.root), s.maxStored)
 	if err != nil {
 		t.Fatal(err)
 	}

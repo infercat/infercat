@@ -56,7 +56,7 @@ func (s *Store) stored(key string) (StoredData, error) {
 	if err != nil {
 		return StoredData{}, err
 	}
-	out := StoredData{KeyID: key, Cursor: fmt.Sprintf("%s:%d", v.Epoch, v.Seq), Kinds: map[string]StoredKind{}, Total: len(v.Runs), Bytes: v.encodedBytes, Budget: MaxStored - MaxLiveKey*terminalBound, Reserved: s.reservedBytes(key), ImageBudget: ImageBudget, Runs: []StoredRun{}}
+	out := StoredData{KeyID: key, Cursor: fmt.Sprintf("%s:%d", v.Epoch, v.Seq), Kinds: map[string]StoredKind{}, Total: len(v.Runs), Bytes: v.encodedBytes, Budget: s.maxStored - MaxLiveKey*terminalBound, Reserved: s.reservedBytes(key), ImageBudget: ImageBudget, Runs: []StoredRun{}}
 	expiry := func(at time.Time) {
 		if out.First == nil || at.Before(*out.First) {
 			t := at

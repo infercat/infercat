@@ -15,17 +15,29 @@ import (
 // Write a valid legacy snapshot that predates the reserved terminal headroom.
 func ceilingFixture(t *testing.T, s *Store, r Run, headroom int) {
 	t.Helper()
+	ceilingFixtureAt(t, s, r, headroom, 1<<20)
+}
+func newCeilingStore(dir string, ceiling int) (*Store, error) {
+	s, err := NewStore(dir)
+	if err == nil {
+		s.maxStored = ceiling
+	}
+	return s, err
+}
+func ceilingFixtureAt(t *testing.T, s *Store, r Run, headroom, ceiling int) {
+	t.Helper()
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	s.maxStored = ceiling
 	v := clone(s.data[r.KeyID])
 	f := v.Runs[r.ID]
 	f.Input = json.RawMessage(`""`)
 	v.Runs[r.ID] = f
 	raw, _ := json.Marshal(v)
-	f.Input = json.RawMessage(`"` + strings.Repeat("x", MaxStored-headroom-len(raw)) + `"`)
+	f.Input = json.RawMessage(`"` + strings.Repeat("x", s.maxStored-headroom-len(raw)) + `"`)
 	v.Runs[r.ID] = f
 	raw, _ = json.Marshal(v)
-	if len(raw) != MaxStored-headroom {
+	if len(raw) != s.maxStored-headroom {
 		t.Fatal(len(raw))
 	}
 	if err := atomicWrite(filepath.Join(s.root, r.KeyID, "state.json"), raw); err != nil {
@@ -78,7 +90,7 @@ func Test154TerminalBudgetFallbackAndLazyRecovery(t *testing.T) {
 	if err != nil || got.State != Done || !strings.Contains(string(got.Output), "output not retained: budget") {
 		t.Fatal(got.State, err)
 	}
-	reopened, err := NewStore(filepath.Dir(s.root))
+	reopened, err := newCeilingStore(filepath.Dir(s.root), s.maxStored)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -98,7 +110,7 @@ func Test154TerminalBudgetFallbackAndLazyRecovery(t *testing.T) {
 	s2 := store(t)
 	live := create(t, s2, "k_live")
 	ceilingFixture(t, s2, live, 151)
-	reopened, _ = NewStore(filepath.Dir(s2.root))
+	reopened, _ = newCeilingStore(filepath.Dir(s2.root), s2.maxStored)
 	m3, err := New(reopened, nil, nil)
 	if err != nil {
 		t.Fatal(err)
@@ -308,4 +320,28 @@ func Test154CancelAcquisitionRaceUsesCommittedState(t *testing.T) {
 			t.Fatal("cancel saw running but killed generating attempt")
 		}
 	}
+}
+
+// Keep one real-size allocation/load boundary; the semantic fixtures above use
+// 1 MiB but keep the same byte-exact headroom and terminal-reserve assertions.
+func TestProductionStorageCeiling(t *testing.T) {
+	s := store(t)
+	if s.maxStored != 64<<20 {
+		t.Fatal("production ceiling changed", s.maxStored)
+	}
+	r := create(t, s, "real_ceiling")
+	s.change(r.KeyID, r.ID, func(v *Run) error { v.State = Done; return nil })
+	ceilingFixtureAt(t, s, r, MaxLiveKey*terminalBound, MaxStored)
+	if _, err := s.Create(r.KeyID, "test", "interactive", json.RawMessage(`{}`)); !errors.Is(err, ErrLimit) {
+		t.Fatal("real-size admission did not refuse", err)
+	}
+	fresh, err := NewStore(filepath.Dir(s.root)) // Deliberately no injected ceiling on restart.
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := fresh.Get(r.KeyID, r.ID)
+	if err != nil || got.State != Done || len(got.Input) != len(s.data[r.KeyID].Runs[r.ID].Input) {
+		t.Fatal("real-size boundary did not reload intact", got.State, err)
+	}
+	t.Logf("production boundary: ceiling=%d bytes=%d", fresh.maxStored, fresh.data[r.KeyID].encodedBytes)
 }

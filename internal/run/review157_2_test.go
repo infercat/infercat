@@ -29,7 +29,7 @@ func Test157ExpiryAboveCeilingAndRestart(t *testing.T) {
 	v.Runs[small.ID] = r
 	s.mu.Unlock()
 	ceilingFixture(t, s, filler, MaxLiveKey*terminalBound-2048)
-	reopened, err := NewStore(filepath.Dir(s.root))
+	reopened, err := newCeilingStore(filepath.Dir(s.root), s.maxStored)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -51,10 +51,10 @@ func Test157ExpiryAboveCeilingAndRestart(t *testing.T) {
 	reopened.mu.Lock()
 	raw, _ := json.Marshal(reopened.data[filler.KeyID])
 	reopened.mu.Unlock()
-	if len(raw) <= MaxStored-MaxLiveKey*terminalBound {
+	if len(raw) <= s.maxStored-MaxLiveKey*terminalBound {
 		t.Fatal("fixture fell below ordinary ceiling")
 	}
-	again, err := NewStore(filepath.Dir(s.root))
+	again, err := newCeilingStore(filepath.Dir(s.root), s.maxStored)
 	if err != nil {
 		t.Fatal(err)
 	}

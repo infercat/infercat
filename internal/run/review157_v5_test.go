@@ -31,7 +31,7 @@ func Test157V5RecoveryRetriesAfterRefusedWrite(t *testing.T) {
 	if err != nil || got.State != Failed || !s.recovered[r.KeyID] || writes != 2 {
 		t.Fatal(got.State, err, writes)
 	}
-	fresh, _ := NewStore(filepath.Dir(s.root))
+	fresh, _ := newCeilingStore(filepath.Dir(s.root), s.maxStored)
 	got, err = fresh.Get(r.KeyID, r.ID)
 	if err != nil || got.State != Failed {
 		t.Fatal("recovery not durable", got.State, err)
@@ -59,7 +59,7 @@ func Test157V5TerminalReserveOrReplayAllowsRecovery(t *testing.T) {
 			s.data["key"].ExceptionBytes = map[string]int{live.ID: used}
 			s.mu.Unlock()
 			ceilingFixture(t, s, filler, MaxLiveKey*terminalBound)
-			fresh, err := NewStore(filepath.Dir(s.root))
+			fresh, err := newCeilingStore(filepath.Dir(s.root), s.maxStored)
 			if err != nil {
 				t.Fatal(err)
 			}

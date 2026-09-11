@@ -32,7 +32,15 @@ func TestMain(m *testing.M) {
 			time.Sleep(500 * time.Millisecond)
 		}
 		os.WriteFile(os.Getenv("PROFILE_PID"), []byte(strconv.Itoa(os.Getpid())), 0600)
-		http.ListenAndServe("127.0.0.1:"+os.Args[2], http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		listener, err := net.Listen("tcp4", "127.0.0.1:"+os.Args[2])
+		if err != nil {
+			os.Exit(1)
+		}
+		if path := os.Getenv("PROFILE_PORT"); path != "" {
+			os.WriteFile(path+".tmp", []byte(strconv.Itoa(listener.Addr().(*net.TCPAddr).Port)), 0600)
+			os.Rename(path+".tmp", path)
+		}
+		http.Serve(listener, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			if os.Getenv("PROFILE_STALL") == "1" {
 				<-r.Context().Done()
 				return

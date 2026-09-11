@@ -36,9 +36,7 @@ func runtimeFixture(t *testing.T, policy string, classes ...string) (*Runtime, *
 	if len(classes) > 0 {
 		m.Class = classes[0]
 	}
-	l, _ := net.Listen("tcp4", "127.0.0.1:0")
-	m.Port = l.Addr().(*net.TCPAddr).Port
-	l.Close()
+	m.Port = 0
 	m.Artifact = "engine"
 	m.Command = []string{"engine", "{port}", "{model_name}"}
 	m.Policy = Policy{Kind: policy}
@@ -46,7 +44,8 @@ func runtimeFixture(t *testing.T, policy string, classes ...string) (*Runtime, *
 		m.Policy.IdleSeconds = 1
 	}
 	m.Model.Assets = []Asset{pin([]byte("model"), "https://example.test/model")}
-	m.Env = map[string]string{"PROFILE_PID": filepath.Join(root, "pid")}
+	portFile := filepath.Join(root, "port")
+	m.Env = map[string]string{"PROFILE_PID": filepath.Join(root, "pid"), "PROFILE_PORT": portFile}
 	p.Artifacts = []Artifact{{Asset: Asset{ID: "engine"}, Executable: "engine"}}
 	im := InstalledMember{ID: m.ID, Paths: map[string]string{"test": model}}
 	bh, _ := fileHash(bin)
@@ -54,6 +53,15 @@ func runtimeFixture(t *testing.T, policy string, classes ...string) (*Runtime, *
 	in := Installation{Artifacts: map[string]string{"engine": art}, Files: map[string]string{bin: bh, model: mh}, Links: map[string]string{}}
 	ctx, cancel := context.WithCancel(context.Background())
 	v := &managed{ctx: ctx, member: m, installed: im, installation: in, profile: p, dir: root, status: MemberStatus{ID: m.ID, State: "dormant"}, done: make(chan struct{})}
+	v.testPort = func(reset bool) int {
+		if reset {
+			os.Remove(portFile)
+			return 0
+		}
+		raw, _ := os.ReadFile(portFile)
+		port, _ := strconv.Atoi(string(raw))
+		return port
+	}
 	r := &Runtime{members: map[string]*managed{m.Class: v}, cancel: cancel}
 	go v.loop()
 	t.Cleanup(r.Close)
@@ -351,6 +359,9 @@ func TestManagedFailedStartDoesNotRetryWithoutLease(t *testing.T) {
 		t.Fatal(e)
 	}
 	defer busy.Close()
+	m.mu.Lock()
+	m.member.Port, m.testPort = busy.Addr().(*net.TCPAddr).Port, nil
+	m.mu.Unlock()
 	if release, e := r.Acquire(context.Background(), "image"); e == nil {
 		release()
 		t.Fatal("occupied port accepted")

@@ -11,7 +11,7 @@ export VITE_APP_VERSION := $(PRODUCT_VERSION)
 # image URL in index.html, which must be absolute to be picked up.
 export VITE_WEB_URL := $(shell sed -n 's/^[[:space:]]*WebURL[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' internal/product/product.go)
 
-.PHONY: build test vet wasm web web-test web-lint check clean release-dry notices notices-check brand launch-check deploy-web
+.PHONY: console-deps web-deps web-typecheck web-browser build test vet wasm web web-test web-lint check clean release-dry notices notices-check brand launch-check deploy-web
 
 build:
 	go build -o bin/infercat ./cmd/infercat
@@ -38,14 +38,26 @@ check: console-check vet test client-check bridge-check web-lint host-compat
 wasm:
 	sh web/wasm/build.sh
 
-web: console-check wasm
-	cd web && pnpm install --frozen-lockfile && pnpm typecheck && pnpm build
+console-deps:
+	cd console && pnpm install --frozen-lockfile
 
-web-test:
+web-deps:
+	cd web && pnpm install --frozen-lockfile
+
+web-typecheck: web-deps
+	cd web && pnpm typecheck
+
+web-browser: web-deps
+	cd web && pnpm exec playwright install chromium
+
+web: console-check wasm web-typecheck
+	cd web && pnpm build
+
+web-test: web-browser
 	cd web && pnpm test
 
-web-lint:
-	cd web && pnpm install --frozen-lockfile && pnpm lint
+web-lint: web-deps
+	cd web && pnpm lint
 
 # The icon set, the social-card image and GitHub's social preview, rendered from the SVG mark and
 # the real connect screen (web/dev/brand.mjs). Re-run after a rename or a new mark; commit the PNGs.
@@ -103,26 +115,23 @@ bridge-check:
 	cd bridge && npm ci --legacy-peer-deps && npm run typecheck && npm test
 
 .PHONY: client-check
-client-check:
+client-check: web-deps
 	test "$(PRODUCT_VERSION)" = "$$(node -p "require('./packages/client/package.json').version")"
-	cd web && pnpm install --frozen-lockfile
 	cd web && pnpm --filter @infercat/client build && pnpm --filter @infercat/client typecheck && pnpm --filter @infercat/client lint && pnpm --filter @infercat/client test
 
 .PHONY: console-check
-console-check:
-	cd console && pnpm install --frozen-lockfile && pnpm typecheck && pnpm lint && pnpm test && pnpm check-dist
+console-check: console-deps
+	cd console && pnpm typecheck && pnpm lint && pnpm test && pnpm check-dist
 
 .PHONY: console-build
-console-build:
-	cd console && pnpm install --frozen-lockfile && pnpm build
+console-build: console-deps
+	cd console && pnpm build
 
 # Shipped /me shapes must render Connect → Chat; install the pinned browser on clean machines.
 .PHONY: host-compat
-host-compat: web-lint wasm
-	cd web && pnpm typecheck && pnpm exec vitest run src/host-compat.test.ts src/console-compat.test.ts src/admin-route.test.ts src/voice.test.ts src/voice-ui.test.ts
-	cd web && pnpm exec playwright install chromium
+host-compat: web-lint web-test web
 	cd web && pnpm exec node dev/host-compat.mjs
-	cd web && pnpm build && pnpm exec node dev/console-chunk-check.mjs
+	cd web && pnpm exec node dev/console-chunk-check.mjs
 
 # Opt-in real iOS proof; requires Xcode/runtime and an owned loopback engine.
 .PHONY: ios-proof
