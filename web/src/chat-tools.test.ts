@@ -1,5 +1,5 @@
 import { expect, it } from 'vitest';
-import { offersImageTool, mergeChatRuns } from './chatTools';
+import { offersHostTools, mergeChatRuns } from './chatTools';
 import { fakeMe } from '../dev/fake-backend';
 import { scriptedRun } from '../dev/fake-runs';
 import { mergeImageJobs, type ImageJob } from './imageJobs';
@@ -10,8 +10,10 @@ import { NEW_REPLY, reduceReply } from './stream';
 const conv = (): Conversation => ({id:'c',title:'fox',createdAt:1,updatedAt:1,messages:[{id:'u',role:'user',content:'fox'},{id:'reply',role:'assistant',content:'Here it is.',hostRun:{keyId:'key',requestId:'request',ids:[],records:[]}}]});
 const parent = (id='parent') => ({...scriptedRun(id,'done'),kind:'chat',client_request_id:'request',key_id:'key'});
 const child = (id='image'):ImageJob => ({...scriptedRun(id,'running'),kind:'image',output:undefined,key_id:'key',input:{prompt:'fox',parent_run_id:'parent',client_request_id:'request',tool_call_id:'tool'},batch:{id:'batch',index:0,count:1}});
-it('opts in only with both explicit offer and image model',()=>{
- const me=fakeMe({imageJobs:true});expect(offersImageTool(me)).toBe(false);me.agent=true;expect(offersImageTool(me)).toBe(false);me.host_tools=['make_image'];expect(offersImageTool(me)).toBe(true);delete me.host.images;expect(offersImageTool(me)).toBe(false);
+it('opts in for any offered host tool, independent of image and agent capabilities',()=>{
+ const me=fakeMe({});expect(offersHostTools(me)).toBe(false);me.agent=true;expect(offersHostTools(me)).toBe(false);
+ for(const tools of [['make_image'],['web_search'],['make_image','web_search']]){me.host_tools=tools;expect(offersHostTools(me)).toBe(true);}
+ me.host_tools=[];expect(offersHostTools(me)).toBe(false);
 });
 it('associates all parent ids without replacing the streamed prose or duplicating on reset',()=>{
  let cs=mergeChatRuns([conv()],[parent(),parent('other')],'key');cs=mergeChatRuns(cs,[parent()],'key');

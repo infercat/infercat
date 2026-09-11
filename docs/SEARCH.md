@@ -66,3 +66,5 @@ appear in prompt logs like any other message text.
 
 Stopping the chat cancels its pending search/model work. Image jobs already
 submitted by `make_image` remain independent and finish under their own limits.
+
+App friends can ask in chat: the app requests every host tool the host offers, including search on a search-only host, and Details opens the captured search results.

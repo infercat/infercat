@@ -25,7 +25,7 @@ export interface FakeResponse {
 }
 
 export interface FakeOptions {
-  hostTools?: boolean;
+  hostTools?: boolean | string[];
   agent?: boolean;
   imageJobs?: boolean;
   runState?: string;
@@ -123,7 +123,7 @@ export function fakeMe(opts: FakeOptions = {}) {
   const models = opts.models ?? ['gemma-4-e2b-it', 'deepseek-v4-flash'];
   return {
     ...(opts.agent ? { agent: true } : {}),
-    ...(opts.hostTools ? { host_tools: ['make_image'] } : {}),
+    ...(opts.hostTools ? { host_tools: Array.isArray(opts.hostTools) ? opts.hostTools : ['make_image'] } : {}),
     key: { id: 'k_7f3a2b', name: 'alice', status: opts.keyPaused && pauseBit ? 'paused' : 'active' },
     limits: { ...LIMITS, ...(opts.imageJobs ? { daily_images: imageControl.daily, max_queued_images: 8 } : {}) },
     usage: { ...counters, ...(opts.imageJobs ? { today_images: fakeImageJobs().filter((j) => j.state === 'done').length } : {}) },
@@ -152,7 +152,7 @@ export function handleFake(req: FakeRequest, opts: FakeOptions = {}): FakeRespon
   }
 
   if (opts.imageJobs) { const image = handleImageJobs(req); if (image) return image; }
-  if (opts.agent || opts.imageJobs) { const run = handleFakeRuns(req, opts.runState); if (run) return run; }
+  if (opts.agent || opts.imageJobs || opts.hostTools) { const run = handleFakeRuns(req, opts.runState); if (run) return run; }
 
   if (path === '/me') {
     if (revokedBit) return error(403, 'permission_error', 'key_revoked', 'This invite was revoked by the host.');

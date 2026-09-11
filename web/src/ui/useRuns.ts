@@ -1,3 +1,4 @@
+import { offersHostTools } from '../chatTools';
 import { hostImages } from '../api';
 import { useEffect, useRef, useState, type Dispatch, type SetStateAction } from 'react';
 import { timeoutSignal, answerRun, cancelRun, describeError, GatewayError, getRun, listRuns, submitRun, type ChatRequest, type RunRecord } from '../api';
@@ -13,7 +14,7 @@ export function useRuns(live: Live, enabled: boolean, convs: Conversation[], set
   useEffect(() => { const held = requests.current; return () => { held.forEach((c) => c.abort()); }; }, [live.transport, live.secret, enabled]);
   const merge = (records: RunRecord[]) => setConvs((prev) => mergeRunRecords(prev, records.filter((r) => ['agent','chat'].includes(r.kind)), live.me.key.id));
   useEffect(() => {
-    if (!enabled || live.offline || live.key !== 'active' || (!live.me.agent && !hostImages(live.me)?.model)) return;
+    if (!enabled || live.offline || live.key !== 'active' || (!live.me.agent && !hostImages(live.me)?.model && !offersHostTools(live.me))) return;
     const ac = new AbortController();
     void followRuns({ transport: live.transport, secret: live.secret, signal: ac.signal,
       onEvent: (signal) => { void latest.current.imagesChanged?.(signal).catch((error) => { if (!signal.aborted) dispatch({ t: 'streamError', code: error instanceof GatewayError ? error.code : '', error: describeError(error, live.me.host.name) }); }); return Promise.resolve(); },
@@ -23,7 +24,7 @@ export function useRuns(live: Live, enabled: boolean, convs: Conversation[], set
       failed(error) { if (!ac.signal.aborted) dispatch({ t: 'streamError', code: error instanceof GatewayError ? error.code : '', error: describeError(error, live.me.host.name) }); },
     });
     return () => { ac.abort(); setConnected(false); };
-  }, [enabled, live.offline, live.key, live.me.agent, hostImages(live.me)?.model, live.transport, live.secret, live.me.host.name, live.me.key.id, setConvs, dispatch]);
+  }, [enabled, live.offline, live.key, live.me.agent, offersHostTools(live.me), hostImages(live.me)?.model, live.transport, live.secret, live.me.host.name, live.me.key.id, setConvs, dispatch]);
   async function act(item: RunItem, answer?: { id: string; allow: boolean }) {
     const current = latest.current;
     if (!current.enabled || current.live.offline || current.live.key !== 'active' || !item.run || active.current.has(item.id)) return;

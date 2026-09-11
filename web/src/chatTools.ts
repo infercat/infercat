@@ -1,7 +1,7 @@
-import { hostImages, type Me, type RunRecord } from './api';
+import { type Me, type RunRecord } from './api';
 import type { Conversation, Message } from './storage';
 import { runItem } from './runs';
-export const offersImageTool = (me: Me): boolean => Boolean(hostImages(me)?.model && me.host_tools?.includes('make_image'));
+export const offersHostTools = (me: Me): boolean => Boolean(me.host_tools?.length);
 /** Correlation never deduplicates creation: all matching parent ids remain visible. */
 export function mergeChatRuns(convs: Conversation[], records: RunRecord[], keyId?: string): Conversation[] {
   const owners = new Map<string, number>();

@@ -33,7 +33,7 @@ code in the box. No invite is ever committed. To remint (the old key paused or r
 
 ```
 infercat keys add reddit-public-2 --max-concurrent 30 --max-output-tokens 8192 --rpm 100000 --tpm 100000000 --daily-tokens 10000000000 --json --no-qr
-wrangler kv key put --config hosting/cloudflare/wrangler.toml --binding SIGNUPS --remote link:try 'https://infercat.ai#ic1.…'
+wrangler kv key put --config hosting/cloudflare/wrangler.toml --binding SIGNUPS --remote link:try 'https://infercat.ai#ic2.…'
 ```
 
 The change is live within a minute; nothing is deployed. Without a stored link, `/try` opens the
