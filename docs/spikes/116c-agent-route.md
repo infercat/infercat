@@ -74,7 +74,7 @@ existing image admission are preserved.
 Writes still serialize the per-key snapshot. Thinking updates coalesce to at most
 one durable update per second, with forced checkpoint flushes. At 64,994,268 encoded bytes, admission took 17.3–27.2 ms and a small native-event
 commit took 150.1–161.9 ms (three warm non-race samples). The
-[cost fixture](../../internal/run/testdata/116c_cost_test.go) ran through a temporary
+[cost fixture](https://github.com/infercat/infercat/blob/ad688b8beda55fd416a9c6982ea3da59b691473e/internal/run/testdata/116c_cost_test.go) ran through a temporary
 Go overlay adding it as internal/run/cost_experiment_test.go; log:
 `/tmp/infercat-116c-v3-write-cost.log`. These writes still pay full-snapshot cost;
 the cheap detail measurements do not apply to commits.

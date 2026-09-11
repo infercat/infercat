@@ -141,9 +141,32 @@ Auth: `Authorization: Bearer <secret>` on every route except `/healthz`.
 
 Error format (OpenAI-shaped, MUST):
 ```json
-{"error":{"message":"human sentence","type":"invalid_request_error|authentication_error|permission_error|rate_limit_error|upstream_error|server_error","code":"invalid_request|invalid_key|key_paused|key_revoked|model_not_allowed|not_found|body_too_large|context_too_long|rate_limited|concurrency_limited|budget_exhausted|queue_timeout|upstream_down|upstream_error|storage_failed"}}
+{"error":{"message":"human sentence","type":"server_error|upstream_error|rate_limit_error|authentication_error|permission_error|invalid_request_error","code":"storage_failed|agent_unavailable|image_abandoned|image_queue_full|image_budget_exhausted|invalid_key|key_paused|key_revoked|model_not_allowed|body_too_large|context_too_long|rate_limited|concurrency_limited|budget_exhausted|queue_timeout|upstream_down|upstream_error|audio_budget_exhausted|speech_budget_exhausted|images_not_supported|invalid_request|not_found"}}
 ```
-Statuses: 400 invalid_request (malformed JSON/body) · 404 not_found · 401 invalid_key · 403 key_paused/key_revoked/model_not_allowed · 413 body_too_large · 422 context_too_long · 429 rate_limited/concurrency_limited/budget_exhausted (+ `Retry-After` seconds) · 503 queue_timeout/upstream_down (+ `Retry-After`) · 502 upstream_error · 500 storage_failed (server_error: the host could not store the image; no charge).
+| Code | HTTP status | Type |
+|---|---:|---|
+| `storage_failed` | 500 | `server_error` |
+| `agent_unavailable` | 503 | `upstream_error` |
+| `image_abandoned` | 502 | `upstream_error` |
+| `image_queue_full` | 429 | `rate_limit_error` |
+| `image_budget_exhausted` | 429 | `rate_limit_error` |
+| `invalid_key` | 401 | `authentication_error` |
+| `key_paused` | 403 | `permission_error` |
+| `key_revoked` | 403 | `permission_error` |
+| `model_not_allowed` | 403 | `permission_error` |
+| `body_too_large` | 413 | `invalid_request_error` |
+| `context_too_long` | 422 | `invalid_request_error` |
+| `rate_limited` | 429 | `rate_limit_error` |
+| `concurrency_limited` | 429 | `rate_limit_error` |
+| `budget_exhausted` | 429 | `rate_limit_error` |
+| `queue_timeout` | 503 | `upstream_error` |
+| `upstream_down` | 503 | `upstream_error` |
+| `upstream_error` | 502 | `upstream_error` |
+| `audio_budget_exhausted` | 429 | `rate_limit_error` |
+| `speech_budget_exhausted` | 429 | `rate_limit_error` |
+| `images_not_supported` | 400 | `invalid_request_error` |
+| `invalid_request` | 400 | `invalid_request_error` |
+| `not_found` | 404 | `invalid_request_error` |
 
 Dev mode: `serve --dev-listen 127.0.0.1:9090` additionally serves the gateway on loopback with permissive CORS
 (`Access-Control-Allow-Origin: *`, headers `authorization, content-type`) so the web app can be developed

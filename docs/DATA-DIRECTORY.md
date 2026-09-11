@@ -10,16 +10,24 @@ English · [简体中文](DATA-DIRECTORY.zh-CN.md)
 | File | What it is |
 |---|---|
 | `host.key.json` | Your host identity. Back it up; do not sync it; deleting it invalidates every invite you sent. |
+| `host.lock` | Exclusive OS lock held by a running host; keep the inode in place. |
+| `host.key.json.pre-ic2` | One-time legacy identity backup made by `identity upgrade`. |
 | `keys.json` | Friends' keys as hashes (never the secret), their status and limits. |
 | `usage.jsonl` | One line per request: key, endpoint, status, token counts, timings. No prompt content unless you run `serve --log-prompts`. |
+| `admin.sock` / `admin.port` | Local admin endpoint: Unix socket, or the Windows loopback port record. |
+| `admin.token` | Fresh per-run local-admin bearer (0600), removed at shutdown. |
 | `admin.json` | Optional remote-console switch: SHA-256 admin-code hash and enabled-since time, mode 0600; never plaintext or a friend key. Removed when turned off. |
 | `bridge.json` | Public bridge endpoint, host id, and secret bridge token (0600). Created by `expose --register`; read by `serve` at startup/reload; removed by `expose --off`. Keep private. |
+| `runs/<key-id>/state.json` | Per-key run inputs, outputs, attempts, meters, approvals and retained events. |
 | `runs/<key-id>/images/<run-id>` | Generated PNG/JPEG: up to 8 MiB each, 7-day expiry, separate 256 MiB per-key budget (oldest evicted first). See [image hosting](IMAGES.md). |
-| `config.json` | Remembered `serve` flags and the active `profile_install` reference. |
+| `config.json` | Remembered `serve` flags, active `profile_install`, and `search.key_file` (the path to the separately stored provider key). |
 | `profiles/downloads/` | SHA-256-addressed verified downloads and resumable `.part` files; no system installation. |
-| `profiles/trees/` | Private extracted artifact/model trees; successful setup retires trees the new manifest does not reference. Failed checks retain verified downloads. |
-| `profiles/install-<sha256>.json` | The versioned installation record: profile digest, canonical paths, file hashes, symlink targets, external ownership, unavailable reasons, and materialized commands. Config points to the active record. |
+| `profiles/trees/` | Private extracted model, engine and pinned helper/runtime trees; successful setup retires trees the new manifest does not reference. Failed checks retain verified downloads. |
+| `profiles/install-<sha256>.json` | The versioned installation record: profile digest, canonical paths, model/helper/runtime file hashes, symlink targets, external ownership, unavailable reasons, and materialized commands. Config points to the active record. |
 | `profiles/members/<id>/` | Generated engine config, isolated HOME, and `engine.log` (wraps at 1 MiB). |
+| `agent/runtime-<harness>-node<version>/` | Privately installed pinned Node/harness, integrity lock and installed marker. |
+| `agent/npm-cache/` | Installer cache for integrity-locked harness packages. |
+| `agent/workspaces/run-*/` | Ephemeral per-run files, `tmp/` and `.runtime/`; removed after outputs are captured and the child joins. |
 | `tunnel.log` | The tunnel engine's log (`serve --verbose` prints it instead). |
 
 `infercat serve -h` also lists these files. See the [host quickstart](../README.md#quickstart-host).
@@ -113,7 +121,7 @@ On the engineer’s Mac (three iterations), 100 runs with 25 MiB input measured 
 
 At the ordinary ceiling (100 runs, about 63 MB encoded; three iterations), Stored reads measured 21.06 ms warm and 62.37 ms cold. These reads serialize bounded retained payloads for row sizes; they preserve the prior access time so polling does not pin a key in memory. Expiry persists proven cleanup intents with its shrink; a failed image metadata commit best-effort unlinks its own artifact and tracks failures as proven retries. Unnamed image files are collected when records remain; an empty snapshot leaves them for manual review.
 
-The admin field `image_cleanup_pending` now counts proven retry paths only; older hosts included observations in that field. `image_orphans_for_review` carries the separate report-only count. The store aggregate accessor still sums both. Unnamed image files are collected when the snapshot has runs; only empty snapshots leave unknown files for review. Owned `.run-*` write-remnant files in both the state and image directories are collected on load or sweep; failed deletions are logged and retried on later scans.
+The admin field `image_cleanup_pending` now counts proven retry paths only; older hosts included observations in that field. `image_orphans_for_review` carries the separate report-only count. Unnamed image files are collected when the snapshot has runs; only empty snapshots leave unknown files for review. Owned `.run-*` write-remnant files in both the state and image directories are collected on load or sweep; failed deletions are logged and retried on later scans.
 
 ### Agent workspaces
 
