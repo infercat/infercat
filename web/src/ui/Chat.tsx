@@ -53,7 +53,6 @@ import {
   type SessionState,
 } from '../session';
 import {
-  adoptInviteScope,
   carriedAfter,
   chatsChanged,
   deleteChat,
@@ -127,10 +126,7 @@ export default function Chat({ state, live, dispatch, onRedial, reconnecting = f
   const [listed, setListed] = useState<string[]>([]);
   // Merged over the defaults: a build that did not know a setting stored none of it.
   const [settings, setSettings] = useState<Settings>(() => ({ ...DEFAULT_SETTINGS, ...load(keys.settings, DEFAULT_SETTINGS) }));
-  const [convs, setConvs] = useState<Conversation[]>(() => {
-    adoptInviteScope(live.addr, live.me.key.id); // an earlier build's invite-scoped chats, once (024)
-    return orNew(loadChats(scope));
-  });
+  const [convs, setConvs] = useState<Conversation[]>(() => orNew(loadChats(scope)));
   useEffect(() => { if (convs.some((c) => c.messages.some((m) => m.role === 'assistant' && m.status === 'complete'))) noteCompletedReply(); }, [convs]);
   const [currentId, setCurrentId] = useState('');
   const [streaming, setStreaming] = useState(false);

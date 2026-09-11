@@ -1,13 +1,11 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   KEYS,
-  adoptInviteScope,
   carriedAfter,
   chatsChanged,
   countChats,
   deleteChat,
   dialsOnArrival,
-  dropLegacyHistory,
   forget,
   hostScope,
   isAnswer,
@@ -119,13 +117,6 @@ describe('host-scoped storage', () => {
     expect(loadChats(hostScope('tcHOST'))).toHaveLength(1);
   });
 
-  it('drops the pre-scope history rather than handing it to whichever host connects first', () => {
-    save(KEYS.conversations, [{ id: 'old' }]);
-    save(KEYS.settings, { model: 'gone' });
-    dropLegacyHistory();
-    expect(load(KEYS.conversations, null)).toBeNull();
-    expect(load(KEYS.settings, null)).toBeNull();
-  });
 
   it('resets a persisted model the new host does not share', () => {
     expect(modelFor('gemma', ['gemma', 'qwen'])).toBe('gemma');
@@ -228,13 +219,6 @@ describe('multi-tab conversation storage', () => {
     expect(isAnswer(reply as Message)).toBe(false);
   });
 
-  it('splits the pre-014 single-array layout into one key each, once', () => {
-    save(scopedKeys(S).index, [chat('c1', 10, msg('m1', 'one')), chat('c2', 20, msg('m2', 'two'))]);
-    const loaded = loadChats(S);
-    expect(loaded.map((c) => c.id)).toEqual(['c1', 'c2']);
-    expect(load<string[]>(scopedKeys(S).index, [])).toEqual(['c1', 'c2']);
-    expect(loadChats(S).map((c) => c.id)).toEqual(['c1', 'c2']); // idempotent
-  });
 
   // 020 promise 1, the blocker: "Not delivered" under an answered message, persisted for ever.
   // 022 promise 2: the mark derives from delivery. No flag on the turn, so nothing persisted can
@@ -405,40 +389,6 @@ describe('naming an empty conversation', () => {
     expect(newConversation().title).toBe('Untitled chat');
     expect(titleFrom('   ')).toBe('Untitled chat');
     expect(titleFrom('Ask me about tunnels')).toBe('Ask me about tunnels');
-  });
-});
-
-// 024 promise 1: chats an earlier build kept under the invite move into the host scope, once.
-describe('adopting an earlier build’s invite-scoped chats', () => {
-  const conv = (id: string, at: number): Conversation => ({ id, title: id, createdAt: at, updatedAt: at, messages: [{ id: `${id}m`, role: 'user', content: id }] });
-  // What a pre-024 build wrote: FNV over "addr keyId" — reproduced here so the fixture is real-shaped.
-  const invite = (addr: string, keyId: string) => {
-    let h = 0x811c9dc5;
-    for (const ch of `${addr} ${keyId}`) { h ^= ch.codePointAt(0) ?? 0; h = Math.imul(h, 0x01000193) >>> 0; }
-    return h.toString(36);
-  };
-
-  it('moves the chats and the settings over, merges with what the host scope has, and runs once', () => {
-    const old = invite('tcHOST', 'k_old');
-    saveChat(old, conv('a', 1));
-    saveChat(old, conv('b', 2));
-    save(scopedKeys(old).settings, { model: 'm', systemPrompt: 'be brief', temperature: 0.5 });
-    saveChat(hostScope('tcHOST'), conv('b', 3)); // already there under the host: kept, not duplicated
-    adoptInviteScope('tcHOST', 'k_old');
-    const ids = loadChats(hostScope('tcHOST')).map((c) => c.id);
-    expect(ids.sort()).toEqual(['a', 'b']);
-    expect(loadChats(hostScope('tcHOST')).find((c) => c.id === 'b')?.updatedAt).toBe(3);
-    expect(load(scopedKeys(hostScope('tcHOST')).settings, null)).toEqual({ model: 'm', systemPrompt: 'be brief', temperature: 0.5 });
-    expect(load(scopedKeys(old).index, null)).toBeNull();
-    expect(load(scopedKeys(old).conv('a'), null)).toBeNull();
-    adoptInviteScope('tcHOST', 'k_old'); // nothing left to move: nothing changes
-    expect(loadChats(hostScope('tcHOST')).map((c) => c.id).sort()).toEqual(['a', 'b']);
-  });
-
-  it('is a no-op for a host this build has always known', () => {
-    saveChat(hostScope('tcHOST'), conv('a', 1));
-    adoptInviteScope('tcHOST', 'k_new');
-    expect(loadChats(hostScope('tcHOST')).map((c) => c.id)).toEqual(['a']);
   });
 });
 

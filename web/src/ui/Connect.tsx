@@ -17,7 +17,6 @@ import { boundHandshake, handshakeFailure, type Live, type SessionEvent, type Se
 import {
   countChats,
   dialsOnArrival,
-  dropLegacyHistory,
   forget,
   hostScope,
   KEYS,
@@ -208,7 +207,6 @@ function ConnectBody({ state, dispatch, offline = false, onAdmin }: Props) {
       save(KEYS.lastHost, { name: hostName(me), scope: hostScope(addr) } as LastHost);
       if (exclusive && opened.privateKeyJSON) save(KEYS.privateKey, opened.privateKeyJSON);
       setRemembered(raw);
-      dropLegacyHistory();
       const live: Live = {
         transport,
         secret,

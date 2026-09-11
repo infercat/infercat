@@ -104,7 +104,7 @@ export const KEYS = {
   /** What the connect screen can say about the last host before it has reconnected to it. */
   lastHost: 'bn.lastHost',
   // Never read directly: conversations and settings belong to one host, so they live under
-  // `<key>.<scope>` (see hostScope). The bare names are the pre-scope layout, cleared once.
+  // `<key>.<scope>` (see hostScope); these names are prefixes, not standalone storage keys.
   conversations: 'bn.conversations',
   settings: 'bn.settings',
   me: 'bn.me',
@@ -167,11 +167,6 @@ export function hostScope(addr: string): string {
   return fnv(addr);
 }
 
-/** Where a build before 024 kept this host's chats: the address and the key id together. */
-function inviteScope(addr: string, keyId: string): string {
-  return fnv(`${addr} ${keyId}`);
-}
-
 function fnv(text: string): string {
   let h = 0x811c9dc5;
   for (const ch of text) {
@@ -179,40 +174,6 @@ function fnv(text: string): string {
     h = Math.imul(h, 0x01000193) >>> 0;
   }
   return h.toString(36);
-}
-
-/**
- * Moves what an earlier build kept under the invite scope into the host scope, once (024 promise
- * 1): the conversations (merged by id, the invite scope's order first, nothing duplicated), the
- * settings and the shared /me when the host scope has none. The invite-scoped keys are then gone,
- * so this runs exactly once per invite. Safe to call on every mount.
- */
-export function adoptInviteScope(addr: string, keyId: string): void {
-  const from = scopedKeys(inviteScope(addr, keyId));
-  const to = scopedKeys(hostScope(addr));
-  const ids = load<string[]>(from.index, []);
-  if (ids.length === 0 && load(from.settings, null) === null) return;
-  const have = new Set(load<string[]>(to.index, []));
-  const moved: string[] = [];
-  for (const id of ids) {
-    const c = load<Conversation | null>(from.conv(id), null);
-    if (c && !have.has(id)) {
-      save(to.conv(id), c);
-      moved.push(id);
-    }
-    forget(from.conv(id));
-  }
-  if (moved.length > 0) save(to.index, [...moved, ...load<string[]>(to.index, [])].slice(0, 50));
-  if (load(to.settings, null) === null) {
-    const settings = load(from.settings, null);
-    if (settings !== null) save(to.settings, settings);
-  }
-  forget(from.index, from.settings, from.me);
-}
-
-/** The pre-scope keys held one host's history under a global name; it is nobody's now. */
-export function dropLegacyHistory(): void {
-  forget(KEYS.conversations, KEYS.settings);
 }
 
 /** A model the previous host shared is not a model this one has. */
@@ -278,7 +239,6 @@ export function titleFrom(text: string): string {
  */
 export function loadChats(scope: string): Conversation[] {
   const keys = scopedKeys(scope);
-  migrateChats(scope);
   const out: Conversation[] = [];
   for (const id of load<string[]>(keys.index, [])) {
     const c = load<Conversation | null>(keys.conv(id), null);
@@ -462,13 +422,4 @@ export function electStore(scope: string, onRole: (leader: boolean) => void): { 
       free();
     },
   };
-}
-
-/** The pre-014 layout kept one host's whole history in a single key. Split it once, then drop it. */
-function migrateChats(scope: string): void {
-  const keys = scopedKeys(scope);
-  const old = load<Conversation[] | null>(keys.index, null);
-  if (!Array.isArray(old) || old.length === 0 || typeof old[0] === 'string') return;
-  save(keys.index, []); // the index is ids from here on; saveChat must not read the old shape
-  for (const c of [...old].reverse()) if (c?.id) saveChat(scope, c);
 }
