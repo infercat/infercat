@@ -5,7 +5,6 @@ import { emptyStats, type Snapshot, type Key, type Stats, type LiveKey, type Via
 import { escape } from './html';
 import type { RemoteState } from './remote';
 import { settingsSection, type SettingsUI } from './settings';
-export { escape } from './html';
 import { limitsForm, keyActions, specialDrawer, type DrawerState } from './actions';
 const compact = (n: number) => Intl.NumberFormat('en', { notation: 'compact', maximumFractionDigits: n >= 10000 ? 0 : 1 }).format(n || 0).replace("K", "k");
 const duration = (s: number) => s >= 3600 ? `${Math.floor(s / 3600)}h${Math.floor(s % 3600 / 60)}m` : s >= 60 ? `${Math.floor(s / 60)}m` : `${Math.floor(s)}s`;

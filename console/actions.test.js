@@ -1,7 +1,7 @@
 // @vitest-environment jsdom
 import { test, expect, vi, afterEach } from 'vitest';
 import fixture from './test/fixture.json';
-import { createConsole } from './app';
+import { reads, mount } from './test/mockAdmin';
 import { inviteQR } from './qr';
 import jsQR from 'jsqr';
 let app;
@@ -11,7 +11,7 @@ const click = action => document.querySelector(`[data-action="${action}"]`).clic
 function edit(selector,value) { const el=document.querySelector(selector); el.value=value; el.dispatchEvent(new Event('input',{bubbles:true})); }
 function submit() { document.querySelector('form[data-form="limits"]').dispatchEvent(new Event('submit',{bubbles:true,cancelable:true})); }
 async function setup(outcome='success', qr=inviteQR) {
- vi.useFakeTimers(); history.replaceState(null,'','/'); document.body.innerHTML='<div id="app"></div>';
+ history.replaceState(null,'','/');
  const data=structuredClone(fixture), writes=[];
  let finish, readsFail=false;
  const response={key_id:'k_new',name:'erin',invite:'ic1.host.secret',link:'https://infercat.ai/#ic1.host.secret'};
@@ -33,10 +33,9 @@ async function setup(outcome='success', qr=inviteQR) {
    return new Response(JSON.stringify(path==='keys'||verb==='rotate'?response:{ok:true}));
   }
   if(readsFail) throw new Error('offline');
-  const value=path==='usage?window=today'?data.today:path==='usage?window=week'?data.week:data[path];
-  return new Response(JSON.stringify(value));
+  return reads(data)(url);
  });
- app=createConsole(document.querySelector('#app'),'admin-secret',request,Date.now,qr); await tick();
+ app=mount(data,{token:'admin-secret',request,qr}); await tick();
  return {data,writes,request,finish:()=>finish(),failReads:()=>{readsFail=true;},response};
 }
 function open() { document.querySelector('[data-key="k_7f3a2b"]').click(); }
@@ -93,7 +92,7 @@ test('a once-card disappears on Done, close and a new app instance',async()=>{
  const s=await setup();await act('mint');click('done');expect(document.querySelector('.once')).toBeNull();expect(document.querySelector('.drawer h3').textContent).toBe('erin');
  click('rotate');await tick();expect(document.querySelector('.once')).not.toBeNull();document.querySelector('button[data-close]').click();
  document.querySelector('[data-key="k_new"]').click();expect(document.querySelector('.once')).toBeNull();
- app.stop();app=createConsole(document.querySelector('#app'),'admin-secret',s.request);await tick();expect(document.body.textContent).not.toContain(s.response.invite);
+ app.stop();app=mount(s.data,{root:document.querySelector('#app'),token:'admin-secret',request:s.request});await tick();expect(document.body.textContent).not.toContain(s.response.invite);
 });
 test('QR failure preserves committed code and link; read failure also preserves once-card',async()=>{
  const s=await setup('pending',()=>{throw new Error('too long');});await act('mint');s.failReads();s.finish();await tick();

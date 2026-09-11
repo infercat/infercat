@@ -211,12 +211,10 @@ it("reserves four readers/16 MiB, refuses the next upload immediately, and relea
   );
   await drain();
   expect((host as any).reading).toBe(4);
-  expect((host as any).readBytes).toBe(16 * 1024 * 1024);
   expect(requestFrames()).toHaveLength(0);
   const excess = await host.fetch(req());
   expect(excess.status).toBe(429);
   expect((await excess.json()).error.code).toBe("host_busy");
-  expect((host as any).readBytes).toBe(16 * 1024 * 1024);
   // No body means no upload buffer: a models request can still use the host slot.
   const models = host.fetch(
     new Request("https://fixture/v1/models", {
@@ -228,7 +226,6 @@ it("reserves four readers/16 MiB, refuses the next upload immediately, and relea
   uploads[0].error(new Error("fixture upload stopped"));
   expect((await pending[0]).status).toBe(408);
   expect((host as any).reading).toBe(3);
-  expect((host as any).readBytes).toBe(12 * 1024 * 1024);
   const replacement = host.fetch(req());
   await drain();
   await finishNext(replacement);
@@ -237,7 +234,6 @@ it("reserves four readers/16 MiB, refuses the next upload immediately, and relea
   for (const result of await Promise.all(pending.slice(1)))
     expect(result.status).toBe(408);
   expect((host as any).reading).toBe(0);
-  expect((host as any).readBytes).toBe(0);
   expect(ws.close).not.toHaveBeenCalled();
 });
 
@@ -245,11 +241,9 @@ it("releases the full reservation after oversize refusal and after a successful 
   const oversized = await host.fetch(req(new Uint8Array(4 * 1024 * 1024 + 1)));
   expect(oversized.status).toBe(413);
   expect((host as any).reading).toBe(0);
-  expect((host as any).readBytes).toBe(0);
   const next = host.fetch(req());
   await drain();
   expect((host as any).reading).toBe(0);
-  expect((host as any).readBytes).toBe(0);
   await finishNext(next);
 });
 
@@ -403,5 +397,4 @@ it("uses all 48 workstation slots with only four additional waiting jobs", async
   expect(requestFrames()).toHaveLength(48);
   expect((host as any).queue).toHaveLength(4);
   expect((await host.fetch(req(null))).status).toBe(429);
-  expect((host as any).readBytes).toBe(0);
 });

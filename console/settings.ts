@@ -4,7 +4,7 @@ import type { Settings, Snapshot } from './types';
 export type SettingsPatch = Partial<{name:string;web_url:string;slots:number|string;console:string;log_requests:boolean}>;
 export interface SettingsUI { draft:SettingsPatch; error?:string; confirm?:boolean; saved?:boolean }
 export function settingValues(s:Settings):SettingsPatch{return {name:s.name,web_url:s.configured_web_url,slots:s.slots,console:s.configured_console||'off',log_requests:s.log_requests};}
-export function urlError(value:string):boolean {
+function urlError(value:string):boolean {
  if(!value)return false;
  try {const u=new URL(value),h=u.hostname.replace(/^\[|\]$/g,'');const local=h==='localhost'||h==='::1'||/^127\./.test(h)||/^10\./.test(h)||/^192\.168\./.test(h)||/^172\.(1[6-9]|2\d|3[01])\./.test(h);return !!(u.username||u.password||u.search||u.hash)||(u.protocol!=='https:'&&!(u.protocol==='http:'&&local));}catch{return true;}
 }
