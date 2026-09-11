@@ -22,6 +22,12 @@ import (
 )
 
 func TestMain(m *testing.M) {
+	if len(os.Args) > 1 && os.Args[1] == "_sandbox-canary" {
+		os.Exit(sandboxCanary(os.Args[2:]))
+	}
+	if len(os.Args) > 1 && os.Args[1] == "_confine" {
+		os.Exit(Confine(os.Args[2:]))
+	}
 	if len(os.Args) > 1 && os.Args[1] == "_agent-guardian" {
 		os.Exit(Guardian(os.Args[2:]))
 	}

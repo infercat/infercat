@@ -256,9 +256,9 @@ func (e *env) cmdServe(ctx context.Context, pre string, args []string) error {
 	if err = runs.Sweep(); err != nil {
 		e.logf("run expiry: %v", err)
 	}
-	var harness *agent.Runtime
+	var harness *agent.Adapter
 	if *agentEnabled {
-		harness = agent.StartAdapter(ctx, dataDir, runs, store).Runtime
+		harness = agent.StartAdapter(ctx, dataDir, runs, store)
 		defer harness.Close()
 	}
 	if err = gw.SetRuns(runs); err != nil {

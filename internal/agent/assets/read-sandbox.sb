@@ -1,0 +1,41 @@
+(version 1)
+(deny default)
+(allow process-fork)
+(allow signal (target same-sandbox))
+(allow sysctl-read)
+(allow mach-lookup)
+(allow ipc-posix-shm)
+(allow system-socket)
+
+; path traversal only (names, not contents) — see limits
+(allow file-read-metadata)
+
+(allow process-exec*
+  (subpath "/usr") (subpath "/bin") (subpath "/sbin") (subpath "/System")
+  (subpath "/opt/homebrew") (subpath "/usr/local")
+  (subpath "/Library/Developer")            ; python3 that is not the xcrun shim
+  (subpath (param "RUNTIME"))                     ; <dataDir>/agent/runtime-<harness>-node<ver>
+  (subpath (param "WORKSPACE")))                  ; scripts the agent writes and runs
+
+(allow file-read*
+  (literal "/")                             ; REQUIRED: without it even /bin/echo aborts
+  (subpath "/usr") (subpath "/bin") (subpath "/sbin") (subpath "/System")
+  (subpath "/Library/Frameworks") (subpath "/Library/Apple") (subpath "/Library/Developer")
+  (subpath "/private/etc") (subpath "/private/var/db/timezone")
+  (subpath "/opt/homebrew") (subpath "/usr/local")
+  (literal "/dev/null") (literal "/dev/zero") (literal "/dev/random") (literal "/dev/urandom")
+  (literal "/dev/tty") (literal "/dev/dtracehelper")
+  (subpath (param "RUNTIME"))
+  (subpath (param "WORKSPACE")) (subpath (param "TMPDIR")))
+
+(allow file-write*
+  (literal "/dev/null") (literal "/dev/tty") (literal "/dev/dtracehelper")
+  (subpath (param "WORKSPACE")) (subpath (param "TMPDIR")))
+
+; egress — choose one:
+(allow network-bind (local ip))                                   ; the plugin's private health listener
+(allow network-outbound (remote ip "localhost:*"))                ; loopback only (gateway)
+(allow network-outbound (literal "/private/var/run/mDNSResponder"))
+(allow network-outbound)                                        ; full egress, needed for Exa search
+
+(allow network-inbound (local ip "localhost:*"))

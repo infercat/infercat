@@ -62,9 +62,19 @@ jobs:
         run: pnpm --dir web exec playwright install-deps chromium
 
       - name: Go and Worker — build, vet, test
+        env:
+          INFERCAT_REQUIRE_SANDBOX: "1"
         run: |
           go build ./...
           make check
+
+      - name: Linux agent confinement — pinned harness and canaries
+        env:
+          INFERCAT_REQUIRE_SANDBOX: "1"
+        run: |
+          go build -o "$RUNNER_TEMP/infercat-agent-probe" ./cmd/infercat
+          "$RUNNER_TEMP/infercat-agent-probe" --data-dir "$RUNNER_TEMP/agent-fixture" agent install
+          INFERCAT_AGENT_TEST_INSTALL="$RUNNER_TEMP/agent-fixture" go test -race -v -count=1 ./internal/agent -run '^Test161|^TestPinned'
 
       - name: Web — install, typecheck, test, lint
         working-directory: web

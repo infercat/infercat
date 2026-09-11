@@ -25,12 +25,14 @@ type RuntimeStatus struct {
 	LastError string `json:"last_error,omitempty"`
 }
 type RuntimeOptions struct {
-	Command []string
-	Dir     string
-	Env     []string
-	Address string // Loopback; empty allocates a port without a release-to-bind race.
-	Frame   func(json.RawMessage)
-	Exited  func()
+	SearchKey        string
+	SingleGeneration bool
+	Command          []string
+	Dir              string
+	Env              []string
+	Address          string // Loopback; empty allocates a port without a release-to-bind race.
+	Frame            func(json.RawMessage)
+	Exited           func()
 }
 type Runtime struct {
 	mu             sync.Mutex
@@ -106,6 +108,10 @@ func (r *Runtime) loop(ctx context.Context) {
 		}
 		if ctx.Err() != nil {
 			break
+		}
+		if r.options.SingleGeneration {
+			r.set("failed", "agent child exited; run is not replayed", 0)
+			return
 		}
 		message := "agent runtime exited"
 		if errors.Is(err, errPort) {
@@ -215,6 +221,15 @@ func (r *Runtime) once(ctx context.Context) error {
 	cmd := exec.Command(binary, append([]string{"_agent-guardian"}, o.Command...)...)
 	configureGroup(cmd)
 	cmd.ExtraFiles = []*os.File{lifeRead, portFile}
+	if o.SearchKey != "" {
+		keyRead, keyWrite, err := os.Pipe()
+		if err != nil {
+			return err
+		}
+		defer keyRead.Close()
+		cmd.ExtraFiles = append(cmd.ExtraFiles, keyRead)
+		go func() { defer keyWrite.Close(); _, _ = io.WriteString(keyWrite, o.SearchKey) }()
+	}
 	cmd.Stdin = inputRead
 	cmd.Dir = o.Dir
 	cmd.Env = o.Env
