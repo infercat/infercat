@@ -28,28 +28,6 @@ type Destination struct {
 	model           string
 }
 
-type Offers struct {
-	Models []string
-	Vision map[string]*bool
-	Audio  []string
-}
-
-// Offers reads current engine state rather than caching a second capability inventory.
-func (d *Destination) Offers() Offers {
-	i := d.Up.Info()
-	o := Offers{Models: append([]string{}, i.Models...), Vision: i.Vision}
-	if d.Images != nil && d.model != "" && !slices.Contains(o.Models, d.model) {
-		o.Models = append(o.Models, d.model)
-	}
-	if d.Audio != nil {
-		o.Audio = []string{d.ID}
-		if d.model != "" && !slices.Contains(o.Models, d.model) {
-			o.Models = append(o.Models, d.model)
-		}
-	}
-	return o
-}
-
 // DestinationStatus is admin-only: friends receive capability offers, not engine structure.
 type DestinationStatus struct {
 	ID            string   `json:"id"`
@@ -142,9 +120,9 @@ func (r *Router) audioModel(route endpoint) *string {
 func (r *Router) snapshots() []DestinationStatus {
 	out := make([]DestinationStatus, 0, len(r.destinations))
 	for _, d := range r.destinations {
-		models := []string{}
-		for _, model := range d.Offers().Models {
-			models = append(models, model)
+		models := append([]string{}, d.Up.Info().Models...)
+		if (d.Audio != nil || d.Images != nil) && d.model != "" && !slices.Contains(models, d.model) {
+			models = append(models, d.model)
 		}
 		inFlight, waiting := d.Queue.counts()
 		out = append(out, DestinationStatus{d.ID, d.Kind, models, max(1, d.Up.Info().Slots), inFlight, waiting, d.imageAbandons.Load(), d.imageRetryAt.Load()})
