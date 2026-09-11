@@ -44,7 +44,11 @@ func TestAdapterBoundaryProcess(t *testing.T) {
 				if os.Getenv("INFERCAT_INVALID_STEP") == "true" {
 					tool = strings.Repeat("x", 260)
 				}
-				send(map[string]any{"type": "checkpoint", "id": "tool", "run_id": id, "stage": "tool", "events": []any{map[string]any{"type": "tool/call", "time": 1000, "seq": 1, "data": map[string]any{"callId": "call", "name": tool}}}})
+				events := []any{map[string]any{"type": "tool/call", "time": 1000, "seq": 1, "data": map[string]any{"callId": "call", "name": tool}}}
+				if os.Getenv("INFERCAT_BATCH_STEP") == "true" {
+					events = append(events, map[string]any{"type": "tool/call", "time": 1001, "seq": 2, "data": map[string]any{"callId": "second", "name": "read"}})
+				}
+				send(map[string]any{"type": "checkpoint", "id": "tool", "run_id": id, "stage": "tool", "events": events})
 				continue
 			}
 			if os.Getenv("INFERCAT_APPROVAL_FIXTURE") == "1" {
@@ -58,7 +62,11 @@ func TestAdapterBoundaryProcess(t *testing.T) {
 					os.Exit(4)
 				}
 				if f.ID == "tool" {
-					send(map[string]any{"type": "checkpoint", "id": "terminal", "run_id": id, "stage": "terminal", "events": []any{map[string]any{"type": "tool/result", "time": 2000, "seq": 2, "data": map[string]any{"message": map[string]any{"content": []any{map[string]any{"type": "tool-result", "toolCallId": "call", "content": []any{map[string]string{"text": "HTTP/1.1 200 OK\r\nheader: value"}}}}}}}}})
+					blocks := []any{map[string]any{"type": "tool-result", "toolCallId": "call", "content": []any{map[string]string{"text": "HTTP/1.1 200 OK\r\nheader: value"}}}}
+					if os.Getenv("INFERCAT_BATCH_STEP") == "true" {
+						blocks = append(blocks, map[string]any{"type": "tool-result", "toolCallId": "second", "content": []any{map[string]string{"text": "second result"}}})
+					}
+					send(map[string]any{"type": "checkpoint", "id": "terminal", "run_id": id, "stage": "terminal", "events": []any{map[string]any{"type": "tool/result", "time": 2000, "seq": 3, "data": map[string]any{"message": map[string]any{"content": blocks}}}}})
 				} else {
 					send(map[string]any{"type": "settled", "run_id": id})
 				}
@@ -215,8 +223,9 @@ func TestApprovalIPCCommitsOnceAndKeepsToolReservation(t *testing.T) {
 }
 
 func Test116CNativeCRLFResultSettlesWithoutAbort(t *testing.T) {
-	for _, invalid := range []bool{false, true} {
-		t.Run(fmt.Sprint(invalid), func(t *testing.T) {
+	for _, mode := range []string{"crlf", "invalid", "batch"} {
+		t.Run(mode, func(t *testing.T) {
+			invalid := mode == "invalid"
 			dir := t.TempDir()
 			store, _ := runstate.NewStore(dir)
 			ks, _ := keys.NewFileStore(dir)
@@ -231,7 +240,7 @@ func Test116CNativeCRLFResultSettlesWithoutAbort(t *testing.T) {
 			m, _ := runstate.New(store, nil, nil)
 			a := &Adapter{manager: m, keys: ks, dir: dir, live: map[string]*session{}}
 			binary, _ := os.Executable()
-			a.Runtime = StartRuntime(context.Background(), RuntimeOptions{Command: []string{binary, "-test.run=^TestAdapterBoundaryProcess$"}, Dir: dir, Env: []string{"INFERCAT_BOUNDARY_FIXTURE=1", "INFERCAT_STEP_FIXTURE=1", "INFERCAT_INVALID_STEP=" + fmt.Sprint(invalid)}, Frame: func(raw json.RawMessage) {
+			a.Runtime = StartRuntime(context.Background(), RuntimeOptions{Command: []string{binary, "-test.run=^TestAdapterBoundaryProcess$"}, Dir: dir, Env: []string{"INFERCAT_BOUNDARY_FIXTURE=1", "INFERCAT_STEP_FIXTURE=1", "INFERCAT_INVALID_STEP=" + fmt.Sprint(invalid), "INFERCAT_BATCH_STEP=" + fmt.Sprint(mode == "batch")}, Frame: func(raw json.RawMessage) {
 				var f frame
 				_ = json.Unmarshal(raw, &f)
 				a.mu.Lock()
@@ -249,6 +258,11 @@ func Test116CNativeCRLFResultSettlesWithoutAbort(t *testing.T) {
 			if err := m.Register("agent", m.Consumer(a.run), runstate.Policy{Serial: true, JoinCancel: true, ForceStop: func(id string) error { stops.Add(1); return a.stopRun(id) }}); err != nil {
 				t.Fatal(err)
 			}
+			_, events, unsubscribe, err := store.Subscribe(k.ID, "")
+			if err != nil {
+				t.Fatal(err)
+			}
+			defer unsubscribe()
 			r, err := m.Submit(k.ID, "agent", "", json.RawMessage(`{}`))
 			if err != nil {
 				t.Fatal(err)
@@ -262,7 +276,11 @@ func Test116CNativeCRLFResultSettlesWithoutAbort(t *testing.T) {
 				time.Sleep(time.Millisecond)
 			}
 			d, _ := store.Detail(k.ID, r.ID)
-			if r.State != runstate.Done || stops.Load() != 0 || len(d.Steps) != 1 {
+			want := 1
+			if mode == "batch" {
+				want = 2
+			}
+			if r.State != runstate.Done || stops.Load() != 0 || len(d.Steps) != want {
 				t.Fatal(r.State, r.Reason, d.Steps, stops.Load())
 			}
 			if invalid {
@@ -270,6 +288,32 @@ func Test116CNativeCRLFResultSettlesWithoutAbort(t *testing.T) {
 					t.Fatal(d)
 				}
 				return
+			}
+			if mode == "batch" {
+				published := map[string]string{}
+			drain:
+				for {
+					select {
+					case ev := <-events:
+						if ev.Step != nil {
+							published[ev.Step.ID] = ev.Step.Status
+						}
+					default:
+						break drain
+					}
+				}
+				for _, step := range d.Steps {
+					if published[step.ID] != "done" {
+						t.Fatal("missing final SSE replacement", published)
+					}
+					if step.Status != "done" || step.OutputID == "" {
+						t.Fatal("batched step left running", d.Steps)
+					}
+				}
+				second, e := store.CapturedOutput(k.ID, r.ID, d.Steps[1].OutputID)
+				if e != nil || string(second.Data) != "second result" {
+					t.Fatal(second, e)
+				}
 			}
 			if d.Steps[0].Result != "HTTP/1.1 200 OK" {
 				t.Fatal(d.Steps)

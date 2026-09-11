@@ -317,7 +317,7 @@ func (a *Adapter) run(ctx context.Context, w *runstate.Work) (json.RawMessage, e
 				if ctx.Err() != nil {
 					response := map[string]any{"type": "reply", "id": f.ID}
 					if f.Stage == "terminal" {
-						// 154 permits one bounded note on the existing lease after cancel.
+						// One bounded final note is allowed even in a lease-free cancel window.
 						var end []json.RawMessage
 						for _, raw := range f.Events {
 							var e struct{ Type string }
@@ -422,7 +422,11 @@ func (a *Adapter) run(ctx context.Context, w *runstate.Work) (json.RawMessage, e
 									outputs["file_"+v.ID] = captured
 								}
 							}
-							update = &v
+							err = flush(nil, outputs, v)
+							outputs = map[string]runstate.Captured{}
+							if err != nil {
+								break
+							}
 						}
 					}
 					if err != nil {
@@ -616,6 +620,9 @@ func adapterCause(err error) runstate.Failure {
 	var cause runstate.Failure
 	if errors.As(err, &cause) {
 		return cause
+	}
+	if errors.Is(err, context.Canceled) {
+		return "cancelled"
 	}
 	if errors.Is(err, runstate.ErrLimit) {
 		return "retention_refused"

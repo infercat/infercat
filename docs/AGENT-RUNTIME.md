@@ -70,7 +70,12 @@ A restarted process does not reconstruct or replay prior runs.
 
 All model calls, including helpers, use the IPC adapter. No external model
 credentials or gateway bearer are inherited. `EXA_API_KEY`, when configured by the
-host, is passed only for the native search provider. The harness's workspace-write
+host, is intended for the native search provider and is scrubbed from tool subprocess
+environments. On Linux, that scrub does not prevent a same-user tool from reading
+`/proc/<ppid>/environ` and recovering the harness's key; the macOS sentinel proves
+only direct environment removal. Passing the key through a descriptor could reduce
+environment exposure, but is not implemented and alone would not establish a read
+boundary against same-user tools. The harness's workspace-write
 and ask policy remains intact: ordinary workspace writes do not ask; genuine
 approval requests are not automatically allowed. The three description strings
 proven in 129 are applied verbatim, with a check that schema semantics are unchanged.
@@ -141,7 +146,9 @@ process isolation.
 
 `Work.Approval` persists a pending question and waits without reconstructing the
 consumer. `Manager.Answer` commits the identified answer once before waking it;
-stale, duplicate, cross-key and cancelled answers refuse. The consumer forwards
+stale, duplicate and cross-key answers refuse. A terminal snapshot takes precedence
+over an answer; pending approvals on terminal or cancel-requested runs are omitted
+from detail responses, with the original question preserved in retained history. The consumer forwards
 that committed answer once; an ambiguous IPC send fails the run, never resends.
 Restart recovery fails interrupted runs and keeps accumulated evidence. If a
 requested Cancel/Answer instead commits an emergency terminal outcome, the typed
@@ -176,8 +183,12 @@ never consumes this lifecycle exception.
 Budget refusals do not mark the key broken.
 `SettlementError` distinguishes a successful model call whose accounting could not
 be recorded from a failed call. Neither condition replays the model request.
-One bounded cancellation note (4 KiB, no new captured outputs) may be retained from
-the existing lease; filenames and MIME types are validated before capture.
+One bounded cancellation note (4 KiB, no new captured outputs) may be retained even
+in a lease-free window before terminal settlement. A private marker in the same
+retained record enforces one successful note across lease changes and restart;
+a refused commit does not spend it. This is not fresh model/tool admission or a
+byte-budget exception: ordinary capacity and other reservations still apply.
+Filenames and MIME types are validated before capture.
 
 Per-key recovery and Sweep failures are logged and isolated. Unfinished recovered
 runs fail without replay, while the host serves healthy keys. Snapshots load lazily;
@@ -193,10 +204,10 @@ The native JSONL backend, its backend-dependent checkpoint row, and the persiste
 session projection-cache row are disabled
 through supported composition. The harness retains execution and its in-memory
 trajectory, but **native checkpointing is not active**. The pre-dispatch durability
-duty belongs to the Go owner's admission acknowledgement. Native model/tool
+duty belongs to the Go owner's admission acknowledgement. Native model/root-tool
 dispatch waits for the raw prefix to be committed; a tool also reserves capacity
 through result capture. A failed acknowledgement refuses dispatch. Cancellation
-retains only a bounded final turn note from the existing lease, then joins native
+retains only a bounded final turn note (also in a lease-free window), then joins native
 disposal. Existing 116a JSONL artifacts are not imported or deleted.
 An offline test in `make check` checks all three disabling rows against the vendored
 pinned base composition. Startup refuses a missing or changed installed manifest;
@@ -317,7 +328,10 @@ cannot interpret it, the paid call stays successful and records a flagged raw
 fallback containing only the last 64 KiB, with a diagnostic log. CRLF result lines
 are normalised; unsupported step formatting produces a bounded failed note, not
 a run abort. Adapter failures carry bounded causes such as `runtime_lost`,
-`retention_refused`, `key_revoked`, `approval_invalid`, or `workspace_unavailable`.
+`retention_refused`, `step_invalid`, `key_revoked`, `approval_invalid`, or
+`workspace_unavailable`; friend cancellation is `cancelled`. Typed model-call
+causes survive the attempt seam, and a settlement error exposes both the call and
+store errors without retrying either request.
 
 Helpers are classified by the pinned `GenerateOptions.purpose` (`compaction` or
 `session-title`, dsh-llm/lib/types/types.d.ts). They use native settings/budgets,
@@ -341,3 +355,18 @@ step text (66,436,469 encoded bytes), detail mean 2.074 µs, selected-output cop
 small native-event commits still cost 150.1–161.9 ms plus 17.3–27.2 ms for admission.
 These are warm non-race measurements, not timing assertions; see the retained
 116c route report and its test fixtures.
+
+116d boundary notes: the 256-entry replay ring is shared by all run kinds on a key,
+including every published step replacement. Sustained agent activity can evict an
+image client's old cursor. Reconnect returns the existing Reset with current
+summaries; GET detail recovers the current steps and outputs. No extra ring or
+replay guarantee is introduced.
+
+The pinned `dsh-tools/lib/index.js:1218,3032,3213` creates `run_code` nested calls
+with `parent: exec.token`, preserves that parent on the execution, and invokes the
+same `tools/execute` hook. The adapter's parent branch is therefore reachable,
+not dead code: admission, key recheck and reservation are at the root-tool boundary.
+Nested calls execute inside that root operation without an independent Go ack or
+key recheck; revocation is observed at the next root/model checkpoint, not between
+nested calls. The parent's result remains subject to the existing capture and
+retention bounds. This exception is documented, not a new nested-admission design.

@@ -75,7 +75,12 @@ func (e *SettlementError) Error() string {
 	}
 	return "call failed; settlement not recorded"
 }
-func (e *SettlementError) Unwrap() error { return e.StoreErr }
+func (e *SettlementError) Unwrap() []error {
+	if e.CallErr == nil {
+		return []error{e.StoreErr}
+	}
+	return []error{e.CallErr, e.StoreErr}
+}
 
 // Minimal terminal records preserve accumulated history and the last charge,
 // while dropping newly returned output when ordinary admission has no room.

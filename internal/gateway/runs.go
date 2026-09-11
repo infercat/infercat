@@ -27,7 +27,7 @@ func (g *Gateway) SetRuns(m *runstate.Manager) error {
 // ExecuteStep reuses the request owner; finish settles once before the result is observed.
 func (g *Gateway) ExecuteStep(ctx context.Context, keyID string, step runstate.Step, acquired func() error) (result runstate.StepResult, err error) {
 	if len(step.Input) > runstate.MaxInput || !json.Valid(step.Input) {
-		return result, runstate.Failure("key_revoked")
+		return result, runstate.Failure("step_invalid")
 	}
 	if step.Route != string(chatEndpoint) && step.Route != string(embeddingsEndpoint) && step.Route != string(imagesEndpoint) {
 		return result, runstate.ErrInvalid

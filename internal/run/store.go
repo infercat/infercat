@@ -49,6 +49,7 @@ type Store struct {
 }
 
 var safeID = regexp.MustCompile(`^[a-zA-Z0-9_-]{1,80}$`)
+var correlationID = regexp.MustCompile(`^[A-Za-z0-9_-]{1,128}$`)
 
 func id(prefix string) string {
 	var b [16]byte
@@ -452,7 +453,7 @@ func (s *Store) createBatch(key, kind, priority string, inputs []json.RawMessage
 	}
 	if len(correlation) > 0 {
 		cid = correlation[0]
-		if !regexp.MustCompile(`^[A-Za-z0-9_-]{1,128}$`).MatchString(cid) {
+		if !correlationID.MatchString(cid) {
 			return nil, ErrInvalid
 		}
 	}

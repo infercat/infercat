@@ -207,6 +207,9 @@ func TestPinnedAdapterCancellationRetainsFinalPrefix(t *testing.T) {
 	if r.State != runstate.Cancelled {
 		t.Fatal("native cancellation did not settle", r.State)
 	}
+	if r.Reason != "cancelled" {
+		t.Fatal("native cancel cause lost", r.Reason)
+	}
 	d, err := s.Retained(k.ID, r.ID)
 	if err != nil {
 		t.Fatal(err)

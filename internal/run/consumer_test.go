@@ -58,6 +58,10 @@ func TestConsumerCancelWaitsForCleanupInEveryLiveState(t *testing.T) {
 				t.Fatal("terminal before child cleanup")
 			}
 			if phase == Waiting {
+				view, e := s.Detail(r.KeyID, r.ID)
+				if e != nil || view.Approval != nil {
+					t.Fatal("cancel still advertises approval", view, e)
+				}
 				if _, err = m.Answer(r.KeyID, r.ID, "p_1", true); !errors.Is(err, ErrConflict) {
 					t.Fatal("answer after cancel", err)
 				}
@@ -65,6 +69,9 @@ func TestConsumerCancelWaitsForCleanupInEveryLiveState(t *testing.T) {
 			close(release)
 			await(t, func() bool { return state(s, r) == Cancelled })
 			got, _ = s.Get(r.KeyID, r.ID)
+			if got.Reason != "cancelled" {
+				t.Fatal("cancel cause lost", got.Reason)
+			}
 			if phase == Running && (len(got.Attempts) != 1 || !got.Attempts[0].Settled) {
 				t.Fatal("lost settlement", got)
 			}

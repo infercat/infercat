@@ -136,9 +136,12 @@ func failureReason(err error) string {
 	var f Failure
 	if errors.As(err, &f) {
 		switch f {
-		case "runtime_lost", "retention_refused", "step_invalid", "key_revoked", "approval_invalid", "workspace_unavailable":
+		case "cancelled", "runtime_lost", "retention_refused", "step_invalid", "key_revoked", "approval_invalid", "workspace_unavailable":
 			return string(f)
 		}
+	}
+	if errors.Is(err, context.Canceled) {
+		return "cancelled"
 	}
 	return "kind failed"
 }

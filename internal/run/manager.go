@@ -444,7 +444,9 @@ func (m *Manager) attempt(ctx context.Context, r Run, step Step, live bool) (Run
 	if err != nil {
 		return r, result, &SettlementError{CallErr: stepErr, StoreErr: err}
 	}
-	if err == nil && (stepErr != nil || len(result.Output) > MaxOutput || !json.Valid(result.Output)) {
+	if stepErr != nil {
+		err = stepErr
+	} else if len(result.Output) > MaxOutput || !json.Valid(result.Output) {
 		err = ErrInvalid
 	}
 	return r, result, err

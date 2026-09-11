@@ -58,7 +58,7 @@ func (s *Store) Detail(key, rid string) (Detail, error) {
 	for id, o := range held.Outputs {
 		d.Outputs = append(d.Outputs, OutputInfo{id, o.Name, o.MIME, len(o.Data)})
 	}
-	if held.Approval != nil {
+	if held.Approval != nil && !(held.Approval.Status == "pending" && (terminal(r.State) || r.CancelRequested)) {
 		a := *held.Approval
 		if a.Allow != nil {
 			b := *a.Allow

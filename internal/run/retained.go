@@ -14,6 +14,7 @@ type Retained struct {
 	State      json.RawMessage     `json:"state,omitempty"`
 	Trajectory []json.RawMessage   `json:"trajectory,omitempty"`
 	Outputs    map[string]Captured `json:"outputs,omitempty"`
+	CancelNote bool                `json:"cancel_note,omitempty"`
 	Approval   *Approval           `json:"approval,omitempty"`
 }
 type Captured struct {
@@ -29,7 +30,6 @@ type Approval struct {
 }
 type reservation struct {
 	bytes int
-	note  bool
 }
 
 // Admit reserves encoded snapshot capacity before a consumer enters another
@@ -111,7 +111,8 @@ func (s *Store) retainedBudget(key string, next *snapshot, rid string, size int)
 }
 
 // Retain atomically replaces opaque step state, appends exact native events and
-// adds immutable output snapshots. The caller must reserve capacity first.
+// adds immutable output snapshots. Capacity must be reserved except for the one
+// bounded post-cancel note, which still spends the ordinary snapshot budget.
 func (s *Store) Retain(key, rid string, state json.RawMessage, events []json.RawMessage, outputs map[string]Captured, steps ...StepEvent) error {
 	if len(steps) > 1 {
 		return ErrInvalid
@@ -139,14 +140,13 @@ func (s *Store) Retain(key, rid string, state json.RawMessage, events []json.Raw
 			return ErrInvalid
 		}
 	}
-	var note *reservation
+	note := false
 	_, err = s.change(key, rid, func(r *Run) error {
 		if r.CancelRequested {
-			lease := s.reserved[key][rid]
-			if lease == nil || lease.note || len(input) > terminalBound || len(outputs) > 0 {
+			if len(input) > terminalBound || len(outputs) > 0 {
 				return ErrLimit
 			}
-			note = lease
+			note = true
 		}
 		if terminal(r.State) {
 			return ErrConflict
@@ -154,10 +154,13 @@ func (s *Store) Retain(key, rid string, state json.RawMessage, events []json.Raw
 		return nil
 	}, func(data *Retained) error {
 		lease := s.reserved[key][rid]
-		if lease == nil {
+		if (lease == nil && !note) || (note && data.CancelNote) {
 			return ErrLimit
 		}
 		old, _ := json.Marshal(data)
+		if note {
+			data.CancelNote = true
+		}
 		if state != nil {
 			data.State = state
 		}
@@ -189,19 +192,11 @@ func (s *Store) Retain(key, rid string, state json.RawMessage, events []json.Raw
 		}
 		next, _ := json.Marshal(data)
 		// Includes room for the change's cursor, timestamps and envelope.
-		if max(0, len(next)-len(old))+1024 > lease.bytes {
+		if lease != nil && max(0, len(next)-len(old))+1024 > lease.bytes {
 			return ErrLimit
-		}
-		if note != nil {
-			note.note = true
 		}
 		return nil
 	})
-	if err != nil && note != nil {
-		s.mu.Lock()
-		note.note = false
-		s.mu.Unlock()
-	}
 	return err
 }
 func (s *Store) Retained(key, rid string) (Retained, error) {
