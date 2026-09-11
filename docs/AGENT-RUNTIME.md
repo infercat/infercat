@@ -370,3 +370,20 @@ Nested calls execute inside that root operation without an independent Go ack or
 key recheck; revocation is observed at the next root/model checkpoint, not between
 nested calls. The parent's result remains subject to the existing capture and
 retention bounds. This exception is documented, not a new nested-admission design.
+
+Write steps can link a captured unified diff through their existing `output_id`.
+Its descriptor adds `kind: "diff"` and uses existing `mime: "text/x-diff"`; no
+`content_type` alias or new route is added. The normal file and tool-result
+captures remain available. Prior bytes are read through the workspace root before
+the root write checkpoint is acknowledged; a missing file is empty. Read failures,
+binary (NUL or invalid UTF-8), unchanged or oversized versions produce no diff.
+Each text version is bounded to 64 KiB. All pending prior-file snapshots together
+are bounded to 64 KiB and 64 entries per run; when full, writes retain their normal
+captures without a diff. A result releases its prior snapshot.
+
+Diffs use one hunk spanning the changed region with up to three context lines at
+each end, rather than a minimal-edit matrix. A diff is at most 64 KiB; a truncated
+one ends with an explicit display-only marker and is not a complete patch. Missing
+final newlines are marked. Diff bytes use ordinary retained accounting and expiry.
+The harness's read-before-overwrite rule remains intact: the adapter's private
+snapshot does not replace the model's required read.

@@ -175,3 +175,41 @@ func TestRetainedBoundsAndFailedWriteNeverPublish(t *testing.T) {
 		t.Fatal("failed write replaced evidence")
 	}
 }
+
+func Test116EDiffDescriptorRoundTrip(t *testing.T) {
+	s := store(t)
+	r := create(t, s, "k_diff")
+	release, err := s.Admit(r.KeyID, r.ID, 8192)
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer release()
+	diff := Captured{Kind: "diff", Name: "Write diff", MIME: "text/x-diff", Data: []byte("--- before\n+++ after\n@@ -0,0 +1,1 @@\n+new\n")}
+	step := StepEvent{ID: "write", Type: "step", At: time.Now().UTC(), Kind: "write", Status: "done", OutputID: "diff_write"}
+	if err = s.Retain(r.KeyID, r.ID, nil, nil, map[string]Captured{"diff_write": diff}, step); err != nil {
+		t.Fatal(err)
+	}
+	reopened, err := NewStore(filepath.Dir(s.root))
+	if err != nil {
+		t.Fatal(err)
+	}
+	detail, err := reopened.Detail(r.KeyID, r.ID)
+	if err != nil || len(detail.Outputs) != 1 || detail.Outputs[0].Kind != "diff" || detail.Outputs[0].MIME != "text/x-diff" || detail.Steps[0].OutputID != "diff_write" {
+		t.Fatal(detail, err)
+	}
+	raw, _ := json.Marshal(detail.Outputs[0])
+	if bytes.Contains(raw, []byte("content_type")) {
+		t.Fatal("unruled alias", string(raw))
+	}
+	captured, err := reopened.CapturedOutput(r.KeyID, r.ID, "diff_write")
+	if err != nil || !bytes.Equal(captured.Data, diff.Data) {
+		t.Fatal(captured, err)
+	}
+	if _, err = reopened.CapturedOutput("other", r.ID, "diff_write"); !errors.Is(err, ErrNotFound) {
+		t.Fatal("cross-key diff", err)
+	}
+	diff.Kind = "unknown"
+	if err = s.Retain(r.KeyID, r.ID, nil, nil, map[string]Captured{"other": diff}); !errors.Is(err, ErrInvalid) {
+		t.Fatal("unknown descriptor kind", err)
+	}
+}
