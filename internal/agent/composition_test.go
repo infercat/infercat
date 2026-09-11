@@ -19,6 +19,7 @@ import (
 )
 
 func TestPinnedCompositionDisablesBothOwnersWithoutLiveInstall(t *testing.T) {
+	t.Setenv("EXA_API_KEY", "legacy-environment-must-not-be-used")
 	if !Supported() {
 		t.Skip("Unix runtime only")
 	}
@@ -40,6 +41,9 @@ func TestPinnedCompositionDisablesBothOwnersWithoutLiveInstall(t *testing.T) {
 	options, err := unconfinedHarnessOptionsForTests(dir)
 	if err != nil {
 		t.Fatal(err)
+	}
+	if options.SearchKey != "" || strings.Contains(strings.Join(options.Env, "\n"), "INFERCAT_EXA_FD") {
+		t.Fatal("environment fallback enabled")
 	}
 	raw, err := os.ReadFile(filepath.Join(options.Dir, "adapter.patch.yml"))
 	if err != nil {
@@ -70,7 +74,7 @@ func TestPinnedCompositionDisablesBothOwnersWithoutLiveInstall(t *testing.T) {
 		t.Fatal("unconfined fixture got inherited provider")
 	}
 	workspace := t.TempDir()
-	confined, err := harnessOptions(dir, filepath.Join(workspace, ".runtime"), workspace)
+	confined, err := harnessOptions(dir, filepath.Join(workspace, ".runtime"), workspace, "startup-file-key")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -80,6 +84,9 @@ func TestPinnedCompositionDisablesBothOwnersWithoutLiveInstall(t *testing.T) {
 	}
 	if !bytes.Contains(composed, []byte(`"id":"sandbox"`)) || !bytes.Contains(composed, []byte(`"id":"infercat-outer-sandbox"`)) || !strings.Contains(strings.Join(confined.Env, "\n"), "INFERCAT_CONFINED_WORKSPACE="+workspace) {
 		t.Fatal("missing confined provider composition")
+	}
+	if confined.SearchKey != "startup-file-key" || !strings.Contains(strings.Join(confined.Env, "\n"), "INFERCAT_EXA_FD=4") || strings.Contains(strings.Join(confined.Env, "\n"), "startup-file-key") || bytes.Contains(composed, []byte("startup-file-key")) {
+		t.Fatal("credential not isolated to descriptor input")
 	}
 	got, err := os.ReadFile(filepath.Join(confined.Dir, "inherited-sandbox.mjs"))
 	if err != nil || !bytes.Equal(got, inheritedSandbox) {

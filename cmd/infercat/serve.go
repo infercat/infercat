@@ -258,7 +258,7 @@ func (e *env) cmdServe(ctx context.Context, pre string, args []string) error {
 	}
 	var harness *agent.Adapter
 	if *agentEnabled {
-		harness = agent.StartAdapter(ctx, dataDir, runs, store)
+		harness = agent.StartAdapter(ctx, dataDir, runs, store, search.AgentKey())
 		defer harness.Close()
 	}
 	if err = gw.SetRuns(runs); err != nil {

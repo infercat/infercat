@@ -81,7 +81,10 @@ The read sandbox is an allow-list on both shipped platforms:
   `/proc` is readable so descendant tools can read their own process information.
   Other same-uid processes' `/proc/<pid>/environ` remains readable wherever ordinary
   Linux permissions permit it; those processes may expose their own environment
-  secrets. The harness receives its Exa key by descriptor, not environment.
+  secrets. Operators must not keep secrets in the host process environment.
+  Infercat reads its Exa key from `search.key_file`, never `EXA_API_KEY`, and passes
+  it to the harness by descriptor; other operator-supplied environment secrets
+  remain the operator's responsibility.
   Ordinary Unix file permissions still apply.
 
 Data/runtime layouts under a broadly readable tool tree are refused, as is a
@@ -108,10 +111,14 @@ writes do not ask; 129's three tool-description strings remain unchanged.
 
 All model calls use the existing IPC adapter and the run's key at the Go gateway;
 no gateway bearer or external model credentials are inherited. When configured,
-the Exa key travels on an inherited pipe: the plugin reads and closes its descriptor
+the Exa key is read once at serve startup from the same `search.key_file` used
+by chat search (relative paths resolve under the data directory), then travels
+on an inherited pipe: the plugin reads and closes its descriptor
 before readiness and supplies it directly to the search provider. It is absent
 from the child's initial environment and is not written to plugin/config files.
-The key still exists in the harness's process memory; this is not a secret boundary
+The `EXA_API_KEY` environment input is removed. With no `search.key_file`, the
+agent's search plugin is unavailable; other agent tools still work. Changing the
+file requires a host restart. The key still exists in the harness's process memory; this is not a secret boundary
 against a compromised harness. A host-side search proxy is outside this slice.
 
 ## Verification

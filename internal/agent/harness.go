@@ -21,7 +21,7 @@ var adapter []byte
 //go:embed assets/inherited-sandbox.mjs
 var inheritedSandbox []byte
 
-func harnessOptions(dataDir, dir, outerWorkspace string) (RuntimeOptions, error) {
+func harnessOptions(dataDir, dir, outerWorkspace, searchKey string) (RuntimeOptions, error) {
 	runtime, err := Installed(dataDir)
 	if err != nil {
 		return RuntimeOptions{}, err
@@ -81,10 +81,10 @@ func harnessOptions(dataDir, dir, outerWorkspace string) (RuntimeOptions, error)
 	if outerWorkspace != "" {
 		env = append(env, "INFERCAT_CONFINED_WORKSPACE="+outerWorkspace)
 	}
-	if exa := os.Getenv("EXA_API_KEY"); exa != "" {
+	if searchKey != "" {
 		env = append(env, "INFERCAT_EXA_FD=4")
 	}
-	return RuntimeOptions{SearchKey: os.Getenv("EXA_API_KEY"), Dir: dir, Env: env, Command: []string{
+	return RuntimeOptions{SearchKey: searchKey, Dir: dir, Env: env, Command: []string{
 		filepath.Join(runtime, "node/bin/node"), filepath.Join(runtime, "node_modules/@deepseek-ai/dsh/lib/bin.js"),
 		"--profile", "headless", "--patch", patch,
 	}}, nil

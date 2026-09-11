@@ -12,7 +12,7 @@ import (
 
 // This legacy IPC-only fixture deliberately does not exercise a production spawn path.
 func unconfinedHarnessOptionsForTests(dir string) (RuntimeOptions, error) {
-	return harnessOptions(dir, filepath.Join(dir, "agent", "host"), "")
+	return harnessOptions(dir, filepath.Join(dir, "agent", "host"), "", "")
 }
 
 // Explicit live fixture: uses a separate host directory and the installed,

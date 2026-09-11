@@ -97,7 +97,7 @@ func TestPinnedAdapterAcknowledgesBeforeModelAndCapturesNativeWrite(t *testing.T
 	if err != nil {
 		t.Fatal(err)
 	}
-	a := StartAdapter(context.Background(), dir, m, ks)
+	a := StartAdapter(context.Background(), dir, m, ks, "")
 	defer a.Close()
 	defer m.Close()
 	until := time.Now().Add(10 * time.Second)
@@ -223,7 +223,7 @@ func TestPinnedAdapterCancellationRetainsFinalPrefix(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	a := StartAdapter(context.Background(), dir, m, ks)
+	a := StartAdapter(context.Background(), dir, m, ks, "")
 	defer a.Close()
 	defer m.Close()
 	until := time.Now().Add(10 * time.Second)
@@ -337,7 +337,7 @@ func TestPinnedNativeApprovalAllowAndDeny(t *testing.T) {
 				}
 				return runstate.StepResult{Output: json.RawMessage(`{}`), Dispatched: true, Settled: true}, nil
 			}, nil)
-			a = StartAdapter(context.Background(), dir, m, ks)
+			a = StartAdapter(context.Background(), dir, m, ks, "")
 			defer a.Close()
 			defer m.Close()
 			until := time.Now().Add(10 * time.Second)
@@ -458,7 +458,7 @@ func TestPinnedForceStopRestartsSupervisor(t *testing.T) {
 		err := step.Observe(raw)
 		return runstate.StepResult{Output: json.RawMessage(`{}`), Dispatched: true, Settled: true}, err
 	}, nil)
-	a := StartAdapter(context.Background(), dir, m, ks)
+	a := StartAdapter(context.Background(), dir, m, ks, "")
 	defer a.Close()
 	defer m.Close()
 	until := time.Now().Add(10 * time.Second)

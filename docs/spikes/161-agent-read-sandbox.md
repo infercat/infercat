@@ -1,6 +1,6 @@
 # 161: per-run read sandbox verification
 
-Local review freeze; Linux runtime verification and public publication remain pending.
+Review candidate; Linux runtime verification remains pending before landing.
 
 The same per-run launcher owns preflight, the child, its private workspace/tmp,
 and final cleanup. The inherited native SandboxProvider is materialized only
@@ -41,15 +41,15 @@ See [summary](161-sandbox/mac-proof.json), [usage identities](161-sandbox/mac-us
 
 The Linux launcher cross-builds. CI is configured to require the Landlock canaries
 and run the real pinned suite on Linux, including the parent-environment sentinel;
-ABI below 3 fails, with no unconfined fallback or CI skip. That job has not run:
-public branch publication was rejected by automatic approval review and awaits
-payload-specific approval. Mac success is not evidence of Linux kernel enforcement.
+ABI below 3 fails, with no unconfined fallback or CI skip. Publication is now
+authorized and the branch is being verified in CI. The replacement must pass
+Linux execution before landing; Mac success is not evidence of Linux enforcement.
 
 The allow-list and honest limitations are in [AGENT-RUNTIME](../AGENT-RUNTIME.md).
 
 ## Local gate
 
-`make check` completed with `CHECK OK`: console 105 passed; adapter JavaScript
+On the initial reviewed checkpoint `3777a14`, `make check` completed with `CHECK OK`: console 105 passed; adapter JavaScript
 9 passed / 0 failed / 0 skipped; Worker 59 passed; host compatibility 57 passed;
 installer 18 passed / 0 failed / 0 skipped. The client package reported 30 passed
 and one pre-existing opt-in skip. `go test -race ./...` passed (run package
@@ -68,3 +68,35 @@ four model attempts match usage identities, and SSE replacements match GET.
 The host and engine were stopped afterward. The public evidence contains no
 credential. See [result and metering](161-sandbox/mac-search-write.json) and
 [command output](161-sandbox/mac-search-write.log).
+
+## Review delta and file-backed key
+
+The replacement is rebased onto 164's landed `470666f`. Sandbox preflight retains
+stderr and the wrapped execution error, uses platform-specific advice, and names
+a timeout. Public unconfined harness entry points are removed; the old IPC-only
+fixture has an explicitly test-only helper. Linux handles only filesystem rights
+in the pinned headers and grants `/proc` reads for descendant tools; a required
+Node-to-Python grandchild canary reads `/proc/self/status` on Linux. Linux execution
+is still pending CI; the prior PID-only rule's inability to cover that descendant
+was inferred from its scope, not claimed as a measured Linux run.
+
+The Exa input now shares 164's startup-loaded `search.key_file` snapshot. No agent
+code reads `EXA_API_KEY`. With no configured file, no native Exa provider is
+registered. The file-backed key goes only into memory and the inherited pipe,
+not config or child environment. Operators must keep other secrets out of the
+host environment because Linux `/proc` exposes same-uid environments subject to
+ordinary process permissions.
+
+The replacement's pinned Mac suite passed 11 top-level tests plus two approval
+subtests, zero failures/skips. It includes the real confined lifecycle, read/bash/
+Python denials, file-key composition, exact-root provider checks, and diagnostic
+fixtures. Search snapshot regressions passed under race. The live E4B proof
+returned an explicit search failure with no configured file, then completed the
+real search/write task after startup with a configured key and the file deleted.
+The key was absent from the host environment; all model attempts match usage
+identities; captures outlived the removed workspaces and both owned processes
+stopped. See [file-key evidence](161-sandbox/mac-file-key.json),
+[route output](161-sandbox/mac-file-key.log), and
+[pinned delta output](161-sandbox/mac-review-delta.log).
+The final gate result is supplied in the freeze handoff; no Linux success is
+claimed by these Mac records.
