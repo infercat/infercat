@@ -7,7 +7,7 @@ export async function onRequestGet({ env }) {
   let target = 'https://infercat.ai/?from=try';
   try {
     const link = await env.SIGNUPS.get('link:try');
-    if (link && /^https:\/\/infercat\.ai\/?#ic1\./.test(link)) {
+    if (link && /^https:\/\/infercat\.ai\/?#ic[12]\./.test(link)) {
       target = link.replace(/^https:\/\/infercat\.ai\/?#/, 'https://infercat.ai/?from=try#');
     }
   } catch {}
