@@ -29,6 +29,10 @@ try {
       const page = await browser.newPage();
       await page.goto(new URL('/', origin).href);
       await page.waitForFunction(() => window.navigator.serviceWorker.controller !== null, undefined, { timeout: 60000 });
+      await page.evaluate(() => window.navigator.serviceWorker.ready.then(() => undefined));
+      // Exercise a settled returning navigation, not the initial controller-claim race.
+      await page.reload();
+      await page.waitForFunction(() => window.navigator.serviceWorker.controller?.state === 'activated', undefined, { timeout: 60000 });
       let landed;
       // The app consumes and clears the fragment; capture the committed navigation first.
       page.on('framenavigated', frame => { if (frame === page.mainFrame()) { const url = new URL(frame.url()); if (url.searchParams.get('from') === 'try' && url.hash.startsWith('#ic')) landed = url; } });
