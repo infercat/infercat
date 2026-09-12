@@ -33,8 +33,9 @@ worker.addEventListener('fetch', (event) => {
   const request = event.request, url = new URL(request.url);
   if (request.method !== 'GET' || url.origin !== worker.location.origin) return;
   if (request.mode === 'navigate') {
+    if (url.pathname !== '/' && url.pathname !== '/index.html') return;
     event.respondWith((async () => {
-      try { const response = await fetch(request); if (response.ok) return response; } catch { /* Offline shell. */ }
+      try { const response = await fetch(request); if (response.ok && !response.redirected && response.type !== 'opaqueredirect') return response; } catch { /* Offline shell. */ }
       // Never overwrite this version's HTML with a newer navigation response and older assets.
       return (await caches.match('/index.html', { cacheName: shellName })) ?? Response.error();
     })());

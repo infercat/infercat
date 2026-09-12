@@ -80,3 +80,18 @@ it('late fetches cannot recreate a cache retired by a newer worker', async () =>
   await h.fetchEvent('/', 'navigate');
   expect([...h.stores.keys()]).toEqual([]);
 });
+
+it('leaves redirecting function navigations to the browser without respondWith', async () => {
+  const h = await harness(); await h.lifecycle('install'); h.network.mockClear();
+  h.network.mockResolvedValue(Response.redirect(`${origin}/?from=try`, 302));
+  for (const path of ['/try', '/try?source=qr', '/signup', '/console', '/future-function']) expect(h.fetchEvent(path, 'navigate')).toBeUndefined();
+  expect(h.network).not.toHaveBeenCalled();
+});
+it('never returns a redirected shell response as-is and retains the offline fallback', async () => {
+  const h = await harness(); await h.lifecycle('install');
+  const redirected = new Response('redirected HTML'); Object.defineProperty(redirected, 'redirected', { value: true });
+  h.network.mockResolvedValue(redirected);
+  expect(await (await h.fetchEvent('/index.html', 'navigate')!).text()).toBe(`network ${origin}/index.html`);
+  h.network.mockResolvedValue(Response.error());
+  expect(await (await h.fetchEvent('/', 'navigate')!).text()).toBe(`network ${origin}/index.html`);
+});

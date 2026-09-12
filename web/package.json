@@ -14,7 +14,7 @@
     "fake-gateway": "node --experimental-strip-types dev/fake-gateway.ts",
     "screenshots": "node dev/screenshots.mjs",
     "brand": "node dev/brand.mjs",
-    "launch-check": "node dev/launch-check.mjs",
+    "launch-check": "node dev/launch-check.mjs && node dev/returning-try-check.mjs",
     "tunnel-check": "node dev/tunnel-check.mjs"
   },
   "dependencies": {
