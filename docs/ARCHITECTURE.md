@@ -691,7 +691,7 @@ BGE-M3 never inherits the measured BGE-small working set. Policy and headroom re
 | Asset | `id`, basename `file`, `bytes`, lowercase `sha256`, HTTPS publisher `url`, `license`, `revision`; support bundles are pinned assets too; optional `archive` describes extraction |
 | Archive/artifact | `archive.format` is tar.gz/tar.bz2/zip, `strip` is 0–4 leading components, `bytes` is the expanded ceiling (at most 8 GiB). Profile `artifacts` contain asset pins plus an optional relative `executable`; a member selects one by id |
 | Measurement | `status` (measured/unmeasured), `date`, `source`, `rss_bytes`, `tokens_per_second`, `mixed_tokens_per_second`, `ttft_ms`, `note`; notes identify the measured workload/pair, and unmeasured numeric fields stay zero |
-| Policy/headroom | `policy.kind` is resident/on-demand/cpu; only on-demand has positive `idle_seconds`. Headroom has `os_bytes`, `kv_bytes_per_slot`, `friends`, `draft`. The shipped draft reserves 6 GiB OS/app and 512 MiB per 16K text slot, two friends, 600-second pool idle |
+| Policy/headroom | `policy.kind` is resident/on-demand/cpu; only on-demand has positive `idle_seconds`. Headroom has `os_bytes`, `kv_bytes_per_slot`, `friends`, `draft`. The shipped draft reserves 6 GiB OS/app and 512 MiB per 16K text slot, two friends, 600-second pool idle; llama.cpp anchors cap the RAM prompt cache and checkpoints with `--cache-ram 512 --ctx-checkpoints 4` |
 
 Parsing refuses unknown fields, duplicate keys, nulls, control characters, invalid
 pins/limits and unsupported versions. Profile files are capped at 256 KiB and 16
