@@ -36,6 +36,9 @@ func TestEmbeddedProfiles(t *testing.T) {
 				t.Fatal(p.ID)
 			}
 			for _, m := range p.Members {
+				if m.Model.Measurement.Status == "measured" && !strings.HasPrefix(m.Model.Measurement.Source, "infercat-pm/docs/spikes/") {
+					t.Fatal("measurement source must identify the evidence repo", id, m.ID)
+				}
 				if m.Class == "text" && m.Engine == "llama.cpp" {
 					for _, cap := range []string{"--cache-ram 512", "--ctx-checkpoints 4"} {
 						if !strings.Contains(strings.Join(m.Command, " "), cap) {
@@ -58,6 +61,11 @@ func TestEmbeddedProfiles(t *testing.T) {
 	p, _ := Builtin("apple-16g")
 	if p.Members[0].Pending != "" || len(p.Members[0].Candidates) != 0 || p.Members[0].Model.Name != "gemma4-e4b" || p.Members[0].Model.Quantization != "E4B UD-Q4_K_XL + F16 vision" {
 		t.Fatal("floor must carry the founder-selected Q4 vision model")
+	}
+	for _, cache := range []string{"--cache-type-k q8_0", "--cache-type-v q8_0"} {
+		if !strings.Contains(strings.Join(p.Members[0].Command, " "), cache) {
+			t.Fatal("floor requires matching q8 KV", cache)
+		}
 	}
 	for _, m := range p.Members {
 		if m.Class == "image" {

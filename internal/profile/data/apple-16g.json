@@ -41,13 +41,13 @@
         "extra_args": [],
         "measurement": {
           "status": "measured",
-          "date": "2026-09-12",
-          "source": "docs/spikes/153-floor-loadout.md (153b)",
-          "rss_bytes": 6325501952,
-          "tokens_per_second": 114.7,
-          "mixed_tokens_per_second": 40,
-          "ttft_ms": 74,
-          "note": "Measured on a 64 GiB Mac: two filled 16K slots, f16 KV. Mixed rate is with a derived Q4 image member, which is not included in this profile. The MOBILE lazy-PLE variant was declined by the founder."
+          "date": "2026-09-11",
+          "source": "infercat-pm/docs/spikes/180a-anchor-footprint.md (row F)",
+          "rss_bytes": 5975539712,
+          "tokens_per_second": 88.92333801636937,
+          "mixed_tokens_per_second": 0,
+          "ttft_ms": 0,
+          "note": "Real M5 Max, 64 GiB, q8_0 K/V and flash attention; two 16K slots. RSS is the maximum of load, concurrent warm turns and one 16000-token fill checkpoints; tokens/s is the mean per-slot warm rate (512 prompt/128 generated). Mixed-load rate and TTFT were not measured. Historical f16: infercat-pm/docs/spikes/153-floor-loadout.md (153b); f16 VM memory: infercat-pm/docs/spikes/151c-16gb-vm.md. The q8 command runs in VMs only via CPU fallback for flash attention (slow); not a supported configuration. The MOBILE lazy-PLE variant was declined by the founder."
         }
       },
       "candidates": [],
@@ -72,9 +72,9 @@
         "999",
         "--jinja",
         "--cache-type-k",
-        "f16",
+        "q8_0",
         "--cache-type-v",
-        "f16",
+        "q8_0",
         "--cache-ram",
         "512",
         "--ctx-checkpoints",
@@ -114,7 +114,7 @@
         "measurement": {
           "status": "measured",
           "date": "2026-09-12",
-          "source": "docs/spikes/153-floor-loadout.md (153)",
+          "source": "infercat-pm/docs/spikes/153-floor-loadout.md (153)",
           "rss_bytes": 2645213184,
           "tokens_per_second": 0,
           "mixed_tokens_per_second": 0,
@@ -185,7 +185,7 @@
         "measurement": {
           "status": "measured",
           "date": "2026-09-12",
-          "source": "docs/spikes/153-floor-loadout.md (153c)",
+          "source": "infercat-pm/docs/spikes/153-floor-loadout.md (153c)",
           "rss_bytes": 842694656,
           "tokens_per_second": 0,
           "mixed_tokens_per_second": 0,

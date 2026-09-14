@@ -42,7 +42,7 @@
         "measurement": {
           "status": "measured",
           "date": "2026-09-12",
-          "source": "docs/spikes/153-floor-loadout.md (153b)",
+          "source": "infercat-pm/docs/spikes/153-floor-loadout.md (153b)",
           "rss_bytes": 6325501952,
           "tokens_per_second": 114.7,
           "mixed_tokens_per_second": 40,
@@ -114,7 +114,7 @@
         "measurement": {
           "status": "measured",
           "date": "2026-09-12",
-          "source": "docs/spikes/153-floor-loadout.md (153)",
+          "source": "infercat-pm/docs/spikes/153-floor-loadout.md (153)",
           "rss_bytes": 2645213184,
           "tokens_per_second": 0,
           "mixed_tokens_per_second": 0,
@@ -185,7 +185,7 @@
         "measurement": {
           "status": "measured",
           "date": "2026-09-12",
-          "source": "docs/spikes/153-floor-loadout.md (153c)",
+          "source": "infercat-pm/docs/spikes/153-floor-loadout.md (153c)",
           "rss_bytes": 842694656,
           "tokens_per_second": 0,
           "mixed_tokens_per_second": 0,
@@ -320,7 +320,7 @@
         "measurement": {
           "status": "measured",
           "date": "2026-09-12",
-          "source": "docs/spikes/153-floor-loadout.md (153)",
+          "source": "infercat-pm/docs/spikes/153-floor-loadout.md (153)",
           "rss_bytes": 9005432832,
           "tokens_per_second": 0,
           "mixed_tokens_per_second": 0,
