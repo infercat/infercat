@@ -463,7 +463,7 @@ One key is one person. Limits live on the key.
 
   infercat keys add alice              # mint alice and print her invite, once
   infercat keys list
-  infercat keys pause alice            # she gets 403 until you resume
+  infercat keys pause alice            # her messages are refused until you resume
   infercat keys rotate alice           # new invite; the old one stops working
   infercat keys limits alice --rpm 60
 

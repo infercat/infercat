@@ -203,14 +203,14 @@ func bytesWord(n int64) string {
 }
 
 func writeStatus(w io.Writer, st admin.Status) {
-	if st.Console != "" {
-		fmt.Fprintf(w, "console   http://%s/ (infercat console opens it)\n", st.Console)
-	}
 	if st.Mode == "bridge" {
 		writeBridge(w, st)
 		return
 	}
 	fmt.Fprintf(w, "%s %s — up %s\n", st.Product, st.Version, shortDur(time.Duration(st.UptimeS)*time.Second))
+	if st.Console != "" {
+		fmt.Fprintf(w, "console   http://%s/ (infercat console opens it)\n", st.Console)
+	}
 	fmt.Fprintf(w, "upstream  %s  %s  %s  context %s  slots %d\n",
 		kindWord(st.Upstream.Kind), st.Upstream.URL, healthWord(st.Upstream.Healthy, st.Upstream.Since),
 		contextStr(st.Upstream.ModelContext), st.Upstream.Slots)
@@ -246,7 +246,6 @@ func writeStatus(w io.Writer, st admin.Status) {
 	writeSessions(w, st.Tunnel)
 	fmt.Fprintf(w, "queue     %d in flight, %d waiting  (peak %d in flight, sampled)\n", st.Queue.InFlight, st.Queue.Waiting, st.Engine.SlotsPeak)
 	fmt.Fprintf(w, "engine    %s\n", engineWords(st.Engine))
-	fmt.Fprintf(w, "process   %s\n", processWords(st.Process))
 	for _, d := range st.Destinations {
 		if d.ImageAbandons == 1 {
 			fmt.Fprintln(w, "images    1 failed generation; the next counted failure makes the engine suspect")
@@ -343,6 +342,9 @@ func processWords(p admin.Process) string {
 // the path right now, the local endpoint and what is in flight through it.
 func writeBridge(w io.Writer, st admin.Status) {
 	fmt.Fprintf(w, "%s %s — up %s  ·  bridge\n", st.Product, st.Version, shortDur(time.Duration(st.UptimeS)*time.Second))
+	if st.Console != "" {
+		fmt.Fprintf(w, "console   http://%s/ (infercat console opens it)\n", st.Console)
+	}
 	fmt.Fprintf(w, "host      %s  relay %s  %s\n", orDash(st.Name), orDash(st.Tunnel.Region), orDash(tunnel.Display(st.Tunnel.Addr)))
 	path := "lost — reconnecting"
 	if len(st.Tunnel.Sessions) > 0 && st.Tunnel.Sessions[0].Active {
@@ -397,7 +399,7 @@ func shortDur(d time.Duration) string {
 const statusHelp = `Usage: infercat status [--data-dir DIR] [--watch [--interval 1s]]
 
 What the running host is doing right now: the upstream, the tunnel address and relay, every
-session (path, handshake, bytes, age), the queue and the engine's own counters, the process,
+session (path, handshake, bytes, age), the queue and the engine's own counters,
 and every key with its live counters. Reads the admin socket in the data dir; exits non-zero
 when no host is running. Against a bridge (connect --data-dir DIR) it shows that bridge.
 

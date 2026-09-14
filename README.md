@@ -32,7 +32,9 @@ Share the model on your machine with friends. You run one binary in front of the
 
 You need an inference server running (llama.cpp, llama-swap, vLLM, Ollama or LM Studio; any OpenAI-compatible `/v1/chat/completions` works). Your friends need a browser.
 
-**Optional — no engine yet?** [Install Ollama](https://ollama.com/download), then:
+### No engine yet?
+
+[Install Ollama](https://ollama.com/download), then:
 
 ```sh
 ollama serve &      # skip if the Ollama app is already running
@@ -41,7 +43,6 @@ ollama run gemma4
 
 That downloads Gemma 4 (about 10 GB; needs 16 GB of memory; reads images) and opens a chat. Leave it running or type `/bye`; the engine stays up. `infercat serve` finds it.
 
-<a id="no-engine-yet"></a>
 <details>
 <summary><b>Advanced engine configuration</b></summary>
 
@@ -228,7 +229,7 @@ Manage friends: `keys list` · `keys pause alice` (403 until `keys resume`) · `
 
 **Two friends, one invite?** It works, bounded by that key's limits and visible in `usage`. Mint one key per person; it costs nothing.
 
-**What if my machine sleeps?** Friends see "Max's laptop didn't answer" with the reason, and the app retries by itself when the host is back.
+**What if my machine sleeps?** Friends see "Max's laptop — not answering" with the reason, and the app retries by itself when the host is back.
 
 **Which models?** Whatever your engine serves; `--models` on a key restricts what that friend can pick.
 

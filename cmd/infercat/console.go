@@ -37,11 +37,20 @@ func consoleURL(dataDir, address string) (string, error) {
 	return "http://" + address + "/#token=" + url.QueryEscape(strings.TrimSpace(string(token))), nil
 }
 
+const consoleHelp = `Usage: infercat console [--print] [--data-dir DIR]
+
+Open the running host's console in your browser to manage invites, limits and settings.
+The console is local to this machine; use remote access to open it on another device.
+
+  --print         print the console URL without opening a browser
+  --data-dir DIR  use this host data directory
+`
+
 func (e *env) cmdConsole(ctx context.Context, pre string, args []string) error {
 	fs := flag.NewFlagSet("console", flag.ContinueOnError)
 	dd := fs.String("data-dir", pre, dataDirUsage)
 	printOnly := fs.Bool("print", false, "print the console URL without opening a browser")
-	if err := e.parse(fs, "Usage: infercat console [--print] [--data-dir DIR]\n", args); err != nil {
+	if err := e.parse(fs, consoleHelp, args); err != nil {
 		return err
 	}
 	if fs.NArg() != 0 {

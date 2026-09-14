@@ -14,18 +14,26 @@ import (
 // Overridden at build time for the PM's preview; no public configuration flag.
 var bridgeEndpoint = "https://gateway.infercat.ai"
 
+const exposeHelp = `Usage: infercat expose [--register CODE | --on | --off] [--data-dir DIR]
+
+Give this running host a public HTTPS endpoint so clients can reach it without joining
+its tunnel. Register once with a one-time registration code from Infercat; subsequent
+runs use the stored token.
+
+  --register CODE  one-time registration code from Infercat
+  --on             enable this host's public endpoint with its stored token
+  --off            disable this host's public endpoint
+  --data-dir DIR   use this host data directory
+`
+
 func (e *env) cmdExpose(ctx context.Context, dataDir string, args []string) error {
 	fs := flag.NewFlagSet("expose", flag.ContinueOnError)
-	fs.SetOutput(e.errw)
 	fs.StringVar(&dataDir, "data-dir", dataDir, "host data directory")
 	code := fs.String("register", "", "one-time registration code from Infercat")
 	off := fs.Bool("off", false, "disable this host's public endpoint")
 	on := fs.Bool("on", false, "enable this host's public endpoint with its stored token")
-	if err := fs.Parse(args); err != nil {
-		if errors.Is(err, flag.ErrHelp) {
-			return errDone
-		}
-		return errUsage
+	if err := e.parse(fs, exposeHelp, args); err != nil {
+		return err
 	}
 	if fs.NArg() != 0 || (*off && *on) || ((*off || *on) && *code != "") {
 		return errors.New("use expose [--register CODE | --on | --off]")

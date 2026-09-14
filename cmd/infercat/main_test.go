@@ -1091,9 +1091,8 @@ func TestNoEnginePointsToEngineQuickstart(t *testing.T) {
 	if !errors.Is(err, upstream.ErrNoUpstream) {
 		t.Fatalf("error = %v, want no engine", err)
 	}
-	want := "Start llama.cpp, llama-swap, Ollama, LM Studio or vLLM: https://github.com/infercat/infercat#no-engine-yet\n"
-	if output.String() != want {
-		t.Fatalf("hint = %q, want %q", output.String(), want)
+	if output.String() != "" || !strings.HasPrefix(err.Error(), upstream.ErrNoUpstream.Error()) || !strings.Contains(err.Error(), "\n\nStart llama.cpp, llama-swap, Ollama, LM Studio or vLLM: https://github.com/infercat/infercat#no-engine-yet") {
+		t.Fatalf("error must precede remedy: stderr=%q error=%v", output.String(), err)
 	}
 }
 
@@ -1199,4 +1198,19 @@ func TestServeRemembersModelPinAndAllClearsIt(t *testing.T) {
 func (g *fakeGateway) SetRuns(*runstate.Manager) error { return nil }
 func (g *fakeGateway) ExecuteStep(context.Context, string, runstate.Step, func() error) (runstate.StepResult, error) {
 	return runstate.StepResult{}, nil
+}
+
+func TestConsoleAndExposeProductHelp(t *testing.T) {
+	for _, tc := range []struct{ command, prose, flag string }{
+		{"console", "Open the running host's console", "--print"},
+		{"expose", "public HTTPS endpoint", "--register CODE"},
+	} {
+		t.Run(tc.command, func(t *testing.T) {
+			r := exec(t, testPlatform(fakeAddr, nil), tc.command, "-h")
+			out, errw, code := r.out, r.err, r.code
+			if code != 0 || errw != "" || !strings.HasPrefix(out, "Usage: infercat "+tc.command) || !strings.Contains(out, tc.prose) || !strings.Contains(out, tc.flag) {
+				t.Fatalf("help: %d %q %q", code, out, errw)
+			}
+		})
+	}
 }
