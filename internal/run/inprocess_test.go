@@ -41,9 +41,9 @@ func TestInProcessCancelSettlesOnceOnReturn(t *testing.T) {
 				}
 				return StepResult{Output: json.RawMessage(`{}`), Dispatched: true, Settled: true, Usage: usage.Event{Meters: []usage.Meter{{Class: "tokens", Unit: "tokens", Measured: 7, Charged: 7}}}}, ctx.Err()
 			}, nil)
-			m.joinTimeout = 5 * time.Second // Cooperative settlement must tolerate scheduler/disk jitter.
+			m.JoinTimeout = 5 * time.Second // Cooperative settlement must tolerate scheduler/disk jitter.
 			if late {
-				m.joinTimeout = 20 * time.Millisecond // This case exercises the bounded wait.
+				m.JoinTimeout = 20 * time.Millisecond // This case exercises the bounded wait.
 			}
 			if err := m.Register("chat", m.Consumer(func(_ context.Context, w *Work) (json.RawMessage, error) {
 				result, err := w.Step(Step{Input: json.RawMessage(`{}`)})
@@ -131,6 +131,7 @@ func TestInProcessCancelSettlesOnceOnReturn(t *testing.T) {
 }
 
 func TestInProcessTwoKeysExecuteConcurrently(t *testing.T) {
+	t.Parallel()
 	s := store(t)
 	entered := make(chan string, 2)
 	release := make(chan struct{})

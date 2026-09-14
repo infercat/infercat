@@ -18,6 +18,7 @@ func unconfinedHarnessOptionsForTests(dir string) (RuntimeOptions, error) {
 // Explicit live fixture: uses a separate host directory and the installed,
 // pinned runtime. No engine or network model provider is used.
 func TestPinnedHarnessIPC(t *testing.T) {
+	t.Parallel()
 	installed := os.Getenv("INFERCAT_AGENT_TEST_INSTALL")
 	if installed == "" {
 		t.Skip("set INFERCAT_AGENT_TEST_INSTALL for the pinned harness proof")

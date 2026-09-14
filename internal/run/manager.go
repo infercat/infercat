@@ -12,18 +12,19 @@ import (
 
 // Manager serializes control operations; engine work runs outside its mutex and the store lock.
 type Manager struct {
-	Store       *Store
-	Execute     Executor
-	Kinds       map[string]Kind
-	Policies    map[string]Policy
-	mu          sync.Mutex
-	active      map[string]*execution
-	ctx         context.Context
-	cancel      context.CancelFunc
-	wg          sync.WaitGroup
-	started     bool
-	sweeping    bool
-	joinTimeout time.Duration
+	Store    *Store
+	Execute  Executor
+	Kinds    map[string]Kind
+	Policies map[string]Policy
+	mu       sync.Mutex
+	active   map[string]*execution
+	ctx      context.Context
+	cancel   context.CancelFunc
+	wg       sync.WaitGroup
+	started  bool
+	sweeping bool
+	// JoinTimeout is a per-instance test hook; zero uses the 30-second production default.
+	JoinTimeout time.Duration
 	stopTimeout time.Duration
 	blocked     map[string]int
 	quarantined map[string]bool
@@ -45,7 +46,7 @@ type execution struct {
 
 func New(s *Store, exec Executor, kinds map[string]Kind) (*Manager, error) {
 	ctx, cancel := context.WithCancel(context.Background())
-	m := &Manager{Store: s, Execute: exec, Kinds: maps.Clone(kinds), joinTimeout: 30 * time.Second, stopTimeout: 10 * time.Second, blocked: map[string]int{}, active: map[string]*execution{}, ctx: ctx, cancel: cancel}
+	m := &Manager{Store: s, Execute: exec, Kinds: maps.Clone(kinds), stopTimeout: 10 * time.Second, blocked: map[string]int{}, active: map[string]*execution{}, ctx: ctx, cancel: cancel}
 	s.mu.Lock()
 	s.recovery = true
 	for key := range s.data {
@@ -535,7 +536,7 @@ func (m *Manager) Close() {
 		m.boundJoin(Run{ID: id, KeyID: w.key}, w)
 	}
 	m.mu.Unlock()
-	deadline := time.NewTimer(m.joinTimeout + m.stopTimeout)
+	deadline := time.NewTimer(m.joinTimeout() + m.stopTimeout)
 	defer deadline.Stop()
 	for _, w := range workers {
 		select {
@@ -556,3 +557,10 @@ func (m *Manager) Close() {
 
 // Done lets transports leave when host shutdown cancels the manager.
 func (m *Manager) Done() <-chan struct{} { return m.ctx.Done() }
+
+func (m *Manager) joinTimeout() time.Duration {
+	if m.JoinTimeout == 0 {
+		return 30 * time.Second
+	}
+	return m.JoinTimeout
+}

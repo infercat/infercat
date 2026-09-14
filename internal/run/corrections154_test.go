@@ -9,6 +9,7 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 )
 
@@ -47,6 +48,7 @@ func ceilingFixtureAt(t *testing.T, s *Store, r Run, headroom, ceiling int) {
 	s.data[r.KeyID] = v
 }
 func Test154DeferredCancelCannotDispatchAnotherStep(t *testing.T) {
+	t.Parallel()
 	for _, output := range []json.RawMessage{json.RawMessage(`{"image":1}`), nil} {
 		s := store(t)
 		entered, release := make(chan struct{}), make(chan struct{})
@@ -79,6 +81,7 @@ func Test154DeferredCancelCannotDispatchAnotherStep(t *testing.T) {
 	}
 }
 func Test154TerminalBudgetFallbackAndLazyRecovery(t *testing.T) {
+	t.Parallel()
 	s := store(t)
 	filler := create(t, s, "k_a")
 	r := create(t, s, "k_a")
@@ -122,6 +125,7 @@ func Test154TerminalBudgetFallbackAndLazyRecovery(t *testing.T) {
 	}
 }
 func Test154BrokenKeyDoesNotBlockBootSweepOrIdleRelease(t *testing.T) {
+	t.Parallel()
 	s := store(t)
 	now := time.Now()
 	s.now = func() time.Time { return now }
@@ -159,6 +163,11 @@ func Test154BrokenKeyDoesNotBlockBootSweepOrIdleRelease(t *testing.T) {
 	}
 }
 func Test154FailedAttemptStopsSerialAndReasonDoesNotLeak(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, test154FailedAttemptStopsSerialAndReasonDoesNotLeak)
+}
+
+func test154FailedAttemptStopsSerialAndReasonDoesNotLeak(t *testing.T) {
 	s := store(t)
 	var starts atomic.Int32
 	m := manager(t, s, func(context.Context, string, Step, func() error) (StepResult, error) {
@@ -195,6 +204,7 @@ func Test154FailedAttemptStopsSerialAndReasonDoesNotLeak(t *testing.T) {
 	}
 }
 func Test154SettlementErrorDistinguishesSuccessfulCall(t *testing.T) {
+	t.Parallel()
 	s := store(t)
 	m := manager(t, s, func(ctx context.Context, _ string, _ Step, a func() error) (StepResult, error) {
 		if err := a(); err != nil {
@@ -221,13 +231,18 @@ func Test154SettlementErrorDistinguishesSuccessfulCall(t *testing.T) {
 	}
 }
 func Test154JoinDeadlineAndRegistrationFreeze(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, test154JoinDeadlineAndRegistrationFreeze)
+}
+
+func test154JoinDeadlineAndRegistrationFreeze(t *testing.T) {
 	s := store(t)
 	kinds := map[string]Kind{"unused": func(context.Context, Run) (Decision, error) { return Decision{}, nil }}
 	m, err := New(s, nil, kinds)
 	if err != nil {
 		t.Fatal(err)
 	}
-	m.joinTimeout = 30 * time.Millisecond
+	m.JoinTimeout = 30 * time.Millisecond
 	delete(kinds, "unused")
 	if m.Kinds["unused"] == nil {
 		t.Fatal("caller map aliased")
@@ -259,6 +274,7 @@ func Test154JoinDeadlineAndRegistrationFreeze(t *testing.T) {
 	}
 }
 func Test154CapturedMetadataAndOneCancelledNote(t *testing.T) {
+	t.Parallel()
 	s := store(t)
 	r := create(t, s, "k_a")
 	release, _ := s.Admit(r.KeyID, r.ID, 8192)
@@ -284,6 +300,11 @@ func Test154CapturedMetadataAndOneCancelledNote(t *testing.T) {
 }
 
 func Test154CancelAcquisitionRaceUsesCommittedState(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, test154CancelAcquisitionRaceUsesCommittedState)
+}
+
+func test154CancelAcquisitionRaceUsesCommittedState(t *testing.T) {
 	for range 40 {
 		s := store(t)
 		ready, release := make(chan struct{}), make(chan struct{})
@@ -325,6 +346,7 @@ func Test154CancelAcquisitionRaceUsesCommittedState(t *testing.T) {
 // Keep one real-size allocation/load boundary; the semantic fixtures above use
 // 1 MiB but keep the same byte-exact headroom and terminal-reserve assertions.
 func TestProductionStorageCeiling(t *testing.T) {
+	t.Parallel()
 	s := store(t)
 	if s.maxStored != 64<<20 {
 		t.Fatal("production ceiling changed", s.maxStored)

@@ -78,7 +78,7 @@ func (m *Manager) boundJoin(r Run, w *execution) {
 	w.join.Do(func() {
 		go func() {
 			defer close(w.joined)
-			timer := time.NewTimer(m.joinTimeout)
+			timer := time.NewTimer(m.joinTimeout())
 			defer timer.Stop()
 			select {
 			case <-w.done:

@@ -11,6 +11,7 @@ import (
 )
 
 func TestStoredMetadataAndExactCachedBytes(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	s, err := NewStore(dir)
 	if err != nil {
@@ -67,6 +68,7 @@ func TestStoredMetadataAndExactCachedBytes(t *testing.T) {
 	}
 }
 func TestStoredBoundedListAndLiveKinds(t *testing.T) {
+	t.Parallel()
 	s, _ := NewStore(t.TempDir())
 	v, _ := s.load("k_a")
 	for i := 0; i < MaxRuns; i++ {
@@ -122,6 +124,7 @@ func BenchmarkStored(b *testing.B) {
 }
 
 func TestClearTerminalKeepsLiveAndOtherKeys(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	s, _ := NewStore(dir)
 	live, _ := s.Create("k_a", "agent", "interactive", json.RawMessage(`{"keep":"live input"}`))
@@ -172,6 +175,7 @@ func TestClearTerminalKeepsLiveAndOtherKeys(t *testing.T) {
 	}
 }
 func TestClearCommitFailureNeverUnlinks(t *testing.T) {
+	t.Parallel()
 	s, _ := NewStore(t.TempDir())
 	r, _ := s.Create("k_a", "image", "interactive", json.RawMessage(`{}`))
 	out, _ := s.PutImage("k_a", r.ID, []byte("keep"), "image/png", 1, 1)
@@ -185,6 +189,7 @@ func TestClearCommitFailureNeverUnlinks(t *testing.T) {
 	}
 }
 func TestClearTracksPerKeyCleanupAndRetriesWithoutLiveRemoval(t *testing.T) {
+	t.Parallel()
 	s, _ := NewStore(t.TempDir())
 	r, _ := s.Create("k_a", "image", "interactive", json.RawMessage(`{}`))
 	proof, _ := json.Marshal(ImageOutput{URL: "/v1/images/outputs/" + r.ID, Bytes: 1, ExpiresAt: time.Now().Add(time.Hour)})
@@ -212,6 +217,7 @@ func TestClearTracksPerKeyCleanupAndRetriesWithoutLiveRemoval(t *testing.T) {
 }
 
 func TestStoredCacheSurvivesCloneAndUnknownOrphanSurvivesClear(t *testing.T) {
+	t.Parallel()
 	s, _ := NewStore(t.TempDir())
 	r, _ := s.Create("k_a", "image", "interactive", json.RawMessage(`{}`))
 	s.change("k_a", r.ID, func(r *Run) error { r.State = Done; return nil })
@@ -253,6 +259,7 @@ func clearTest(s *Store, key string) error {
 }
 
 func TestClearExcludesOutstandingTerminalWorkers(t *testing.T) {
+	t.Parallel()
 	for _, expired := range []bool{false, true} {
 		s, _ := NewStore(t.TempDir())
 		r, _ := s.Create("k_a", "agent", "interactive", json.RawMessage(`{}`))
@@ -279,6 +286,7 @@ func TestClearExcludesOutstandingTerminalWorkers(t *testing.T) {
 	}
 }
 func TestClearResetAndConfirmationPrecondition(t *testing.T) {
+	t.Parallel()
 	s, _ := NewStore(t.TempDir())
 	dead, _ := s.Create("k_a", "agent", "interactive", json.RawMessage(`{}`))
 	s.change("k_a", dead.ID, func(r *Run) error { r.State = Done; return nil })
@@ -326,6 +334,7 @@ func TestClearResetAndConfirmationPrecondition(t *testing.T) {
 	}
 }
 func TestClearCrashAfterCommitRecoversCleanupIntent(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	s, _ := NewStore(dir)
 	r, _ := s.Create("k_a", "image", "interactive", json.RawMessage(`{}`))
@@ -421,6 +430,7 @@ func BenchmarkStoredCommit(b *testing.B) {
 }
 
 func TestStoredReadOrderingExpiryAndEligibleCleanup(t *testing.T) {
+	t.Parallel()
 	s, _ := NewStore(t.TempDir())
 	v, _ := s.load("k_a")
 	now := time.Now().UTC()
@@ -461,6 +471,7 @@ func TestStoredReadOrderingExpiryAndEligibleCleanup(t *testing.T) {
 }
 
 func TestClearEmptyDirectoryDoesNotLogAnOrphan(t *testing.T) {
+	t.Parallel()
 	s, _ := NewStore(t.TempDir())
 	os.MkdirAll(filepath.Join(s.root, "k_a", "images"), 0700)
 	calls := 0
@@ -473,6 +484,7 @@ func TestClearEmptyDirectoryDoesNotLogAnOrphan(t *testing.T) {
 	}
 }
 func TestStoredRejectsUnprovenCleanupIntentOnLoad(t *testing.T) {
+	t.Parallel()
 	for _, rid := range []string{"../outside", "r_live"} {
 		dir := t.TempDir()
 		s, _ := NewStore(dir)
@@ -491,6 +503,7 @@ func TestStoredRejectsUnprovenCleanupIntentOnLoad(t *testing.T) {
 }
 
 func TestStoredObservedOrphansNeverBecomeCleanupAuthority(t *testing.T) {
+	t.Parallel()
 	s, _ := NewStore(t.TempDir())
 	v, _ := s.load("k_a")
 	dir := filepath.Join(s.root, "k_a", "images")
@@ -525,6 +538,7 @@ func TestStoredObservedOrphansNeverBecomeCleanupAuthority(t *testing.T) {
 	}
 }
 func TestClearPrunesOnlyRemovedExceptionAllowances(t *testing.T) {
+	t.Parallel()
 	s, _ := NewStore(t.TempDir())
 	a, _ := s.Create("k_a", "agent", "interactive", json.RawMessage(`{}`))
 	b, _ := s.Create("k_a", "agent", "interactive", json.RawMessage(`{}`))
@@ -543,6 +557,7 @@ func TestClearPrunesOnlyRemovedExceptionAllowances(t *testing.T) {
 }
 
 func TestStoredSweepKeepsFailedProvenIntentWithLiveRuns(t *testing.T) {
+	t.Parallel()
 	s, _ := NewStore(t.TempDir())
 	s.Log = func(string, ...any) {}
 	s.Create("k_a", "agent", "interactive", json.RawMessage(`{}`))
@@ -565,6 +580,7 @@ func TestStoredSweepKeepsFailedProvenIntentWithLiveRuns(t *testing.T) {
 }
 
 func TestExpiryCrashRetainsProvenCleanupIntent(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	s, _ := NewStore(dir)
 	r, _ := s.Create("k_a", "image", "interactive", json.RawMessage(`{}`))
@@ -606,6 +622,7 @@ func TestExpiryCrashRetainsProvenCleanupIntent(t *testing.T) {
 	}
 }
 func TestClearPostCommitFailureReportsCommittedOutcome(t *testing.T) {
+	t.Parallel()
 	s, _ := NewStore(t.TempDir())
 	r, _ := s.Create("k_a", "image", "interactive", json.RawMessage(`{}`))
 	out, _ := s.PutImage("k_a", r.ID, []byte("clear"), "image/png", 1, 1)
@@ -633,6 +650,7 @@ func TestClearPostCommitFailureReportsCommittedOutcome(t *testing.T) {
 	}
 }
 func TestOrphanAcrossTwoClearsRemainsReportOnly(t *testing.T) {
+	t.Parallel()
 	s, _ := NewStore(t.TempDir())
 	r, _ := s.Create("k_a", "agent", "interactive", json.RawMessage(`{}`))
 	s.change("k_a", r.ID, func(r *Run) error { r.State = Done; return nil })
@@ -654,6 +672,7 @@ func TestOrphanAcrossTwoClearsRemainsReportOnly(t *testing.T) {
 }
 
 func TestPutImageCommitFailureTracksOwnUnlinkFailure(t *testing.T) {
+	t.Parallel()
 	s, _ := NewStore(t.TempDir())
 	r, _ := s.Create("k_a", "image", "interactive", json.RawMessage(`{}`))
 	path := s.artifactPath("k_a", r.ID)
@@ -698,6 +717,7 @@ func BenchmarkStoredCeiling(b *testing.B) {
 }
 
 func TestStoredReadDoesNotRefreshResidency(t *testing.T) {
+	t.Parallel()
 	s, _ := NewStore(t.TempDir())
 	s.Create("k_a", "agent", "interactive", json.RawMessage(`{}`))
 	old := time.Now().Add(-time.Hour)
@@ -710,6 +730,7 @@ func TestStoredReadDoesNotRefreshResidency(t *testing.T) {
 	}
 }
 func TestSweepDoesNotResurrectRetiredIntentFromCallerClone(t *testing.T) {
+	t.Parallel()
 	s, _ := NewStore(t.TempDir())
 	r, _ := s.Create("k_a", "image", "interactive", json.RawMessage(`{}`))
 	out, _ := s.PutImage("k_a", r.ID, []byte("image"), "image/png", 1, 1)
@@ -740,6 +761,7 @@ func TestSweepDoesNotResurrectRetiredIntentFromCallerClone(t *testing.T) {
 }
 
 func TestImageCleanupCountsSeparateProvenAndObserved(t *testing.T) {
+	t.Parallel()
 	s, _ := NewStore(t.TempDir())
 	s.imageCleanup = map[string]bool{"proven": true}
 	s.imageOrphans = map[string]bool{"observed": true, "proven": true}
@@ -750,6 +772,7 @@ func TestImageCleanupCountsSeparateProvenAndObserved(t *testing.T) {
 }
 
 func TestAtomicImageTempCrashIsCollectedForEmptyAndLiveSnapshots(t *testing.T) {
+	t.Parallel()
 	for _, live := range []bool{false, true} {
 		dir := t.TempDir()
 		s, _ := NewStore(dir)
@@ -785,6 +808,7 @@ func TestAtomicImageTempCrashIsCollectedForEmptyAndLiveSnapshots(t *testing.T) {
 	}
 }
 func TestCleanupOnlyClearPreservesCursorAndReportsRetry(t *testing.T) {
+	t.Parallel()
 	s, _ := NewStore(t.TempDir())
 	s.Create("k_a", "agent", "interactive", json.RawMessage(`{}`))
 	path := s.artifactPath("k_a", "r_deleted")
@@ -818,6 +842,7 @@ func TestCleanupOnlyClearPreservesCursorAndReportsRetry(t *testing.T) {
 	}
 }
 func TestFailedImageScanPreservesReviewObservations(t *testing.T) {
+	t.Parallel()
 	s, _ := NewStore(t.TempDir())
 	v, _ := s.load("k_a")
 	dir := filepath.Join(s.root, "k_a", "images")
@@ -848,6 +873,7 @@ func TestFailedImageScanPreservesReviewObservations(t *testing.T) {
 }
 
 func TestDeletedTerminalIDsRetainRenameCrashCleanupAuthority(t *testing.T) {
+	t.Parallel()
 	for _, door := range []string{"clear", "expiry"} {
 		for _, kind := range []string{"image", "agent"} {
 			t.Run(door+"/"+kind, func(t *testing.T) {
@@ -892,6 +918,7 @@ func TestDeletedTerminalIDsRetainRenameCrashCleanupAuthority(t *testing.T) {
 	}
 }
 func TestStateWriteTempsCollectedOnColdLoadAndSweep(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	s, _ := NewStore(dir)
 	s.Create("k_a", "agent", "interactive", json.RawMessage(`{}`))

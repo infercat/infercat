@@ -16,6 +16,7 @@ import (
 )
 
 func TestPinnedAdapterAcknowledgesBeforeModelAndCapturesNativeWrite(t *testing.T) {
+	t.Parallel()
 	installed := os.Getenv("INFERCAT_AGENT_TEST_INSTALL")
 	if installed == "" {
 		t.Skip("explicit pinned runtime fixture")
@@ -197,6 +198,7 @@ func formatJSON(v any) string {
 }
 
 func TestPinnedAdapterCancellationRetainsFinalPrefix(t *testing.T) {
+	t.Parallel()
 	installed := os.Getenv("INFERCAT_AGENT_TEST_INSTALL")
 	if installed == "" {
 		t.Skip("explicit pinned runtime fixture")
@@ -281,6 +283,7 @@ func TestPinnedAdapterCancellationRetainsFinalPrefix(t *testing.T) {
 }
 
 func TestAdapterInputRefusesUnsupportedBeforeCreation(t *testing.T) {
+	t.Parallel()
 	for _, raw := range []string{
 		`{"model":"m","messages":[{"role":"user","content":[{"type":"audio","data":"x"}]}]}`,
 		`{"model":"m","messages":[{"role":"user","content":"hi"}],"unsupported":true}`,
@@ -293,6 +296,7 @@ func TestAdapterInputRefusesUnsupportedBeforeCreation(t *testing.T) {
 }
 
 func TestPinnedNativeApprovalAllowAndDeny(t *testing.T) {
+	t.Parallel()
 	installed := os.Getenv("INFERCAT_AGENT_TEST_INSTALL")
 	if installed == "" {
 		t.Skip("explicit pinned approval fixture")
@@ -428,6 +432,7 @@ func TestPinnedNativeApprovalAllowAndDeny(t *testing.T) {
 }
 
 func TestPinnedForceStopRestartsSupervisor(t *testing.T) {
+	t.Parallel()
 	installed := os.Getenv("INFERCAT_AGENT_TEST_INSTALL")
 	if installed == "" {
 		t.Skip("explicit pinned generation fixture")

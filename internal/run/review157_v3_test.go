@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 )
 
@@ -27,102 +28,109 @@ func exhaust157(t *testing.T, s *Store, filler Run, rid string) {
 	v.encodedBytes = len(raw)
 }
 func Test157V3CommittedTerminalStopsOwnedConsumer(t *testing.T) {
+	t.Parallel()
 	for _, mode := range []string{"answer", "cancel", "already_terminal"} {
 		t.Run(mode, func(t *testing.T) {
-			s := store(t)
-			m := manager(t, s, nil, nil)
-			m.joinTimeout = 30 * time.Millisecond
-			m.stopTimeout = 100 * time.Millisecond
-			wedge := make(chan struct{})
-			var calls, stops atomic.Int32
-			if err := m.Register("test", m.Consumer(func(ctx context.Context, w *Work) (json.RawMessage, error) {
-				if calls.Add(1) > 1 {
-					return json.RawMessage(`{}`), nil
-				}
-				if mode == "answer" {
-					_, err := w.Approval("ap_1", "may I?")
-					return nil, err
-				}
-				<-wedge
-				return nil, nil
-			}), Policy{Serial: true, JoinCancel: true, ForceStop: func(string) error {
-				if stops.Add(1) == 1 {
-					close(wedge)
-				}
-
-				return nil
-			}}); err != nil {
-				t.Fatal(err)
-			}
-			defer func() {
-				select {
-				case <-wedge:
-				default:
-					close(wedge)
-				}
-			}()
-			filler := create(t, s, "key")
-			s.change("key", filler.ID, func(v *Run) error { v.State = Done; return nil })
-			r, err := m.Submit("key", "test", "", json.RawMessage(`{}`))
-			if err != nil {
-				t.Fatal(err)
-			}
-			want := Queued
-			if mode == "answer" {
-				want = Waiting
-			}
-			await(t, func() bool { return calls.Load() == 1 && state(s, r) == want })
-			exhaust157(t, s, filler, r.ID)
-			var got Run
-			if mode == "answer" {
-				got, err = m.Answer("key", r.ID, "ap_1", true)
-			} else {
-				if mode == "already_terminal" {
-					_, err = s.change("key", r.ID, func(v *Run) error { v.State = Failed; v.Reason = "fixture failure"; return nil })
-					if err != nil && !committedTerminal(err) {
-						t.Fatal(err)
-					}
-				}
-				got, err = m.Cancel("key", r.ID)
-			}
-			if mode != "already_terminal" {
-				var ended *CommittedTerminal
-				if !errors.As(err, &ended) || errors.Is(err, ErrLimit) || ended.Run.ID != r.ID || ended.Run.State != Failed {
-					t.Fatal("ambiguous outcome", got.State, err)
-				}
-			} else if err != nil {
-				t.Fatal(err)
-			}
-			awaitFor(t, 10*time.Second, "", func() bool {
-				m.mu.Lock()
-				defer m.mu.Unlock()
-				return m.active[r.ID] == nil
-			})
-			m.mu.Lock()
-			active := m.active[r.ID] != nil
-			m.mu.Unlock()
-			if active {
-				t.Fatal("terminal row stranded worker")
-			}
-			if mode != "answer" && stops.Load() != 1 {
-				t.Fatal("force-stop not armed", stops.Load())
-			}
-			next, err := m.Submit("other", "test", "", json.RawMessage(`{}`))
-			if err != nil {
-				t.Fatal(err)
-			}
-			// CI's race-instrumented ceiling snapshot can hold the store lock longer
-			// than the small-fixture helper's three-second budget. Keep all owner/
-			// force-stop assertions above; allow the follow-on disk work to finish.
-			awaitFor(t, 30*time.Second, "", func() bool { return state(s, next) == Done })
-			finished, err := s.Get(next.KeyID, next.ID)
-			if err != nil || finished.State != Done {
-				t.Fatalf("follow-on serial run did not finish: state=%s reason=%q calls=%d stops=%d err=%v", finished.State, finished.Reason, calls.Load(), stops.Load(), err)
-			}
+			synctest.Test(t, func(t *testing.T) { test157V3CommittedTerminalStopsOwnedConsumer(t, mode) })
 		})
 	}
 }
+
+func test157V3CommittedTerminalStopsOwnedConsumer(t *testing.T, mode string) {
+	s := store(t)
+	m := manager(t, s, nil, nil)
+	m.JoinTimeout = 30 * time.Millisecond
+	m.stopTimeout = 100 * time.Millisecond
+	wedge := make(chan struct{})
+	var calls, stops atomic.Int32
+	if err := m.Register("test", m.Consumer(func(ctx context.Context, w *Work) (json.RawMessage, error) {
+		if calls.Add(1) > 1 {
+			return json.RawMessage(`{}`), nil
+		}
+		if mode == "answer" {
+			_, err := w.Approval("ap_1", "may I?")
+			return nil, err
+		}
+		<-wedge
+		return nil, nil
+	}), Policy{Serial: true, JoinCancel: true, ForceStop: func(string) error {
+		if stops.Add(1) == 1 {
+			close(wedge)
+		}
+
+		return nil
+	}}); err != nil {
+		t.Fatal(err)
+	}
+	defer func() {
+		select {
+		case <-wedge:
+		default:
+			close(wedge)
+		}
+	}()
+	filler := create(t, s, "key")
+	s.change("key", filler.ID, func(v *Run) error { v.State = Done; return nil })
+	r, err := m.Submit("key", "test", "", json.RawMessage(`{}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := Queued
+	if mode == "answer" {
+		want = Waiting
+	}
+	await(t, func() bool { return calls.Load() == 1 && state(s, r) == want })
+	exhaust157(t, s, filler, r.ID)
+	var got Run
+	if mode == "answer" {
+		got, err = m.Answer("key", r.ID, "ap_1", true)
+	} else {
+		if mode == "already_terminal" {
+			_, err = s.change("key", r.ID, func(v *Run) error { v.State = Failed; v.Reason = "fixture failure"; return nil })
+			if err != nil && !committedTerminal(err) {
+				t.Fatal(err)
+			}
+		}
+		got, err = m.Cancel("key", r.ID)
+	}
+	if mode != "already_terminal" {
+		var ended *CommittedTerminal
+		if !errors.As(err, &ended) || errors.Is(err, ErrLimit) || ended.Run.ID != r.ID || ended.Run.State != Failed {
+			t.Fatal("ambiguous outcome", got.State, err)
+		}
+	} else if err != nil {
+		t.Fatal(err)
+	}
+	awaitFor(t, 10*time.Second, "", func() bool {
+		m.mu.Lock()
+		defer m.mu.Unlock()
+		return m.active[r.ID] == nil
+	})
+	m.mu.Lock()
+	active := m.active[r.ID] != nil
+	m.mu.Unlock()
+	if active {
+		t.Fatal("terminal row stranded worker")
+	}
+	if mode != "answer" && stops.Load() != 1 {
+		t.Fatal("force-stop not armed", stops.Load())
+	}
+	next, err := m.Submit("other", "test", "", json.RawMessage(`{}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	// CI's race-instrumented ceiling snapshot can hold the store lock longer
+	// than the small-fixture helper's three-second budget. Keep all owner/
+	// force-stop assertions above; allow the follow-on disk work to finish.
+	awaitFor(t, 30*time.Second, "", func() bool { return state(s, next) == Done })
+	finished, err := s.Get(next.KeyID, next.ID)
+	if err != nil || finished.State != Done {
+		t.Fatalf("follow-on serial run did not finish: state=%s reason=%q calls=%d stops=%d err=%v", finished.State, finished.Reason, calls.Load(), stops.Load(), err)
+	}
+}
+
 func Test157V3FailedWriteReturnsNoCommittedClone(t *testing.T) {
+	t.Parallel()
 	s := store(t)
 	r := create(t, s, "key")
 	s.write = func(string, []byte) error { return ErrLimit }
@@ -136,6 +144,7 @@ func Test157V3FailedWriteReturnsNoCommittedClone(t *testing.T) {
 	}
 }
 func Test157V3WaitingQuarantineAndStopping(t *testing.T) {
+	t.Parallel()
 	s := store(t)
 	m := manager(t, s, nil, nil)
 	if err := m.Register("bad", nil, Policy{JoinCancel: true, ForceStop: func(string) error {
@@ -177,9 +186,14 @@ func Test157V3WaitingQuarantineAndStopping(t *testing.T) {
 }
 
 func Test157V3StopWaiterEndsBeforeHookReturns(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, test157V3StopWaiterEndsBeforeHookReturns)
+}
+
+func test157V3StopWaiterEndsBeforeHookReturns(t *testing.T) {
 	s := store(t)
 	m := manager(t, s, nil, nil)
-	m.joinTimeout = 15 * time.Millisecond
+	m.JoinTimeout = 15 * time.Millisecond
 	m.stopTimeout = 30 * time.Millisecond
 	entered, hook, release := make(chan struct{}), make(chan struct{}), make(chan struct{})
 	defer close(release)
@@ -221,6 +235,7 @@ func Test157V3StopWaiterEndsBeforeHookReturns(t *testing.T) {
 }
 
 func Test157V3AnswerAlreadyDeadReturnsCommittedSnapshot(t *testing.T) {
+	t.Parallel()
 	s := store(t)
 	m := manager(t, s, nil, nil)
 	r := create(t, s, "key")

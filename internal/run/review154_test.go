@@ -9,6 +9,7 @@ import (
 
 // Every retained-payload write publishes a run-state event on the per-key SSE.
 func TestAdv4RetainPublishesStateEvents(t *testing.T) {
+	t.Parallel()
 	s := store(t)
 	r := create(t, s, "k_a")
 	release, err := s.Admit(r.KeyID, r.ID, 1<<20)
@@ -49,6 +50,7 @@ func TestAdv4RetainPublishesStateEvents(t *testing.T) {
 
 // Answer distinguishes a foreign live run id from an unknown one.
 func TestAdv4AnswerExistenceOracle(t *testing.T) {
+	t.Parallel()
 	s := store(t)
 	m := manager(t, s, nil, nil)
 	m.Register("test", m.Consumer(func(ctx context.Context, w *Work) (json.RawMessage, error) {

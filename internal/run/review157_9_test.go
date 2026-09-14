@@ -7,6 +7,7 @@ import (
 )
 
 func Test157ArtifactReadyAndGonePublish(t *testing.T) {
+	t.Parallel()
 	s := store(t)
 	img, err := s.Create("k_a", "image", "interactive", json.RawMessage(`{"prompt":"a cat"}`))
 	if err != nil {

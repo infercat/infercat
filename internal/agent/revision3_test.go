@@ -9,6 +9,7 @@ import (
 )
 
 func Test116CResultLinesAcceptCRLF(t *testing.T) {
+	t.Parallel()
 	for _, raw := range []string{"HTTP/1.1 200 OK\r\nheader: value", "line one\r\nline two", "search snippet\r\nnext", "embedded\rreturn"} {
 		s := invalidStepNote()
 		s.Result = oneLine(raw)

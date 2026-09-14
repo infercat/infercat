@@ -94,6 +94,7 @@ func TestAdapterBoundaryProcess(t *testing.T) {
 }
 
 func TestAdapterRefusesDispatchWhenPrefixCannotBeRetained(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	store, _ := runstate.NewStore(dir)
 	ks, _ := keys.NewFileStore(dir)
@@ -143,6 +144,7 @@ func TestAdapterRefusesDispatchWhenPrefixCannotBeRetained(t *testing.T) {
 }
 
 func TestApprovalIPCCommitsOnceAndKeepsToolReservation(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	store, _ := runstate.NewStore(dir)
 	ks, _ := keys.NewFileStore(dir)
@@ -223,6 +225,7 @@ func TestApprovalIPCCommitsOnceAndKeepsToolReservation(t *testing.T) {
 }
 
 func Test116CNativeCRLFResultSettlesWithoutAbort(t *testing.T) {
+	t.Parallel()
 	for _, mode := range []string{"crlf", "invalid", "batch"} {
 		t.Run(mode, func(t *testing.T) {
 			invalid := mode == "invalid"

@@ -12,6 +12,7 @@ import (
 
 // Review zadv157d: one run must not earn another 4 KiB on each lifecycle flip.
 func Test157V2ExceptionPerRunSurvivesRestart(t *testing.T) {
+	t.Parallel()
 	s := store(t)
 	now := time.Now().UTC()
 	s.now = func() time.Time { return now }
@@ -83,6 +84,7 @@ func Test157V2ExceptionPerRunSurvivesRestart(t *testing.T) {
 }
 
 func Test157V2AbsoluteCapTrimsReplayNotEvidence(t *testing.T) {
+	t.Parallel()
 	s := store(t)
 	filler := create(t, s, "key")
 	r, err := s.Create("key", "image", "interactive", json.RawMessage(`{}`))
@@ -164,6 +166,7 @@ func Test157V2AbsoluteCapTrimsReplayNotEvidence(t *testing.T) {
 }
 
 func Test157V2FullRecoveryContinuesAfterMinimalTerminal(t *testing.T) {
+	t.Parallel()
 	s := store(t)
 	filler, a, b := create(t, s, "key"), create(t, s, "key"), create(t, s, "key")
 	s.change(filler.KeyID, filler.ID, func(v *Run) error { v.State = Done; return nil })

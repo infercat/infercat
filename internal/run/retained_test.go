@@ -12,6 +12,7 @@ import (
 )
 
 func TestRetainedOwnerIsolationImmutabilityAndRestart(t *testing.T) {
+	t.Parallel()
 	s := store(t)
 	r := create(t, s, "k_a")
 	if e := s.Retain(r.KeyID, r.ID, json.RawMessage(`{}`), nil, nil); !errors.Is(e, ErrLimit) {
@@ -60,6 +61,7 @@ func TestRetainedOwnerIsolationImmutabilityAndRestart(t *testing.T) {
 }
 
 func TestExpiryRemovesRetainedPayloadAndAdmission(t *testing.T) {
+	t.Parallel()
 	s := store(t)
 	now := time.Now().UTC()
 	s.now = func() time.Time { return now }
@@ -96,6 +98,7 @@ func TestExpiryRemovesRetainedPayloadAndAdmission(t *testing.T) {
 }
 
 func TestConcurrentRetainedAdmissionCannotOvercommit(t *testing.T) {
+	t.Parallel()
 	s := store(t)
 	a, b := create(t, s, "k_a"), create(t, s, "k_a")
 	var wg sync.WaitGroup
@@ -139,6 +142,7 @@ func TestConcurrentRetainedAdmissionCannotOvercommit(t *testing.T) {
 }
 
 func TestRetainedBoundsAndFailedWriteNeverPublish(t *testing.T) {
+	t.Parallel()
 	s := store(t)
 	r := create(t, s, "k_a")
 	release, err := s.Admit(r.KeyID, r.ID, 2048)
@@ -177,6 +181,7 @@ func TestRetainedBoundsAndFailedWriteNeverPublish(t *testing.T) {
 }
 
 func Test116EDiffDescriptorRoundTrip(t *testing.T) {
+	t.Parallel()
 	s := store(t)
 	r := create(t, s, "k_diff")
 	release, err := s.Admit(r.KeyID, r.ID, 8192)

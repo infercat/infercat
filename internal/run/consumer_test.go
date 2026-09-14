@@ -13,6 +13,7 @@ import (
 )
 
 func TestConsumerCancelWaitsForCleanupInEveryLiveState(t *testing.T) {
+	t.Parallel()
 	for _, phase := range []State{Queued, Running, Waiting} {
 		t.Run(string(phase), func(t *testing.T) {
 			s := store(t)
@@ -80,6 +81,7 @@ func TestConsumerCancelWaitsForCleanupInEveryLiveState(t *testing.T) {
 }
 
 func TestConsumerApprovalCommitsBeforeDeliveryAndNeverReplays(t *testing.T) {
+	t.Parallel()
 	s := store(t)
 	var deliveries atomic.Int32
 	m := manager(t, s, nil, nil)
@@ -123,6 +125,7 @@ func TestConsumerApprovalCommitsBeforeDeliveryAndNeverReplays(t *testing.T) {
 }
 
 func TestConsumerFailedApprovalCommitNeverDelivers(t *testing.T) {
+	t.Parallel()
 	s := store(t)
 	var delivered atomic.Bool
 	m := manager(t, s, nil, nil)
@@ -155,6 +158,7 @@ func TestConsumerFailedApprovalCommitNeverDelivers(t *testing.T) {
 }
 
 func TestConsumerUsesSharedAttemptLedgerForEveryModelCall(t *testing.T) {
+	t.Parallel()
 	s := store(t)
 	var calls atomic.Int32
 	m := manager(t, s, func(ctx context.Context, key string, _ Step, acquired func() error) (StepResult, error) {
@@ -194,6 +198,7 @@ func TestConsumerUsesSharedAttemptLedgerForEveryModelCall(t *testing.T) {
 }
 
 func TestDeferredImagePolicyFinishesRunningAttempt(t *testing.T) {
+	t.Parallel()
 	s := store(t)
 	entered, release := make(chan struct{}), make(chan struct{})
 	m := manager(t, s, func(ctx context.Context, _ string, _ Step, acquired func() error) (StepResult, error) {

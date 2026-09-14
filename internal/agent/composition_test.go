@@ -108,6 +108,7 @@ func TestPinnedCompositionDisablesBothOwnersWithoutLiveInstall(t *testing.T) {
 
 // Explicit pinned suite: authenticate the registry archive, not the installed copy.
 func TestPinnedCompositionMatchesLockedTarball(t *testing.T) {
+	t.Parallel()
 	if os.Getenv("INFERCAT_AGENT_TEST_INSTALL") == "" {
 		t.Skip("explicit pinned archive fixture")
 	}

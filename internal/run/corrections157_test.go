@@ -9,133 +9,140 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 )
 
 func Test157StopJoinAndQuarantine(t *testing.T) {
+	t.Parallel()
 	for _, mode := range []string{"success", "timeout", "panic", "error"} {
 		t.Run(mode, func(t *testing.T) {
-			s := store(t)
-			m := manager(t, s, nil, nil)
-			m.joinTimeout = 15 * time.Millisecond
-			m.stopTimeout = 30 * time.Millisecond
-			logs := make(chan string, 8)
-			s.Log = func(f string, args ...any) { logs <- fmt.Sprintf(f, args...) }
-			_, events, unsubscribe, err := s.Subscribe("key", "")
-			if err != nil {
-				t.Fatal(err)
-			}
-			defer unsubscribe()
-			entered := make(chan string, 4)
-			stopping := make(chan string, 1)
-			release := make(chan struct{})
-			stuck := make(chan struct{})
-			defer close(stuck)
-			var calls, releases atomic.Int32
-			m.Register("test", m.Consumer(func(_ context.Context, w *Work) (json.RawMessage, error) {
-				entered <- w.Run.ID
-				if calls.Add(1) == 1 {
-					<-stuck
-				}
-				return json.RawMessage(`{}`), nil
-			}), Policy{Serial: true, JoinCancel: true, Release: func(string, string) { releases.Add(1) }, ForceStop: func(id string) error {
-				stopping <- id
-				if mode == "panic" {
-					panic("fixture")
-				}
-				if mode == "error" {
-					return errors.New("owned generation was not stopped")
-				}
-				<-release
-
-				return nil
-			}})
-			a, err := m.Submit("key", "test", "", json.RawMessage(`{}`))
-			if err != nil {
-				t.Fatal(err)
-			}
-			<-entered
-			b, err := m.Submit("key", "test", "", json.RawMessage(`{}`))
-			if err != nil {
-				t.Fatal(err)
-			}
-			m.Cancel(a.KeyID, a.ID)
-			if got := <-stopping; got != a.ID {
-				t.Fatal("wrong generation identity", got)
-			}
-			select {
-			case <-entered:
-				t.Fatal("scheduled while stop pending")
-			default:
-			}
-			if mode == "success" {
-				close(release)
-			} else {
-				await(t, func() bool { return state(s, a) == Cancelled })
-				if _, err = m.Submit("key", "test", "", json.RawMessage(`{}`)); !errors.Is(err, ErrQuarantined) {
-					t.Fatal("quarantine accepted work", err)
-				}
-				select {
-				case <-entered:
-					t.Fatal("quarantined kind started")
-				default:
-				}
-				if mode == "timeout" {
-					close(release)
-				}
-			}
-			if mode == "success" {
-				select {
-				case id := <-entered:
-					if id != b.ID {
-						t.Fatal(id)
-					}
-				case <-time.After(time.Second):
-					t.Fatal("successful stop did not resume")
-				}
-			} else {
-				await(t, func() bool { return state(s, b) == Failed && releases.Load() == 2 })
-				got, _ := s.Get(b.KeyID, b.ID)
-				if got.Reason != "runtime quarantined" {
-					t.Fatal(got.Reason)
-				}
-				seen := false
-				for len(events) > 0 {
-					e := <-events
-					seen = seen || e.RunID == b.ID && e.State == Failed
-				}
-				if !seen {
-					t.Fatal("queued quarantine did not publish terminal event")
-				}
-				select {
-				case line := <-logs:
-					if !strings.Contains(line, "force-stop "+mode) {
-						t.Fatal(line)
-					}
-				default:
-					t.Fatal("quarantine entry not logged")
-				}
-
-				if mode == "timeout" {
-					await(t, func() bool { m.mu.Lock(); defer m.mu.Unlock(); return !m.unavailable("test") })
-					c := submit(t, m)
-					await(t, func() bool { return state(s, c) == Done })
-					select {
-					case line := <-logs:
-						if !strings.Contains(line, "quarantine cleared") {
-							t.Fatal(line)
-						}
-					default:
-						t.Fatal("recovery not logged")
-					}
-				}
-			}
-
+			synctest.Test(t, func(t *testing.T) { test157StopJoinAndQuarantine(t, mode) })
 		})
 	}
 }
 
+func test157StopJoinAndQuarantine(t *testing.T, mode string) {
+	s := store(t)
+	m := manager(t, s, nil, nil)
+	m.JoinTimeout = 15 * time.Millisecond
+	m.stopTimeout = 30 * time.Millisecond
+	logs := make(chan string, 8)
+	s.Log = func(f string, args ...any) { logs <- fmt.Sprintf(f, args...) }
+	_, events, unsubscribe, err := s.Subscribe("key", "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer unsubscribe()
+	entered := make(chan string, 4)
+	stopping := make(chan string, 1)
+	release := make(chan struct{})
+	stuck := make(chan struct{})
+	defer close(stuck)
+	var calls, releases atomic.Int32
+	m.Register("test", m.Consumer(func(_ context.Context, w *Work) (json.RawMessage, error) {
+		entered <- w.Run.ID
+		if calls.Add(1) == 1 {
+			<-stuck
+		}
+		return json.RawMessage(`{}`), nil
+	}), Policy{Serial: true, JoinCancel: true, Release: func(string, string) { releases.Add(1) }, ForceStop: func(id string) error {
+		stopping <- id
+		if mode == "panic" {
+			panic("fixture")
+		}
+		if mode == "error" {
+			return errors.New("owned generation was not stopped")
+		}
+		<-release
+
+		return nil
+	}})
+	a, err := m.Submit("key", "test", "", json.RawMessage(`{}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	<-entered
+	b, err := m.Submit("key", "test", "", json.RawMessage(`{}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	m.Cancel(a.KeyID, a.ID)
+	if got := <-stopping; got != a.ID {
+		t.Fatal("wrong generation identity", got)
+	}
+	select {
+	case <-entered:
+		t.Fatal("scheduled while stop pending")
+	default:
+	}
+	if mode == "success" {
+		close(release)
+	} else {
+		await(t, func() bool { return state(s, a) == Cancelled })
+		if _, err = m.Submit("key", "test", "", json.RawMessage(`{}`)); !errors.Is(err, ErrQuarantined) {
+			t.Fatal("quarantine accepted work", err)
+		}
+		select {
+		case <-entered:
+			t.Fatal("quarantined kind started")
+		default:
+		}
+		if mode == "timeout" {
+			close(release)
+		}
+	}
+	if mode == "success" {
+		select {
+		case id := <-entered:
+			if id != b.ID {
+				t.Fatal(id)
+			}
+		case <-time.After(time.Second):
+			t.Fatal("successful stop did not resume")
+		}
+	} else {
+		await(t, func() bool { return state(s, b) == Failed && releases.Load() == 2 })
+		got, _ := s.Get(b.KeyID, b.ID)
+		if got.Reason != "runtime quarantined" {
+			t.Fatal(got.Reason)
+		}
+		seen := false
+		for len(events) > 0 {
+			e := <-events
+			seen = seen || e.RunID == b.ID && e.State == Failed
+		}
+		if !seen {
+			t.Fatal("queued quarantine did not publish terminal event")
+		}
+		select {
+		case line := <-logs:
+			if !strings.Contains(line, "force-stop "+mode) {
+				t.Fatal(line)
+			}
+		default:
+			t.Fatal("quarantine entry not logged")
+		}
+
+		if mode == "timeout" {
+			await(t, func() bool { m.mu.Lock(); defer m.mu.Unlock(); return !m.unavailable("test") })
+			c := submit(t, m)
+			await(t, func() bool { return state(s, c) == Done })
+			select {
+			case line := <-logs:
+				if !strings.Contains(line, "quarantine cleared") {
+					t.Fatal(line)
+				}
+			default:
+				t.Fatal("recovery not logged")
+			}
+		}
+	}
+
+}
+
 func Test157ResidencyEpochUpdatedAndLastImageExpiry(t *testing.T) {
+	t.Parallel()
 	s := store(t)
 	now := time.Now().UTC()
 	s.now = func() time.Time { return now }
@@ -200,6 +207,7 @@ func Test157ResidencyEpochUpdatedAndLastImageExpiry(t *testing.T) {
 }
 
 func Test157WaitingFallbackAndUsageIdentity(t *testing.T) {
+	t.Parallel()
 	s := store(t)
 	filler := create(t, s, "key")
 	r := create(t, s, "key")
@@ -237,6 +245,7 @@ func Test157WaitingFallbackAndUsageIdentity(t *testing.T) {
 }
 
 func Test157EmptyScanAndEveryEvictedArtifactEvent(t *testing.T) {
+	t.Parallel()
 	s := store(t)
 	logs := 0
 	s.Log = func(string, ...any) { logs++ }
