@@ -55,6 +55,8 @@ jobs:
           install-only: true
 
       - uses: docker/setup-buildx-action@v4
+        with:
+          driver: docker # Use the daemon's BuildKit; no separate builder image pull.
 
       - name: Log in to GHCR (tags only)
         if: startsWith(github.ref, 'refs/tags/v')
