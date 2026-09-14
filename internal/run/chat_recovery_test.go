@@ -8,6 +8,7 @@ import (
 )
 
 func TestInterruptedChatToolKeepsIndependentImages(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	s, err := NewStore(dir)
 	if err != nil {

@@ -35,6 +35,7 @@ func untilImage(t *testing.T, s *Store, key, rid string, state State) Run {
 	return r
 }
 func TestImageWorkerPriorityAndDeferredCancel(t *testing.T) {
+	t.Parallel()
 	s, _ := NewStore(t.TempDir())
 	started := make(chan string, 4)
 	release := make(chan struct{}, 4)
@@ -93,6 +94,7 @@ func TestImageWorkerPriorityAndDeferredCancel(t *testing.T) {
 	}
 }
 func TestImageBatchCapIsAtomic(t *testing.T) {
+	t.Parallel()
 	s, _ := NewStore(t.TempDir())
 	rows, e := s.createBatch("key", "image", "planted", []json.RawMessage{imageIn("a"), imageIn("b")}, 2, nil)
 	if e != nil || len(rows) != 2 || rows[0].Batch.ID != rows[1].Batch.ID || rows[1].Batch.Index != 1 {
@@ -112,6 +114,7 @@ func TestImageBatchCapIsAtomic(t *testing.T) {
 	}
 }
 func TestImageArtifactsEvictDiscardExpireAndIsolate(t *testing.T) {
+	t.Parallel()
 	s, _ := NewStore(t.TempDir())
 	s.imageBudget = 8
 	makeImage := func(name string) Run {
@@ -157,6 +160,7 @@ func TestImageArtifactsEvictDiscardExpireAndIsolate(t *testing.T) {
 }
 
 func TestImageExpiryRetainsGoneMetadataAndRestartDoesNotReplay(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	s, _ := NewStore(dir)
 	now := time.Now()
@@ -206,6 +210,7 @@ func TestImageExpiryRetainsGoneMetadataAndRestartDoesNotReplay(t *testing.T) {
 }
 
 func TestDiscardBeforeStepFinishDoesNotResurrectMetadata(t *testing.T) {
+	t.Parallel()
 	s, _ := NewStore(t.TempDir())
 	r, _ := s.Create("key", "image", "interactive", imageIn("one"))
 	meta, e := s.PutImage("key", r.ID, []byte("png"), "image/png", 1, 1)
@@ -225,6 +230,7 @@ func TestDiscardBeforeStepFinishDoesNotResurrectMetadata(t *testing.T) {
 }
 
 func TestImageCancelAfterOutputBeforeFinalSnapshot(t *testing.T) {
+	t.Parallel()
 	s, _ := NewStore(t.TempDir())
 	ready, finish := make(chan struct{}), make(chan struct{})
 	m, _ := New(s, func(_ context.Context, key string, step Step, acquired func() error) (StepResult, error) {
@@ -257,6 +263,7 @@ func TestImageCancelAfterOutputBeforeFinalSnapshot(t *testing.T) {
 }
 
 func TestUnlinkFailureKeepsKeyUsableAndRetries(t *testing.T) {
+	t.Parallel()
 	s, _ := NewStore(t.TempDir())
 	s.imageBudget = 4
 	a, _ := s.Create("key", "image", "interactive", imageIn("first"))
@@ -312,6 +319,7 @@ func TestUnlinkFailureKeepsKeyUsableAndRetries(t *testing.T) {
 }
 
 func TestImageAdmissionRollsBackFailedCommit(t *testing.T) {
+	t.Parallel()
 	s, _ := NewStore(t.TempDir())
 	held := 0
 	s.write = func(string, []byte) error { return errors.New("disk refusal") }
@@ -324,6 +332,7 @@ func TestImageAdmissionRollsBackFailedCommit(t *testing.T) {
 	}
 }
 func TestAdmissionResolvesOutsideManagerLock(t *testing.T) {
+	t.Parallel()
 	s, _ := NewStore(t.TempDir())
 	m, _ := New(s, nil, nil)
 	defer m.Close()
@@ -348,6 +357,7 @@ func TestAdmissionResolvesOutsideManagerLock(t *testing.T) {
 }
 
 func TestImagePositionIsCachedAndTracksQueueChanges(t *testing.T) {
+	t.Parallel()
 	s, _ := NewStore(t.TempDir())
 	entered := make(chan struct{}, 3)
 	release := make(chan struct{})
@@ -398,6 +408,7 @@ func TestImagePositionIsCachedAndTracksQueueChanges(t *testing.T) {
 }
 
 func TestImageKeyChecksAndDailyReservePrecedeHostCapacity(t *testing.T) {
+	t.Parallel()
 	s, _ := NewStore(t.TempDir())
 	own, e := s.Create("key", "image", "interactive", imageIn("existing"))
 	if e != nil {
@@ -426,6 +437,7 @@ func TestImageKeyChecksAndDailyReservePrecedeHostCapacity(t *testing.T) {
 	}
 }
 func TestImageQueueLimitDoesNotCountOtherKinds(t *testing.T) {
+	t.Parallel()
 	s, _ := NewStore(t.TempDir())
 	for range 15 {
 		if _, e := s.Create("key", "agent", "interactive", json.RawMessage(`{}`)); e != nil {

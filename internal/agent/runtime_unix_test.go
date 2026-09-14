@@ -106,6 +106,7 @@ func waitRuntime(t *testing.T, r *Runtime, state string) RuntimeStatus {
 	return RuntimeStatus{}
 }
 func TestRuntimeReadinessRestartAndShutdown(t *testing.T) {
+	t.Parallel()
 	options, pids := runtimeFixture(t, false)
 	r := StartRuntime(context.Background(), options)
 	defer r.Close()
@@ -165,6 +166,7 @@ func TestRuntimeReadinessRestartAndShutdown(t *testing.T) {
 	}
 }
 func TestRuntimeBusyPortDoesNotTouchListener(t *testing.T) {
+	t.Parallel()
 	listener, err := net.Listen("tcp4", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
@@ -189,6 +191,7 @@ func TestRuntimeBusyPortDoesNotTouchListener(t *testing.T) {
 	connection.Close()
 }
 func TestRuntimeEscalatesTermIgnoringChild(t *testing.T) {
+	t.Parallel()
 	options, pids := runtimeFixture(t, true)
 	r := StartRuntime(context.Background(), options)
 	defer r.Close()
@@ -226,6 +229,7 @@ func TestParentLifetimeFixture(t *testing.T) {
 	select {}
 }
 func TestGuardianCleansAfterHostSIGKILL(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	binary, _ := os.Executable()
 	parent := exec.Command(binary, "-test.run=^TestParentLifetimeFixture$")
@@ -271,6 +275,7 @@ func processLive(pid int) bool {
 }
 
 func TestStopGenerationCannotStopReplacement(t *testing.T) {
+	t.Parallel()
 	options, _ := runtimeFixture(t, false)
 	r := StartRuntime(context.Background(), options)
 	defer r.Close()
@@ -302,6 +307,7 @@ func TestStopGenerationCannotStopReplacement(t *testing.T) {
 }
 
 func Test157V5RestartedChildDoesNotQuarantineOtherKeys(t *testing.T) {
+	t.Parallel()
 	options, _ := runtimeFixture(t, false)
 	runtime := StartRuntime(context.Background(), options)
 	defer runtime.Close()
@@ -315,6 +321,7 @@ func Test157V5RestartedChildDoesNotQuarantineOtherKeys(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	manager.JoinTimeout = 20 * time.Millisecond // Exercise the same owned-generation stop without a 30s wall wait.
 	entered, release := make(chan struct{}), make(chan struct{})
 	var once sync.Once
 	defer func() { once.Do(func() { close(release) }); manager.Close() }()

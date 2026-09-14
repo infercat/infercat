@@ -12,6 +12,7 @@ import (
 // full-size terminal commits in each race run. Expiry must shrink while STILL
 // above the ordinary limit, and must stay recoverable after restart.
 func Test157ExpiryAboveCeilingAndRestart(t *testing.T) {
+	t.Parallel()
 	s := store(t)
 	now := time.Now().UTC()
 	s.now = func() time.Time { return now }

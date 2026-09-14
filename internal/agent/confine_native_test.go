@@ -169,6 +169,7 @@ func TestPinned161ReadCanariesAndEphemeralWorkspace(t *testing.T) {
 func shellQuote(s string) string { return "'" + strings.ReplaceAll(s, "'", "'\\''") + "'" }
 
 func TestPinned161InheritedProviderRefusesOtherPolicies(t *testing.T) {
+	t.Parallel()
 	installed := os.Getenv("INFERCAT_AGENT_TEST_INSTALL")
 	if installed == "" {
 		t.Skip("explicit pinned sandbox fixture")

@@ -82,6 +82,7 @@ func sandboxCanary(args []string) int {
 }
 
 func Test161SandboxCanaries(t *testing.T) {
+	t.Parallel()
 	if runtime.GOOS == "linux" {
 		for _, name := range []string{"/etc/resolv.conf", "/etc/hosts", "/etc/nsswitch.conf"} {
 			target, err := filepath.EvalSymlinks(name)
@@ -161,6 +162,7 @@ func Test161SandboxCanaries(t *testing.T) {
 }
 
 func Test161LayoutGuard(t *testing.T) {
+	t.Parallel()
 	for _, root := range sandboxTrees() {
 		canonical, e := filepath.EvalSymlinks(root)
 		if e != nil {
@@ -179,6 +181,7 @@ func Test161LayoutGuard(t *testing.T) {
 }
 
 func Test161PreflightDiagnostics(t *testing.T) {
+	t.Parallel()
 	cmd := exec.CommandContext(context.Background(), "/bin/sh", "-c", "printf profile-fixture-denial >&2; exit 7")
 	err := checkSandbox(context.Background(), cmd)
 	if err == nil || !strings.Contains(err.Error(), "profile-fixture-denial") || !strings.Contains(err.Error(), "exit status 7") {
@@ -206,6 +209,7 @@ func Test161PreflightDiagnostics(t *testing.T) {
 }
 
 func Test161ResolverLeafIsOptionalAndFresh(t *testing.T) {
+	t.Parallel()
 	dir, err := canonicalPath(t.TempDir())
 	if err != nil {
 		t.Fatal(err)

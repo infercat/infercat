@@ -28,6 +28,7 @@ func create(t *testing.T, s *Store, key string) Run {
 	return r
 }
 func TestRoundTripIsolationAndRefusal(t *testing.T) {
+	t.Parallel()
 	s := store(t)
 	r := create(t, s, "k_a")
 	path := filepath.Join(s.root, "k_a", "state.json")
@@ -67,6 +68,7 @@ func TestRoundTripIsolationAndRefusal(t *testing.T) {
 	}
 }
 func TestCapsCorruptionAndFailedCommit(t *testing.T) {
+	t.Parallel()
 	s := store(t)
 	for i := 0; i < MaxLiveKey; i++ {
 		create(t, s, "k_a")
@@ -98,6 +100,7 @@ func TestCapsCorruptionAndFailedCommit(t *testing.T) {
 	}
 }
 func TestReplayResetAndSlowSubscriber(t *testing.T) {
+	t.Parallel()
 	s := store(t)
 	r := create(t, s, "k_a")
 	initial, ch, stop, e := s.Subscribe("k_a", "")
@@ -154,6 +157,7 @@ func TestReplayResetAndSlowSubscriber(t *testing.T) {
 	}
 }
 func TestConcurrentCreateBound(t *testing.T) {
+	t.Parallel()
 	s := store(t)
 	var wg sync.WaitGroup
 	for i := 0; i < 80; i++ {
@@ -167,6 +171,7 @@ func TestConcurrentCreateBound(t *testing.T) {
 	}
 }
 func TestReadRefusalCreatesNoKeyDirectory(t *testing.T) {
+	t.Parallel()
 	s := store(t)
 	_, err := s.Get("k_absent", "missing")
 	if !errors.Is(err, ErrNotFound) {
@@ -188,6 +193,7 @@ func TestReadRefusalCreatesNoKeyDirectory(t *testing.T) {
 	}
 }
 func TestInvalidPersistedCursorFailsClosed(t *testing.T) {
+	t.Parallel()
 	s := store(t)
 	r := create(t, s, "k_a")
 	path := filepath.Join(s.root, "k_a", "state.json")
@@ -206,6 +212,7 @@ func TestInvalidPersistedCursorFailsClosed(t *testing.T) {
 	}
 }
 func TestReturnedMutationCannotChangeStore(t *testing.T) {
+	t.Parallel()
 	s := store(t)
 	r := create(t, s, "k_a")
 	r.Input[2] = 'X'
@@ -227,6 +234,7 @@ func TestReturnedMutationCannotChangeStore(t *testing.T) {
 	}
 }
 func TestHostAndRetainedRunLimits(t *testing.T) {
+	t.Parallel()
 	s := store(t)
 	for key := 0; key < 4; key++ {
 		for n := 0; n < 16; n++ {

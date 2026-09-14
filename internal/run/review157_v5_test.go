@@ -7,6 +7,7 @@ import (
 )
 
 func Test157V5RecoveryRetriesAfterRefusedWrite(t *testing.T) {
+	t.Parallel()
 	s := store(t)
 	r := create(t, s, "key")
 	s.change(r.KeyID, r.ID, func(r *Run) error { r.State = Waiting; return nil })
@@ -38,6 +39,7 @@ func Test157V5RecoveryRetriesAfterRefusedWrite(t *testing.T) {
 	}
 }
 func Test157V5TerminalReserveOrReplayAllowsRecovery(t *testing.T) {
+	t.Parallel()
 	for _, replay := range []bool{false, true} {
 		t.Run(fmt.Sprint(replay), func(t *testing.T) {
 			s := store(t)

@@ -9,6 +9,7 @@ import (
 )
 
 func Test157StoredImageSurvivesMinimalRecord(t *testing.T) {
+	t.Parallel()
 	s := store(t)
 	now := time.Now()
 	s.now = func() time.Time { return now }

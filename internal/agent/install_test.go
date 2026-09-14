@@ -13,6 +13,7 @@ import (
 )
 
 func TestPinnedLock(t *testing.T) {
+	t.Parallel()
 	b, err := packages.ReadFile("assets/package-lock.json")
 	if err != nil {
 		t.Fatal(err)
@@ -31,6 +32,7 @@ func TestPinnedLock(t *testing.T) {
 	}
 }
 func TestDownloadIntegrity(t *testing.T) {
+	t.Parallel()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { io.WriteString(w, "fixture archive") }))
 	defer srv.Close()
 	sum := sha256.Sum256([]byte("fixture archive"))
@@ -43,6 +45,7 @@ func TestDownloadIntegrity(t *testing.T) {
 	}
 }
 func TestIncompleteInstallIsNotReady(t *testing.T) {
+	t.Parallel()
 	if !Supported() {
 		t.Skip("Unix runtime only")
 	}

@@ -10,6 +10,7 @@ import (
 )
 
 func Test116EUnifiedDiff(t *testing.T) {
+	t.Parallel()
 	for _, tt := range []struct{ name, before, after, want string }{
 		{"existing", "first\nold\nlast\n", "first\nnew\nlast\n", "--- before\n+++ after\n@@ -1,3 +1,3 @@\n first\n-old\n+new\n last\n"},
 		{"new", "", "hello\nworld\n", "--- before\n+++ after\n@@ -0,0 +1,2 @@\n+hello\n+world\n"},
@@ -25,6 +26,7 @@ func Test116EUnifiedDiff(t *testing.T) {
 }
 
 func Test116EDiffBoundsAndContext(t *testing.T) {
+	t.Parallel()
 	for _, data := range [][]byte{[]byte("binary\x00data"), {0xff}, bytes.Repeat([]byte("x"), diffLimit+1)} {
 		if writeDiff(data, []byte("new")) != nil || writeDiff([]byte("old"), data) != nil {
 			t.Fatal("unsupported version received diff")
@@ -46,6 +48,7 @@ func Test116EDiffBoundsAndContext(t *testing.T) {
 }
 
 func Test116EPriorCaptureConfinedAndBounded(t *testing.T) {
+	t.Parallel()
 	root := t.TempDir()
 	if _, err := captureLimit(root, "absent", diffLimit); !errors.Is(err, os.ErrNotExist) {
 		t.Fatal(err)

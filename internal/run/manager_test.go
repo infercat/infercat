@@ -51,6 +51,7 @@ func submit(t *testing.T, m *Manager) Run {
 }
 func state(s *Store, r Run) State { v, _ := s.Get(r.KeyID, r.ID); return v.State }
 func TestWaitReleasesStepAndResume(t *testing.T) {
+	t.Parallel()
 	s := store(t)
 	var slots atomic.Int32
 	ex := func(ctx context.Context, key string, step Step, acquired func() error) (StepResult, error) {
@@ -89,6 +90,7 @@ func TestWaitReleasesStepAndResume(t *testing.T) {
 	}
 }
 func TestCancelEveryLiveState(t *testing.T) {
+	t.Parallel()
 	for _, st := range []State{Queued, Running, Waiting} {
 		t.Run(string(st), func(t *testing.T) {
 			s := store(t)
@@ -140,6 +142,7 @@ func TestCancelEveryLiveState(t *testing.T) {
 	}
 }
 func TestRecoveryExpiryAndRefusedSubmit(t *testing.T) {
+	t.Parallel()
 	s := store(t)
 	now := time.Now().UTC()
 	s.now = func() time.Time { return now }
@@ -166,6 +169,7 @@ func TestRecoveryExpiryAndRefusedSubmit(t *testing.T) {
 	}
 }
 func TestAbandonedWait(t *testing.T) {
+	t.Parallel()
 	s := store(t)
 	m := manager(t, s, nil, nil)
 	if err := m.Register("test", m.Consumer(func(_ context.Context, w *Work) (json.RawMessage, error) {
@@ -185,6 +189,7 @@ func TestAbandonedWait(t *testing.T) {
 	await(t, func() bool { return state(s, r) == Cancelled })
 }
 func TestOutputLimitAndStepFailurePreserveSettlement(t *testing.T) {
+	t.Parallel()
 	for _, oversize := range []bool{false, true} {
 		t.Run(fmt.Sprint(oversize), func(t *testing.T) {
 			s := store(t)
@@ -217,6 +222,7 @@ func TestOutputLimitAndStepFailurePreserveSettlement(t *testing.T) {
 	}
 }
 func TestCompletionAndCancelHaveOneTerminalWinner(t *testing.T) {
+	t.Parallel()
 	for i := 0; i < 20; i++ {
 		s := store(t)
 		ready, release := make(chan struct{}), make(chan struct{})
@@ -246,6 +252,7 @@ func TestCompletionAndCancelHaveOneTerminalWinner(t *testing.T) {
 	}
 }
 func TestOversizedStepInputRefusedBeforeExecutor(t *testing.T) {
+	t.Parallel()
 	s := store(t)
 	var called atomic.Bool
 	m := manager(t, s, func(context.Context, string, Step, func() error) (StepResult, error) {

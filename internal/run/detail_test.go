@@ -10,6 +10,7 @@ import (
 )
 
 func Test116CDetailFatRunCostAndDetachment(t *testing.T) {
+	t.Parallel()
 	for _, n := range []int{1, 10, 40, 68} {
 		for _, textBytes := range []int{0, 1 << 20} {
 			t.Run(fmt.Sprintf("%d-outputs-%d-text", n, textBytes), func(t *testing.T) {
@@ -70,6 +71,7 @@ func Test116CDetailFatRunCostAndDetachment(t *testing.T) {
 }
 
 func Test116CQueuedDetailKeepsEmptyAttemptArray(t *testing.T) {
+	t.Parallel()
 	s := store(t)
 	r := create(t, s, "key")
 	d, err := s.Detail(r.KeyID, r.ID)

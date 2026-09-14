@@ -9,6 +9,7 @@ import (
 )
 
 func TestStepReplacementsReplayAndStorageWritesStaySilent(t *testing.T) {
+	t.Parallel()
 	s := store(t)
 	r := create(t, s, "k_steps")
 	replay, ch, stop, err := s.Subscribe(r.KeyID, "")

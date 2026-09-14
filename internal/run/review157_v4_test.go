@@ -11,10 +11,12 @@ import (
 	"strings"
 	"sync/atomic"
 	"testing"
+	"testing/synctest"
 	"time"
 )
 
 func Test157V4SubmitUsesSerialSchedule(t *testing.T) {
+	t.Parallel()
 	s := store(t)
 	m := manager(t, s, nil, nil)
 	entered, release := make(chan struct{}), make(chan struct{})
@@ -52,9 +54,14 @@ func Test157V4SubmitUsesSerialSchedule(t *testing.T) {
 	}
 }
 func Test157V4CloseDoesNotQuarantineAcceptedRows(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, test157V4CloseDoesNotQuarantineAcceptedRows)
+}
+
+func test157V4CloseDoesNotQuarantineAcceptedRows(t *testing.T) {
 	s := store(t)
 	m := manager(t, s, nil, nil)
-	m.joinTimeout = 10 * time.Millisecond
+	m.JoinTimeout = 10 * time.Millisecond
 	m.stopTimeout = time.Second
 	entered, release := make(chan struct{}), make(chan struct{})
 	defer close(release)
@@ -95,6 +102,7 @@ func Test157V4CloseDoesNotQuarantineAcceptedRows(t *testing.T) {
 	}
 }
 func Test157V4CleanupPopulationsStayDistinct(t *testing.T) {
+	t.Parallel()
 	s := store(t)
 	s.imageCleanup = map[string]bool{"proven": true}
 	s.imageOrphans = map[string]bool{"observed": true}
@@ -104,6 +112,7 @@ func Test157V4CleanupPopulationsStayDistinct(t *testing.T) {
 	}
 }
 func Test157V4CeilingEnumerationCost(t *testing.T) {
+	t.Parallel()
 	s := store(t)
 	now := time.Now().UTC()
 	s.now = func() time.Time { return now }
@@ -124,9 +133,14 @@ func Test157V4CeilingEnumerationCost(t *testing.T) {
 }
 
 func Test157V4ExpiredJoinUsesTerminalReserve(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, test157V4ExpiredJoinUsesTerminalReserve)
+}
+
+func test157V4ExpiredJoinUsesTerminalReserve(t *testing.T) {
 	s := store(t)
 	m := manager(t, s, nil, nil)
-	m.joinTimeout = 10 * time.Millisecond
+	m.JoinTimeout = 10 * time.Millisecond
 	m.stopTimeout = 100 * time.Millisecond
 	release := make(chan struct{})
 	var stops atomic.Int32
@@ -169,6 +183,7 @@ func Test157V4ExpiredJoinUsesTerminalReserve(t *testing.T) {
 	}
 }
 func Test157V4SweepRecognizesCommittedTerminal(t *testing.T) {
+	t.Parallel()
 	s := store(t)
 	m := manager(t, s, nil, nil)
 	filler, r := create(t, s, "key"), create(t, s, "key")
@@ -192,6 +207,7 @@ func Test157V4SweepRecognizesCommittedTerminal(t *testing.T) {
 }
 
 func Test157V4LegacyFullKeyFailsClosedWithoutChangingBytes(t *testing.T) {
+	t.Parallel()
 	for _, room := range []int{-MaxRuns * terminalBound, MaxLiveKey * terminalBound} {
 		t.Run(fmt.Sprint(room), func(t *testing.T) {
 			s := store(t)

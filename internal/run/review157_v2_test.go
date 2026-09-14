@@ -8,10 +8,12 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"testing/synctest"
 	"time"
 )
 
 func Test157V2RequiresStopHook(t *testing.T) {
+	t.Parallel()
 	s := store(t)
 	m := manager(t, s, nil, nil)
 	if err := m.Register("missing", m.Consumer(func(context.Context, *Work) (json.RawMessage, error) { return nil, nil }), Policy{JoinCancel: true}); !errors.Is(err, ErrInvalid) {
@@ -22,6 +24,11 @@ func Test157V2RequiresStopHook(t *testing.T) {
 	}
 }
 func Test157V2TwentyModelStepsDoNotCloseSubscriber(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, test157V2TwentyModelStepsDoNotCloseSubscriber)
+}
+
+func test157V2TwentyModelStepsDoNotCloseSubscriber(t *testing.T) {
 	s := store(t)
 	m := manager(t, s, func(_ context.Context, _ string, _ Step, acquired func() error) (StepResult, error) {
 		if err := acquired(); err != nil {
@@ -70,6 +77,7 @@ func Test157V2TwentyModelStepsDoNotCloseSubscriber(t *testing.T) {
 	}
 }
 func Test157V2EnumerationReleasesIdleKeys(t *testing.T) {
+	t.Parallel()
 	s := store(t)
 	now := time.Now().UTC()
 	s.now = func() time.Time { return now }
@@ -103,6 +111,7 @@ func Test157V2EnumerationReleasesIdleKeys(t *testing.T) {
 	}
 }
 func Test157V2EmptyImagesLogOnlyChanges(t *testing.T) {
+	t.Parallel()
 	s := store(t)
 	lines := 0
 	s.Log = func(string, ...any) { lines++ }
@@ -156,6 +165,7 @@ func Test157V2EmptyImagesLogOnlyChanges(t *testing.T) {
 
 }
 func Test157V2ExpiryContinuesAfterCancelRefusal(t *testing.T) {
+	t.Parallel()
 	s := store(t)
 	now := time.Now().UTC()
 	s.now = func() time.Time { return now }

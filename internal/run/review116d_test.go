@@ -11,6 +11,7 @@ import (
 )
 
 func Test116DCallFailureAndPurposeSurviveSettlement(t *testing.T) {
+	t.Parallel()
 	for _, broken := range []bool{false, true} {
 		t.Run(fmt.Sprint(broken), func(t *testing.T) {
 			s := store(t)
@@ -52,6 +53,7 @@ func Test116DCallFailureAndPurposeSurviveSettlement(t *testing.T) {
 }
 
 func Test116DLeaseFreeCancelNoteOnceAndFailureAtomicity(t *testing.T) {
+	t.Parallel()
 	s := store(t)
 	r := create(t, s, "k_note")
 	_, err := s.change(r.KeyID, r.ID, func(v *Run) error { v.CancelRequested = true; return nil })
@@ -104,6 +106,7 @@ func Test116DLeaseFreeCancelNoteOnceAndFailureAtomicity(t *testing.T) {
 }
 
 func Test116DTerminalApprovalProjectionAfterRecovery(t *testing.T) {
+	t.Parallel()
 	s := store(t)
 	r := create(t, s, "k_approval")
 	_, err := s.change(r.KeyID, r.ID, func(v *Run) error { v.State = Waiting; return nil }, func(d *Retained) error {
@@ -129,6 +132,7 @@ func Test116DTerminalApprovalProjectionAfterRecovery(t *testing.T) {
 }
 
 func Test116DSharedStepRingResetsAndRecoversImage(t *testing.T) {
+	t.Parallel()
 	s := store(t)
 	image, err := s.Create("k_ring", "image", "interactive", json.RawMessage(`{}`))
 	if err != nil {
