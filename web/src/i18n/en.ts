@@ -214,7 +214,7 @@ export const en = {
     "Open WebUI, Cursor, Claude Code, the SDKs or plain curl. Your friend’s model, as if it ran on your machine.<br>Hosts: use <code>infercat expose</code> to give your host a public URL.",
   reach_sum: 'What your app can reach',
   reach_b:
-    '<p><code>/v1/chat/completions</code> · <code>/v1/responses</code> · <code>/v1/models</code> · <code>/v1/embeddings</code> · <code>/me</code>. Nothing else: no other port, no files.</p><p><code>connect</code> adds the invite’s key to every request and ignores your app’s own. Over a limit: <code>429</code> with <code>Retry-After</code>. Host busy: a short wait, then <code>503</code>. Host asleep: <code>connect</code> says so and reconnects on its own.</p>',
+    '<p>The <a href="https://github.com/infercat/infercat/blob/main/docs/ARCHITECTURE.md#gateway-http-api">gateway route table</a> lists chat, models, audio, images, runs, events and captured outputs. Remote administration needs a separate admin bearer. No arbitrary host ports or filesystem paths.</p><p><code>connect</code> adds the invite’s key to every request and ignores your app’s own. Over a limit: <code>429</code> with <code>Retry-After</code>. Host busy: a short wait, then <code>503</code>. Host asleep: <code>connect</code> says so and reconnects on its own.</p>',
   s4_eye: '04 · Roadmap',
   s4_tag: "Preview",
   s4_h: 'A public URL for your host.',
@@ -245,7 +245,7 @@ export const en = {
   path_label: 'Path',
   roadmap_label: "any client, a public gateway that sees requests, your machine",
   terminal:
-    '$ infercat connect {invite}\nInfercat 0.1.0\nhost    Max’s laptop · gemma-4-E2B-it-Q4_K_M.gguf\npath    relayed via New York City · 27 ms\nlocal   http://127.0.0.1:11435\n        base URL http://127.0.0.1:11435/v1, any API key\n\n$ export OPENAI_BASE_URL=http://127.0.0.1:11435/v1 OPENAI_API_KEY=x\n$ python3 chat.py',
+    '$ infercat connect {invite}\nhost    Max’s laptop · gemma-4-E2B-it-Q4_K_M.gguf\npath    relayed via New York City · 27 ms\nlocal   http://127.0.0.1:11435\n        base URL http://127.0.0.1:11435/v1, any API key\n\n$ export OPENAI_BASE_URL=http://127.0.0.1:11435/v1 OPENAI_API_KEY=x\n$ python3 chat.py',
   f_hint_empty: 'Paste the code your friend sent you.',
 
   // 047 app copy. Named placeholders are substituted as text, never HTML.

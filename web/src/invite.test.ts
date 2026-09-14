@@ -19,7 +19,7 @@ const OK = `${ADDR}.s3cr3t-_OK`;
 describe('invite', () => {
   it('round-trips', () => {
     const s = encodeInvite(ADDR, SECRET);
-    expect(s).toBe(`ic1.${ADDR}.${SECRET}`);
+    expect(s).toBe(`ic2.${ADDR}.${SECRET}`);
     expect(s.split('.')).toHaveLength(3);
     expect(decodeInvite(s)).toEqual({ addr: ADDR, secret: SECRET });
   });

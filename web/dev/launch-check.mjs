@@ -409,7 +409,7 @@ async function chineseCards(browser) {
     const card = await page.locator('.connect-card').innerText();
     // Names, format examples and the bilingual language links are machine/identity strings.
     const remainder = card.replaceAll("Max's laptop", '').replaceAll('Infercat', '').replaceAll('EN', '').replaceAll('GPU', '')
-      .replace(/ic1\.[A-Za-z0-9_.…-]*/g, '').replace(/\btc[\w…]*/g, '').replaceAll('bad', '');
+      .replace(/ic[12]\.[A-Za-z0-9_.…-]*/g, '').replace(/\btc[\w…]*/g, '').replaceAll('bad', '');
     if (/[A-Za-z]/.test(remainder)) problems.push(`${label}: untranslated card text: ${remainder}`);
     if (state === 'returning' && !card.includes('1')) problems.push(`${label}: missing retained chat count`);
     if (state === 'invalid' && await page.locator('.inline-error').count() !== 1) problems.push(`${label}: parser error not shown`);

@@ -1,4 +1,4 @@
-// GET /try — the one stable address for the public demo invite (docs: hosting/README.md).
+// GET/HEAD /try — the one stable address for the public demo invite (docs: hosting/README.md).
 // The current invite link lives in KV under `link:try`, so a remint is one `wrangler kv key put`,
 // never a deploy and never a commit: nothing in git holds an invite. Browsers keep the fragment
 // across a redirect, so the app opens with the code in the box. `?from=try` lets the first-party
@@ -13,3 +13,5 @@ export async function onRequestGet({ env }) {
   } catch {}
   return new Response(null, { status: 302, headers: { Location: target, 'Cache-Control': 'no-store' } });
 }
+
+export const onRequestHead = onRequestGet;

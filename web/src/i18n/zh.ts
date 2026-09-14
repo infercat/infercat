@@ -209,7 +209,7 @@ export const zh = {
     "Open WebUI、Cursor、Claude Code、各家 SDK，或者直接一行 curl。朋友的模型，就像跑在你自己的机器上。<br>主机用 <code>infercat expose</code> 就能获得公开网址。",
   reach_sum: '你的应用能访问什么',
   reach_b:
-    '<code>/v1/chat/completions</code> · <code>/v1/responses</code> · <code>/v1/models</code> · <code>/v1/embeddings</code> · <code>/me</code>。别的都碰不到：没有别的端口，没有文件。<code>connect</code> 会自动给每个请求带上邀请码里的密钥，应用自己填的那个会被忽略。超过限额：429 加 Retry-After。主机忙：短暂排队，然后 503。主机睡了：<code>connect</code> 会告诉你，并自动重连。',
+    '<a href="https://github.com/infercat/infercat/blob/main/docs/ARCHITECTURE.md#gateway-http-api">网关接口表</a>列出了聊天、模型、语音、图片、运行、事件和捕获输出。远程管理需要独立的管理凭证。不开放任意主机端口或文件系统路径。<code>connect</code> 会自动给每个请求带上邀请码里的密钥，应用自己填的那个会被忽略。超过限额：429 加 Retry-After。主机忙：短暂排队，然后 503。主机睡了：<code>connect</code> 会告诉你，并自动重连。',
   s4_eye: '04 · 路线图',
   s4_tag: "预览",
   s4_h: '给主机一个公开网址。',
@@ -238,7 +238,7 @@ export const zh = {
   path_label: '路径',
   roadmap_label: "任何客户端、看得到请求的公开网关、你的机器",
   terminal:
-    '$ infercat connect {invite}\nInfercat 0.1.0\nhost    Max’s laptop · gemma-4-E2B-it-Q4_K_M.gguf\npath    relayed via New York City · 27 ms\nlocal   http://127.0.0.1:11435\n        base URL http://127.0.0.1:11435/v1, any API key\n\n$ export OPENAI_BASE_URL=http://127.0.0.1:11435/v1 OPENAI_API_KEY=x\n$ python3 chat.py',
+    '$ infercat connect {invite}\nhost    Max’s laptop · gemma-4-E2B-it-Q4_K_M.gguf\npath    relayed via New York City · 27 ms\nlocal   http://127.0.0.1:11435\n        base URL http://127.0.0.1:11435/v1, any API key\n\n$ export OPENAI_BASE_URL=http://127.0.0.1:11435/v1 OPENAI_API_KEY=x\n$ python3 chat.py',
   f_hint_empty: '粘贴朋友发你的邀请码。',
 
   app_another_tab_took_over_this_chat_what_is_above: '另一个标签页已接管此对话——上方仅为部分内容。',
