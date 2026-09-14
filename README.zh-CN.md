@@ -30,8 +30,6 @@
 
 ## 快速上手（主机端）
 
-**已有主机？** 先停止 `serve`，运行一次 `infercat identity upgrade`，再启动 `serve`，轮换或新增密钥，把新的 `ic2` 邀请码发给每位朋友。旧身份备份为 `host.key.json.pre-ic2`；升级后，原有邀请码全部失效。在你明确升级之前，旧身份仍按原样提供服务。这个临时升级命令计划在 2026-09-25 之后移除。
-
 你需要先启动一个推理服务（llama.cpp、llama-swap、vLLM、Ollama 或 LM Studio 均可；任何兼容 OpenAI `/v1/chat/completions` 的服务都能用）。朋友那边只要有个浏览器就行。
 
 **可选——还没有推理引擎？** [安装 Ollama](https://ollama.com/download)，然后：
@@ -91,7 +89,7 @@ brew install infercat/tap/infercat                # 或用 Homebrew
 ```
 
 - [安装脚本备用链接](https://raw.githubusercontent.com/infercat/infercat/main/hack/install.sh)。
-- Docker：[用容器长期运行主机](docs/DOCKER.md)。
+- Docker：[用容器长期运行主机](docs/DOCKER.zh-CN.md)。
 - Linux 安装包：[安装 .deb 或 .rpm 并运行用户级服务](docs/LINUX.zh-CN.md)。
 - 其他平台请前往 [Releases](https://github.com/infercat/infercat/releases)；使用 `shasum -a 256 --ignore-missing -c infercat_<version>_checksums.txt` 校验。
 
@@ -112,10 +110,17 @@ infercat keys add alice                  # prints alice's invite once (and a QR 
 infercat serve --upstream http://127.0.0.1:18080
 ```
 
-传给 `serve` 的参数会保存在 `config.json` 中，下次直接运行 `serve` 即可，无需重复输入。
+`serve` 的持久设置会保存在 `config.json` 中。`--log-requests`、`--log-prompts`、`--agent`、`--ephemeral` 和 `--verbose` 等单次运行选项需要每次指定。`--log-requests` 在终端为每个已完成的请求打印一行，不含提示词内容。
 
+用[语音主机配方](docs/VOICE.md)添加麦克风和朗读回复。
 用[图片生成主机配方](docs/IMAGES.zh-CN.md)让朋友生成图片。
 用[搜索主机配方](docs/SEARCH.zh-CN.md)为明确选择主机工具的对话提供网页搜索。
+
+用 `infercat console` 打开本地**控制台**，查看用量、管理密钥和修改支持的设置。`serve --console IP:PORT` 指定回环监听地址（默认 `127.0.0.1:9101`；`off` 关闭）。详见[控制台与管理 API](docs/ARCHITECTURE.md#local-admin-api)。
+
+需要**远程管理**时，在运行中的主机上使用 `infercat remote on|off|rotate|status`。开启或轮换时，管理码只显示一次；本地控制台监听必须开启。管理码可管理密钥、设置和存储数据，与朋友的邀请码分开授权。详见[远程控制台限额](docs/LIMITS.md#remote-console)。
+
+**智能体接口**让已获授权的朋友提交运行、查看步骤和捕获的输出、回答审批并取消工作。先用 `infercat agent install` 安装，再用 `serve --agent` 启用运行环境、`keys limits alice --agent=true` 授权朋友；每次运行使用独立的受限工作区。安装方法与平台边界见[智能体运行环境](docs/AGENT-RUNTIME.md)。
 
 <details>
 <summary><b>macOS 提示无法验证开发者</b></summary>
@@ -130,7 +135,7 @@ xattr -d com.apple.quarantine ./infercat
 </details>
 
 <details>
-<summary><b><code>serve</code> 全部参数</b></summary>
+<summary><b><code>serve</code> 常用参数</b></summary>
 
 | `serve` 参数 | 说明 |
 |---|---|
@@ -144,8 +149,22 @@ xattr -d com.apple.quarantine ./infercat
 | `--log-prompts`、`--ephemeral`、`--verbose` | 单次运行选项：记录消息内容；临时主机身份；在终端打印隧道日志 |
 | `--data-dir DIR` | 密钥、用量、配置和主机密钥的存放目录 |
 
-运行 `infercat serve -h` 也能看到相同说明以及数据目录下的具体文件。
+运行 `infercat serve -h` 查看完整参数列表及数据目录下的具体文件。
 </details>
+
+`infercat setup --profile apple-64g` 会复用哈希匹配的模型缓存，把缺少的已发布引擎和模型下载到数据目录。它逐个启动自己管理的成员，检查模型身份（主模型还会执行一条短提示词），停止后才保存兼容的设置；已有引擎保持运行。可重复使用 `--model-path anchor=/path/to/model.gguf` 覆盖路径（也接受资源 id），或用 `--custom profile.json` 只检查兼容性，不下载、不启动。主模型失败、取消或设置冲突时，原有主机配置保持不变。可选成员检查失败会标为不可用，仍可配置聊天。
+
+接着运行 `infercat serve`：它启动并常驻已安装的主模型，按请求启动其他成员，并在配置的空闲时间后停止它们。`infercat status` 显示各成员状态；嵌入请求使用配置中的独立嵌入模型。安装时已运行的引擎仍由外部管理，主机不会停止它们。Setup 会打印并记录托管成员的实际启动命令；内置配置更新后需重新运行 setup。没有已发布引擎构建的成员会标为不可用。原生语音使用已验证的 helpers-v0.1.0 及单独固定版本的 sherpa 运行环境。ASR 尚未选定配置资源；16 GB 档使用支持视觉的 Q4 E4B，内存已在 16 GB macOS 虚拟机验证，真实硬件性能尚未验证。NVIDIA 尚未测量。详见[配置格式](docs/ARCHITECTURE.md#loadout-profiles-and-setup)和[原生 Kokoro 辅助程序](packaging/helpers/README.md)。
+
+**已有主机？** 先停止 `serve`，运行一次 `infercat identity upgrade`，再启动 `serve`，轮换或新增密钥，把新的 `ic2` 邀请码发给每位朋友。旧身份备份为 `host.key.json.pre-ic2`；升级后，原有邀请码全部失效。在你明确升级之前，旧身份仍按原样提供服务。这个临时升级命令计划在 2026-09-25 之后移除。
+
+内置三种配置：
+
+| 配置 | 目标主机 |
+|---|---|
+| `apple-64g` | 64 GB Apple 芯片主机，使用 Metal 模型组合。 |
+| `apple-16g` | 16 GB Apple 芯片主机；内存已在 macOS 虚拟机验证，真实硬件性能尚未验证。 |
+| `nvidia-12g` | 12 GB 显存的 Linux NVIDIA 主机；尚未测量。 |
 
 ## 快速上手（朋友端）
 
@@ -161,7 +180,7 @@ unzip web-<version>.zip -d web && python3 -m http.server 8080 --directory web --
 
 ## 朋友能访问什么
 
-只能通过网关访问你推理服务的 `/v1/models`、`/v1/chat/completions` 和 `/v1/responses`（若引擎支持则包含 `/v1/embeddings`）——无法触碰你电脑上的其他任何内容：没有其他端口、没有文件、没有管理 API。隧道暴露出去的只有网关，别的什么都没有；`serve` 每次启动都会把这行打出来。
+[网关接口表](docs/ARCHITECTURE.md#gateway-http-api)列出了可访问的接口：模型、聊天、Responses、嵌入，已配置的语音和图片接口，以及按密钥隔离的运行、事件和捕获输出。远程控制台需明确开启，并使用独立的管理凭证；朋友的密钥不能授权。网关不开放任意主机端口或文件系统路径。
 
 ## 隐私
 
@@ -178,7 +197,24 @@ infercat keys add bob --rpm 6 --daily-tokens 50000          # tight, for a stran
 infercat keys limits alice --rpm 60 --daily-tokens 1000000 --max-output-tokens 8192
 ```
 
-默认值：每分钟 20 次请求 · 每分钟 20 000 token · 同时 1 个请求 · 4096 输出 token · 引擎的上下文长度 · 每天 200 000 token · 全部模型。超额时返回带 `Retry-After` 的 `429`；突发请求超出引擎处理槽位时会短暂排队，随后返回 `503`——绝不会把引擎卡死。网页版会向每位朋友展示各自的用量仪表盘。
+`keys add` 的默认值：
+
+| 字段 / 参数 | 默认值 |
+|---|---|
+| `rpm` / `--rpm` | 每分钟 20 次计量请求 |
+| `tpm` / `--tpm` | 每分钟 20,000 token |
+| `max_concurrent` / `--max-concurrent` | 同时 1 个请求 |
+| `max_output_tokens` / `--max-output-tokens` | 4,096 token |
+| `max_context` / `--max-context` | 0：使用引擎的上下文长度 |
+| `daily_tokens` / `--daily-tokens` | 每天 200,000 token |
+| `daily_audio_seconds` / `--daily-audio-seconds` | 每天 3,600 秒 |
+| `daily_speech_chars` / `--daily-speech-chars` | 每天 200,000 字符 |
+| `daily_images` / `--daily-images` | 每天 20 张图片 |
+| `max_queued_images` / `--max-queued-images` | 8 张排队图片 |
+| `search_per_day` / `--search-per-day` | 每天 50 次搜索 |
+| `models` / `--models` | 空列表：所有共享模型 |
+
+超额时返回带 `Retry-After` 的 `429`；突发请求超出引擎处理槽位时会短暂排队，随后返回 `503`——绝不会把引擎卡死。网页版会向每位朋友展示各自的用量仪表盘。
 
 管理朋友：`keys list` · `keys pause alice`（在 `keys resume` 之前一律返回 403）· `keys revoke alice`（永久撤销，会先问你一次）· `keys rotate alice`（换一个新邀请码，旧的失效）。查看状态：`status`（实时状态）与 `usage`（历史用量）。所有调整在运行中的主机上即时生效。
 
@@ -208,7 +244,6 @@ infercat keys limits alice --rpm 60 --daily-tokens 1000000 --max-output-tokens 8
 bin/infercat connect ic2.…          # paste the invite
 ```
 ```
-Infercat 0.1.0
 host      Max's laptop  ·  gemma-4-E2B-it-Q4_K_M.gguf
 path      relayed via New York City · 27 ms       # re-checked every 30 s, printed when it changes
 local     http://127.0.0.1:11435
@@ -216,6 +251,12 @@ local     http://127.0.0.1:11435
 ```
 
 邀请码中自带的密钥会自动附加到每次请求中；调用应用自身填写的 API key 会被忽略。只转发 `/v1/*` 和 `/me`，其他一律不转发。报错信息会保留主机的状态与错误码，并用通俗语言提示应对方法（已暂停、已撤销、主机休眠、触发限流并带 `Retry-After`、主机繁忙）；当主机失去响应时，`connect` 会给出明确提示并自动尝试重连。
+
+编码智能体可用 `infercat connect <invite> --configure opencode,dsh,codex`（也可只选其中几个）。它在实际本地端口注册 `/me` 返回的模型，并打印选择方法：OpenCode 使用打印出的 `OPENCODE_CONFIG=… opencode --model …`；Harness 使用 `INFERCAT_API_KEY=unused dsh`，再用 `/model` 选择；Codex 使用 `codex --profile infercat`。原有默认选择保持不变。
+
+Codex 0.154.0 从 `$CODEX_HOME/infercat.config.toml`（通常为 `~/.codex/infercat.config.toml`）读取生成的配置，选择 `/me` 中第一个模型，并关闭该配置的托管网页搜索，因为网关不提供那类托管工具。不会修改基础 `config.toml`；已有的非托管配置或旧 `[profiles.infercat]` 配置会导致拒绝。配置文件不含 API key。若 `OPENCODE_CONFIG` 已指向其他文件，会拒绝写入；请在本次运行中取消该变量，或把 provider 合并到自己的文件。OpenCode 只使用一个自定义路径。
+
+OpenCode 的附加文件会与你的配置合并；Harness 在 `$DSH_HOME/settings.yaml`（通常为 `~/.dsh/settings.yaml`）插入带标记的 provider。正常退出会移除未改动的托管块；`infercat connect --unconfigure` 也能清理，无需邀请码或停止桥接。已编辑的块会保留并报错。即使桥接未运行，`infercat status` 也会列出本地注册。原始备份与所有权记录位于系统用户配置目录下的 `infercat/agents`（Unix 也可用 `XDG_CONFIG_HOME`）。YAML 行内映射、别名和自定义 Harness 设置位置需要手动配置。Windows 使用原生用户配置目录和 `DSH_HOME`；打印的启动命令为 POSIX shell 语法。Windows：可编译，尚未测试。
 
 ```
 OPENAI_BASE_URL=http://127.0.0.1:11435/v1 OPENAI_API_KEY=x python3 -c '
