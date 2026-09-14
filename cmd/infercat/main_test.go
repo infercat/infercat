@@ -12,6 +12,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -301,10 +302,17 @@ func TestHelpAndExitCodes(t *testing.T) {
 	}{
 		{nil, 0, "share your local inference"},
 		{[]string{"help"}, 0, "Start here:"},
+		{[]string{"--help"}, 0, "  remote     manage remote admin access: on, off, rotate, status"},
+		{[]string{"--help"}, 0, "  console    open the host console URL"},
+		{[]string{"--help"}, 0, "infercat connect ic2.tc….…"},
+		{[]string{"connect", "--help"}, 0, "infercat connect ic2.tc….…"},
+		{[]string{"keys", "--help"}, 0, "An invite is ic2.<host address>.<secret>"},
+		{[]string{"keys", "add", "--help"}, 0, fmt.Sprintf("%d max output", keys.DefaultLimits().MaxOutputTokens)},
 		{[]string{"version"}, 0, product.Version},
 		{[]string{"serve", "-h"}, 0, "Runs the host"},
 		{[]string{"keys", "-h"}, 0, "One key is one person"},
 		{[]string{"keys", "add", "-h"}, 0, "shown here and never again"},
+		{[]string{"keys", "add", "--help"}, 0, "Agent access is off by default. After adding a key: infercat keys limits NAME --agent."},
 		{[]string{"status", "-h"}, 0, "admin socket"},
 		{[]string{"usage", "-h"}, 0, "median and p95"},
 	} {
@@ -320,6 +328,30 @@ func TestHelpAndExitCodes(t *testing.T) {
 		if r := exec(t, plat, args...); r.code != 2 {
 			t.Errorf("%v exited %d, want 2", args, r.code)
 		}
+	}
+}
+
+func TestKeysHelpListsAllLimitFlags(t *testing.T) {
+	fs := flag.NewFlagSet("limits", flag.ContinueOnError)
+	limitFlags(fs)
+	for _, args := range [][]string{{"keys", "--help"}, {"keys", "limits", "--help"}} {
+		r := exec(t, testPlatform(fakeAddr, nil), args...)
+		if r.code != 0 {
+			t.Fatal(args, r.err)
+		}
+		if strings.Contains(r.out, `0 means "no limit"`) {
+			t.Errorf("%v makes a false blanket claim about zero limits", args)
+		}
+		_, flags, found := strings.Cut(r.out, "Limit flags:")
+		if !found {
+			t.Fatal(args, "missing limit flags")
+		}
+		listed := strings.Fields(flags)
+		fs.VisitAll(func(f *flag.Flag) {
+			if !slices.Contains(listed, "--"+f.Name) {
+				t.Errorf("%v omits --%s", args, f.Name)
+			}
+		})
 	}
 }
 

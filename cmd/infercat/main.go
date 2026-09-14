@@ -304,6 +304,8 @@ Commands:
   serve      run the host: the tunnel and the gateway in front of your inference server
   keys       mint and manage per-friend keys: add, list, pause, resume, revoke, rotate, limits
   status     what the running host is doing right now
+  remote     manage remote admin access: on, off, rotate, status
+  console    open the host console URL
   usage      what your friends have used, from the usage log
   connect    use an invite from this machine: an OpenAI-compatible API on localhost for any app
   expose     enable or disable a public endpoint for this host
@@ -316,7 +318,7 @@ Start here:
   infercat remote on                  # mint a remote admin code (off|rotate|status)
   infercat console --print             # open the host console URL
   infercat status
-  infercat connect ic1.tc….…      # a friend's side: any app, base URL http://127.0.0.1:11435/v1
+  infercat connect ic2.tc….…      # a friend's side: any app, base URL http://127.0.0.1:11435/v1
 
 Global flags:
   --data-dir DIR   where keys, usage, config, and the host key live

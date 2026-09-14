@@ -476,21 +476,24 @@ Subcommands:
   rotate ID           issue a new secret, keeping id, name, and limits
   limits ID [limits]  change limits; only the flags you pass change
 
-An invite is ic1.<host address>.<secret>; the web app sends the secret as "Bearer <secret>".
+An invite is ic2.<host address>.<secret>; the web app sends the secret as "Bearer <secret>".
 ID is a key id (k_7f3a2b) or a key name when that name is unique.
-Limit flags: --rpm --tpm --max-concurrent --max-output-tokens --max-context --daily-tokens --models
+Limit flags: --rpm --tpm --max-concurrent --max-output-tokens --max-context --daily-tokens
+             --daily-audio-seconds --daily-speech-chars --daily-images --max-queued-images
+             --search-per-day --models
 `
 
 const keysAddHelp = `Usage: infercat keys add NAME [limit flags]
 
 Mints a key for one person and prints their invite — the whole thing they need to paste.
 The secret is shown here and never again; only its hash is stored.
+Agent access is off by default. After adding a key: infercat keys limits NAME --agent.
 
   infercat keys add alice
   infercat keys add bob --rpm 60 --daily-tokens 500000
   infercat keys add carol --models gemma-4-E2B-it-Q4_K_M.gguf
 
-Defaults: 20 rpm · 20000 tpm · 1 concurrent · 2048 max output · the upstream's context ·
+Defaults: 20 rpm · 20000 tpm · 1 concurrent · 4096 max output · the upstream's context ·
 200000 tokens/day · every model.
 
 Limit flags:
@@ -516,14 +519,16 @@ Other flags:
 
 const keysLimitsHelp = `Usage: infercat keys limits ID [limit flags]
 
-Changes limits on an existing key. Only the flags you pass change; 0 means "no limit".
+Changes limits on an existing key. Only the flags you pass change.
 
   infercat keys limits alice --rpm 60 --daily-tokens 1000000
   infercat keys limits k_7f3a2b --models gemma-4-E2B-it-Q4_K_M.gguf
 
 Agent access: --agent=true enables agent runs; --agent=false disables them.
 
-Limit flags: --rpm --tpm --max-concurrent --max-output-tokens --max-context --daily-tokens --models
+Limit flags: --rpm --tpm --max-concurrent --max-output-tokens --max-context --daily-tokens
+             --daily-audio-seconds --daily-speech-chars --daily-images --max-queued-images
+             --search-per-day --models
 `
 
 // Mint and rotation share the exact secret-to-invite path with the admin API.

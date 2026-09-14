@@ -748,7 +748,7 @@ Uses an invite from this machine instead of the browser: opens the tunnel to the
 serves an OpenAI-compatible API on loopback that any app can use — the OpenAI SDKs, curl, Open
 WebUI, Cursor, Claude Code. The invite's key is added to every request, so the app needs none.
 
-  infercat connect ic1.tc….…
+  infercat connect ic2.tc….…
   OPENAI_BASE_URL=http://127.0.0.1:11435/v1 OPENAI_API_KEY=x python3 app.py
   curl http://127.0.0.1:11435/v1/models
 

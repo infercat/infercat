@@ -18,6 +18,14 @@ const setupHelp = `Usage: infercat setup [--profile ID | --custom FILE] [--model
 Inspect hardware, fetch verified built-in members, dry-start/probe/stop, then save settings.
 --model-path is repeatable; asset ids also work. No system installation.
 --custom checks compatibility only; it makes no performance promise.
+
+Built-in profiles:
+  apple-64g   Apple Silicon, 64 GiB RAM; member/pair measurements, no full-tier proof
+  apple-16g   Apple Silicon, 16 GiB RAM; Q4 E4B anchor, unverified
+  nvidia-12g  Linux/NVIDIA, 12 GiB VRAM and 16 GiB RAM; unmeasured draft
+
+For apple-16g, unverified means memory pressure and embedding RSS have not been measured
+on a real 16 GiB Mac; the anchor measurements came from a 64 GiB Mac.
 `
 
 func (e *env) cmdSetup(ctx context.Context, pre string, args []string) error {

@@ -226,6 +226,17 @@ func TestSetupHelpAndFlagRefusal(t *testing.T) {
 	if err := e.cmdSetup(context.Background(), t.TempDir(), []string{"--help"}); err != errDone {
 		t.Fatal(err)
 	}
+	for _, want := range []string{
+		"apple-64g   Apple Silicon, 64 GiB RAM; member/pair measurements, no full-tier proof",
+		"apple-16g   Apple Silicon, 16 GiB RAM; Q4 E4B anchor, unverified",
+		"nvidia-12g  Linux/NVIDIA, 12 GiB VRAM and 16 GiB RAM; unmeasured draft",
+		"unverified means memory pressure and embedding RSS have not been measured",
+		"on a real 16 GiB Mac; the anchor measurements came from a 64 GiB Mac.",
+	} {
+		if !strings.Contains(out.String(), want) {
+			t.Errorf("setup help omits %q", want)
+		}
+	}
 	for _, args := range [][]string{{"--profile", "apple-64g", "--custom", "p.json"}, {"--model-path", "bad"}, {"--model-path", "anchor=a", "--model-path", "anchor=b"}} {
 		out.Reset()
 		if e.cmdSetup(context.Background(), t.TempDir(), args) == nil || out.Len() == 0 {
