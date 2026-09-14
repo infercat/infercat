@@ -24,12 +24,12 @@ function submit(){document.querySelector('[data-form="settings"]').dispatchEvent
 const click=a=>document.querySelector(`[data-action="${a}"]`).click();
 for(const mode of ['ok','refusal','network'])test('settings save '+mode+' with no replay',async()=>{
  const s=await setup(mode);edit('name','renamed');edit('slots','4');edit('log_requests',false);submit();await tick();expect(s.writes).toHaveLength(1);expect(JSON.parse(s.writes[0].body)).toEqual({name:'renamed',slots:4,log_requests:false});
- if(mode==='ok'){expect(s.data.settings.name).toBe('renamed');expect(document.querySelector('#settings').textContent).toContain('running with 2');expect(document.querySelector('#settings').textContent).toContain('not remembered');}
+ if(mode==='ok'){expect(s.data.settings.name).toBe('renamed');expect(document.querySelector('#settings').textContent).toContain('running with 2');expect(document.querySelector('#settings').textContent).toContain('Changes take effect at once for this run.');}
  else expect(document.querySelector('#settings').textContent).toContain(mode==='refusal'?'not saved — config.json is not writable':'may have completed');
  await vi.advanceTimersByTimeAsync(4000);expect(s.writes).toHaveLength(1);
 });
 test('dirty fields and exact URL preview survive polling',async()=>{
- await setup();edit('web_url','http://example.com/');edit('console','off');await app.refresh();expect(document.querySelector('#setting-web_url').value).toBe('http://example.com/');expect(document.querySelector('.preview').textContent).toContain('http://example.com/#ic1.');expect(document.querySelector('#settings').textContent).toContain('not https');expect(document.querySelector('#settings').textContent).toContain('waits for the host');
+ await setup();edit('web_url','http://example.com/');edit('console','off');await app.refresh();expect(document.querySelector('#setting-web_url').value).toBe('http://example.com/');expect(document.querySelector('.preview').textContent).toContain('http://example.com/#ic2.');expect(document.querySelector('#settings').textContent).toContain('not https');expect(document.querySelector('#settings').textContent).toContain('waits for the host');
 });
 for(const action of ['remote-enable','remote-rotate'])for(const mode of ['ok','refusal','network'])test(action+' '+mode,async()=>{
  const s=await setup(mode);if(action==='remote-rotate'){s.data.settings.remote.enabled=true;await app.refresh();}click(action);await tick();expect(s.writes).toHaveLength(1);

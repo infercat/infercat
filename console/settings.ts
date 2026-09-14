@@ -18,7 +18,7 @@ export function settingsSection(data:Snapshot,lang:Lang,ui:SettingsUI,pending:bo
   if(bad)value=t('url_refusal');
   return `<span class="apply ${bad||dirty&&ui.error?'bad':dirty?'dirty':next?'next':'force'}">${value}</span>`;
  };
- const field=(key:keyof SettingsPatch,label:CopyKey,hint:CopyKey,type='text')=>`<label class="field"><span class="field-label">${t(label)}</span><input id="setting-${key}" data-setting="${key}" type="${type}" ${type==='number'?'min="0" step="1"':''} ${key==='name'?'required':''} value="${escape(v[key])}" ${pending?'disabled':''}><span class="field-hint">${t(hint)}</span>${key==='web_url'?`<p class="preview">${t('url_preview',String(v.web_url||s.default_web_url||s.web_url)+'#ic1.…')}</p>`:''}${line(key)}</label>`;
+ const field=(key:keyof SettingsPatch,label:CopyKey,hint:CopyKey,type='text')=>`<label class="field"><span class="field-label">${t(label)}</span><input id="setting-${key}" data-setting="${key}" type="${type}" ${type==='number'?'min="0" step="1"':''} ${key==='name'?'required':''} value="${escape(v[key])}" ${pending?'disabled':''}><span class="field-hint">${t(hint)}</span>${key==='web_url'?`<p class="preview">${t('url_preview',String(v.web_url||s.default_web_url||s.web_url)+'#ic2.…')}</p>`:''}${line(key)}</label>`;
  const remote=s.remote,enabled=!!remote?.enabled;
  return `<section class="sec" id="settings"><div class="sec-in"><div class="sec-head"><h2>${t('settings')}</h2><span class="count">${t('settings_src',s.data_dir)}</span><p class="lead">${t('settings_lead')}</p></div><form class="form" data-form="settings">
  ${field('name','st_name','st_name_h')}${field('web_url','st_web','web_hint')}${field('slots','st_slots','slots_hint','number')}

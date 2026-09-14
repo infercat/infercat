@@ -126,3 +126,15 @@ test('keyboard focus stays inside editable drawer and returns on Escape',async()
  expect(document.activeElement.dataset.action).toBe('confirm');document.activeElement.dispatchEvent(new KeyboardEvent('keydown',{key:'Tab',bubbles:true,cancelable:true}));expect(document.activeElement.dataset.close).toBe('true');
  document.activeElement.dispatchEvent(new KeyboardEvent('keydown',{key:'Escape',bubbles:true}));expect(document.activeElement.dataset.key).toBe('k_7f3a2b');
 });
+
+test('a freshly revoked drawer is read-only and offers a new invite, not Rotate', async () => {
+ const s=await setup(); await act('revoke');
+ const form=document.querySelector('form[data-form="limits"]');
+ for(const input of form.querySelectorAll('input,button[type="submit"]')) expect(input.disabled).toBe(true);
+ expect(document.querySelector('.drawer .dfoot').textContent).toBe('This invite is revoked. Mint a new invite to give this friend access again.');
+ expect(document.querySelector('.drawer [data-action="rotate"]')).toBeNull();
+ expect(document.querySelector('.drawer .note')).toBeNull();
+ expect(document.querySelector('details.dis summary').textContent).toBe('3 revoked keys');
+ document.querySelector('.drawer [data-action="new"]').click(); await tick();
+ expect(document.querySelector('#invite-name')).not.toBeNull(); expect(s.writes).toHaveLength(1);
+});
