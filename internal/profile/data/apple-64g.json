@@ -74,7 +74,11 @@
         "--cache-type-k",
         "f16",
         "--cache-type-v",
-        "f16"
+        "f16",
+        "--cache-ram",
+        "512",
+        "--ctx-checkpoints",
+        "4"
       ],
       "env": {},
       "port": 8080,

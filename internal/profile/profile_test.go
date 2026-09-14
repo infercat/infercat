@@ -36,6 +36,13 @@ func TestEmbeddedProfiles(t *testing.T) {
 				t.Fatal(p.ID)
 			}
 			for _, m := range p.Members {
+				if m.Class == "text" && m.Engine == "llama.cpp" {
+					for _, cap := range []string{"--cache-ram 512", "--ctx-checkpoints 4"} {
+						if !strings.Contains(strings.Join(m.Command, " "), cap) {
+							t.Fatal("uncapped anchor", id, cap)
+						}
+					}
+				}
 				if m.Policy.Kind == "on-demand" && m.Policy.IdleSeconds != 600 {
 					t.Fatal("idle policy")
 				}
