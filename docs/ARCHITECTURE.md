@@ -677,8 +677,11 @@ M for review". The Go `ImageCleanupPending()` accessor remains their sum.
 `internal/profile/data/*.json` embeds one independent version-1 JSON file per tier.
 There is no online refresh. `apple-64g` uses the measured E4B Q4 substitute; the
 intended 27–32B anchor remains unmeasured. `apple-16g` uses Q4 E4B with F16 vision
-and no image member: memory verified in a 16 GB macOS VM; performance
-unverified on real hardware.
+and no image member: memory verified in a 16 GB macOS VM (f16 configuration,
+September 2026); the shipped q8 command was verified on real Apple silicon
+(180a row F). Performance is unverified on real 16 GB hardware. The q8 anchor
+runs in VMs only via CPU fallback for flash attention (slow); not a supported
+configuration.
 `nvidia-12g` is wholly unmeasured.
 BGE-M3 never inherits the measured BGE-small working set. Policy and headroom reservations are explicitly draft, not measured performance guarantees.
 
