@@ -513,4 +513,5 @@ export const zh = {
   app_path_reconnecting: "{host} — 正在重连…",
   app_this_chat_is_open_in_another_window: "此对话已在另一个窗口中打开。",
   app_use_this_window_instead: "改用此窗口",
+  app_update_ready: "新版本已就绪——重新加载",
 } as const;
