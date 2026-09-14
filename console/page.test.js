@@ -155,3 +155,9 @@ for (const lang of ['en', 'zh']) test('host facts never render the raw tunnel ad
  expect(root.innerHTML).not.toContain(snapshot.status.tunnel.addr);
  expect(root.querySelector('.facts').textContent).toContain(snapshot.status.tunnel.region);
 });
+
+test('one revoked key uses the singular, in both languages', () => {
+ const snapshot=data(); snapshot.keys=snapshot.keys.filter(k=>k.status!=='revoked').concat(snapshot.keys.find(k=>k.status==='revoked'));
+ expect(mount(snapshot).querySelector('details.dis summary').textContent).toBe('1 revoked key');
+ expect(mount(snapshot,'zh').querySelector('details.dis summary').textContent).toBe('1 把已撤销的密钥');
+});
