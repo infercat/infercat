@@ -14,6 +14,7 @@ import (
 )
 
 func TestAgentRoutesScopeCorrelationApprovalAndOutputs(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, Config{}, nil)
 	m := runManager(t, h, nil)
 	var answers atomic.Int32
@@ -106,6 +107,7 @@ func TestAgentRoutesScopeCorrelationApprovalAndOutputs(t *testing.T) {
 }
 
 func TestStepObserverFailureStillSettlesOnce(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, Config{}, nil)
 	h.up.set("sse", sseEvents(2, true)...)
 	step := stepInput(true)
@@ -121,6 +123,7 @@ func TestStepObserverFailureStillSettlesOnce(t *testing.T) {
 }
 
 func TestAgentUnavailableAndExplicitCapabilityFalse(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, Config{}, nil)
 	m := runManager(t, h, nil)
 	if err := m.Register("agent", func(context.Context, runstate.Run) (runstate.Decision, error) {
@@ -146,6 +149,7 @@ func TestAgentUnavailableAndExplicitCapabilityFalse(t *testing.T) {
 }
 
 func TestAgentAttemptStoresFinalMessageNotSSE(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, Config{}, nil)
 	h.setKey(func(k *keys.Key) { k.Agent = true })
 	events := sseEvents(2, true)
@@ -169,6 +173,7 @@ func TestAgentAttemptStoresFinalMessageNotSSE(t *testing.T) {
 }
 
 func Test116CReadAndApprovalSpendDetachedRPM(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, Config{}, nil)
 	m := runManager(t, h, nil)
 	if err := m.Register("test", func(context.Context, runstate.Run) (runstate.Decision, error) {
@@ -200,6 +205,7 @@ func Test116CReadAndApprovalSpendDetachedRPM(t *testing.T) {
 	}
 }
 func Test116CServedModelConversionFallbackNeverFailsCall(t *testing.T) {
+	t.Parallel()
 	for _, bad := range []string{`{"choices":[{"delta":{"content":"paid"}}]}`, `not-json`, `{"error":{"message":"fixture"}}`} {
 		t.Run(bad, func(t *testing.T) {
 			h := newHarness(t, Config{}, nil)

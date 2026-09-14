@@ -18,6 +18,7 @@ import (
 )
 
 func TestManagedAuthAdmissionAndRefusedStartup(t *testing.T) {
+	t.Parallel()
 	var calls atomic.Int32
 	h := newHarness(t, Config{Managed: map[string]ManagedMember{"text": {Acquire: func(context.Context) (func(), error) { calls.Add(1); return nil, fmt.Errorf("cold failure") }, Offered: func() bool { return false }}}}, nil)
 	h.expectErr(h.do("POST", string(chatEndpoint), "", `{"model":"m1","messages":[]}`), CodeInvalidKey)
@@ -35,6 +36,7 @@ func TestManagedAuthAdmissionAndRefusedStartup(t *testing.T) {
 	}
 }
 func TestManagedEmbeddingHasOwnLeaseAndModelPins(t *testing.T) {
+	t.Parallel()
 	embed := newFakeUpstream()
 	defer embed.srv.Close()
 	embed.setInfo(func(i *upstream.Info) { i.Models = []string{"embedding"} })
@@ -65,6 +67,7 @@ func (coldManagedAudio) AudioDo(context.Context, string, string, []byte) (*http.
 	return nil, fmt.Errorf("unexpected engine call")
 }
 func TestMeDormantOffersNeverAcquire(t *testing.T) {
+	t.Parallel()
 	audio := coldManagedAudio{}
 	var calls atomic.Int32
 	var offered atomic.Bool
@@ -83,8 +86,13 @@ func TestMeDormantOffersNeverAcquire(t *testing.T) {
 	}
 }
 
-// The cold start exceeds the production body deadline, not a scaled approximation.
+// The cold start exceeds the configured body window; pin the production default separately.
 func TestManagedColdStartRenewsBodyDeadline(t *testing.T) {
+	t.Parallel()
+	if defaultReadTimeout != 30*time.Second {
+		t.Fatal("production body deadline changed", defaultReadTimeout)
+	}
+	const bodyWindow = 200 * time.Millisecond
 	for _, stalled := range []bool{false, true} {
 		t.Run(fmt.Sprint("stalled=", stalled), func(t *testing.T) {
 			t.Parallel()
@@ -93,7 +101,7 @@ func TestManagedColdStartRenewsBodyDeadline(t *testing.T) {
 			h := newHarness(t, Config{Managed: map[string]ManagedMember{"text": {
 				Offered: func() bool { return true }, Acquire: func(ctx context.Context) (func(), error) {
 					select {
-					case <-time.After(40 * time.Second):
+					case <-time.After(2 * bodyWindow):
 					case <-ctx.Done():
 						return nil, ctx.Err()
 					}
@@ -101,9 +109,7 @@ func TestManagedColdStartRenewsBodyDeadline(t *testing.T) {
 					return func() { released.Add(1) }, nil
 				},
 			}}}, nil)
-			if stalled {
-				h.gw.readTimeout = 200 * time.Millisecond
-			}
+			h.gw.readTimeout = bodyWindow
 			conn := rawConn(t, h.srv.URL)
 			conn.SetDeadline(time.Now().Add(50 * time.Second))
 			body := chatBody("m1", 1, "")
@@ -142,6 +148,7 @@ func TestManagedColdStartRenewsBodyDeadline(t *testing.T) {
 }
 
 func TestManagedAudioLeaseThroughSettlement(t *testing.T) {
+	t.Parallel()
 	for _, speech := range []bool{false, true} {
 		t.Run(fmt.Sprint("speech=", speech), func(t *testing.T) {
 			var active atomic.Int32
@@ -193,6 +200,7 @@ func TestManagedAudioLeaseThroughSettlement(t *testing.T) {
 }
 
 func TestManagedImageLeaseThroughOutputAndFinish(t *testing.T) {
+	t.Parallel()
 	var active, starts atomic.Int32
 	entered, finish := make(chan struct{}), make(chan struct{})
 	h := imagesHarness(t, func(w http.ResponseWriter, r *http.Request) {
@@ -247,6 +255,7 @@ func TestManagedImageLeaseThroughOutputAndFinish(t *testing.T) {
 }
 
 func TestManagedFailureOverridesStaleHealthyProbe(t *testing.T) {
+	t.Parallel()
 	var offered atomic.Bool
 	member := ManagedMember{Model: "m1", Offered: offered.Load, Acquire: func(context.Context) (func(), error) {
 		t.Error("read woke member")

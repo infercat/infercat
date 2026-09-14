@@ -18,6 +18,7 @@ import (
 )
 
 func TestResponsesFinishReasonAndReportedUsage(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		reason string
 		want   string
@@ -56,6 +57,7 @@ func TestResponsesFinishReasonAndReportedUsage(t *testing.T) {
 }
 
 func TestResponsesFailureHasIdentityAndSentence(t *testing.T) {
+	t.Parallel()
 	h := fastResponses(t)
 	h.gw.idleTimeout = 50 * time.Millisecond
 	h.up.set("sse", `{"choices":[{"delta":{"content":"partial"}}]}`, `{"choices":[]}`)
@@ -93,6 +95,7 @@ func (w *deadlineWriter) Write(p []byte) (int, error) {
 	return w.ResponseRecorder.Write(p)
 }
 func TestResponsesFailureBeforeOutputAndFailedWriter(t *testing.T) {
+	t.Parallel()
 	for _, fail := range []bool{false, true} {
 		h := fastResponses(t)
 		w := &deadlineWriter{ResponseRecorder: httptest.NewRecorder(), fail: fail}
@@ -113,6 +116,7 @@ func TestResponsesFailureBeforeOutputAndFailedWriter(t *testing.T) {
 }
 
 func TestResponsesToleratesChatToolShapes(t *testing.T) {
+	t.Parallel()
 	h := fastResponses(t)
 	h.up.set("sse",
 		`{"choices":[{"delta":{"tool_calls":[{"index":0,"id":"c","function":{"name":"undeclared","arguments":"{"}}]}}]}`,
@@ -130,6 +134,7 @@ func TestResponsesToleratesChatToolShapes(t *testing.T) {
 }
 
 func TestResponsesHistoryDoesNotDeclareTools(t *testing.T) {
+	t.Parallel()
 	// Codex 0.154.0 protocol/models.rs serializes FunctionCall's optional namespace
 	// separately from name; stream_events_utils records the original response item.
 	for _, namespace := range []string{"ns", ""} {
@@ -163,6 +168,7 @@ func TestResponsesHistoryDoesNotDeclareTools(t *testing.T) {
 }
 
 func TestResponsesDeveloperAndNonstreamReasoning(t *testing.T) {
+	t.Parallel()
 	h := fastResponses(t)
 	h.up.set("json", `{"choices":[{"message":{"reasoning":"actual thought","content":"answer"},"finish_reason":"stop"}],"usage":{"prompt_tokens":9,"completion_tokens":4}}`)
 	r := h.post(string(responsesEndpoint), `{"model":"m1","instructions":"first","input":[{"role":"developer","content":"second"},{"role":"user","content":"hello"}]}`)
@@ -190,6 +196,7 @@ func TestResponsesDeveloperAndNonstreamReasoning(t *testing.T) {
 }
 
 func TestModelEndpointClassifierMatchesRouter(t *testing.T) {
+	t.Parallel()
 	audio, _ := audioEngine(t, func(w http.ResponseWriter, _ *http.Request) { io.WriteString(w, `{}`) })
 	imageServer := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) { io.WriteString(w, `{"data":[{"id":"image"}]}`) }))
 	defer imageServer.Close()
@@ -230,6 +237,7 @@ func TestModelEndpointClassifierMatchesRouter(t *testing.T) {
 }
 
 func TestResponsesZeroObservedChargeSurvivesRestart(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	rec, err := usage.NewFileRecorder(dir, nil)
 	if err != nil {
@@ -267,6 +275,7 @@ func TestResponsesZeroObservedChargeSurvivesRestart(t *testing.T) {
 }
 
 func TestResponsesUsageAggregatesAsModelCall(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	rec, err := usage.NewFileRecorder(dir, nil)
 	if err != nil {
@@ -286,6 +295,7 @@ func TestResponsesUsageAggregatesAsModelCall(t *testing.T) {
 }
 
 func TestResponsesRepeatedTerminalMetadataIsEmpty(t *testing.T) {
+	t.Parallel()
 	h := fastResponses(t)
 	h.up.set("sse", `{"choices":[{"delta":{"content":"ok"},"finish_reason":"stop"}]}`, `{"choices":[{"delta":{},"finish_reason":"stop"}],"usage":{"prompt_tokens":7,"completion_tokens":2}}`)
 	r := h.post(string(responsesEndpoint), responseBody(`"stream":true`))
@@ -296,6 +306,7 @@ func TestResponsesRepeatedTerminalMetadataIsEmpty(t *testing.T) {
 }
 
 func TestImageRouteKeepsRPMAndImageMeter(t *testing.T) {
+	t.Parallel()
 	h := imagesHarness(t, func(w http.ResponseWriter, _ *http.Request) {
 		io.WriteString(w, `{"data":[{"b64_json":"`+tinyImage()+`"}]}`)
 	})

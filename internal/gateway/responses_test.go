@@ -62,6 +62,7 @@ func finalResponse(t *testing.T, events []map[string]any) map[string]any {
 }
 
 func TestResponsesCapturedRefusalsAndDerivedInput(t *testing.T) {
+	t.Parallel()
 	hashes := []string{"823ccd1a9510d102236df0857f4016a28e7d609e883d1505d042346e95034941", "87f3b21650da393797b539d78159656d62786cdb3ecacd14bc8320fbc9c0f330"}
 	for i, hash := range hashes {
 		t.Run(fmt.Sprint(i+1), func(t *testing.T) {
@@ -126,6 +127,7 @@ func codexHistory(events []map[string]any) ([]any, error) {
 	return history, fmt.Errorf("stream closed before response.completed")
 }
 func TestResponsesLifecycleAndOmissions(t *testing.T) {
+	t.Parallel()
 	h := fastResponses(t)
 	h.up.set("sse", `{"choices":[{"delta":{"reasoning_content":"thought"}}]}`, `{"choices":[{"delta":{"content":"answer"},"finish_reason":"stop"}]}`, `{"choices":[],"usage":{"prompt_tokens":10,"completion_tokens":5,"prompt_tokens_details":{"cached_tokens":2},"completion_tokens_details":{"reasoning_tokens":1}}}`)
 	r := h.post(string(responsesEndpoint), responseBody(`"stream":true`))
@@ -197,6 +199,7 @@ func TestResponsesLifecycleAndOmissions(t *testing.T) {
 }
 
 func TestResponsesFunctionRoundTrip(t *testing.T) {
+	t.Parallel()
 	for _, stream := range []bool{false, true} {
 		for _, namespace := range []string{"", "multi_agent_v1"} {
 			t.Run(fmt.Sprintf("stream=%v/namespace=%s", stream, namespace), func(t *testing.T) {
@@ -258,6 +261,7 @@ func TestResponsesFunctionRoundTrip(t *testing.T) {
 }
 
 func TestResponsesRefusalsBeforeEngine(t *testing.T) {
+	t.Parallel()
 	for _, extra := range []string{`"previous_response_id":"resp_old"`, `"store":true`, `"background":true`, `"stream":"yes"`, `"max_output_tokens":0`, `"tools":[{"type":"code_interpreter"}]`, `"tools":[{"type":"namespace","name":"ns","tools":[{"type":"web_search"}]}]`, `"tool_choice":{"type":"web_search"}`, `"tools":[{"type":"function","name":"x"},{"type":"function","name":"x"}]`, `"input":[{"type":"item_reference","id":"old"}]`, `"input":[{"role":"user","content":[{"type":"input_file","file_id":"f"}]}]`} {
 		t.Run(extra, func(t *testing.T) {
 			h := fastResponses(t)
@@ -280,6 +284,7 @@ func TestResponsesRefusalsBeforeEngine(t *testing.T) {
 }
 
 func TestResponsesCompatibilityAndAdmission(t *testing.T) {
+	t.Parallel()
 	// Existing clients still use chat unchanged. Responses is an additive text route,
 	// sharing clamps, queue, auth and q.finish; /me gains no capability field.
 	for _, path := range []endpoint{chatEndpoint, responsesEndpoint} {
@@ -320,6 +325,7 @@ func TestResponsesCompatibilityAndAdmission(t *testing.T) {
 }
 
 func TestResponsesCutNeverCompletes(t *testing.T) {
+	t.Parallel()
 	h := fastResponses(t)
 	h.gw.idleTimeout = 100 * time.Millisecond
 	h.up.set("sse", `{"choices":[{"delta":{"content":"partial"}}]}`, `{"usage":{"prompt_tokens":99,"completion_tokens":99},"choices":[]}`)
@@ -337,6 +343,7 @@ func TestResponsesCutNeverCompletes(t *testing.T) {
 }
 
 func TestResponsesMalformedStreamAndLength(t *testing.T) {
+	t.Parallel()
 	for _, payload := range []string{`not json`, `{"error":{"message":"failed"}}`, `{"choices":[{"delta":{"content":"x"},"finish_reason":"unknown"}]}`} {
 		h := fastResponses(t)
 		h.up.set("sse", payload)
@@ -355,6 +362,7 @@ func TestResponsesMalformedStreamAndLength(t *testing.T) {
 }
 
 func TestResponsesImageAndTextFormat(t *testing.T) {
+	t.Parallel()
 	raw := `{"input":[{"role":"user","content":[{"type":"input_text","text":"describe"},{"type":"input_image","image_url":"data:image/png;base64,aA==","detail":"low"}]}],"text":{"format":{"type":"json_schema","name":"answer","schema":{"type":"object"},"strict":true}},"reasoning":{"effort":"low"}}`
 	body, _ := decodeObject([]byte(raw))
 	chat, _, err := translateResponses(body)
@@ -367,6 +375,7 @@ func TestResponsesImageAndTextFormat(t *testing.T) {
 }
 
 func TestResponsesSSEFramingAndFailures(t *testing.T) {
+	t.Parallel()
 	cases := []struct {
 		name, wire string
 		cut        bool
@@ -408,6 +417,7 @@ type failReader struct{}
 func (failReader) Read([]byte) (int, error) { return 0, io.ErrUnexpectedEOF }
 
 func TestResponsesInterleavedFunctions(t *testing.T) {
+	t.Parallel()
 	h := fastResponses(t)
 	h.up.set("sse",
 		`{"choices":[{"delta":{"tool_calls":[{"index":1,"id":"call_b","function":{"name":"b"}},{"index":0,"id":"call_a","function":{"name":"a"}}]}}]}`,
@@ -436,6 +446,7 @@ func TestResponsesInterleavedFunctions(t *testing.T) {
 }
 
 func TestResponsesToolOnlyCutChargesOriginalDeltas(t *testing.T) {
+	t.Parallel()
 	h := fastResponses(t)
 	h.gw.idleTimeout = 100 * time.Millisecond
 	h.up.set("sse", `{"choices":[{"delta":{"tool_calls":[{"index":0,"id":"call","function":{"name":"lookup","arguments":"{\"n\":"}}]}}]}`, `{"usage":{"prompt_tokens":99,"completion_tokens":99},"choices":[]}`)
@@ -453,6 +464,7 @@ func TestResponsesToolOnlyCutChargesOriginalDeltas(t *testing.T) {
 }
 
 func TestResponsesNonStreamFilteredUsage(t *testing.T) {
+	t.Parallel()
 	h := fastResponses(t)
 	h.up.set("json", `{"choices":[{"message":{"content":""},"finish_reason":"content_filter"}],"usage":{"prompt_tokens":5,"completion_tokens":1}}`)
 	r := h.post(string(responsesEndpoint), responseBody(""))

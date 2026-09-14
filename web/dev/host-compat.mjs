@@ -7,7 +7,7 @@ import { chromium } from 'playwright';
 import { consoleCompat } from './console-compat.mjs';
 import { assertLive } from './live-assert.mjs';
 const invite = `ic1.tcCOMPATproofaddressCOMPATproofaddress.${'D'.repeat(43)}`;
-const server = await createServer({ server: { port: 0, strictPort: false }, plugins: [{ name: 'compat-events', configureServer(server) {
+const server = await createServer({ server: { port: Number(process.env.CHECK_PORT ?? 0), strictPort: !!process.env.CHECK_PORT }, plugins: [{ name: 'compat-events', configureServer(server) {
   server.middlewares.use('/compat-events', (req, res) => {
     res.writeHead(200, { 'content-type': 'text/event-stream', 'access-control-allow-origin': '*', 'access-control-allow-headers': '*' });
     res.write('event: run\ndata: '+JSON.stringify({ cursor: 'compat:0', time: new Date().toISOString(), reset: true, runs: [] })+'\n\n');

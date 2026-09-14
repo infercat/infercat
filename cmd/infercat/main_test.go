@@ -73,6 +73,7 @@ func execIn(t *testing.T, plat platform, stdin string, args ...string) result {
 const fakeAddr = "tcFAKEADDRESSFORTESTS"
 
 func TestKeysAddPrintsAnInviteExactlyOnce(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	r := exec(t, testPlatform(fakeAddr, nil), "keys", "add", "alice", "--data-dir", dir, "--rpm", "60")
 	if r.code != 0 {
@@ -115,6 +116,7 @@ func TestKeysAddPrintsAnInviteExactlyOnce(t *testing.T) {
 
 // Minting a key whose invite cannot be printed would burn a secret nobody ever sees.
 func TestKeysAddRefusesWithoutAHostAddress(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	r := exec(t, testPlatform("", errors.New("no host key")), "keys", "add", "alice", "--data-dir", dir)
 	if r.code == 0 {
@@ -129,6 +131,7 @@ func TestKeysAddRefusesWithoutAHostAddress(t *testing.T) {
 }
 
 func TestKeysLifecycle(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	plat := testPlatform(fakeAddr, nil)
 	if r := exec(t, plat, "keys", "add", "alice", "--data-dir", dir); r.code != 0 {
@@ -165,6 +168,7 @@ func TestKeysLifecycle(t *testing.T) {
 }
 
 func TestRotatePrintsANewInviteAndRetiresTheOld(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	plat := testPlatform(fakeAddr, nil)
 	add := exec(t, plat, "keys", "add", "alice", "--data-dir", dir)
@@ -189,6 +193,7 @@ func TestRotatePrintsANewInviteAndRetiresTheOld(t *testing.T) {
 
 // The QR must carry the invite verbatim; a mistyped one is a friend who cannot connect.
 func TestQRMatchesTheInvite(t *testing.T) {
+	t.Parallel()
 	invite := product.InvitePrefix + "." + fakeAddr + ".GEcLTxHfEEc1nkOJcHYzDbJmMBLbEwXAJfDBrjE8CQA"
 	var buf lockedBuffer
 	if err := writeQR(&buf, invite); err != nil {
@@ -221,6 +226,7 @@ func TestQRMatchesTheInvite(t *testing.T) {
 // The documented `keys add alice --rpm 60` puts a flag after a positional, which the standard
 // flag package would otherwise ignore.
 func TestFlagsAfterPositionals(t *testing.T) {
+	t.Parallel()
 	fs := flag.NewFlagSet("t", flag.ContinueOnError)
 	n := fs.Int("n", 0, "")
 	b := fs.Bool("b", false, "")
@@ -255,6 +261,7 @@ func TestFlagsAfterPositionals(t *testing.T) {
 
 // 005 fix 10h: a value flag as the last word must not swallow the "--" terminator as its value.
 func TestDanglingValueFlagIsAnError(t *testing.T) {
+	t.Parallel()
 	fs := flag.NewFlagSet("t", flag.ContinueOnError)
 	fs.String("models", "", "")
 	fs.Bool("b", false, "")
@@ -279,6 +286,7 @@ func TestDanglingValueFlagIsAnError(t *testing.T) {
 }
 
 func TestGlobalDataDirBeforeTheCommand(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	plat := testPlatform(fakeAddr, nil)
 	if r := exec(t, plat, "--data-dir", dir, "keys", "add", "alice"); r.code != 0 {
@@ -294,6 +302,7 @@ func TestGlobalDataDirBeforeTheCommand(t *testing.T) {
 }
 
 func TestHelpAndExitCodes(t *testing.T) {
+	t.Parallel()
 	plat := testPlatform(fakeAddr, nil)
 	for _, tc := range []struct {
 		args []string
@@ -332,6 +341,7 @@ func TestHelpAndExitCodes(t *testing.T) {
 }
 
 func TestKeysHelpListsAllLimitFlags(t *testing.T) {
+	t.Parallel()
 	fs := flag.NewFlagSet("limits", flag.ContinueOnError)
 	limitFlags(fs)
 	for _, args := range [][]string{{"keys", "--help"}, {"keys", "limits", "--help"}} {
@@ -357,6 +367,7 @@ func TestKeysHelpListsAllLimitFlags(t *testing.T) {
 
 // `status` without a running host must fail loudly rather than print an empty block.
 func TestStatusWithoutADaemon(t *testing.T) {
+	t.Parallel()
 	r := exec(t, testPlatform(fakeAddr, nil), "status", "--data-dir", t.TempDir())
 	if r.code == 0 {
 		t.Errorf("exit 0 with no host running")
@@ -367,6 +378,7 @@ func TestStatusWithoutADaemon(t *testing.T) {
 }
 
 func TestUsageAggregatesFromTheLog(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	plat := testPlatform(fakeAddr, nil)
 	if r := exec(t, plat, "keys", "add", "alice", "--data-dir", dir); r.code != 0 {
@@ -413,6 +425,7 @@ func TestUsageAggregatesFromTheLog(t *testing.T) {
 }
 
 func TestParseSince(t *testing.T) {
+	t.Parallel()
 	for in, want := range map[string]time.Duration{
 		"":      0,
 		"all":   0,
@@ -435,6 +448,7 @@ func TestParseSince(t *testing.T) {
 }
 
 func TestConfigRoundTripAndDefaults(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	if c, err := loadConfig(dir); err != nil || c.Upstream != "" {
 		t.Fatalf("missing config = %+v %v, want the zero value", c, err)
@@ -475,6 +489,7 @@ func TestConfigRoundTripAndDefaults(t *testing.T) {
 }
 
 func TestComma(t *testing.T) {
+	t.Parallel()
 	for in, want := range map[int]string{0: "0", 999: "999", 1000: "1,000", 12004: "12,004", 1234567: "1,234,567", -4321: "-4,321"} {
 		if got := comma(in); got != want {
 			t.Errorf("comma(%d) = %q, want %q", in, got, want)
@@ -483,6 +498,7 @@ func TestComma(t *testing.T) {
 }
 
 func TestResolveDataDirDefaultsUnderTheUserConfigDir(t *testing.T) {
+	t.Parallel()
 	got, err := resolveDataDir("")
 	if err != nil {
 		t.Skipf("no user config dir here: %v", err)
@@ -699,6 +715,7 @@ func fakeEngine(t *testing.T) string {
 // what they can reach, where the host's own files are, and — once — what host.key.json is
 // (ticket 009 promises 4, 7, 8, 12).
 func TestServeBannerTellsTheTruth(t *testing.T) {
+	t.Parallel()
 	dir, err := os.MkdirTemp("", "bn009-") // short: the admin socket path has a length limit
 	if err != nil {
 		t.Fatal(err)
@@ -753,6 +770,7 @@ func TestServeBannerTellsTheTruth(t *testing.T) {
 // A remembered upstream that never answers must name the file it is remembered in and the way
 // out; `--upstream auto` is that way out (ticket 009 promise 10).
 func TestDownUpstreamNamesTheWayOut(t *testing.T) {
+	t.Parallel()
 	dir, err := os.MkdirTemp("", "bn009-")
 	if err != nil {
 		t.Fatal(err)
@@ -790,6 +808,7 @@ func TestDownUpstreamNamesTheWayOut(t *testing.T) {
 }
 
 func TestHostDisplayName(t *testing.T) {
+	t.Parallel()
 	if got := hostDisplayName("  Max's laptop "); got != "Max's laptop" {
 		t.Errorf("hostDisplayName trimmed wrong: %q", got)
 	}
@@ -806,6 +825,7 @@ func TestHostDisplayName(t *testing.T) {
 // `keys add alice` twice is what a host does after losing the invite in scrollback. It used to
 // mint a second alice and break every later `keys pause alice` as ambiguous (promise 3).
 func TestDuplicateNameIsRefused(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	plat := testPlatform(fakeAddr, nil)
 	if r := exec(t, plat, "keys", "add", "alice", "--data-dir", dir); r.code != 0 {
@@ -846,6 +866,7 @@ func TestDuplicateNameIsRefused(t *testing.T) {
 // The invite must say where it goes: a link when the host has a web app, the honest alternative
 // when nobody has hosted one (promise 2), and a machine-readable form for scripts (promise 11).
 func TestInviteNamesItsDestination(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	plat := testPlatform(fakeAddr, nil)
 
@@ -889,6 +910,7 @@ func TestInviteNamesItsDestination(t *testing.T) {
 
 // The QR is decoration for a person: not in a pipe, and not when the host says no (promise 11).
 func TestQRIsForTerminalsOnly(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	plat := testPlatform(fakeAddr, nil)
 	if r := execIn(t, plat, "", "keys", "add", "alice", "--data-dir", dir); !strings.Contains(r.out, "\x1b[30;47m") {
@@ -910,6 +932,7 @@ func TestQRIsForTerminalsOnly(t *testing.T) {
 // persona lost one that way. The line to copy is printed again underneath the QR, and only there:
 // --no-qr, a pipe and --json are untouched (ticket 016 promise 2).
 func TestInviteIsRepeatedUnderTheQR(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	plat := testPlatform(fakeAddr, nil)
 	qrEnd := func(out string) int { return strings.LastIndex(out, "\x1b[0m") }
@@ -960,6 +983,7 @@ func TestInviteIsRepeatedUnderTheQR(t *testing.T) {
 // Revoke is permanent, so it asks, names the reversible alternative, and does nothing on anything
 // but yes (promise 9).
 func TestRevokeAsksFirst(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	plat := testPlatform(fakeAddr, nil)
 	if r := exec(t, plat, "keys", "add", "alice", "--data-dir", dir); r.code != 0 {
@@ -987,6 +1011,7 @@ func TestRevokeAsksFirst(t *testing.T) {
 // A key change must be in force before the command returns, not within the store's once-per-second
 // re-read: a host who tests revoke the obvious way concluded revocation was broken (promise 9).
 func TestKeyWritesPokeTheRunningHost(t *testing.T) {
+	t.Parallel()
 	dir, err := os.MkdirTemp("", "bn009-") // short: the admin socket path has a length limit
 	if err != nil {
 		t.Fatal(err)
@@ -1042,6 +1067,7 @@ func TestKeyWritesPokeTheRunningHost(t *testing.T) {
 // `status` reads the same words off the admin API: an engine nobody has met and one that stopped
 // answering, with since when (ticket 011).
 func TestStatusWordsForTheEngineState(t *testing.T) {
+	t.Parallel()
 	var out lockedBuffer
 	writeStatus(&out, admin.Status{Upstream: admin.Upstream{Kind: "unknown", URL: "http://127.0.0.1:1", Since: time.Now().Add(-12 * time.Second)}})
 	if s := out.String(); !strings.Contains(s, "upstream  (not identified yet)  http://127.0.0.1:1  NOT ANSWERING for 12s") {
@@ -1055,6 +1081,7 @@ func TestStatusWordsForTheEngineState(t *testing.T) {
 }
 
 func TestNoEnginePointsToEngineQuickstart(t *testing.T) {
+	t.Parallel()
 	// Cancellation makes every signature probe fail even on a developer's machine with engines.
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -1071,6 +1098,7 @@ func TestNoEnginePointsToEngineQuickstart(t *testing.T) {
 }
 
 func TestServeRemembersModelPinAndAllClearsIt(t *testing.T) {
+	t.Parallel()
 	dir, err := os.MkdirTemp("", "ic066-")
 	if err != nil {
 		t.Fatal(err)

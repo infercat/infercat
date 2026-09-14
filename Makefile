@@ -27,8 +27,7 @@ vet:
 
 check: size-check console-check vet test client-check bridge-check web-lint host-compat
 	# host-compat built web/dist; run every no-invite launch assertion against that exact build.
-	@set -eu; launch_shots=$$(mktemp -d); trap 'rm -rf "$$launch_shots"' EXIT; \
-		cd web && env -u INVITE -u APP LAUNCH_SHOTS="$$launch_shots" pnpm launch-check
+	cd web && env -u INVITE -u APP sh ../hack/check-web.sh launch pnpm launch-check
 	node --test hack/runtime-releases.test.mjs
 	sh hack/install_test.sh
 	@if command -v shellcheck >/dev/null 2>&1; then shellcheck -s sh hack/install.sh; else echo "shellcheck: skipped (not installed)"; fi
@@ -52,8 +51,8 @@ size-check:
 wasm:
 	sh web/wasm/build.sh
 
-console-deps:
-	cd console && pnpm install --frozen-lockfile
+# web/pnpm-workspace.yaml owns all three pnpm importers; install once under make -j.
+console-deps: web-deps
 
 web-deps:
 	cd web && pnpm install --frozen-lockfile
@@ -65,10 +64,10 @@ web-browser: web-deps
 	cd web && pnpm exec playwright install chromium
 
 web: console-check wasm web-typecheck
-	cd web && pnpm build
+	cd web && sh ../hack/check-web.sh build pnpm build
 
 web-test: web-browser
-	cd web && pnpm test
+	cd web && sh ../hack/check-web.sh test pnpm test
 
 web-lint: web-deps
 	cd web && pnpm lint
@@ -148,8 +147,7 @@ console-build: console-deps
 # Shipped /me shapes must render Connect → Chat; install the pinned browser on clean machines.
 .PHONY: host-compat
 host-compat: web-lint web-test web
-	cd web && pnpm exec node dev/host-compat.mjs
-	cd web && pnpm exec node dev/console-chunk-check.mjs
+	cd web && sh ../hack/check-web.sh compat sh -c 'pnpm exec node dev/host-compat.mjs && pnpm exec node dev/console-chunk-check.mjs'
 
 # Opt-in real iOS proof; requires Xcode/runtime and an owned loopback engine.
 .PHONY: ios-proof

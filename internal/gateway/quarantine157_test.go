@@ -15,6 +15,7 @@ import (
 )
 
 func Test157RuntimeQuarantineIsRetryable503(t *testing.T) {
+	t.Parallel()
 	w := httptest.NewRecorder()
 	writeError(w, runError(runstate.ErrQuarantined))
 	if w.Code != 503 || w.Header().Get("Retry-After") != "10" || !strings.Contains(w.Body.String(), `"code":"upstream_down"`) {
@@ -23,6 +24,7 @@ func Test157RuntimeQuarantineIsRetryable503(t *testing.T) {
 }
 
 func Test157RuntimeStoppingIsDistinct(t *testing.T) {
+	t.Parallel()
 	w := httptest.NewRecorder()
 	writeError(w, runError(runstate.ErrStopping))
 	if w.Code != 503 || w.Header().Get("Retry-After") != "10" || !strings.Contains(w.Body.String(), "runtime stopping; retry shortly") || strings.Contains(w.Body.String(), "quarantined") {
@@ -31,6 +33,7 @@ func Test157RuntimeStoppingIsDistinct(t *testing.T) {
 }
 
 func Test157ModelIdentityRefusedBeforeDispatch(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, Config{}, nil)
 	body, _ := json.Marshal(map[string]any{"model": strings.Repeat("m", usage.MaxModelBytes+1), "messages": []map[string]string{{"role": "user", "content": "hello"}}})
 	response := h.post("/v1/chat/completions", string(body))
@@ -45,6 +48,7 @@ func Test157ModelIdentityRefusedBeforeDispatch(t *testing.T) {
 }
 
 func Test157CommittedTerminalHTTPResponse(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	store, err := runstate.NewStore(dir)
 	if err != nil {
@@ -118,6 +122,7 @@ func Test157CommittedTerminalHTTPResponse(t *testing.T) {
 }
 
 func Test157V5RunStoreAttentionIsExplicit(t *testing.T) {
+	t.Parallel()
 	w := httptest.NewRecorder()
 	writeError(w, runError(fmt.Errorf("wrapped: %w", runstate.ErrNeedsAttention)))
 	if w.Code != 503 || w.Header().Get("Retry-After") != "60" || !strings.Contains(w.Body.String(), "this key's run store needs the host's attention") || !strings.Contains(w.Body.String(), `"code":"upstream_down"`) {

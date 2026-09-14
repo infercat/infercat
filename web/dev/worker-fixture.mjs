@@ -3,7 +3,7 @@ import { createServer } from 'node:http';
 import { readFile } from 'node:fs/promises';
 import { resolve, extname } from 'node:path';
 import { fileURLToPath } from 'node:url';
-export async function workerFixture(suffix = () => '') {
+export async function workerFixture(suffix = () => '', port = 0) {
   const root = fileURLToPath(new URL('../dist/', import.meta.url));
   const rules = await readFile(new URL('../../hosting/cloudflare/_redirects', import.meta.url), 'utf8');
   const server = createServer(async (req, res) => {
@@ -16,6 +16,6 @@ export async function workerFixture(suffix = () => '') {
     try { let bytes = await readFile(path === '/sw.js' && process.env.SW_FIXTURE ? process.env.SW_FIXTURE : file); if (path === '/sw.js') bytes = Buffer.concat([bytes, Buffer.from(suffix())]); res.setHeader('Content-Type', ({'.html':'text/html','.js':'text/javascript','.css':'text/css','.json':'application/json','.svg':'image/svg+xml','.png':'image/png'})[extname(file)] ?? 'application/octet-stream'); res.end(bytes); }
     catch { res.writeHead(404).end(); }
   });
-  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  await new Promise(resolve => server.listen(port, '127.0.0.1', resolve));
   return { server, origin: `http://127.0.0.1:${server.address().port}` };
 }

@@ -29,6 +29,7 @@ type displayKeys struct{ keys.Store }
 func (displayKeys) List(context.Context) ([]*keys.Key, error) { return nil, nil }
 
 func TestHumanAddressSurfacesAreMaskedButInvitesAreNot(t *testing.T) {
+	t.Parallel()
 	pk := tailcat.NewPrivateKey()
 	pk.Public.RegionID = 302
 	addr := string(pk.Public.Addr())

@@ -12,6 +12,7 @@ import (
 )
 
 func TestMeVisionPerVisibleModel(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, Config{}, nil)
 	yes, no := true, false
 	h.up.setInfo(func(i *upstream.Info) {
@@ -40,6 +41,7 @@ func mustVisionJSON(t *testing.T, v any) string {
 }
 
 func TestImageRefusalMapping(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name    string
 		status  int

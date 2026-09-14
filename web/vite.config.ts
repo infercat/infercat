@@ -64,6 +64,7 @@ const webPort = Number(process.env.WEB_PORT ?? 49173);
 const gatewayPort = Number(process.env.FAKE_GATEWAY_PORT ?? 49090);
 
 export default defineConfig({
+  cacheDir: process.env.CHECK_CACHE_DIR,
   plugins: [react(), productNameHtml, offlineShell(productVersion)],
   server: { fs: { allow: ['..'] }, host: '127.0.0.1', port: webPort, strictPort: true },
   preview: { host: '127.0.0.1', port: webPort + 1, strictPort: true },

@@ -11,6 +11,7 @@ import (
 )
 
 func TestPublicBridgeSlotsStatus(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		slots     int
 		connected bool

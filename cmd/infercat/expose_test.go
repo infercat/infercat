@@ -15,6 +15,7 @@ import (
 )
 
 func TestExposeDispatchReloadAndOff(t *testing.T) {
+	t.Parallel()
 	dir, err := os.MkdirTemp("/tmp", "ic072-")
 	if err != nil {
 		t.Fatal(err)
@@ -60,6 +61,7 @@ func TestExposeDispatchReloadAndOff(t *testing.T) {
 	}
 }
 func TestExposeFlagsRefuseBeforeMutation(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	c := bridge.Config{Endpoint: "https://gateway.infercat.ai", Host: "fixture", Token: strings.Repeat("a", 64)}
 	if err := bridge.Save(dir, c); err != nil {
@@ -76,6 +78,7 @@ func TestExposeFlagsRefuseBeforeMutation(t *testing.T) {
 	}
 }
 func TestBridgeRequestLine(t *testing.T) {
+	t.Parallel()
 	if !strings.Contains(requestLine(usage.Event{Via: "bridge"}, "friend"), "via bridge") {
 		t.Fatal("missing bridge provenance")
 	}

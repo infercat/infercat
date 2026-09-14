@@ -46,6 +46,7 @@ func scriptedSearchChat(t *testing.T, replies []string, provider http.HandlerFun
 const searchAnswer = `{"choices":[{"delta":{"content":"Here is the answer."},"finish_reason":"stop"}]}`
 
 func TestSearchChatRoundsAndExactCapturedResults(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name             string
 		rounds           []string
@@ -110,6 +111,7 @@ func TestSearchChatRoundsAndExactCapturedResults(t *testing.T) {
 	}
 }
 func TestSearchChatFailuresContinueAndMalformedForcesProse(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name, args, body, want string
 		status, calls          int
@@ -165,6 +167,7 @@ func TestSearchChatFailuresContinueAndMalformedForcesProse(t *testing.T) {
 	}
 }
 func TestSearchOnlyHostAndOptInIntersection(t *testing.T) {
+	t.Parallel()
 	h, _ := scriptedSearchChat(t, []string{searchCall(`{"query":"q"}`), searchAnswer}, func(w http.ResponseWriter, r *http.Request) { io.WriteString(w, `{"results":[]}`) })
 	h.gw.cfg.Images = nil
 	// Remove the image destination too: the offer uses the router's configured destination.
@@ -188,6 +191,7 @@ func TestSearchOnlyHostAndOptInIntersection(t *testing.T) {
 	h.expectErr(h.post(string(chatEndpoint), chatBody("m1", 1, `"host_tools":["web_search"],"tool_choice":"none"`)), CodeInvalidRequest)
 }
 func TestSearchChatBudgetEnvelopeAndNoExtraRPM(t *testing.T) {
+	t.Parallel()
 	var provider atomic.Int32
 	h, calls := scriptedSearchChat(t, []string{searchCall(`{"query":"first"}`), searchCall(`{"query":"second"}`)}, func(w http.ResponseWriter, r *http.Request) { provider.Add(1); io.WriteString(w, `{"results":[]}`) })
 	h.setKey(func(k *keys.Key) { k.Limits.SearchPerDay = 1 })
@@ -210,6 +214,7 @@ func TestSearchChatBudgetEnvelopeAndNoExtraRPM(t *testing.T) {
 }
 
 func TestSearchSettlementUsesSettlementDay(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, Config{}, nil)
 	var mu sync.Mutex
 	now := time.Date(2026, 9, 11, 23, 59, 59, 0, time.UTC)
@@ -230,6 +235,7 @@ func TestSearchSettlementUsesSettlementDay(t *testing.T) {
 }
 
 func TestSearchLoggingKeepsTheExistingExplicitOptIn(t *testing.T) {
+	t.Parallel()
 	for _, enabled := range []bool{false, true} {
 		t.Run(map[bool]string{false: "default", true: "explicit"}[enabled], func(t *testing.T) {
 			h, _ := scriptedSearchChat(t, []string{searchCall(`{"query":"private query"}`), searchAnswer}, func(w http.ResponseWriter, r *http.Request) {

@@ -66,6 +66,7 @@ func chatRunID(t *testing.T, h *harness) string {
 	return ""
 }
 func TestHostChatHandsOffBeforeAttemptsAndKeepsImagesIndependent(t *testing.T) {
+	t.Parallel()
 	for _, stream := range []bool{false, true} {
 		t.Run(map[bool]string{false: "body", true: "stream"}[stream], func(t *testing.T) {
 			gate := make(chan struct{})
@@ -136,6 +137,7 @@ func TestHostChatHandsOffBeforeAttemptsAndKeepsImagesIndependent(t *testing.T) {
 	}
 }
 func TestHostChatInvalidToolBecomesSecondCallErrorResult(t *testing.T) {
+	t.Parallel()
 	h := hostChatHarness(t, []string{imageCall(`{"prompt":"fox","count":99}`)}, nil)
 	r := h.post(string(chatEndpoint), hostChatBody(true))
 	if r.status != 200 {
@@ -157,6 +159,7 @@ func TestHostChatInvalidToolBecomesSecondCallErrorResult(t *testing.T) {
 	}
 }
 func TestHostChatNoOptInAndNoOfferRemainOrdinary(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, Config{}, nil)
 	r := h.post(string(chatEndpoint), hostChatBody(false))
 	if r.status != 200 || bytes.Contains(r.body, []byte("run_id")) {
@@ -171,6 +174,7 @@ func TestHostChatNoOptInAndNoOfferRemainOrdinary(t *testing.T) {
 	}
 }
 func TestHostChatDisconnectCancelsChatNotSubmittedImage(t *testing.T) {
+	t.Parallel()
 	gate := make(chan struct{})
 	defer close(gate)
 	h := hostChatHarness(t, []string{imageCall(`{"prompt":"fox","count":1}`)}, gate)
@@ -208,6 +212,7 @@ func TestHostChatDisconnectCancelsChatNotSubmittedImage(t *testing.T) {
 }
 
 func TestHostChatFourthToolIsRefusedWithoutFifthAttempt(t *testing.T) {
+	t.Parallel()
 	h := hostChatHarness(t, []string{imageCall(`{"prompt":"fox","count":1}`)}, nil)
 	h.up.srv.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		h.up.set("sse", `{"choices":[{"delta":{"content":"Visible words."}}]}`, imageCall(`{"prompt":"fox","count":1}`))
@@ -235,6 +240,7 @@ func TestHostChatFourthToolIsRefusedWithoutFifthAttempt(t *testing.T) {
 	}
 }
 func TestHostChatMultipleCallsExecuteNone(t *testing.T) {
+	t.Parallel()
 	h := hostChatHarness(t, []string{`{"choices":[{"delta":{"tool_calls":[{"index":0,"id":"a","function":{"name":"make_image","arguments":"{\"prompt\":\"fox\",\"count\":1}"}},{"index":1,"id":"b","function":{"name":"make_image","arguments":"{\"prompt\":\"fox\",\"count\":1}"}}]},"finish_reason":"tool_calls"}]}`}, nil)
 	h.post(string(chatEndpoint), hostChatBody(true))
 	rows, _ := h.gw.runs.Store.List(h.key.ID)
@@ -247,6 +253,7 @@ func TestHostChatMultipleCallsExecuteNone(t *testing.T) {
 	}
 }
 func TestHostChatInputCannotClaimAnotherDelivery(t *testing.T) {
+	t.Parallel()
 	h := hostChatHarness(t, nil, nil)
 	d := &chatDelivery{key: h.key.ID, runID: "original", ready: make(chan struct{}), done: make(chan struct{}), deltas: make(chan chatDelta, 1)}
 	close(d.ready)
@@ -268,6 +275,7 @@ func TestHostChatInputCannotClaimAnotherDelivery(t *testing.T) {
 }
 
 func TestHostChatIncompleteToolNeverSubmits(t *testing.T) {
+	t.Parallel()
 	for _, reason := range []string{"", "length", "unknown"} {
 		t.Run(reason, func(t *testing.T) {
 			first := strings.Replace(imageCall(`{"prompt":"fox","count":1}`), `"finish_reason":"tool_calls"`, `"finish_reason":"`+reason+`"`, 1)
@@ -289,6 +297,7 @@ func TestHostChatIncompleteToolNeverSubmits(t *testing.T) {
 }
 
 func TestHostChatAlreadyCancelledDeliveryEnds(t *testing.T) {
+	t.Parallel()
 	h := hostChatHarness(t, nil, nil)
 	r, err := h.gw.runs.Store.Create(h.key.ID, "chat", "interactive", json.RawMessage(`{}`))
 	if err != nil {
@@ -311,6 +320,7 @@ func TestHostChatAlreadyCancelledDeliveryEnds(t *testing.T) {
 }
 
 func TestHostChatAtomicQueueRefusalBecomesToolResult(t *testing.T) {
+	t.Parallel()
 	gate := make(chan struct{})
 	defer close(gate)
 	h := hostChatHarness(t, []string{imageCall(`{"prompt":"fox","count":2}`)}, gate)
@@ -340,6 +350,7 @@ func TestHostChatAtomicQueueRefusalBecomesToolResult(t *testing.T) {
 }
 
 func TestHostChatHandoffDoesNotSpendAnExtraMessage(t *testing.T) {
+	t.Parallel()
 	h := hostChatHarness(t, []string{`{"choices":[{"delta":{"content":"No image requested."},"finish_reason":"stop"}]}`, `{"choices":[],"usage":{"prompt_tokens":3,"completion_tokens":2}}`}, nil)
 	response := h.post(string(chatEndpoint), hostChatBody(false))
 	if response.status != 200 {

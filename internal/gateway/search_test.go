@@ -41,6 +41,7 @@ func testSearch(t *testing.T, handler http.HandlerFunc) *Search {
 	return s
 }
 func TestSearchProviderBoundary(t *testing.T) {
+	t.Parallel()
 	var seen atomic.Int32
 	s := testSearch(t, func(w http.ResponseWriter, r *http.Request) {
 		seen.Add(1)
@@ -62,6 +63,7 @@ func TestSearchProviderBoundary(t *testing.T) {
 	}
 }
 func TestSearchProviderFailuresEmptyAndBounds(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name, body, want string
 		status           int
@@ -90,6 +92,7 @@ func TestSearchProviderFailuresEmptyAndBounds(t *testing.T) {
 	}
 }
 func TestSearchNoRedirectOrRetryAndTimeout(t *testing.T) {
+	t.Parallel()
 	var redirected, attempts atomic.Int32
 	target := httptest.NewServer(http.HandlerFunc(func(http.ResponseWriter, *http.Request) { redirected.Add(1) }))
 	defer target.Close()
@@ -109,6 +112,7 @@ func TestSearchNoRedirectOrRetryAndTimeout(t *testing.T) {
 	}
 }
 func TestSearchBudgetAtomicCancellationAndRestart(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, Config{}, nil)
 	h.setKey(func(k *keys.Key) { k.Limits.SearchPerDay = 1 })
 	entered, release := make(chan struct{}), make(chan struct{})
@@ -154,6 +158,7 @@ func TestSearchBudgetAtomicCancellationAndRestart(t *testing.T) {
 	}
 }
 func TestSearchCancelBeforeDispatchAndDefaults(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, Config{}, nil)
 	var calls atomic.Int32
 	h.gw.cfg.Search = testSearch(t, func(w http.ResponseWriter, r *http.Request) { calls.Add(1); io.WriteString(w, `{"results":[]}`) })

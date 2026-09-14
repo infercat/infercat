@@ -18,6 +18,7 @@ import (
 )
 
 func TestRemoteCLIUsesRunningHostAndOnceResults(t *testing.T) {
+	t.Parallel()
 	dir, dirErr := os.MkdirTemp("", "ic090-")
 	if dirErr != nil {
 		t.Fatal(dirErr)
@@ -92,6 +93,7 @@ func TestRemoteCLIUsesRunningHostAndOnceResults(t *testing.T) {
 	}
 }
 func TestRemoteActionDoesNotReplayAmbiguousResponse(t *testing.T) {
+	t.Parallel()
 	dir, dirErr := os.MkdirTemp("", "ic090-")
 	if dirErr != nil {
 		t.Fatal(dirErr)
@@ -118,6 +120,7 @@ func TestRemoteActionDoesNotReplayAmbiguousResponse(t *testing.T) {
 }
 
 func TestServeDamagedAdminKeepsHostAvailable(t *testing.T) {
+	t.Parallel()
 	dir, err := os.MkdirTemp("", "ic090-")
 	if err != nil {
 		t.Fatal(err)

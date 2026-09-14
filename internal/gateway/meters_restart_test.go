@@ -15,6 +15,7 @@ import (
 // The recorder must preserve the settlement, not recompute it from observed tokens.
 // These cases deliberately use distinct observed and reserved amounts.
 func TestMeterSettlementSurvivesRecorderAndRestart(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name       string
 		outcome    outcome
@@ -111,6 +112,7 @@ func TestMeterSettlementSurvivesRecorderAndRestart(t *testing.T) {
 }
 
 func TestAudioAndSpeechMetersSurviveRecorderAndRestart(t *testing.T) {
+	t.Parallel()
 	engine, _ := audioEngine(t, func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == string(transcribeEndpoint) {
 			w.Header().Set("Content-Type", "application/json")

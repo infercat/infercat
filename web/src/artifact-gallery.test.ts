@@ -35,7 +35,7 @@ it('renders all eight tiles after one 429 round, with four complete reads at mos
     const noop = () => {};
     createRoot(document.getElementById('root')).render(React.createElement(ImagesSheet,{jobs,live,connected:true,disabled:false,pending:new Set(),onClose:noop,onEdit:noop,onConversation:noop,conversationTitle:()=> 'Chat',onCancel:noop,onDiscard:noop}));
   </script>`;
-  const server = await createServer({ configFile: false, root: process.cwd(), server: { host: '127.0.0.1', port: 0 }, plugins: [{
+  const server = await createServer({ configFile: false, root: process.cwd(), cacheDir: process.env.CHECK_CACHE_DIR && `${process.env.CHECK_CACHE_DIR}/gallery`, server: { host: '127.0.0.1', port: Number(process.env.CHECK_PORT ?? 0), strictPort: !!process.env.CHECK_PORT }, plugins: [{
     name: 'eight-tile-fixture', configureServer(vite) {
       vite.middlewares.use((req, res, next) => {
         if (req.url !== '/gallery') { next(); return; }

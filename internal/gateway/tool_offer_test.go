@@ -12,6 +12,7 @@ import (
 )
 
 func TestChatImageToolOffer(t *testing.T) {
+	t.Parallel()
 	h := hostChatHarness(t, nil, nil)
 	yes := true
 	h.up.setInfo(func(i *upstream.Info) { i.Vision = map[string]*bool{"m1": &yes}; i.ModelContext = 8192 })

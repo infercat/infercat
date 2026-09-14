@@ -44,6 +44,7 @@ type peerConn struct {
 func (c peerConn) RemoteAddr() net.Addr { return c.peer }
 
 func TestSessionOwnershipExpiryAndPersistence(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	h := newHarness(t, Config{DataDir: dir}, nil)
 	var nanos atomic.Int64
@@ -170,6 +171,7 @@ func TestSessionOwnershipExpiryAndPersistence(t *testing.T) {
 }
 
 func TestDevListenerDoesNotCountSessions(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, Config{}, nil)
 	ready := make(chan string, 1)
 	h.gw.logf = func(f string, a ...any) {

@@ -33,6 +33,7 @@ func queuedStream(t *testing.T, h *harness, ctx context.Context) (*http.Response
 // Promise 1: the head and the first `: queued` are out within 100 ms of admission, the session's
 // TTFT is still the engine's first byte, and the relay follows on the same response.
 func TestQueuedStreamHeadAtOnce(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, Config{}, nil)
 	h.gw.queueTimeout = 5 * time.Second
 	h.up.set("sse", sseEvents(200, true)...)
@@ -79,6 +80,7 @@ func TestQueuedStreamHeadAtOnce(t *testing.T) {
 // Promise 1: a comment every keepalive interval while waiting. The interval is shortened the way
 // the deadlines are in this suite; the constant a host gets is asserted by value.
 func TestQueuedStreamKeepalive(t *testing.T) {
+	t.Parallel()
 	if defaultQueuedEvery != 5*time.Second {
 		t.Fatalf("keepalive interval is %s; the contract says 5 s", defaultQueuedEvery)
 	}
@@ -121,6 +123,7 @@ func TestQueuedStreamKeepalive(t *testing.T) {
 // Promise 1: a queued stream that times out ends with an SSE error event carrying the code and
 // retry_after, then [DONE]; the settle table's row is unchanged — counted, charged 0.
 func TestQueuedStreamTimeoutIsAnSSEError(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, Config{}, nil)
 	h.gw.queueTimeout = 200 * time.Millisecond
 	h.up.set("sse", sseEvents(200, true)...)
@@ -173,6 +176,7 @@ func TestQueuedStreamTimeoutIsAnSSEError(t *testing.T) {
 // The non-stream path is untouched: a queued JSON request still gets today's 503 with the header
 // and no retry_after in the body; a stream refused before the queue (waiting set full) does too.
 func TestQueuedNonStreamUnchanged(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, Config{}, nil)
 	h.gw.queueTimeout = 150 * time.Millisecond
 	h.up.set("sse", sseEvents(200, true)...)
@@ -208,6 +212,7 @@ func TestQueuedNonStreamUnchanged(t *testing.T) {
 // The keepalive is what a leaving friend fails — at the queue level, a write that fails ends the
 // wait as client_closed, and a slot handed over in that same instant is handed on, never leaked.
 func TestQueuedClientGoneFreesThePlace(t *testing.T) {
+	t.Parallel()
 	t.Run("through the pipeline", func(t *testing.T) {
 		h := newHarness(t, Config{}, nil)
 		h.gw.queueTimeout = 5 * time.Second

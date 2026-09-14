@@ -21,6 +21,7 @@ import (
 )
 
 func TestAudioFlagsReloadAndStatus(t *testing.T) {
+	t.Parallel()
 	dir, err := os.MkdirTemp("", "ic078-")
 	if err != nil {
 		t.Fatal(err)
@@ -102,6 +103,7 @@ func TestAudioFlagsReloadAndStatus(t *testing.T) {
 	}
 }
 func TestAudioKeyFlags(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	plat := testPlatform(fakeAddr, nil)
 	r := exec(t, plat, "keys", "add", "audio", "--daily-audio-seconds", "15", "--daily-speech-chars", "20", "--daily-images", "3", "--max-queued-images", "2", "--data-dir", dir)
@@ -123,6 +125,7 @@ func TestAudioKeyFlags(t *testing.T) {
 }
 
 func TestImageLimitsPersistEffectiveCLIValues(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	plat := testPlatform(fakeAddr, nil)
 	if r := exec(t, plat, "keys", "add", "images", "--data-dir", dir); r.code != 0 {
@@ -153,6 +156,7 @@ func TestImageLimitsPersistEffectiveCLIValues(t *testing.T) {
 }
 
 func TestConfiguredMediaRefreshRecoversLateEngine(t *testing.T) {
+	t.Parallel()
 	var healthy atomic.Bool
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if !healthy.Load() {
@@ -181,6 +185,7 @@ func TestConfiguredMediaRefreshRecoversLateEngine(t *testing.T) {
 }
 
 func TestStatusReportsPendingImageCleanup(t *testing.T) {
+	t.Parallel()
 	var out strings.Builder
 	st := admin.Status{ImageCleanupPending: 2, ImageOrphansForReview: 1}
 	writeStatus(&out, st)
@@ -194,6 +199,7 @@ func TestStatusReportsPendingImageCleanup(t *testing.T) {
 }
 
 func TestStatusShowsReviewOnlyImageFiles(t *testing.T) {
+	t.Parallel()
 	var out strings.Builder
 	writeStatus(&out, admin.Status{ImageOrphansForReview: 2})
 	if !strings.Contains(out.String(), "0 awaiting cleanup, 2 for review") {
@@ -202,6 +208,7 @@ func TestStatusShowsReviewOnlyImageFiles(t *testing.T) {
 }
 
 func TestImageQueueCLIShowsEffectiveCapAndSuspectStatus(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	plat := testPlatform(fakeAddr, nil)
 	for _, value := range []string{"-1", "32"} {
@@ -226,6 +233,7 @@ func TestImageQueueCLIShowsEffectiveCapAndSuspectStatus(t *testing.T) {
 }
 
 func TestImageStatusSingleFailureAndElapsedRetry(t *testing.T) {
+	t.Parallel()
 	for _, n := range []int64{1, 2} {
 		var out strings.Builder
 		writeStatus(&out, admin.Status{Destinations: []gateway.DestinationStatus{{ID: "images", ImageAbandons: n, ImageRetryAt: time.Now().Add(-time.Minute).UnixNano()}}})

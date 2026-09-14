@@ -91,6 +91,7 @@ func TestOverrideKeysStripped(t *testing.T) {
 // ---- 2. admission before body ----
 
 func TestAdmissionBeforeBody(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, Config{}, nil)
 	h.slots(4)
 	h.setKey(func(k *keys.Key) { k.Limits.MaxConcurrent = 2 })
@@ -166,6 +167,7 @@ func TestAdmissionBeforeBody(t *testing.T) {
 // is un-counted: RPM does not move and the per-key slot is back. A queue timeout, after the queue
 // was joined, counts.
 func TestPreQueueRejectionIsUncounted(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, Config{}, nil)
 	h.gw.queueTimeout = 100 * time.Millisecond
 	h.up.setInfo(func(i *upstream.Info) { i.ModelContext = 10 })
@@ -196,6 +198,7 @@ func TestPreQueueRejectionIsUncounted(t *testing.T) {
 // ---- 3. write deadline ----
 
 func TestStalledReaderFreesSlots(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, Config{}, nil)
 	h.gw.writeTimeout = 300 * time.Millisecond
 	// 64 events of 256 KiB, no gap: more than any loopback socket buffer once the client stops reading.
@@ -258,6 +261,7 @@ func rawConn(t *testing.T, srvURL string) net.Conn {
 }
 
 func TestBodyReadDeadline(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, Config{}, nil)
 	h.gw.readTimeout = 200 * time.Millisecond
 
@@ -320,6 +324,7 @@ func TestBodyReadDeadline(t *testing.T) {
 // ---- 5. /v1/models metered by concurrency, never counted against RPM (014 promise 5) ----
 
 func TestModelsMetered(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, Config{}, nil)
 	h.gw.queueTimeout = 2 * time.Second
 	h.up.set("sse", sseEvents(40, true)...) // 2 s if left alone
@@ -340,6 +345,9 @@ func TestModelsMetered(t *testing.T) {
 	}
 	cancel()
 	h.rec.waitFor(t, 2)
+	h.up.mu.Lock()
+	h.up.gap = 0 // Subsequent phases are gated at tokenize, not by stream pacing.
+	h.up.mu.Unlock()
 
 	// Per-key concurrency applies: alice's own chat request, parked in tokenize, blocks her list.
 	open := h.up.gateTokenize()
@@ -381,6 +389,7 @@ func TestModelsMetered(t *testing.T) {
 // ---- 6. no redirects upstream ----
 
 func TestUpstreamRedirectNotFollowed(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, Config{}, nil)
 	h.up.set("redirect")
 	r := h.post("/v1/chat/completions", chatBody("m1", 1, ""))
@@ -401,6 +410,7 @@ func TestUpstreamRedirectNotFollowed(t *testing.T) {
 // ---- 7. audit truth ----
 
 func TestAuditTruth(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, Config{}, nil)
 	// (a) paused and revoked rejections name the key and move last_seen.
 	h.setKey(func(k *keys.Key) { k.Status = keys.Paused })
@@ -436,6 +446,7 @@ func TestAuditTruth(t *testing.T) {
 // ---- 8. upstream 4xx ----
 
 func TestUpstream4xxIsTheFriends(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, Config{}, nil)
 	h.up.set("status:400", `{"error":{"code":400,"message":"invalid grammar: unexpected token","type":"invalid_request_error"}}`)
 	r := h.post("/v1/chat/completions", chatBody("m1", 1, ""))
@@ -502,6 +513,7 @@ func TestUpstream4xxIsTheFriends(t *testing.T) {
 // ---- 10. bounded waiting queue ----
 
 func TestWaitingQueueBounded(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, Config{}, nil)
 	h.gw.queueTimeout = 5 * time.Second
 	h.up.set("sse", sseEvents(6, true)...) // 300 ms per stream
@@ -565,6 +577,7 @@ func TestWaitingQueueBounded(t *testing.T) {
 // ---- 11. /me discloses prompt logging ----
 
 func TestMeLogPromptsDisclosure(t *testing.T) {
+	t.Parallel()
 	for _, on := range []bool{false, true} {
 		h := newHarness(t, Config{LogPrompts: on}, nil)
 		var m struct {
@@ -588,6 +601,7 @@ func TestMeLogPromptsDisclosure(t *testing.T) {
 // held) still leaves through finish: net/http recovers the panic per connection, the deferred finish
 // releases everything and records the event, and the key is usable on the next request.
 func TestPanicLeavesThroughFinish(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, Config{}, nil)
 	h.setKey(func(k *keys.Key) { k.Limits.MaxConcurrent = 1; k.Limits.RPM = 5 })
 	h.up.mu.Lock()

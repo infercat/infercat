@@ -34,6 +34,7 @@ func sseEvents(n int, withUsage bool) []string {
 // ---- auth and routing ----
 
 func TestHealthzNoAuth(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, Config{}, nil)
 	r := h.do(http.MethodGet, "/healthz", "", "")
 	if r.status != 200 || string(r.body) != `{"ok":true}` {
@@ -45,6 +46,7 @@ func TestHealthzNoAuth(t *testing.T) {
 }
 
 func TestAuthCodes(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, Config{}, nil)
 	h.expectErr(h.do(http.MethodGet, "/me", "", ""), CodeInvalidKey)
 	h.expectErr(h.do(http.MethodGet, "/me", "Bearer nope", ""), CodeInvalidKey)
@@ -89,6 +91,7 @@ func TestAuthCodes(t *testing.T) {
 }
 
 func TestNotFound(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, Config{}, nil)
 	h.expectErr(h.get("/v1/nope"), CodeNotFound)
 	h.expectErr(h.post("/me", "{}"), CodeNotFound)
@@ -96,6 +99,7 @@ func TestNotFound(t *testing.T) {
 }
 
 func TestMeShape(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, Config{LiveHostName: func() string { return "maxbox" }, RelayRegion: func() string { return "sfo" }}, nil)
 	h.setKey(func(k *keys.Key) { k.Limits.Models = []string{"m2", "ghost"}; k.Limits.RPM = 20 })
 	h.up.setInfo(func(i *upstream.Info) { i.ModelContext = 8192 })
@@ -164,6 +168,7 @@ func TestMeShape(t *testing.T) {
 }
 
 func TestModelsFiltered(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, Config{}, nil)
 	h.setKey(func(k *keys.Key) { k.Limits.Models = []string{"m3", "m1"} })
 	r := h.get("/v1/models")
@@ -188,6 +193,7 @@ func TestModelsFiltered(t *testing.T) {
 // ---- body, model, clamps ----
 
 func TestBodyCap(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, Config{}, nil)
 	h.gw.maxBody = 100
 	big := chatBody("m1", 60, "")
@@ -213,6 +219,7 @@ func TestBodyCap(t *testing.T) {
 }
 
 func TestInvalidJSON(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, Config{}, nil)
 	h.expectErr(h.post("/v1/chat/completions", `{"model":`), CodeInvalidRequest)
 	h.expectErr(h.post("/v1/chat/completions", `[1,2]`), CodeInvalidRequest)
@@ -220,6 +227,7 @@ func TestInvalidJSON(t *testing.T) {
 }
 
 func TestModelAllowlistAndFill(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, Config{}, nil)
 	h.setKey(func(k *keys.Key) { k.Limits.Models = []string{"m2"} })
 	h.expectErr(h.post("/v1/chat/completions", chatBody("m1", 2, "")), CodeModelNotAllowed)
@@ -255,6 +263,7 @@ func TestModelAllowlistAndFill(t *testing.T) {
 }
 
 func TestMaxTokensClampAndPassthrough(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, Config{}, nil)
 	h.setKey(func(k *keys.Key) { k.Limits.MaxOutputTokens = 100 })
 	cases := []struct {
@@ -298,6 +307,7 @@ func TestMaxTokensClampAndPassthrough(t *testing.T) {
 // Context handling (002 promise 4, shrink-to-fit per 005 fix 10c): the prompt alone must fit;
 // prompt + max_tokens overshooting shrinks max_tokens to what remains, floor 16, never a 422.
 func TestContextTooLongBoundary(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, Config{}, nil)
 	h.up.setInfo(func(i *upstream.Info) { i.ModelContext = 100 })
 	h.setKey(func(k *keys.Key) { k.Limits.MaxOutputTokens = 40 })
@@ -365,6 +375,7 @@ func TestContextTooLongBoundary(t *testing.T) {
 // text fill it exactly (admitted, the floor), 201 do not (422 with the templated number, and the
 // engine is never asked), and the shrink-to-fit leaves room for the template too.
 func TestContextPrecheckCountsTheChatTemplate(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, Config{}, nil)
 	h.up.setInfo(func(i *upstream.Info) { i.ModelContext = 300 })
 	h.up.mu.Lock()
@@ -419,6 +430,7 @@ func TestContextPrecheckCountsTheChatTemplate(t *testing.T) {
 // ---- limits ----
 
 func TestRPM(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, Config{}, nil)
 	h.setKey(func(k *keys.Key) { k.Limits.RPM = 2 })
 	for i := 0; i < 2; i++ {
@@ -453,6 +465,7 @@ func TestRPM(t *testing.T) {
 // floor) once 8 are charged, then a 429 with the numbers once 16 are charged. (002's 10-token key
 // is refused outright now: it cannot hold prompt + 16, which is the honest answer.)
 func TestTPMAndDailyAfterRealUsage(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, Config{}, nil)
 	h.setKey(func(k *keys.Key) { k.Limits.TPM = 26 })
 	// upstream reports 4+4 = 8 tokens per call; pre-check prompt is 2.
@@ -503,6 +516,7 @@ func TestTPMAndDailyAfterRealUsage(t *testing.T) {
 // same usage.jsonl now begins the day where the last one left it (DESIGN §4 item 5). The sliding
 // minute deliberately does not come back: rpm/tpm are questions about right now.
 func TestRestartKeepsTodaysCountersAndLastSeen(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	h := newHarness(t, Config{DataDir: dir}, nil)
 	for i := 0; i < 2; i++ {
@@ -570,6 +584,7 @@ func meUsage(t *testing.T, body []byte) struct {
 }
 
 func TestPerKeyConcurrency(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, Config{}, nil)
 	h.slots(4)
 	h.up.set("sse", sseEvents(20, true)...)
@@ -611,6 +626,7 @@ func TestPerKeyConcurrency(t *testing.T) {
 }
 
 func TestGlobalQueueTimeout(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, Config{}, nil)
 	h.gw.queueTimeout = 150 * time.Millisecond
 	h.up.set("sse", sseEvents(20, true)...)
@@ -640,6 +656,7 @@ func TestGlobalQueueTimeout(t *testing.T) {
 // SetSlots push): an engine that reports 2 slots after alice took the only one lets bob run beside
 // her at once, and an engine that reports 0 means 1.
 func TestQueueFollowsEngineSlots(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, Config{}, nil)
 	h.gw.queueTimeout = 150 * time.Millisecond
 	h.up.set("sse", sseEvents(20, true)...)
@@ -673,7 +690,17 @@ func TestQueueFollowsEngineSlots(t *testing.T) {
 	h.expectErr(h.do(http.MethodPost, "/v1/chat/completions", "Bearer second", chatBody("m1", 1, "")), CodeQueueTimeout)
 }
 
+func TestDeadUpstreamOwnsPort(t *testing.T) {
+	t.Parallel()
+	d := newDeadUpstream(t)
+	if other, err := net.Listen("tcp", d.base.Host); err == nil {
+		other.Close()
+		t.Fatal("dead upstream released its port for another fixture")
+	}
+}
+
 func TestUpstreamFailures(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, Config{}, nil)
 	h.up.firstByte(200 * time.Millisecond)
 	h.up.set("500")
@@ -722,6 +749,7 @@ func TestUpstreamFailures(t *testing.T) {
 // ---- streaming ----
 
 func TestStreamFlushBeforeUpstreamFinishes(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, Config{}, nil)
 	h.up.set("sse", sseEvents(5, true)...)
 	start := time.Now()
@@ -771,6 +799,7 @@ func TestStreamFlushBeforeUpstreamFinishes(t *testing.T) {
 }
 
 func TestIncludeUsageInjectionKeepsOtherOptions(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, Config{}, nil)
 	h.up.set("sse", sseEvents(1, true)...)
 	res, err := h.streamReq(context.Background(), chatBody("m1", 1, `"stream":true,"stream_options":{"foo":1}`))
@@ -792,6 +821,7 @@ func TestIncludeUsageInjectionKeepsOtherOptions(t *testing.T) {
 }
 
 func TestReasoningAliasesCountWithoutRewriting(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, Config{}, nil)
 	h.up.set("sse",
 		`{"choices":[{"delta":{"reasoning":"new name"}}]}`,
@@ -817,6 +847,7 @@ func TestReasoningAliasesCountWithoutRewriting(t *testing.T) {
 }
 
 func TestReasoningContentPassthroughByteForByte(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, Config{}, nil)
 	events := []string{
 		`{"choices":[{"index":0,"delta":{"role":"assistant","reasoning_content":"Let me think… <b> \"quoted\" \\ tab\there"}}]}`,
@@ -842,6 +873,7 @@ func TestReasoningContentPassthroughByteForByte(t *testing.T) {
 }
 
 func TestClientDisconnectCancelsUpstream(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, Config{}, nil)
 	h.up.set("sse", sseEvents(200, true)...) // 10 s if left alone
 	ctx, cancel := context.WithCancel(context.Background())
@@ -875,6 +907,7 @@ func TestClientDisconnectCancelsUpstream(t *testing.T) {
 }
 
 func TestStreamWithoutUsageFallsBackToChunkCount(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, Config{LogPrompts: true}, nil)
 	h.up.set("sse", sseEvents(4, false)...)
 	res, err := h.streamReq(context.Background(), chatBody("m1", 3, `"stream":true`))
@@ -895,6 +928,7 @@ func TestStreamWithoutUsageFallsBackToChunkCount(t *testing.T) {
 // An engine that goes quiet mid-stream is cut by the idle deadline (DESIGN §1.6), with an SSE
 // error event so the friend sees why; the two events that arrived are charged.
 func TestStreamUpstreamDiesMidway(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, Config{}, nil)
 	h.gw.idleTimeout = 300 * time.Millisecond
 	h.up.set("sse", sseEvents(50, true)...)
@@ -924,6 +958,7 @@ func TestStreamUpstreamDiesMidway(t *testing.T) {
 // ---- non-stream, embeddings, usage ----
 
 func TestNonStreamPassthroughAndUsage(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, Config{LogPrompts: true}, nil)
 	r := h.post("/v1/chat/completions", chatBody("m1", 2, ""))
 	if r.status != 200 || string(r.body) != h.up.events[0] || r.header.Get("Content-Type") != "application/json" {
@@ -946,6 +981,7 @@ func TestNonStreamPassthroughAndUsage(t *testing.T) {
 }
 
 func TestEmbeddings(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, Config{}, nil)
 	h.up.set("json", `{"object":"list","data":[{"object":"embedding","embedding":[0.1],"index":0}],"usage":{"prompt_tokens":9,"total_tokens":9}}`)
 	r := h.post("/v1/embeddings", `{"input":["a b","c"]}`)
@@ -964,6 +1000,7 @@ func TestEmbeddings(t *testing.T) {
 }
 
 func TestSnapshotAllCounters(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, Config{}, nil)
 	h.store.set("second", &keys.Key{ID: "k_bob", Name: "bob", Status: keys.Active})
 	h.post("/v1/chat/completions", chatBody("m1", 1, ""))
@@ -981,6 +1018,7 @@ func TestSnapshotAllCounters(t *testing.T) {
 // ---- servers ----
 
 func TestServeAndShutdown(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, Config{}, nil)
 	l, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
@@ -1103,6 +1141,7 @@ func (l *limiter) admitAll(id string, lim keys.Limits, prompt int) (*admission, 
 }
 
 func TestLimiterWindowsWithFakeClock(t *testing.T) {
+	t.Parallel()
 	l := newLimiter()
 	now := time.Date(2026, 9, 2, 12, 0, 0, 0, time.UTC)
 	l.now = func() time.Time { return now }
@@ -1177,6 +1216,7 @@ func TestLimiterWindowsWithFakeClock(t *testing.T) {
 }
 
 func TestHostModelPinIntersectsEverySurface(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name      string
 		key, want []string
@@ -1238,6 +1278,7 @@ func TestHostModelPinIntersectsEverySurface(t *testing.T) {
 
 // Tool-only work remains chargeable when the engine dies before reporting usage.
 func TestToolArgumentsCountOnCut(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, Config{}, nil)
 	h.gw.idleTimeout = 100 * time.Millisecond
 	h.up.set("sse",

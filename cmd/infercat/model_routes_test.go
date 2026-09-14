@@ -9,6 +9,7 @@ import (
 )
 
 func TestModelEndpointLabelsMatchRouter(t *testing.T) {
+	t.Parallel()
 	audio, err := upstream.OpenAudio(context.Background(), fakeEngine(t), "")
 	if err != nil {
 		t.Fatal(err)

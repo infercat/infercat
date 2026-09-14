@@ -20,6 +20,7 @@ import (
 // departure are both ready, every round. C is on the list behind B. Every round must end the same
 // way: B loses its place as QueueLost/client gone, and the slot lands on C.
 func TestQueueDepartureWinsTheHandover(t *testing.T) {
+	t.Parallel()
 	for round := 0; round < 50; round++ {
 		q := &slotQueue{cap: func() int { return 1 }}
 		if o, err := q.acquire(context.Background(), time.Minute, time.Minute, nil); o != outcomeNone || err != nil {
@@ -77,6 +78,7 @@ func TestQueueDepartureWinsTheHandover(t *testing.T) {
 // establish that order. The fixture above forces the simultaneous handover case.
 // Here B must leave uncharged, and C must get the slot.
 func TestQueueDepartureIsNeverCharged(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, Config{}, nil)
 	h.gw.queueTimeout = time.Minute
 	h.up.set("sse", sseEvents(200, true)...)

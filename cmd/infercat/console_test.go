@@ -18,6 +18,7 @@ import (
 )
 
 func TestConsoleKeyLifecycleAndCounts(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	dir := t.TempDir()
 	store, err := keys.NewFileStore(dir)
@@ -138,6 +139,7 @@ func TestConsoleKeyLifecycleAndCounts(t *testing.T) {
 }
 
 func TestConsoleTokenNeverReachesServeOutput(t *testing.T) {
+	t.Parallel()
 	dir, err := os.MkdirTemp("", "ic069-")
 	if err != nil {
 		t.Fatal(err)
@@ -195,6 +197,7 @@ func TestConsoleTokenNeverReachesServeOutput(t *testing.T) {
 }
 
 func TestConsoleInvalidAddressNeverPersists(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	r := exec(t, testPlatform(fakeAddr, nil), "serve", "--data-dir", dir, "--console", "0.0.0.0:9101")
 	if r.code == 0 {

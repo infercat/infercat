@@ -17,6 +17,7 @@ import (
 )
 
 func TestHostChatInnerRefusalsKeepEnvelopeAndRunReason(t *testing.T) {
+	t.Parallel()
 	for _, code := range []Code{CodeRateLimited, CodeConcurrencyLimited, CodeBudgetExhausted, CodeContextTooLong, CodeKeyPaused, CodeKeyRevoked, CodeUpstreamDown} {
 		for _, stream := range []bool{false, true} {
 			t.Run(fmt.Sprintf("%s/stream=%v", code, stream), func(t *testing.T) {

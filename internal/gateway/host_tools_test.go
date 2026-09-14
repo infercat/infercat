@@ -10,6 +10,7 @@ import (
 )
 
 func TestHostToolOptInIsExplicitAndExclusive(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		raw              string
 		enabled, refused bool
@@ -29,6 +30,7 @@ func TestHostToolOptInIsExplicitAndExclusive(t *testing.T) {
 	}
 }
 func TestMakeImageArgumentsAreBounded(t *testing.T) {
+	t.Parallel()
 	for _, raw := range []string{`{"prompt":"a fox","count":1}`, `{"prompt":"a fox","count":8}`} {
 		if _, err := parseImageTool(raw, 8); err != nil {
 			t.Fatal(raw, err)
@@ -49,6 +51,7 @@ func TestMakeImageArgumentsAreBounded(t *testing.T) {
 	}
 }
 func TestHostReplyForwardsTextNotToolCalls(t *testing.T) {
+	t.Parallel()
 	raw := `data: {"choices":[{"delta":{"reasoning":"think"}}]}
 
 data: {"choices":[{"delta":{"content":"I will draw it."}}]}
@@ -89,6 +92,7 @@ data: [DONE]
 }
 
 func TestMakeImageUnlimitedQueueStillBoundsOneBatch(t *testing.T) {
+	t.Parallel()
 	for _, count := range []int{1, 16, 17} {
 		raw := fmt.Sprintf(`{"prompt":"fox","count":%d}`, count)
 		_, err := parseImageTool(raw, ImageQueueCap(keys.Limits{MaxQueuedImages: -1}))

@@ -15,6 +15,7 @@ import (
 )
 
 func TestStatusReportsPerKeySessionCounts(t *testing.T) {
+	t.Parallel()
 	ctx := context.Background()
 	store, err := keys.NewFileStore(t.TempDir())
 	if err != nil {

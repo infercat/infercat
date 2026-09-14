@@ -5,7 +5,7 @@ export async function consoleCompat(base,browser){
  const capture=JSON.parse(readFileSync(new URL('../src/fixtures/console/current-085-dev.json',import.meta.url),'utf8'));
  const me=JSON.parse(readFileSync(new URL('../src/fixtures/me/current.json',import.meta.url),'utf8'));
  const code='ia1.tcCOMPATproofaddressCOMPATproofaddress.'+'A'.repeat(43),chat=code.replace('ia1.','ic1.');let passed=0;
- const evidence=resolve('../console/test/evidence/remote-web');mkdirSync(evidence,{recursive:true});
+ const evidence=resolve(process.env.COMPAT_SHOTS ?? '../console/test/evidence/remote-web');mkdirSync(evidence,{recursive:true});
  for(const variant of ['current-085-dev','legacy-optionals','refused','closed','budget']){
   const context=await browser.newContext({locale:'en-US'}),page=await context.newPage(),data=globalThis.structuredClone(capture),errors=[],calls=[];let outcome=200;
   if(variant==='legacy-optionals'){delete data.status.models_pinned;delete data.status.audio;data.engine.models=null;delete data.week.daily;data.today.keys=null;delete data.settings.saved_at;}

@@ -13,6 +13,7 @@ import (
 )
 
 func TestImageStorageFaultReleasesWithoutTrainingOrClearingBreaker(t *testing.T) {
+	t.Parallel()
 	h := imagesHarness(t, func(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(map[string]any{"data": []map[string]string{{"b64_json": tinyImage()}}})
 	})
@@ -55,6 +56,7 @@ func TestImageStorageFaultReleasesWithoutTrainingOrClearingBreaker(t *testing.T)
 	}
 }
 func TestOversizedResponsesAreFreeButTripBreaker(t *testing.T) {
+	t.Parallel()
 	h := imagesHarness(t, func(w http.ResponseWriter, r *http.Request) { w.Write([]byte(strings.Repeat("X", 12<<20))) })
 	h.gw.imageBackoffBase = time.Millisecond
 	rows := submittedImages(t, h.post("/v1/images/jobs", `{"prompts":["a","b","c"]}`))
@@ -69,6 +71,7 @@ func TestOversizedResponsesAreFreeButTripBreaker(t *testing.T) {
 	}
 }
 func TestImageOfferOmitsElapsedRetryInstant(t *testing.T) {
+	t.Parallel()
 	h := imagesHarness(t, func(http.ResponseWriter, *http.Request) {})
 	d := h.gw.router.route(string(imagesEndpoint))
 	d.imageAbandons.Store(2)

@@ -4,7 +4,7 @@ import assert from 'node:assert/strict';
 import { chromium, webkit } from 'playwright';
 import { workerFixture } from './worker-fixture.mjs';
 let server, origin = process.argv[2];
-if (!origin) ({ server, origin } = await workerFixture());
+if (!origin) ({ server, origin } = await workerFixture(undefined, process.env.CHECK_PORT ? Number(process.env.CHECK_PORT) + 2 : 0));
 let failed = false;
 try {
   for (const name of (process.env.BROWSERS ?? 'chromium').split(',')) {

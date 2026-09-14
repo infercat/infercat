@@ -75,6 +75,7 @@ func waitImageJob(t *testing.T, h *harness, id string, want runstate.State) runs
 	return row
 }
 func TestImageRoutesBatchCancellationOutputsAndMeter(t *testing.T) {
+	t.Parallel()
 	entered := make(chan struct{}, 2)
 	release := make(chan struct{}, 2)
 	h := imagesHarness(t, func(w http.ResponseWriter, r *http.Request) {
@@ -134,6 +135,7 @@ func TestImageRoutesBatchCancellationOutputsAndMeter(t *testing.T) {
 	h.expectErr(h.post("/v1/images/generations", `{"prompt":"budget refused"}`), CodeImageBudgetExhausted)
 }
 func TestImageSettlementFailureAndAmbiguity(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name              string
 		status            int
@@ -178,6 +180,7 @@ func TestImageSettlementFailureAndAmbiguity(t *testing.T) {
 	}
 }
 func TestImageJobRefusalsBeforeDispatch(t *testing.T) {
+	t.Parallel()
 	var calls atomic.Int32
 	h := imagesHarness(t, func(w http.ResponseWriter, r *http.Request) { calls.Add(1) })
 	h.expectErr(h.post("/v1/images/jobs", `{"prompts":[" "]}`), CodeInvalidRequest)
@@ -194,6 +197,7 @@ func TestImageJobRefusalsBeforeDispatch(t *testing.T) {
 }
 
 func TestImageDoesNotConsumeChatConcurrency(t *testing.T) {
+	t.Parallel()
 	entered, release := make(chan struct{}), make(chan struct{})
 	h := imagesHarness(t, func(w http.ResponseWriter, r *http.Request) {
 		close(entered)
@@ -221,6 +225,7 @@ func TestImageDoesNotConsumeChatConcurrency(t *testing.T) {
 	}
 }
 func TestImageMeterRestartsWithoutReset(t *testing.T) {
+	t.Parallel()
 	h := imagesHarness(t, func(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewEncoder(w).Encode(map[string]any{"data": []map[string]string{{"b64_json": tinyImage()}}})
 	})
@@ -231,6 +236,7 @@ func TestImageMeterRestartsWithoutReset(t *testing.T) {
 }
 
 func TestImageBatchCorrelationDoesNotReplayOrDeduplicate(t *testing.T) {
+	t.Parallel()
 	h := imagesHarness(t, func(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewEncoder(w).Encode(map[string]any{"data": []map[string]string{{"b64_json": tinyImage()}}})
 	})

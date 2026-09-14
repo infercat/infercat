@@ -7,7 +7,7 @@ import { workerFixture } from './worker-fixture.mjs';
 const shots = process.env.UPDATE_SHOTS ?? join(tmpdir(), 'infercat-worker-update');
 await mkdir(shots, { recursive: true });
 let revision = 1, checks = 0;
-const { server, origin } = await workerFixture(() => `\n// fixture revision ${revision}\n`);
+const { server, origin } = await workerFixture(() => `\n// fixture revision ${revision}\n`, process.env.CHECK_PORT ? Number(process.env.CHECK_PORT) + 3 : 0);
 const ok = (value, message) => { assert.ok(value, message); checks++; };
 try {
   const response = await fetch(`${origin}/github`, { redirect: 'manual' });

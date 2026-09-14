@@ -12,6 +12,7 @@ import (
 )
 
 func TestSearchConfigRefusesBeforeStartupAndPreservesPath(t *testing.T) {
+	t.Parallel()
 	for _, value := range []string{"", "missing", "empty", "multiline"} {
 		t.Run(value, func(t *testing.T) {
 			dir := t.TempDir()
@@ -60,6 +61,7 @@ func TestSearchConfigRefusesBeforeStartupAndPreservesPath(t *testing.T) {
 	}
 }
 func TestSearchKeyFlags(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	p := testPlatform(fakeAddr, nil)
 	r := exec(t, p, "keys", "add", "searcher", "--data-dir", dir, "--search-per-day", "7", "--no-qr")

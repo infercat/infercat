@@ -10,6 +10,7 @@ import (
 )
 
 func TestUsagePrintsChargedMetersIncludingUnknownClasses(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	rec, err := usage.NewFileRecorder(dir, nil)
 	if err != nil {
@@ -43,6 +44,7 @@ func TestUsagePrintsChargedMetersIncludingUnknownClasses(t *testing.T) {
 }
 
 func TestUsageShowsSettlementWhenRequestPredatesSince(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	rec, err := usage.NewFileRecorder(dir, nil)
 	if err != nil {

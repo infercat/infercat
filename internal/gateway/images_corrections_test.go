@@ -18,6 +18,7 @@ import (
 )
 
 func TestImagesOwnRequestBeyondTextIdle(t *testing.T) {
+	t.Parallel()
 	var active, peak atomic.Int32
 	h := imagesHarness(t, func(w http.ResponseWriter, r *http.Request) {
 		n := active.Add(1)
@@ -41,6 +42,7 @@ func TestImagesOwnRequestBeyondTextIdle(t *testing.T) {
 }
 
 func TestAbandonedImageWaitsForFreshProbe(t *testing.T) {
+	t.Parallel()
 	var calls atomic.Int32
 	h := imagesHarness(t, func(w http.ResponseWriter, r *http.Request) {
 		if calls.Add(1) == 1 {
@@ -94,6 +96,7 @@ func (e failedImageWrite) ImageDo(ctx context.Context, _ []byte) (*http.Response
 	return nil, err
 }
 func TestImageFailedWriteDoesNotCharge(t *testing.T) {
+	t.Parallel()
 	h := imagesHarness(t, func(http.ResponseWriter, *http.Request) { t.Error("should not dispatch") })
 	d := h.gw.router.route(string(imagesEndpoint))
 	d.Images = failedImageWrite{d.Images}
@@ -108,6 +111,7 @@ func TestImageFailedWriteDoesNotCharge(t *testing.T) {
 	}
 }
 func TestImageReadsAdmitAndSpendRPM(t *testing.T) {
+	t.Parallel()
 	h := imagesHarness(t, func(http.ResponseWriter, *http.Request) {})
 	r, e := h.gw.runs.Store.Create(h.key.ID, "image", "interactive", imageInputForTest("one"))
 	if e != nil {
@@ -142,6 +146,7 @@ func imageInputForTest(prompt string) json.RawMessage {
 	return b
 }
 func TestImagePinAndPromptLogging(t *testing.T) {
+	t.Parallel()
 	for _, enabled := range []bool{false, true} {
 		h := imagesHarness(t, func(w http.ResponseWriter, r *http.Request) {
 			_ = json.NewEncoder(w).Encode(map[string]any{"data": []map[string]string{{"b64_json": tinyImage()}}})
@@ -169,6 +174,7 @@ func TestImagePinAndPromptLogging(t *testing.T) {
 }
 
 func TestImageDailyBatchRefusalCreatesNoRows(t *testing.T) {
+	t.Parallel()
 	var calls atomic.Int32
 	h := imagesHarness(t, func(http.ResponseWriter, *http.Request) { calls.Add(1) })
 	h.setKey(func(k *keys.Key) { k.Limits.DailyImages = 1 })
@@ -187,6 +193,7 @@ func TestImageDailyBatchRefusalCreatesNoRows(t *testing.T) {
 }
 
 func TestImageConcurrentBatchesReserveWholeDay(t *testing.T) {
+	t.Parallel()
 	release := make(chan struct{})
 	defer close(release)
 	h := imagesHarness(t, func(w http.ResponseWriter, r *http.Request) {
@@ -217,6 +224,7 @@ func TestImageConcurrentBatchesReserveWholeDay(t *testing.T) {
 }
 
 func TestImageQueuedCancelReleasesAcrossMidnight(t *testing.T) {
+	t.Parallel()
 	entered := make(chan struct{}, 1)
 	release := make(chan struct{})
 	defer close(release)
@@ -257,6 +265,7 @@ func TestImageQueuedCancelReleasesAcrossMidnight(t *testing.T) {
 }
 
 func TestImageUnlimitedEffectiveValues(t *testing.T) {
+	t.Parallel()
 	h := imagesHarness(t, func(w http.ResponseWriter, r *http.Request) {
 		_ = json.NewEncoder(w).Encode(map[string]any{"data": []map[string]string{{"b64_json": tinyImage()}}})
 	})
@@ -275,6 +284,7 @@ func TestImageUnlimitedEffectiveValues(t *testing.T) {
 }
 
 func TestImageListAtRetainedBound(t *testing.T) {
+	t.Parallel()
 	h := imagesHarness(t, func(http.ResponseWriter, *http.Request) {})
 	h.setKey(func(k *keys.Key) { k.Limits.RPM = 100 })
 	for i := 0; i < 90; i++ {
@@ -323,6 +333,7 @@ func TestImageListAtRetainedBound(t *testing.T) {
 }
 
 func TestImageQueuedKeyRevocationReleasesReservation(t *testing.T) {
+	t.Parallel()
 	entered := make(chan struct{}, 1)
 	release := make(chan struct{})
 	defer close(release)
@@ -346,6 +357,7 @@ func TestImageQueuedKeyRevocationReleasesReservation(t *testing.T) {
 }
 
 func TestSetRunsRejectsLateImageRegistration(t *testing.T) {
+	t.Parallel()
 	h := imagesHarness(t, func(http.ResponseWriter, *http.Request) {})
 	h.gw.runs.Start()
 	if err := h.gw.SetRuns(h.gw.runs); err == nil {

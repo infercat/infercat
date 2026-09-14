@@ -15,6 +15,7 @@ import (
 )
 
 func TestDestinationRouterTable(t *testing.T) {
+	t.Parallel()
 	audio, _ := audioEngine(t, func(w http.ResponseWriter, _ *http.Request) { io.WriteString(w, `{}`) })
 	h := newHarness(t, Config{Transcribe: audio, Speech: audio, ModelsPinned: []string{"m1", "unloaded"}}, nil)
 	for _, tc := range []struct {
@@ -47,6 +48,7 @@ func TestDestinationRouterTable(t *testing.T) {
 }
 
 func TestDestinationQueuesAreIndependentFIFO(t *testing.T) {
+	t.Parallel()
 	audio, _ := audioEngine(t, func(w http.ResponseWriter, _ *http.Request) { io.WriteString(w, `{}`) })
 	h := newHarness(t, Config{Transcribe: audio}, nil)
 	for _, d := range h.gw.router.destinations {
@@ -91,6 +93,7 @@ func TestDestinationQueuesAreIndependentFIFO(t *testing.T) {
 }
 
 func TestAudioInFlightDoesNotOccupyTextDestination(t *testing.T) {
+	t.Parallel()
 	entered, release := make(chan struct{}), make(chan struct{})
 	var once sync.Once
 	unblock := func() { once.Do(func() { close(release) }) }
@@ -148,6 +151,7 @@ func TestAudioInFlightDoesNotOccupyTextDestination(t *testing.T) {
 }
 
 func TestDestinationModelContextAndMeFiltering(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, Config{}, nil)
 	h.up.setInfo(func(i *upstream.Info) {
 		i.Models = []string{"small", "large"}
@@ -181,6 +185,7 @@ func TestDestinationModelContextAndMeFiltering(t *testing.T) {
 }
 
 func TestDestinationAttributedBeforePausedKeyRefusal(t *testing.T) {
+	t.Parallel()
 	audio, _ := audioEngine(t, func(http.ResponseWriter, *http.Request) { t.Error("paused key reached engine") })
 	h := newHarness(t, Config{Transcribe: audio}, nil)
 	h.setKey(func(k *keys.Key) { k.Status = keys.Paused })

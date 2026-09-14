@@ -99,6 +99,7 @@ func postAudio(t *testing.T, h *harness, path, ct string, b []byte) resp {
 	return out
 }
 func TestAudioDurationHeaders(t *testing.T) {
+	t.Parallel()
 	if n, ok := containerSeconds(wave(10)); !ok || n != 10 {
 		t.Fatalf("WAV %v %v", n, ok)
 	}
@@ -118,6 +119,7 @@ func TestAudioDurationHeaders(t *testing.T) {
 	}
 }
 func TestAudioReservationsAndUsage(t *testing.T) {
+	t.Parallel()
 	for _, tc := range []struct {
 		name             string
 		body             []byte
@@ -183,6 +185,7 @@ func TestAudioReservationsAndUsage(t *testing.T) {
 	}
 }
 func TestAudioSpeechClientCutChargesAfterFirstByte(t *testing.T) {
+	t.Parallel()
 	gate := make(chan struct{})
 	defer close(gate)
 	engine, _ := audioEngine(t, func(w http.ResponseWriter, r *http.Request) {
@@ -222,6 +225,7 @@ func TestAudioSpeechClientCutChargesAfterFirstByte(t *testing.T) {
 	}
 }
 func TestAudioConcurrentReservations(t *testing.T) {
+	t.Parallel()
 	gate, entered := make(chan struct{}), make(chan struct{})
 	defer close(gate)
 	engine, _ := audioEngine(t, func(w http.ResponseWriter, r *http.Request) {
@@ -254,6 +258,7 @@ func TestAudioConcurrentReservations(t *testing.T) {
 	<-done
 }
 func TestAudioRefusalsAndRestart(t *testing.T) {
+	t.Parallel()
 	var calls atomic.Int32
 	engine, server := audioEngine(t, func(w http.ResponseWriter, r *http.Request) {
 		calls.Add(1)
@@ -285,6 +290,7 @@ func TestAudioRefusalsAndRestart(t *testing.T) {
 }
 
 func TestAudioFailureChargingAndHistoryRefusal(t *testing.T) {
+	t.Parallel()
 	engine, _ := audioEngine(t, func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(400)
@@ -309,6 +315,7 @@ func TestAudioFailureChargingAndHistoryRefusal(t *testing.T) {
 	h.expectErr(postAudio(t, bad, string(transcribeEndpoint), ct, raw), CodeUpstreamDown)
 }
 func TestAudioCapabilityAndUnconfiguredRoutes(t *testing.T) {
+	t.Parallel()
 	engine, server := audioEngine(t, func(w http.ResponseWriter, r *http.Request) { http.NotFound(w, r) })
 	h := newHarness(t, Config{Transcribe: engine}, nil)
 	var me meResponse
@@ -326,6 +333,7 @@ func TestAudioCapabilityAndUnconfiguredRoutes(t *testing.T) {
 }
 
 func TestAudioBodyCapAndQueueRelease(t *testing.T) {
+	t.Parallel()
 	var calls atomic.Int32
 	engine, _ := audioEngine(t, func(w http.ResponseWriter, r *http.Request) { calls.Add(1) })
 	h := newHarness(t, Config{Transcribe: engine}, nil)
@@ -351,6 +359,7 @@ func TestAudioBodyCapAndQueueRelease(t *testing.T) {
 }
 
 func TestAudioBudgetRollsAtUTCMidnight(t *testing.T) {
+	t.Parallel()
 	engine, _ := audioEngine(t, func(w http.ResponseWriter, r *http.Request) {
 		_, _ = io.WriteString(w, `{"text":"hello","duration":10}`)
 	})
@@ -390,6 +399,7 @@ func audioFields(t *testing.T, fields map[string]string) ([]byte, string) {
 }
 
 func TestAudioJSONReconcilesWithoutClientOptIn(t *testing.T) {
+	t.Parallel()
 	for _, format := range []string{"", "json", "verbose_json", "text", "srt", "vtt"} {
 		t.Run("format="+format, func(t *testing.T) {
 			wantFormat, response, charge := format, "plain transcript", float64(300)
@@ -442,6 +452,7 @@ func TestAudioJSONReconcilesWithoutClientOptIn(t *testing.T) {
 }
 
 func TestAudioHostModelSelection(t *testing.T) {
+	t.Parallel()
 	for _, kind := range []endpoint{transcribeEndpoint, speechEndpoint} {
 		for _, tc := range []struct{ name, configured, requested, want string }{
 			{"first", "", "", "m1"}, {"configured", "host-model", "", "host-model"},
@@ -490,6 +501,7 @@ func TestAudioHostModelSelection(t *testing.T) {
 }
 
 func TestAudioHealthOnlyRequiresHostModel(t *testing.T) {
+	t.Parallel()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path == "/health" {
 			_, _ = io.WriteString(w, "ok")

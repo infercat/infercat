@@ -30,6 +30,7 @@ func legacyIdentity(t *testing.T, dir string) []byte {
 	return raw
 }
 func TestIdentityUpgrade(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	raw := legacyIdentity(t, dir)
 	old, _ := tunnel.SavedAddr(dir)
@@ -71,6 +72,7 @@ func TestIdentityUpgrade(t *testing.T) {
 	}
 }
 func TestUpgradeRefusalsPreserveIdentity(t *testing.T) {
+	t.Parallel()
 	for _, kind := range []string{"lock", "old-server", "backup", "symlink"} {
 		t.Run(kind, func(t *testing.T) {
 			dir, err := os.MkdirTemp("", "ic136-")
@@ -120,6 +122,7 @@ func TestUpgradeRefusalsPreserveIdentity(t *testing.T) {
 	}
 }
 func TestServeRefusesLockedDataDirBeforeTunnel(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	f, err := dirlock.Acquire(dir)
 	if err != nil {

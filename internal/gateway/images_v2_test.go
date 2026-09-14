@@ -17,6 +17,7 @@ import (
 )
 
 func TestHealthyProbesBrokenGenerationBacksOffAndRefundsSuspect(t *testing.T) {
+	t.Parallel()
 	var mu sync.Mutex
 	var stamps []time.Time
 	var status []DestinationStatus
@@ -91,6 +92,7 @@ func TestHealthyProbesBrokenGenerationBacksOffAndRefundsSuspect(t *testing.T) {
 	}
 }
 func TestGalleryReadsCannotRateLimitChat(t *testing.T) {
+	t.Parallel()
 	h := imagesHarness(t, func(http.ResponseWriter, *http.Request) {})
 	row, e := h.gw.runs.Store.Create(h.key.ID, "image", "interactive", imageInputForTest("one"))
 	if e != nil {
@@ -114,6 +116,7 @@ func TestGalleryReadsCannotRateLimitChat(t *testing.T) {
 	h.gw.lim.settle(admission, false, 0)
 }
 func TestNeverProbedImageEngineRespectsUnknownModelAllowlist(t *testing.T) {
+	t.Parallel()
 	h := reviewedImageHarness(t, func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(503) })
 	h.setKey(func(k *keys.Key) { k.Limits.Models = []string{"text-only"} })
 	h.expectErr(h.post("/v1/images/jobs", `{"prompts":["one"]}`), CodeNotFound)
@@ -121,6 +124,7 @@ func TestNeverProbedImageEngineRespectsUnknownModelAllowlist(t *testing.T) {
 	h.expectErr(h.post("/v1/images/jobs", `{"prompts":["one"]}`), CodeUpstreamDown)
 }
 func TestReleasedImageFailureIsNotRelabelledChargedOnStop(t *testing.T) {
+	t.Parallel()
 	h := imagesHarness(t, func(http.ResponseWriter, *http.Request) {})
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
@@ -133,6 +137,7 @@ func TestReleasedImageFailureIsNotRelabelledChargedOnStop(t *testing.T) {
 	}
 }
 func TestRunCancelIsRated(t *testing.T) {
+	t.Parallel()
 	h := imagesHarness(t, func(http.ResponseWriter, *http.Request) {})
 	row, _ := h.gw.runs.Store.Create(h.key.ID, "image", "interactive", imageInputForTest("one"))
 	h.setKey(func(k *keys.Key) { k.Limits.RPM = 1 })
@@ -143,6 +148,7 @@ func TestRunCancelIsRated(t *testing.T) {
 }
 
 func TestDefinitiveFailureDoesNotAdvanceSuspectBackoff(t *testing.T) {
+	t.Parallel()
 	h := imagesHarness(t, func(http.ResponseWriter, *http.Request) {})
 	d := h.gw.router.route(string(imagesEndpoint))
 	h.gw.imageBackoffBase = time.Millisecond

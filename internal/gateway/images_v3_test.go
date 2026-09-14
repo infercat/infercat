@@ -29,6 +29,7 @@ func (w heldImageWriter) Write(p []byte) (int, error) {
 	return 0, io.ErrClosedPipe
 }
 func TestImageReadSlotsBoundDeliveryAndReleaseOnDisconnect(t *testing.T) {
+	t.Parallel()
 	h := imagesHarness(t, func(http.ResponseWriter, *http.Request) {})
 	row, e := h.gw.runs.Store.Create(h.key.ID, "image", "interactive", imageInputForTest("one"))
 	if e != nil {
@@ -83,6 +84,7 @@ func TestImageReadSlotsBoundDeliveryAndReleaseOnDisconnect(t *testing.T) {
 	}
 }
 func TestExpiredRunPollAndCancelRefundRPM(t *testing.T) {
+	t.Parallel()
 	h := imagesHarness(t, func(http.ResponseWriter, *http.Request) {})
 	h.setKey(func(k *keys.Key) { k.Limits.RPM = 1 })
 	for range 16 {
@@ -139,6 +141,7 @@ func TestInvalidOutputsTripBreakerAndExposeRetryTime(t *testing.T) {
 	}
 }
 func TestOversizedUnparsedResponseReleasesAndErrorsDoNotPersist(t *testing.T) {
+	t.Parallel()
 	for _, large := range []bool{false, true} {
 		t.Run(map[bool]string{false: "snippet", true: "oversized"}[large], func(t *testing.T) {
 			h := imagesHarness(t, func(w http.ResponseWriter, r *http.Request) {
@@ -180,6 +183,7 @@ func (o observedImageSuccess) RecordSuccess(d time.Duration) {
 	o.ImageEngine.RecordSuccess(d)
 }
 func TestOnlyValidatedImageTrainsGenerationDuration(t *testing.T) {
+	t.Parallel()
 	count := 0
 	h := imagesHarness(t, func(w http.ResponseWriter, r *http.Request) {
 		count++
@@ -205,6 +209,7 @@ func TestOnlyValidatedImageTrainsGenerationDuration(t *testing.T) {
 }
 
 func TestSyncLegacyHealthFailureKeepsRetryWithoutErrorText(t *testing.T) {
+	t.Parallel()
 	h := imagesHarness(t, func(http.ResponseWriter, *http.Request) { t.Error("must not dispatch") })
 	h.gw.runs.Execute = func(context.Context, string, runstate.Step, func() error) (runstate.StepResult, error) {
 		return runstate.StepResult{Settled: true, Usage: usage.Event{Status: 503, Code: string(CodeUpstreamDown)}}, io.ErrUnexpectedEOF

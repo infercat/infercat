@@ -19,6 +19,7 @@ import (
 // The request line (029 promises 1, 2, 5): the ticket's example, and the three ways a request
 // ends badly; never prompt content, whatever the event carries.
 func TestRequestLine(t *testing.T) {
+	t.Parallel()
 	ts := time.Date(2026, 9, 3, 12, 1, 0, 0, time.Local)
 	ok := usage.Event{TS: ts, KeyID: "k_1", Endpoint: "/v1/chat/completions", Model: "gemma-4-E2B", Status: 200, Stream: true,
 		PromptTokens: 38, CompletionTokens: 412, TTFTMS: 61, TotalMS: 4100, Prompt: "never shown"}
@@ -44,6 +45,7 @@ func TestRequestLine(t *testing.T) {
 
 // /metrics as the two engines write it: llama.cpp bare names, vLLM labelled series.
 func TestParseMetrics(t *testing.T) {
+	t.Parallel()
 	m := parseMetrics(strings.NewReader(`# HELP llamacpp:requests_processing Number of requests processing.
 # TYPE llamacpp:requests_processing gauge
 llamacpp:requests_processing 2
@@ -67,6 +69,7 @@ garbage line
 // age; the queue's peak; what the engine says or that it says nothing; the process; and the
 // bridge's own block.
 func TestStatusBlockShowsSessionsEngineAndProcess(t *testing.T) {
+	t.Parallel()
 	now := time.Now()
 	st := admin.Status{Product: "Infercat", Version: "t", UptimeS: 90, Mode: "host",
 		Upstream: admin.Upstream{Kind: "llama.cpp", URL: "http://127.0.0.1:8080", Healthy: true, ModelContext: 4096, Slots: 2},
@@ -133,6 +136,7 @@ func TestStatusBlockShowsSessionsEngineAndProcess(t *testing.T) {
 // `status --watch` (029 promise 1) against a live admin socket: the block, then one line per
 // event as it happens, redrawn with a plain ANSI clear; Ctrl-C ends it with exit 0.
 func TestStatusWatchStreamsRequests(t *testing.T) {
+	t.Parallel()
 	dir, err := os.MkdirTemp("", "bn029-")
 	if err != nil {
 		t.Fatal(err)
@@ -205,6 +209,7 @@ func TestStatusWatchStreamsRequests(t *testing.T) {
 
 // `serve --log-requests` (029 promise 2): the same line on the host's terminal, off by default.
 func TestServeLogRequestsPrintsTheLine(t *testing.T) {
+	t.Parallel()
 	dir, err := os.MkdirTemp("", "bn029-")
 	if err != nil {
 		t.Fatal(err)

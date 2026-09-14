@@ -39,6 +39,7 @@ func reviewedImageHarness(t *testing.T, handler http.HandlerFunc) *harness {
 	return h
 }
 func TestOwnedImageBodyMakesBusyProbeUnknown(t *testing.T) {
+	t.Parallel()
 	var busy atomic.Bool
 	entered, release := make(chan struct{}, 3), make(chan struct{})
 	defer close(release)
@@ -87,6 +88,7 @@ func TestOwnedImageBodyMakesBusyProbeUnknown(t *testing.T) {
 	}
 }
 func TestPollingCannotSpendAnImageWorkersRPM(t *testing.T) {
+	t.Parallel()
 	h := imagesHarness(t, func(w http.ResponseWriter, r *http.Request) {
 		json.NewEncoder(w).Encode(map[string]any{"data": []map[string]string{{"b64_json": tinyImage()}}})
 	})
@@ -107,6 +109,7 @@ func TestPollingCannotSpendAnImageWorkersRPM(t *testing.T) {
 	}
 }
 func TestParallelImageReadsDuringChat(t *testing.T) {
+	t.Parallel()
 	h := imagesHarness(t, func(http.ResponseWriter, *http.Request) {})
 	r, e := h.gw.runs.Store.Create(h.key.ID, "image", "interactive", imageInputForTest("one"))
 	if e != nil {
@@ -136,6 +139,7 @@ func TestParallelImageReadsDuringChat(t *testing.T) {
 	}
 }
 func TestImageHostStopAfterAndBeforeDispatch(t *testing.T) {
+	t.Parallel()
 	for _, sent := range []bool{true, false} {
 		t.Run(map[bool]string{true: "sent", false: "not-sent"}[sent], func(t *testing.T) {
 			entered := make(chan struct{}, 1)
@@ -187,6 +191,7 @@ func TestImageHostStopAfterAndBeforeDispatch(t *testing.T) {
 	}
 }
 func TestRunPollsAndImageDiscardSpendRPM(t *testing.T) {
+	t.Parallel()
 	h := imagesHarness(t, func(http.ResponseWriter, *http.Request) {})
 	r, e := h.gw.runs.Store.Create(h.key.ID, "image", "interactive", imageInputForTest("one"))
 	if e != nil {
@@ -209,6 +214,7 @@ func TestRunPollsAndImageDiscardSpendRPM(t *testing.T) {
 	}
 }
 func TestDownImagesAreRetryableButUnsharedImagesAreNot(t *testing.T) {
+	t.Parallel()
 	var down atomic.Bool
 	h := reviewedImageHarness(t, func(w http.ResponseWriter, r *http.Request) {
 		if down.Load() {
@@ -228,6 +234,7 @@ func TestDownImagesAreRetryableButUnsharedImagesAreNot(t *testing.T) {
 	h.expectErr(h.post("/v1/images/jobs", `{"prompts":["one"]}`), CodeNotFound)
 }
 func TestUnlimitedImageQueueReportsItsLiveBound(t *testing.T) {
+	t.Parallel()
 	h := imagesHarness(t, func(http.ResponseWriter, *http.Request) { t.Error("over-cap batch dispatched") })
 	h.setKey(func(k *keys.Key) { k.Limits.MaxQueuedImages = -1 })
 	var me meResponse
@@ -247,6 +254,7 @@ func TestUnlimitedImageQueueReportsItsLiveBound(t *testing.T) {
 }
 
 func TestAbandonedEngineCannotParkTheImageWorker(t *testing.T) {
+	t.Parallel()
 	var down atomic.Bool
 	var calls atomic.Int32
 	h := reviewedImageHarness(t, func(w http.ResponseWriter, r *http.Request) {
@@ -294,6 +302,7 @@ func TestAbandonedEngineCannotParkTheImageWorker(t *testing.T) {
 }
 
 func TestHTTPImageBatchSpendsOnceAndAcceptedJobsSurvivePolling(t *testing.T) {
+	t.Parallel()
 	entered, release := make(chan struct{}, 2), make(chan struct{})
 	defer close(release)
 	h := imagesHarness(t, func(w http.ResponseWriter, r *http.Request) {
@@ -323,6 +332,7 @@ func TestHTTPImageBatchSpendsOnceAndAcceptedJobsSurvivePolling(t *testing.T) {
 }
 
 func TestDispatchHealthRetryKeepsOriginalHold(t *testing.T) {
+	t.Parallel()
 	var down atomic.Bool
 	var calls atomic.Int32
 	h := reviewedImageHarness(t, func(w http.ResponseWriter, r *http.Request) {

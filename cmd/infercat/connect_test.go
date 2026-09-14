@@ -209,6 +209,7 @@ func decodeErr(t *testing.T, b []byte) gwErr {
 // Promise 1: the invite's key goes on every request and the app's own key is ignored; /v1/* and
 // /me are the routes; anything else is a 404 here and never crosses the tunnel.
 func TestConnectInjectsTheInviteKey(t *testing.T) {
+	t.Parallel()
 	g := newFakeHost(t)
 	sess := &fakeSession{addr: g.Listener.Addr().String()}
 	_, base, _ := serveConnector(t, sess)
@@ -259,6 +260,7 @@ func TestConnectInjectsTheInviteKey(t *testing.T) {
 // is still holding the next one — and the gateway's error event inside a 200 stream comes through
 // in the friend's words with its code and retry_after intact, followed by [DONE].
 func TestConnectStreamsEachEventAsItArrives(t *testing.T) {
+	t.Parallel()
 	g := newFakeHost(t)
 	_, base, out := serveConnector(t, &fakeSession{addr: g.Listener.Addr().String()})
 	resp, err := http.Post(base+"/v1/chat/completions?case=stream", "application/json", strings.NewReader(`{"stream":true}`))
@@ -321,6 +323,7 @@ func TestConnectStreamsEachEventAsItArrives(t *testing.T) {
 // friend's, naming the host, with the host's own sentence kept as evidence. A code this client
 // has no words for keeps the host's sentence.
 func TestConnectMapsErrorsToTheFriendsWords(t *testing.T) {
+	t.Parallel()
 	g := newFakeHost(t)
 	_, base, _ := serveConnector(t, &fakeSession{addr: g.Listener.Addr().String()})
 	for _, tc := range []struct {
@@ -351,6 +354,7 @@ func TestConnectMapsErrorsToTheFriendsWords(t *testing.T) {
 // Promise 3: a host that does not answer the dial is declared asleep at the web client's bound,
 // as a 503 with Retry-After and the friend's words — and the keeper is told to look at the session.
 func TestConnectDeclaresAnAsleepHostWithinTheBound(t *testing.T) {
+	t.Parallel()
 	sess := &fakeSession{addr: "127.0.0.1:1"}
 	sess.dead.Store(true)
 	c, base, _ := serveConnector(t, sess)
@@ -382,6 +386,7 @@ func TestConnectDeclaresAnAsleepHostWithinTheBound(t *testing.T) {
 // A host that answers is a slow model — the stream continues and completes; a host that does not
 // answer ends the stream with a host_stalled event and [DONE], not a silent truncation.
 func TestConnectSilenceIsProbedNotAssumed(t *testing.T) {
+	t.Parallel()
 	g := newFakeHost(t)
 	_, base, _ := serveConnector(t, &fakeSession{addr: g.Listener.Addr().String()})
 	events := func(kase string, afterHeaders func()) []string {
@@ -445,6 +450,7 @@ func TestConnectSilenceIsProbedNotAssumed(t *testing.T) {
 // is replaced with backoff under the same identity, requests fail fast meanwhile, and the
 // reconnect is announced with the new path.
 func TestConnectReprintsThePathAndReconnectsWithBackoff(t *testing.T) {
+	t.Parallel()
 	g := newFakeHost(t)
 	sess := &fakeSession{addr: g.Listener.Addr().String()}
 	sess.setPath(tunnel.Path{Via: "nyc", RTT: 27 * time.Millisecond}, nil)
@@ -507,6 +513,7 @@ func TestConnectReprintsThePathAndReconnectsWithBackoff(t *testing.T) {
 // Promise 2, through the real command: the banner's order (host and models, path, local URL, the
 // base-URL hint), a working endpoint, and a dead invite refused with the friend's words.
 func TestConnectCommandBannerAndRefusals(t *testing.T) {
+	t.Parallel()
 	g := newFakeHost(t)
 	sess := &fakeSession{addr: g.Listener.Addr().String()}
 	sess.setPath(tunnel.Path{Via: "nyc", RTT: 27 * time.Millisecond}, nil)
@@ -591,6 +598,7 @@ func TestConnectCommandBannerAndRefusals(t *testing.T) {
 }
 
 func TestConnectConcurrencyCopyUsesTheInviteCap(t *testing.T) {
+	t.Parallel()
 	c := &connector{}
 	for _, limit := range []int{0, 1, 30} {
 		e := map[string]any{"code": "concurrency_limited", "type": "rate_limit_error", "message": "diagnostic", "retry_after": 7}

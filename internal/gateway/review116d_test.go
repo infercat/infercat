@@ -11,6 +11,7 @@ import (
 )
 
 func Test116DPauseInsideAttemptKeepsKeyRevokedCause(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, Config{}, nil)
 	h.setKey(func(k *keys.Key) { k.Agent = true })
 	m := runManager(t, h, nil)
@@ -50,6 +51,7 @@ func Test116DPauseInsideAttemptKeepsKeyRevokedCause(t *testing.T) {
 }
 
 func Test116DFriendDeleteKeepsCancelReason(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, Config{}, nil)
 	h.setKey(func(k *keys.Key) { k.Agent = true })
 	m := runManager(t, h, nil)

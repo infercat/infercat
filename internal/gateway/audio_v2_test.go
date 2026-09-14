@@ -12,6 +12,7 @@ import (
 )
 
 func TestAudioBusyPreservesRetry(t *testing.T) {
+	t.Parallel()
 	for _, route := range []endpoint{speechEndpoint, transcribeEndpoint} {
 		for _, retry := range []string{"30", time.Now().Add(30 * time.Second).UTC().Format(http.TimeFormat)} {
 			engine, _ := audioEngine(t, func(w http.ResponseWriter, r *http.Request) {
@@ -43,6 +44,7 @@ func TestAudioBusyPreservesRetry(t *testing.T) {
 }
 
 func TestSpeechChargesServedOnly(t *testing.T) {
+	t.Parallel()
 	for _, status := range []int{200, 400, 429, 500, 0} {
 		t.Run(http.StatusText(status), func(t *testing.T) {
 			engine, _ := audioEngine(t, func(w http.ResponseWriter, r *http.Request) {
@@ -84,6 +86,7 @@ func TestSpeechChargesServedOnly(t *testing.T) {
 }
 
 func TestAudioMultiBatchAbortReachesFriend(t *testing.T) {
+	t.Parallel()
 	engine, _ := audioEngine(t, func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "audio/wav")
 		wav := wave(4)
@@ -113,6 +116,7 @@ func TestAudioMultiBatchAbortReachesFriend(t *testing.T) {
 }
 
 func TestSpeechClientCutBeforeFirstByteKeepsMeasurementOnly(t *testing.T) {
+	t.Parallel()
 	entered := make(chan struct{})
 	engine, _ := audioEngine(t, func(w http.ResponseWriter, r *http.Request) {
 		io.Copy(io.Discard, r.Body)

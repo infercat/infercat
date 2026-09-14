@@ -36,6 +36,7 @@ func consoleCall(h http.Handler, method, path, secret, body string) *httptest.Re
 	return w
 }
 func TestConsoleBoundaryAndTokenInjection(t *testing.T) {
+	t.Parallel()
 	var calls int
 	local := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		calls++
@@ -84,6 +85,7 @@ func TestConsoleBoundaryAndTokenInjection(t *testing.T) {
 	}
 }
 func TestConsoleSeparateRateAndConcurrencyBudgets(t *testing.T) {
+	t.Parallel()
 	local := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) { io.WriteString(w, `{}`) }))
 	defer local.Close()
 	store, _ := adminkey.Open(t.TempDir())
@@ -130,6 +132,7 @@ func TestConsoleSeparateRateAndConcurrencyBudgets(t *testing.T) {
 	}
 }
 func TestConsoleRotationAndBounds(t *testing.T) {
+	t.Parallel()
 	local := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Location", "http://example.com/")
 		w.WriteHeader(302)
@@ -158,6 +161,7 @@ func TestConsoleRotationAndBounds(t *testing.T) {
 }
 
 func TestConsoleFailureBudgetBeforeHashAndPeerIsolation(t *testing.T) {
+	t.Parallel()
 	store, _ := adminkey.Open(t.TempDir())
 	secret, _ := store.Mint(false)
 	events := &consoleEvents{}
@@ -225,6 +229,7 @@ func TestConsoleFailureBudgetBeforeHashAndPeerIsolation(t *testing.T) {
 	}
 }
 func TestConsoleFailureReservationsAndBoundedMap(t *testing.T) {
+	t.Parallel()
 	store, _ := adminkey.Open(t.TempDir())
 	h := Console(store, "127.0.0.1:1", func() string { return "" }, nil).(*consoleGateway)
 	r := httptest.NewRequest("GET", "/console/", nil)
@@ -269,6 +274,7 @@ func TestConsoleFailureReservationsAndBoundedMap(t *testing.T) {
 }
 
 func TestConsoleConcurrentFailuresReserveBeforeHash(t *testing.T) {
+	t.Parallel()
 	store, _ := adminkey.Open(t.TempDir())
 	store.Mint(false)
 	h := Console(store, "127.0.0.1:1", func() string { return "" }, nil).(*consoleGateway)

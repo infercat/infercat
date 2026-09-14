@@ -9,7 +9,7 @@ Small fixes (a typo, a wrong sentence in `--help`, a broken link) can skip that.
 same checks CI runs:
 
 ```
-make check                                        # Go vet/tests + installer fixtures
+make -j4 check                                    # Go vet/tests + installer fixtures
 cd web && pnpm install --frozen-lockfile && pnpm typecheck && pnpm test && pnpm lint
 make notices-check                                # THIRD_PARTY_NOTICES.md is current
 make release-dry                                  # every artifact builds, nothing is published
@@ -35,7 +35,7 @@ By contributing you agree that your contribution is licensed under the MIT Licen
 Run these commands from the repository root:
 
 ```
-make check        # Go vet/tests + installer fixtures
+make -j4 check    # Go vet/tests + installer fixtures
 make build        # bin/infercat
 make wasm         # web/public/infercat.wasm (+ wasm_exec.js), needed by the web app
 make web          # web/dist (builds the wasm first)
@@ -51,3 +51,5 @@ prints the stamped version, commit and date, and the web app shows the same vers
 Releases: [docs/RELEASE.md](docs/RELEASE.md). Principles and decisions: [docs/PRINCIPLES.md](docs/PRINCIPLES.md); the seam contract: [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md).
 
 See [web/README.md](web/README.md) for the browser layout, development harness and language tables.
+
+Local checks share one pnpm workspace install backed by pnpm’s shared store. Browser checks use `CHECK_PORT` (default 6833) plus role offsets 0–5, separate Vite caches, and temporary evidence directories; use a different `CHECK_PORT` for each concurrent worktree.

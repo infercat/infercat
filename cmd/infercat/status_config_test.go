@@ -13,6 +13,7 @@ import (
 )
 
 func TestStatusNoConfigHome(t *testing.T) {
+	t.Parallel()
 	if dir := os.Getenv("INFERCAT_STATUS_FIXTURE"); dir != "" {
 		var out, errw lockedBuffer
 		code := run(context.Background(), []string{"status", "--data-dir", dir}, &out, &errw, nil, false, testPlatform(fakeAddr, nil))

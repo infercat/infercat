@@ -8,6 +8,7 @@ import (
 )
 
 func TestSpeechVoiceFlagParsing(t *testing.T) {
+	t.Parallel()
 	for _, raw := range []string{"", "  "} {
 		got, err := parseSpeechVoices(raw)
 		if err != nil || len(got) != 0 {

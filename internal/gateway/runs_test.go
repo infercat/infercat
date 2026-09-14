@@ -21,6 +21,7 @@ func stepInput(stream bool) runstate.Step {
 	return runstate.Step{Route: "/v1/chat/completions", Input: json.RawMessage(fmt.Sprintf(`{"model":"m1","messages":[{"role":"user","content":"hello"}],"max_tokens":20,"stream":%t}`, stream))}
 }
 func TestRunAdapterSettlementRows(t *testing.T) {
+	t.Parallel()
 	for _, row := range []string{"rejected_after_count", "queue_timeout", "queue_cancel", "engine_error", "served", "served_stream", "served_stream_no_usage", "cut_nonstream", "cut_stream"} {
 		t.Run(row, func(t *testing.T) {
 			h := newHarness(t, Config{}, nil)
@@ -137,21 +138,33 @@ func runManager(t *testing.T, h *harness, kind runstate.Kind) *runstate.Manager 
 }
 func waitRun(t *testing.T, m *runstate.Manager, key, id string, want runstate.State) runstate.Run {
 	t.Helper()
-	var r runstate.Run
-	if waitUntil(t, 3*time.Second, "", func() bool {
-		var e error
-		r, e = m.Store.Get(key, id)
-		if e != nil {
-			t.Fatal(e)
-		}
-		return r.State == want
-	}) {
-		return r
+	_, events, stop, err := m.Store.Subscribe(key, "")
+	if err != nil {
+		t.Fatal(err)
 	}
-	t.Fatal("state wait", want)
-	return runstate.Run{}
+	defer stop()
+	deadline := time.NewTimer(3 * time.Second)
+	defer deadline.Stop()
+	for {
+		r, err := m.Store.Get(key, id)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if r.State == want {
+			return r
+		}
+		select {
+		case _, open := <-events:
+			if !open {
+				t.Fatal("state subscription closed")
+			}
+		case <-deadline.C:
+			t.Fatal("state wait", want)
+		}
+	}
 }
 func TestRunRoutesWaitAndOwnership(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, Config{}, nil)
 	m := runManager(t, h, nil)
 	if err := m.Register("test", m.Consumer(func(_ context.Context, w *runstate.Work) (json.RawMessage, error) {
@@ -207,6 +220,7 @@ func TestRunRoutesWaitAndOwnership(t *testing.T) {
 }
 func ptrStep(s runstate.Step) *runstate.Step { return &s }
 func TestRunRoutesNoProductionKindAndLimits(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, Config{}, nil)
 	runManager(t, h, nil)
 	if r := h.do("POST", "/v1/runs", "Bearer "+testSecret, `{"kind":"test","input":{}}`); r.status != 400 {
@@ -253,6 +267,7 @@ func readRunEvent(t *testing.T, r *bufio.Reader) runstate.Event {
 	}
 }
 func TestRunSSEReplayResetAndRevocation(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, Config{}, nil)
 	h.gw.queuedEvery = 10 * time.Millisecond
 	m := runManager(t, h, nil)
@@ -296,6 +311,7 @@ func TestRunSSEReplayResetAndRevocation(t *testing.T) {
 	}
 }
 func TestRunSSEBadCursorAndShutdown(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, Config{}, nil)
 	m := runManager(t, h, nil)
 	for _, cursor := range []string{"broken", "e_bad:not-a-number", "bad!:1"} {
@@ -315,6 +331,7 @@ func TestRunSSEBadCursorAndShutdown(t *testing.T) {
 	}
 }
 func TestRunAdapterRejectsPausedKeyAndBoundsOutput(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, Config{}, nil)
 	h.setKey(func(k *keys.Key) { k.Status = keys.Paused })
 	result, e := h.gw.ExecuteStep(context.Background(), h.key.ID, stepInput(false), nil)
@@ -329,6 +346,7 @@ func TestRunAdapterRejectsPausedKeyAndBoundsOutput(t *testing.T) {
 	}
 }
 func TestRunCORSAndSubmissionBodyBound(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, Config{}, nil)
 	runManager(t, h, nil)
 	out := httptest.NewRecorder()
@@ -344,6 +362,7 @@ func TestRunCORSAndSubmissionBodyBound(t *testing.T) {
 	h.gw.bodies.Store(0)
 }
 func TestRunSSEStaleCursorResetsOnWire(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, Config{}, nil)
 	m := runManager(t, h, func(_ context.Context, r runstate.Run) (runstate.Decision, error) {
 		if len(r.Attempts) == 0 {
@@ -369,6 +388,7 @@ func TestRunSSEStaleCursorResetsOnWire(t *testing.T) {
 	}
 }
 func TestRunAdminRemoteFilterIsNarrow(t *testing.T) {
+	t.Parallel()
 	var path string
 	local := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		path = r.URL.RequestURI()

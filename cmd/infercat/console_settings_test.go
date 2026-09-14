@@ -17,6 +17,7 @@ import (
 )
 
 func TestSettingsApplyAndRefusal(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	saveConfig(dir, config{Search: &searchConfig{KeyFile: "search.key"}, Name: "before", UpstreamKey: "keep-secret", UpstreamTranscribeKey: "keep-audio", Console: "127.0.0.1:9101"})
 	remote, _ := adminkey.Open(dir)
@@ -72,6 +73,7 @@ func TestSettingsApplyAndRefusal(t *testing.T) {
 	}
 }
 func TestAdminCodeLocalActions(t *testing.T) {
+	t.Parallel()
 	dir := t.TempDir()
 	store, _ := adminkey.Open(dir)
 	s := &consoleState{remote: store, value: consoleSettings{Name: "host", DataDir: dir, WebURL: "https://example.com/"}}
@@ -102,6 +104,7 @@ func TestAdminCodeLocalActions(t *testing.T) {
 	}
 }
 func TestSettingsValidationAndConcurrentName(t *testing.T) {
+	t.Parallel()
 	for _, url := range []string{"", "https://example.com/app/", "http://127.0.0.1:8080/", "http://[::1]/", "http://10.1.2.3/", "http://172.16.0.1/", "http://192.168.1.1/"} {
 		if err := (admin.SettingsPatch{WebURL: &url}).Validate(false); err != nil {
 			t.Fatal(url, err)

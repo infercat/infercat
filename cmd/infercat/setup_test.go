@@ -57,6 +57,7 @@ func applyFixture(t *testing.T, dir string, p profile.Profile, m profile.Machine
 	return out.String(), err
 }
 func TestSetupMergesVerifiedSettings(t *testing.T) {
+	t.Parallel()
 	p, m := setupFixture(t, true)
 	for i := range p.Members {
 		setupEngine(t, &p.Members[i], true)
@@ -92,6 +93,7 @@ func TestSetupMergesVerifiedSettings(t *testing.T) {
 	}
 }
 func TestApple16SetupConfigurationProof(t *testing.T) {
+	t.Parallel()
 	p, err := profile.Builtin("apple-16g")
 	if err != nil {
 		t.Fatal(err)
@@ -146,6 +148,7 @@ func TestApple16SetupConfigurationProof(t *testing.T) {
 	t.Log("resulting config:", string(b))
 }
 func TestSetupRefusalNeverWrites(t *testing.T) {
+	t.Parallel()
 	for _, kind := range []string{"URL conflict", "key conflict", "model conflict", "empty answer", "pending", "wrong pin", "unknown path", "ambiguous path", "hardware", "offline optional conflict"} {
 		t.Run(kind, func(t *testing.T) {
 			p, m := setupFixture(t, kind == "offline optional conflict")
@@ -199,6 +202,7 @@ func TestSetupRefusalNeverWrites(t *testing.T) {
 	}
 }
 func TestSetupUnavailableAndAbsentMembers(t *testing.T) {
+	t.Parallel()
 	p, m := setupFixture(t, false)
 	setupEngine(t, &p.Members[0], true)
 	all, _ := profile.Builtin("apple-64g")
@@ -221,6 +225,7 @@ func TestSetupUnavailableAndAbsentMembers(t *testing.T) {
 	}
 }
 func TestSetupHelpAndFlagRefusal(t *testing.T) {
+	t.Parallel()
 	var out bytes.Buffer
 	e := env{out: &out, errw: &out}
 	if err := e.cmdSetup(context.Background(), t.TempDir(), []string{"--help"}); err != errDone {
@@ -246,6 +251,7 @@ func TestSetupHelpAndFlagRefusal(t *testing.T) {
 }
 
 func TestSetupNeverExecutesCommands(t *testing.T) {
+	t.Parallel()
 	p, m := setupFixture(t, false)
 	setupEngine(t, &p.Members[0], true)
 	dir := t.TempDir()
@@ -261,6 +267,7 @@ func TestSetupNeverExecutesCommands(t *testing.T) {
 }
 
 func TestManagedSetupCommitAndRollback(t *testing.T) {
+	t.Parallel()
 	for _, kind := range []string{"success", "anchor fails", "manifest fails", "cancel", "conflict"} {
 		t.Run(kind, func(t *testing.T) {
 			p, m := setupFixture(t, false)
@@ -320,6 +327,7 @@ func TestManagedSetupCommitAndRollback(t *testing.T) {
 }
 
 func TestManagedSetupOptionalFailurePreservesChat(t *testing.T) {
+	t.Parallel()
 	for _, declared := range []bool{false, true} {
 		t.Run(fmt.Sprint(declared), func(t *testing.T) {
 			p, m := setupFixture(t, true)

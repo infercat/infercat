@@ -117,6 +117,7 @@ func (h *harness) shortStreams() { h.up.set("sse", sseEvents(1, true)...) }
 // For every way a request can end, after the handler returns nothing is held: bodies, global
 // slots, waiters, per-key in-flight, reservations — and the next request from the key goes through.
 func TestI1ExactlyOnceRelease(t *testing.T) {
+	t.Parallel()
 	long := func(h *harness) { h.up.set("sse", sseEvents(200, true)...) }
 	rows := []struct {
 		name string
@@ -435,6 +436,7 @@ func TestI1ExactlyOnceRelease(t *testing.T) {
 // not, charged up to the reservation) and the clock, Σ live reservations + Σ charges in the window
 // never exceeds TPM and today + reservations never exceeds the daily budget.
 func TestI5CeilingRandomized(t *testing.T) {
+	t.Parallel()
 	seed := time.Now().UnixNano()
 	t.Logf("seed %d", seed)
 	rng := rand.New(rand.NewSource(seed))
@@ -509,6 +511,7 @@ func TestI5CeilingRandomized(t *testing.T) {
 // The same ceiling through the pipeline: concurrent requests from one key against an engine that
 // reports honest usage (prompt = the words sent, completion ≤ max_tokens), sampled continuously.
 func TestI5CeilingThroughThePipeline(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, Config{}, nil)
 	h.slots(4)
 	h.up.set("usage")
@@ -571,6 +574,7 @@ func TestI5CeilingThroughThePipeline(t *testing.T) {
 // ---- I6: the settle table, one row per outcome ----
 
 func TestI6SettleTable(t *testing.T) {
+	t.Parallel()
 	type row struct {
 		name   string
 		run    func(t *testing.T, h *harness)
@@ -729,6 +733,7 @@ func TestI6SettleTable(t *testing.T) {
 // oldest waiter in before a newcomer; Queue() equals the queue at every step; the engine never
 // sees more than the cap at once.
 func TestI7FIFOAndResize(t *testing.T) {
+	t.Parallel()
 	h := newHarness(t, Config{}, nil)
 	h.slots(2)
 	h.gw.queueTimeout = time.Minute // every waiter here is released by name; no wait ends on the clock
@@ -835,6 +840,7 @@ func TestI7FIFOAndResize(t *testing.T) {
 // one that never sends headers by the first-byte deadline, and a live stream slower than every
 // deadline is never cut.
 func TestI8Deadlines(t *testing.T) {
+	t.Parallel()
 	t.Run("headers but no bytes: idle deadline (stream)", func(t *testing.T) {
 		h := newHarness(t, Config{}, nil)
 		h.gw.idleTimeout = 200 * time.Millisecond
@@ -918,6 +924,7 @@ func TestI8Deadlines(t *testing.T) {
 // ≤ what TPM leaves; model is present and allowed; include_usage iff stream; every other field is
 // byte-identical.
 func TestI9NormalizationPostConditions(t *testing.T) {
+	t.Parallel()
 	const ctxLen, keyCap, tpm = 100, 40, 130
 	overrides := `"n_predict":100000,"max_new_tokens":100000,"min_tokens":90000,"ignore_eos":true,"n":4,"n_cmpl":4,"best_of":8,` +
 		`"n_probs":50,"id_slot":0,"slot_id":0,"n_keep":-1,"n_discard":0,"n_ctx":1000000,"priority":100,"lora":[{"id":0,"scale":1}]`

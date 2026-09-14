@@ -444,16 +444,28 @@ func (f *fakeUpstream) order() []string {
 	return append([]string(nil), f.tags...)
 }
 
-// deadUpstream is an Upstream whose engine address refuses connections.
+// deadUpstream owns its port and closes every connection without an HTTP response.
 type deadUpstream struct{ *fakeUpstream }
 
 func newDeadUpstream(t *testing.T) *deadUpstream {
+	t.Helper()
 	l, err := net.Listen("tcp", "127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
 	}
 	addr := l.Addr().String()
-	_ = l.Close()
+	stopped := make(chan struct{})
+	go func() {
+		defer close(stopped)
+		for {
+			conn, err := l.Accept()
+			if err != nil {
+				return
+			}
+			_ = conn.Close()
+		}
+	}()
+	t.Cleanup(func() { _ = l.Close(); <-stopped })
 	f := newFakeUpstream()
 	t.Cleanup(f.srv.Close)
 	f.base, _ = url.Parse("http://" + addr)
