@@ -64,11 +64,11 @@ garbage line
 }
 
 // The status block (029 promises 3, 4, 5, 6): sessions with their path, handshake, bytes and
-// age; the queue's peak; what the engine says or that it says nothing; the process; and the
+// age; the queue's peak; what the engine says or that it says nothing; the header; and the
 // bridge's own block.
-func TestStatusBlockShowsSessionsEngineAndProcess(t *testing.T) {
+func TestStatusBlockShowsHeaderSessionsAndEngine(t *testing.T) {
 	now := time.Now()
-	st := admin.Status{Product: "Infercat", Version: "t", UptimeS: 90, Mode: "host",
+	st := admin.Status{Product: "Infercat", Version: "t", UptimeS: 90, Mode: "host", Console: "127.0.0.1:9101",
 		Upstream: admin.Upstream{Kind: "llama.cpp", URL: "http://127.0.0.1:8080", Healthy: true, ModelContext: 4096, Slots: 2},
 		Tunnel: admin.Tunnel{Addr: "tcABC", Region: "New York City", Clients: 1, RxBytes: 3000, TxBytes: 5 << 20, Sessions: []admin.Session{
 			{Key: "fd7a:115c:a1e0:ab12:4843:cd96:6263:e3a2", Path: "unknown", Conns: 2, RxBytes: 1000, TxBytes: 4 << 20, LastByte: now.Add(-40 * time.Second), Since: now.Add(-3 * time.Minute), Active: true},
@@ -82,6 +82,9 @@ func TestStatusBlockShowsSessionsEngineAndProcess(t *testing.T) {
 	var out bytes.Buffer
 	writeStatus(&out, st)
 	s := out.String()
+	if !strings.HasPrefix(s, "Infercat t — up 1m\nconsole   http://127.0.0.1:9101/") || strings.Contains(s, "process   ") {
+		t.Fatalf("header first, no process diagnostics: %s", s)
+	}
 	squash := func(s string) string { return strings.Join(strings.Fields(s), " ") } // the session table is tab-aligned
 	for _, want := range []string{
 		"sessions  2 active of 3 seen  ·  in 3 KB  out 5.0 MB  ·  paths: the client's to measure, not visible to a host",
@@ -89,7 +92,6 @@ func TestStatusBlockShowsSessionsEngineAndProcess(t *testing.T) {
 		"…1111:2222  1 conn  in 2 KB  out 1.0 MB  last byte 5m ago  age 20m",
 		"queue     2 in flight, 3 waiting  (peak 2 in flight, sampled)",
 		"engine    118 tok/s over the last minute  ·  engine says 2 busy, 1 waiting  ·  memory not reported",
-		"process   84 goroutines  heap 12.0 MB  sys 48.0 MB  rss —",
 	} {
 		if !strings.Contains(squash(s), squash(want)) {
 			t.Errorf("status lacks %q:\n%s", want, s)

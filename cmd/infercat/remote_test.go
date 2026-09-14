@@ -68,7 +68,7 @@ func TestRemoteCLIUsesRunningHostAndOnceResults(t *testing.T) {
 	}
 	e.tty = true
 	text := call("rotate", "--no-qr")
-	if strings.Count(text, "ia1.") != 1 || strings.Contains(text, "█") {
+	if strings.Count(text, "ia1.") != 1 || strings.Contains(text, "█") || !strings.Contains(text, "Remote access is on.") || !strings.Contains(text, "Open this on your other device (shown once):") {
 		t.Fatal("once output", text)
 	}
 	if remote.Authenticate(strings.TrimPrefix(first.Invite, prefix)) {
@@ -78,7 +78,9 @@ func TestRemoteCLIUsesRunningHostAndOnceResults(t *testing.T) {
 	if strings.Count(text, "ia1.") != 1 || !strings.Contains(text, "█") {
 		t.Fatal("terminal QR")
 	}
-	call("off", "--json")
+	if text := call("off"); text != "Remote access is off. The admin code no longer works.\n" {
+		t.Fatal(text)
+	}
 	if remote.State().Enabled {
 		t.Fatal("off")
 	}

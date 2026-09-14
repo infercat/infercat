@@ -377,7 +377,7 @@ func (e *env) openUpstream(ctx context.Context, dataDir, url, key string, slots 
 	}
 	if err != nil {
 		if errors.Is(err, upstream.ErrNoUpstream) {
-			e.logf("Start llama.cpp, llama-swap, Ollama, LM Studio or vLLM: https://github.com/infercat/infercat#no-engine-yet")
+			return nil, fmt.Errorf("%w\n\nStart llama.cpp, llama-swap, Ollama, LM Studio or vLLM: https://github.com/infercat/infercat#no-engine-yet\nOr point serve at your engine:\n\n  %s serve --upstream http://127.0.0.1:<port>", err, product.CLIName)
 		}
 		// Detection found nothing: end with the command that fixes it, and say where the flag
 		// goes, because `--upstream` reads like a subcommand to a first-time host (promise 5).

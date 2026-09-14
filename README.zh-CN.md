@@ -32,7 +32,11 @@
 
 你需要先启动一个推理服务（llama.cpp、llama-swap、vLLM、Ollama 或 LM Studio 均可；任何兼容 OpenAI `/v1/chat/completions` 的服务都能用）。朋友那边只要有个浏览器就行。
 
-**可选——还没有推理引擎？** [安装 Ollama](https://ollama.com/download)，然后：
+<a id="no-engine-yet"></a>
+
+### 还没有引擎？
+
+[安装 Ollama](https://ollama.com/download)，然后：
 
 ```sh
 ollama serve &      # Ollama 应用已在运行的话可跳过
@@ -41,7 +45,6 @@ ollama run gemma4
 
 会下载 Gemma 4（约 10 GB，需要 16 GB 内存，支持图片）并打开对话。保持运行或输入 `/bye`，引擎会继续运行。`infercat serve` 会自动找到它。
 
-<a id="no-engine-yet"></a>
 <details>
 <summary><b>进阶引擎配置</b></summary>
 
@@ -228,7 +231,7 @@ infercat keys limits alice --rpm 60 --daily-tokens 1000000 --max-output-tokens 8
 
 **两个人共用一个邀请码行不行？** 能用，受那个密钥的限额约束，在 `usage` 里也看得见。建议一人一个密钥，反正不花钱。
 
-**电脑休眠了怎么办？** 朋友端会提示“Max's laptop didn't answer”并说明原因；主机恢复后，网页版会自动重试。
+**电脑休眠了怎么办？** 朋友端会提示“Max's laptop — 无响应”并说明原因；主机恢复后，网页版会自动重试。
 
 **支持哪些模型？** 取决于你本地引擎跑什么模型；给密钥加上 `--models` 参数可以限制该朋友能选择的模型范围。
 

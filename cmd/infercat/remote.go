@@ -86,13 +86,13 @@ func (e *env) cmdRemote(ctx context.Context, pre string, args []string) error {
 		return json.NewEncoder(e.out).Encode(result)
 	}
 	if action == "off" {
-		fmt.Fprintln(e.out, "remote    off")
+		fmt.Fprintln(e.out, "Remote access is off. The admin code no longer works.")
 		return nil
 	}
 	if result.Invite == "" {
 		return errors.New("remote action returned no code; check status and rotate")
 	}
-	fmt.Fprintln(e.out, "Keep this admin code private. Anyone with it controls this host's keys.")
+	fmt.Fprintln(e.out, "Remote access is on.\nKeep this admin code private. Anyone with it controls this host's keys.")
 	code := result.Invite
 	if result.Link != "" {
 		code = result.Link
@@ -100,6 +100,6 @@ func (e *env) cmdRemote(ctx context.Context, pre string, args []string) error {
 	if e.tty && !*noQR {
 		writeQR(e.out, code)
 	}
-	fmt.Fprintf(e.out, "\n  %s\n", code)
+	fmt.Fprintf(e.out, "\nOpen this on your other device (shown once):\n  %s\n", code)
 	return nil
 }
