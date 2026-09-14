@@ -12,7 +12,7 @@ import { useEffect, useId, useRef, useState, type ReactNode } from 'react';
 import { describeError, getMe, hostName, hostImages, logsPrompts, type FriendlyError, type Me } from '../api';
 import { decodeCode as decodeInvite,isAdminCode } from '../admin-route';
 import { inviteFromHash, InviteError, inviteHint, maskInvite } from '../invite';
-import { HOST_URL, PRODUCT_NAME, SOURCE_URL, VERSION } from '../product';
+import { HOST_URL, INVITE_PREFIX, PRODUCT_NAME, SOURCE_URL, VERSION } from '../product';
 import { boundHandshake, handshakeFailure, type Live, type SessionEvent, type SessionState } from '../session';
 import {
   countChats,
@@ -430,7 +430,7 @@ function ConnectBody({ state, dispatch, offline = false, onAdmin }: Props) {
                 autoCapitalize="off"
                 autoCorrect="off"
                 rows={3}
-                placeholder="ic1.…"
+                placeholder={`${INVITE_PREFIX}.…`}
                 onChange={(e) => {
                   edit(e.target.value);
                   void import('./Chat'); // warm the chat chunk while they are still typing
@@ -459,13 +459,13 @@ function ConnectBody({ state, dispatch, offline = false, onAdmin }: Props) {
       <div className="connect-actions">
         {/* A code the host has revoked gets no Connect: pressing it could only reproduce the
             failure below, whose own button is the one that works (020 promise 5). */}
-        <button
+        {!needsNewCode && <button
           className="primary"
           onClick={() => void connect()}
-          disabled={offline || text.trim() === '' || malformed || needsNewCode}
+          disabled={offline || text.trim() === '' || malformed}
         >
           {isAdminCode(text)?tr('app_open_console'):returning ? tr('app_reconnect') : <Copy name="f_connect" />}
-        </button>
+        </button>}
         {/* While a failure is showing, the same action lives inside it, next to the reason. */}
         {remembered !== '' && !failure && (
           <button className="ghost" onClick={forgetInvite}>

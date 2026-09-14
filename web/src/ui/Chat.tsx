@@ -803,7 +803,7 @@ export default function Chat({ state, live, dispatch, onRedial, reconnecting = f
           text={draft}
           onText={setDraft}
           streaming={streaming}
-          status={streaming && waitingForHeaders ? tr('app_waiting_for_model_load', { host: host || tr('app_the_host_lowercase'), model: modelLabel(model) }) : null}
+          status={streaming && waitingForHeaders ? state.name === 'degraded' ? degraded ?? pathLine(live, now) : tr('app_waiting_for_model_load', { host: host || tr('app_the_host_lowercase'), model: modelLabel(model) }) : null}
           touch={touch}
           disabled={locked || readOnly}
           sendBlocked={sendBlocked || imageWork.pending.has('submit')}
@@ -875,6 +875,11 @@ function Meters({ live, used, images, onOpen }: { live: Live; used: number | nul
 
 /** One sheet, one sentence each: the whole explanation of the numbers in the header. */
 function LimitsSheet({ live, messages, onClose }: { live: Live; messages: readonly Message[]; onClose: () => void }) {
+  useEffect(() => {
+    const escape = (event: KeyboardEvent) => { if (event.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', escape);
+    return () => document.removeEventListener('keydown', escape);
+  }, [onClose]);
   const me = live.me;
   const { rpm, daily_tokens: daily } = me.limits;
   const context = me.host.upstream.model_context;
