@@ -78,7 +78,7 @@ content is kept for at most seven days after completion or cancellation, or unti
 age is 24 hours; the sweep cancels abandoned waits. Startup recovery interrupts
 unfinished runs without replaying engine work; terminal snapshots remain readable
 until expiry. The host runs expiry sweeps at startup and once per minute.
-No CLI flags change these constants in this slice.
+No CLI flags change these constants.
 
 Ordinary writes leave 64 KiB of terminal headroom. If a legacy full snapshot cannot
 retain a new terminal output, it receives an explicit `output not retained: budget`
@@ -117,9 +117,7 @@ The console’s Stored section reports cached state-file bytes and servable imag
 
 Warm Stored reads scan at most MaxRuns (100) records plus the host-wide tracked cleanup paths, without a filesystem scan. Rows and sizes are derived on read from the cached snapshot, including bounded retained payloads; only the encoded state-file byte count is cached at commit. A cold key also loads its bounded state file and scans its key directory for state-write temporary files. The ordinary ceiling excludes 64 KiB of terminal headroom; live reservations and any exceptional excess are shown separately. Clear persists validated cleanup run IDs atomically with removal and the epoch reset, drains only proven paths, and durably retires successful intents. With an empty snapshot, observed unknown image files are report-only entries, separate from proven retry paths: both count in status, but observing a file never authorizes deletion. The drawer names the report-only count; clear retries only proven paths. Only run removal resets the epoch; cleanup-only retries preserve the cursor. Missing directories are benign.
 
-On the engineer’s Mac (three iterations), 100 runs with 25 MiB input measured 8.89 ms warm and 32.06 ms cold; a full commit measured 22.94 ms. With 100 small runs, reads measured 83 µs with no tracked cleanup paths, 173 µs with 1,000, and 1.081 ms with 10,000. Read cost includes serializing retained payloads for per-row sizes; commit adds only assignment of the already-encoded length.
-
-At the ordinary ceiling (100 runs, about 63 MB encoded; three iterations), Stored reads measured 21.06 ms warm and 62.37 ms cold. These reads serialize bounded retained payloads for row sizes; they preserve the prior access time so polling does not pin a key in memory. Expiry persists proven cleanup intents with its shrink; a failed image metadata commit best-effort unlinks its own artifact and tracks failures as proven retries. Unnamed image files are collected when records remain; an empty snapshot leaves them for manual review.
+Stored reads preserve the prior access time so polling does not pin a key in memory. Expiry persists proven cleanup intents with its shrink; a failed image metadata commit best-effort unlinks its own artifact and tracks failures as proven retries.
 
 The admin field `image_cleanup_pending` now counts proven retry paths only; older hosts included observations in that field. `image_orphans_for_review` carries the separate report-only count. Unnamed image files are collected when the snapshot has runs; only empty snapshots leave unknown files for review. Owned `.run-*` write-remnant files in both the state and image directories are collected on load or sweep; failed deletions are logged and retried on later scans.
 

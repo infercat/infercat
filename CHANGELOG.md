@@ -5,6 +5,8 @@ app shows the same one under Settings. Dates are the tag's.
 
 ## Unreleased — 0.1.5
 
+- **Search in chat.** Hosts can offer `web_search` using `search.key_file`, with a per-key `--search-per-day` budget.
+
 - **One-command setup.** `infercat setup` downloads and verifies what a profile needs (resumable,
   SHA-256 before use, bounded link-safe extraction; llama.cpp b10809, stable-diffusion.cpp
   master-851, sherpa-onnx v1.13.7 and the models), writes an installation manifest, dry-starts and
@@ -13,8 +15,7 @@ app shows the same one under Settings. Dates are the tag's.
   151b-B)
 - **The agent route.** A per-key opt-in run kind drives the pinned harness: approvals with the
   verbatim question, steps with captured outputs (including write diffs), typed failure causes,
-  metered detail and output reads, one active agent run per host. Documented limit: an agent can
-  read the host's data directory — recommended for single-friend hosts until read isolation exists.
+  metered detail and output reads, one active agent run per host.
   (116c, 116d, 116e)
 - **Host tools in chat.** With an explicit request field, the model can call `make_image`: the chat
   becomes a run with two metered model calls, a visible zero-charge handoff row, the image on its own
