@@ -12,7 +12,19 @@
 - 部署时只发布 wasm 的 gzip 副本（`infercat.wasm.gz`）；Pages 会拒绝超过 25 MB 的文件，且网页版反正也会优先请求 gzip 文件。未压缩的 wasm 模块仍保留在 release 的 zip 包里，供自建托管的人使用。
 - `_headers`：HSTS、nosniff、no referrer，对带哈希的静态资源配置长缓存。
 - `_routes.json` + `functions/_middleware.js`：第一方计数器。每次页面访问（`/`，带来源站点与 `?from=` 标签）以及每次应用加载（`/infercat.wasm.gz`），都会按国家与浏览器家族向 Analytics Engine 写入一个数据点。页面上没有任何脚本，没有 cookie，不涉及第三方；URL 哈希段里的邀请码绝不会发送到服务器。在控制台中查询（Analytics Engine，数据集 `infercat_loads`）：`SELECT index1 AS kind, blob1 AS country, blob4 AS from, SUM(_sample_interval) AS n FROM infercat_loads WHERE timestamp > NOW() - INTERVAL '7' DAY GROUP BY kind, country, from`。
+- `derpmap.json`：Infercat 自建 DERP 中继的映射表（`derp.infercat.ai`，区域 900）。主机用 `infercat serve --derpmap-url https://infercat.ai/derpmap.json` 固定它；区域信息会写入此后生成的每个邀请码，因此发出密钥后不能改变该主机名。
 - infercat.dev 是一个独立的 Pages 项目，仅用于重定向到 infercat.ai（见 `hosting/cloudflare/redirect/`）。
+
+## 演示邀请：`/try`
+
+网站、README 和帖子统一用 `https://infercat.ai/try` 指向公开演示主机。`functions/try.js` 从 KV（`SIGNUPS`，键 `link:try`）读取当前邀请链接，加上 `?from=try` 后返回 302；计数器据此记录来源，应用打开后邀请码已填好。邀请不会提交到仓库。旧密钥在主机上暂停或撤销后，可重新生成：
+
+```
+infercat keys add reddit-public-2 --max-concurrent 30 --max-output-tokens 8192 --rpm 100000 --tpm 100000000 --daily-tokens 10000000000 --json --no-qr
+wrangler kv key put --config hosting/cloudflare/wrangler.toml --binding SIGNUPS --remote link:try 'https://infercat.ai#ic2.…'
+```
+
+修改会在一分钟内生效，无需部署。没有保存的链接时，`/try` 打开落地页。
 
 ## 路线图订阅名单
 
