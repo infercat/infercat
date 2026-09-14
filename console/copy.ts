@@ -175,7 +175,7 @@ export const copy = {
   s_active: ["active", "启用"],
   s_paused: ["paused", "已暂停"],
   s_revoked: ["revoked", "已撤销"],
-  counts_line: ["rpm counts model calls and the app's /v1/models lookup; tpm and tokens per day count model calls only.", "rpm 统计模型调用和网页版的 /v1/models 查询；tpm 与每日 token 只统计模型调用。"],
+  counts_line: ["rpm excludes /me and /v1/models; tpm and tokens per day count model calls only.", "rpm 不统计 /me 和 /v1/models；tpm 与每日 token 只统计模型调用。"],
   engine: ["Engine", "引擎"],
   e_kind: ["Kind", "类型"],
   e_health: ["Health", "状态"],

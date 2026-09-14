@@ -40,7 +40,7 @@ const BASE64URL = /^[A-Za-z0-9_-]+$/;
 // The prefix family without its version number ("ic" of "ic1"), from the constant: the family
 // changes with the product name (037), and the Go side derives it the same way.
 const VERSION_TAG = new RegExp(`^${INVITE_PREFIX.replace(/\d+$/, '')}(\\d+)$`);
-const PSK_PREFIX = INVITE_PREFIX.replace(/\d+$/, '2');
+const LEGACY_PREFIX = INVITE_PREFIX.replace(/\d+$/, '1');
 const NEWER = () => tr('app_this_invite_needs_a_newer_version_of_the_app');
 
 export function encodeInvite(addr: string, secret: string, prefix = INVITE_PREFIX): string {
@@ -56,7 +56,7 @@ export function decodeInvite(raw: string): Invite {
   // The prefix is checked before the part count, so an invite from a newer app says so even if
   // that app's layout differs — same order as the Go side.
   const tag = parts[0] as string;
-  if (tag !== INVITE_PREFIX && tag !== PSK_PREFIX) {
+  if (tag !== INVITE_PREFIX && tag !== LEGACY_PREFIX) {
     if (isNewerVersion(tag)) throw new InviteError('newer_version', NEWER());
     throw new InviteError(
       'missing_prefix',
@@ -111,7 +111,7 @@ export function inviteFromHash(hash: string): string {
     /* a malformed percent escape is not an invite */
   }
   raw = raw.trim();
-  return raw.startsWith(`${INVITE_PREFIX}.`) || raw.startsWith(`${PSK_PREFIX}.`) ? raw : '';
+  return raw.startsWith(`${INVITE_PREFIX}.`) || raw.startsWith(`${LEGACY_PREFIX}.`) ? raw : '';
 }
 
 /**

@@ -18,6 +18,7 @@
          vite.config.ts from src/product.ts and the build environment: the name lives in one place. -->
     <title>%PRODUCT_NAME%</title>
     <meta name="description" content="%PRODUCT_DESCRIPTION%" />
+    <link rel="canonical" href="%WEB_URL%/" />
     <meta property="og:type" content="website" />
     <meta property="og:site_name" content="%PRODUCT_NAME%" />
     <meta property="og:title" content="%PRODUCT_NAME%" />
@@ -36,6 +37,7 @@
     <link rel="manifest" href="/manifest.webmanifest" />
   </head>
   <body>
+    <noscript><p>Infercat lets you chat with a friend’s model. Enable JavaScript to connect with an invite, or read the <a href="https://github.com/infercat/infercat#quickstart-host">host quickstart</a> to share your own.</p></noscript>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>

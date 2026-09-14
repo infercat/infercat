@@ -7,8 +7,8 @@ const EXAMPLE_ADDRESS = 'tce0qQCccgxvj9O_4PhT0l2PsJk7_4fjmS8Yia25APkXD1OPzql6IRf
 const EXAMPLE_SECRET = 'PKZzH90SyKq_v43kucCy4fIXG5gYeXayAfN4dizIHZY';
 const abbreviate = (value: string, edge: number) => `${value.slice(0, edge)}…${value.slice(-edge)}`;
 const DISPLAY_KEY = abbreviate(EXAMPLE_SECRET, 8);
-const DISPLAY_INVITE = `ic1.${abbreviate(EXAMPLE_ADDRESS, 22)}.${DISPLAY_KEY}`;
-const PHONE_INVITE = `ic1.${abbreviate(EXAMPLE_ADDRESS, 16)}.${DISPLAY_KEY}`;
+const DISPLAY_INVITE = `ic2.${abbreviate(EXAMPLE_ADDRESS, 22)}.${DISPLAY_KEY}`;
+const PHONE_INVITE = `ic2.${abbreviate(EXAMPLE_ADDRESS, 16)}.${DISPLAY_KEY}`;
 
 function Demo() {
   const { t, lang } = useLanguage();
@@ -318,7 +318,7 @@ export function Landing() {
                   aria-expanded={open === 'p-tt-v'}
                   onClick={(e) => toggle('p-tt-v', e.currentTarget)}
                 >
-                  <span className="invite-part">ic1</span>
+                  <span className="invite-part">ic2</span>
                   <span className="n" data-copy="seg_v" dangerouslySetInnerHTML={{ __html: t.seg_v }} />
                 </button>
                 <span className="dot">{'.'}</span>

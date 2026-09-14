@@ -1,7 +1,7 @@
 // The product name lives here and nowhere else on the TS side (docs/PRINCIPLES.md).
 // The Go side's copy is internal/product/product.go; keep the two in step by hand.
 export const PRODUCT_NAME = 'Infercat';
-export const INVITE_PREFIX = 'ic1';
+export const INVITE_PREFIX = 'ic2';
 // What the page says about itself to a search engine or a social card (index.html and the web app
 // manifest are filled from this line by vite.config.ts). Same words as the connect screen.
 export const DESCRIPTION =
