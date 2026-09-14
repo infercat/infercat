@@ -20,7 +20,7 @@ env:
 jobs:
   release:
     runs-on: ubuntu-latest
-    timeout-minutes: 30
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v5
         with:
@@ -103,16 +103,31 @@ jobs:
           PYIMAGE
 
       - name: Release (tag — publishes the GitHub Release)
+        id: release
         if: startsWith(github.ref, 'refs/tags/v')
         # Through make, never bare: the Makefile reads CLI_NAME and PRODUCT_VERSION out of
         # internal/product/product.go (docs/PRINCIPLES.md: the name lives in one constant).
-        run: make release-publish
+        run: |
+          if [ -n "$MACOS_SIGN_P12" ]; then echo 'signing_expected=true' >> "$GITHUB_OUTPUT"; fi
+          make release-publish
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           # The Homebrew tap lives in another repository, which GITHUB_TOKEN cannot push to. A
           # fine-grained PAT with contents:write on infercat/homebrew-tap, stored as this secret,
           # lets goreleaser commit the formula there (.goreleaser.yaml `brews`). TODO(tap): store the PAT the day infercat/homebrew-tap exists.
           HOMEBREW_TAP_GITHUB_TOKEN: ${{ secrets.HOMEBREW_TAP_GITHUB_TOKEN }}
+          MACOS_SIGN_P12: ${{ secrets.MACOS_SIGN_P12 }}
+          MACOS_SIGN_PASSWORD: ${{ secrets.MACOS_SIGN_PASSWORD }}
+          MACOS_NOTARY_ISSUER_ID: ${{ secrets.MACOS_NOTARY_ISSUER_ID }}
+          MACOS_NOTARY_KEY_ID: ${{ secrets.MACOS_NOTARY_KEY_ID }}
+          MACOS_NOTARY_KEY: ${{ secrets.MACOS_NOTARY_KEY }}
+
+      - name: Verify macOS signing mode and artifacts
+        env:
+          MACOS_SIGNING_EXPECTED: ${{ steps.release.outputs.signing_expected }}
+        run: |
+          python3 packaging/verify_macos_test.py
+          make release-verify-macos
 
       - uses: actions/upload-artifact@v6
         if: github.event_name == 'workflow_dispatch'
