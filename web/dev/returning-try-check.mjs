@@ -1,25 +1,10 @@
 // With no URL, test built web/dist behind a real 302. With an origin, verify the deployed worker.
 // BROWSERS=chromium,webkit enables the local Safari regression without expanding CI's install.
 import assert from 'node:assert/strict';
-import { createServer } from 'node:http';
-import { readFile } from 'node:fs/promises';
-import { resolve, extname } from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { chromium, webkit } from 'playwright';
-const root = fileURLToPath(new URL('../dist/', import.meta.url));
+import { workerFixture } from './worker-fixture.mjs';
 let server, origin = process.argv[2];
-if (!origin) {
-  server = createServer(async (req, res) => {
-    const path = new URL(req.url, 'http://localhost').pathname;
-    if (path === '/try') { res.writeHead(302, { Location: '/?from=try#ic2.fixture' }).end(); return; }
-    const file = resolve(root, '.' + (path === '/' ? '/index.html' : path));
-    if (!file.startsWith(root)) { res.writeHead(404).end(); return; }
-    try { const bytes = await readFile(path === '/sw.js' && process.env.SW_FIXTURE ? process.env.SW_FIXTURE : file); res.setHeader('Content-Type', ({'.html':'text/html','.js':'text/javascript','.css':'text/css','.json':'application/json'})[extname(file)] ?? 'application/octet-stream'); res.end(bytes); }
-    catch { res.writeHead(404).end(); }
-  });
-  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
-  origin = `http://127.0.0.1:${server.address().port}`;
-}
+if (!origin) ({ server, origin } = await workerFixture());
 let failed = false;
 try {
   for (const name of (process.env.BROWSERS ?? 'chromium').split(',')) {

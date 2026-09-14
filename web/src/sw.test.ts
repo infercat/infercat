@@ -4,7 +4,7 @@ import { expect, it, vi } from 'vitest';
 const origin = 'https://app.test';
 const config = { revision: 'build-b', version: '0.1.2', shell: ['/index.html', '/assets/app-b.js'], runtime: ['/runtime/0.1.2/wasm_exec.js', '/runtime/0.1.2/infercat.wasm.gz'] };
 async function harness() {
-  const handlers = new Map<string, (event: { request?: Request; waitUntil?: (p: Promise<unknown>) => void; respondWith?: (p: Promise<Response>) => void }) => void>();
+  const handlers = new Map<string, (event: { data?: unknown; request?: Request; waitUntil?: (p: Promise<unknown>) => void; respondWith?: (p: Promise<Response>) => void }) => void>();
   const stores = new Map<string, Map<string, Response>>();
   const key = (input: string | Request) => new URL(typeof input === 'string' ? input : input.url, origin).href;
   const network = vi.fn(async (input: string | Request) => new Response(`network ${key(input)}`));
@@ -29,7 +29,7 @@ async function harness() {
   class LocalRequest extends Request { constructor(input: string, init?: RequestInit) { super(new URL(input, origin), init); } }
   const source = readFileSync(new URL('./sw.ts', import.meta.url), 'utf8');
   const js = await transformWithEsbuild(source, 'sw.ts', { loader: 'ts', define: { __PRECACHE__: JSON.stringify(config) } });
-  const worker = { location: { origin }, clients: { claim: vi.fn() }, addEventListener: (name: string, handler: typeof handlers extends Map<string, infer T> ? T : never) => handlers.set(name, handler) };
+  const worker = { skipWaiting: vi.fn(async () => {}), location: { origin }, clients: { claim: vi.fn() }, addEventListener: (name: string, handler: typeof handlers extends Map<string, infer T> ? T : never) => handlers.set(name, handler) };
   new Function('self', 'caches', 'fetch', 'Request', 'Response', js.code)(worker, caches, network, LocalRequest, Response);
   async function lifecycle(type: string) { let work: Promise<unknown> | undefined; handlers.get(type)!({ waitUntil: (p) => { work = p; } }); await work; }
   function fetchEvent(path: string, mode = 'cors', method = 'GET') {
@@ -37,7 +37,7 @@ async function harness() {
     handlers.get('fetch')!({ request: { url: new URL(path, origin).href, mode, method } as Request, respondWith: (p) => { work = p; } });
     return work;
   }
-  return { stores, caches, network, lifecycle, fetchEvent, worker };
+  return { stores, caches, network, lifecycle, fetchEvent, worker, handlers };
 }
 it('precaches the runtime as a pair and reuses it on same-version shell updates', async () => {
   const h = await harness(); await h.lifecycle('install');
@@ -94,4 +94,12 @@ it('never returns a redirected shell response as-is and retains the offline fall
   expect(await (await h.fetchEvent('/index.html', 'navigate')!).text()).toBe(`network ${origin}/index.html`);
   h.network.mockResolvedValue(Response.error());
   expect(await (await h.fetchEvent('/', 'navigate')!).text()).toBe(`network ${origin}/index.html`);
+});
+
+it('activates a waiting worker only on the explicit skip-waiting message', async () => {
+  const h = await harness(); await h.lifecycle('install'); expect(h.worker.skipWaiting).not.toHaveBeenCalled();
+  for (const data of [undefined, {}, { type: 'update' }]) h.handlers.get('message')!({ data });
+  expect(h.worker.skipWaiting).not.toHaveBeenCalled();
+  let work; h.handlers.get('message')!({ data: { type: 'skip-waiting' }, waitUntil: p => { work = p; } }); await work;
+  expect(h.worker.skipWaiting).toHaveBeenCalledOnce();
 });

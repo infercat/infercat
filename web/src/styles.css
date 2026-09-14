@@ -1275,3 +1275,6 @@ body { overscroll-behavior-y: none; }
 .row.run .run-diff .remove { color: var(--muted); }
 .row.run .run-diff > button { margin: 4px 8px 8px; text-align: left; }
 .app.zh .row.run .run-diff, .app.zh .row.run .run-diff-status { font-family: var(--mono-cjk); }
+
+.worker-update { position: fixed; top: 0; left: 50%; transform: translateX(-50%); z-index: 100; width: max-content; max-width: 100%; }
+.worker-update.zh { font-family: var(--cjk); }

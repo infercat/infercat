@@ -20,6 +20,7 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
   function choose(next: Language) {
     setLang(next);
     save(KEYS.language, next);
+    window.dispatchEvent(new Event('languagechange'));
   }
   return (
     <LanguageContext.Provider value={{ lang, t: lang === 'zh' ? zh : en, choose }}>

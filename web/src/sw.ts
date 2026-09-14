@@ -7,6 +7,10 @@ const runtimeName = `infercat-runtime-${__PRECACHE__.version}`;
 const owned = (name: string) => name.startsWith('infercat-shell-') || name.startsWith('infercat-runtime-');
 const allowed = new Set([...__PRECACHE__.shell, ...__PRECACHE__.runtime]);
 
+worker.addEventListener('message', (event) => {
+  if (event.data?.type === 'skip-waiting') event.waitUntil(worker.skipWaiting());
+});
+
 worker.addEventListener('install', (event) => {
   event.waitUntil((async () => {
     const shell = await caches.open(shellName);

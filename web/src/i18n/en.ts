@@ -746,4 +746,5 @@ export const en = {
   app_path_reconnecting: "{host} — reconnecting…",
   app_this_chat_is_open_in_another_window: "This chat is open in another window.",
   app_use_this_window_instead: "Use this window instead",
+  app_update_ready: "A newer version is ready — reload",
 } as const;
