@@ -11,7 +11,7 @@ export VITE_APP_VERSION := $(PRODUCT_VERSION)
 # image URL in index.html, which must be absolute to be picked up.
 export VITE_WEB_URL := $(shell sed -n 's/^[[:space:]]*WebURL[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' internal/product/product.go)
 
-.PHONY: console-deps web-deps web-typecheck web-browser build test vet wasm web web-test web-lint size-check check clean release-dry notices notices-check brand launch-check deploy-web
+.PHONY: console-deps web-deps web-typecheck web-browser build test vet wasm web web-test web-lint size-check check clean release-dry release-verify-macos notices notices-check brand launch-check deploy-web
 
 build:
 	go build -o bin/infercat ./cmd/infercat
@@ -98,6 +98,10 @@ release-dry: notices-check web
 	goreleaser release --snapshot --clean --skip=publish
 	@echo "--- artifacts ---"
 	@ls -1 dist
+
+# Guard against a silent notarize ids mismatch; no secrets means an unsigned build.
+release-verify-macos:
+	python3 packaging/verify_macos.py
 
 # The real thing. Only .github/workflows/release.yml runs this, only on a v* tag, with GITHUB_TOKEN
 # in the environment; from a laptop it refuses without the tag (goreleaser checks) — run it by hand

@@ -154,3 +154,19 @@ docker_manifests:
     image_templates:
       - "ghcr.io/infercat/infercat:{{ .Version }}-amd64"
       - "ghcr.io/infercat/infercat:{{ .Version }}-arm64"
+
+# Inert until the tag step provides the certificate; see docs/RELEASE.md.
+notarize:
+  macos:
+    # The build id is cli; the project-name default would silently skip these binaries.
+    - ids: [cli]
+      enabled: '{{ isEnvSet "MACOS_SIGN_P12" }}'
+      sign:
+        certificate: "{{ .Env.MACOS_SIGN_P12 }}"
+        password: "{{ .Env.MACOS_SIGN_PASSWORD }}"
+      notarize:
+        issuer_id: "{{ .Env.MACOS_NOTARY_ISSUER_ID }}"
+        key_id: "{{ .Env.MACOS_NOTARY_KEY_ID }}"
+        key: "{{ .Env.MACOS_NOTARY_KEY }}"
+        wait: true
+        timeout: 20m

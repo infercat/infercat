@@ -75,6 +75,14 @@ Tag from a branch, ship notices that `make notices-check` rejects, or publish a 
 bundle does not carry (the Makefile stamps both from the same constant — a bare `goreleaser` run
 fails on purpose).
 
+## macOS signing
+
+Signing stays disabled until the tag step receives `MACOS_SIGN_P12`; snapshots receive no signing
+secrets. When it is present, `make release-verify-macos` requires Developer ID signature material in
+both Darwin binaries, guarding against a silently skipped signing configuration. This is not Apple
+trust or notarization validation; follow the maintainer's 034 signing runbook in the private release
+records (`docs/advisory/2026-09-11-macos-signing-design.md`, "Founder runbook") before publishing.
+
 ## Native helper releases
 
 Helpers have their own `helpers-v<version>` tags and archives; they do not trigger the
