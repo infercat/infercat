@@ -30,8 +30,6 @@ Share the model on your machine with friends. You run one binary in front of the
 
 ## Quickstart (host)
 
-**Existing host?** Stop `serve`, run `infercat identity upgrade` once, then start `serve` and rotate or add keys to send every friend a fresh `ic2` invite. The old identity is backed up as `host.key.json.pre-ic2`; existing invites stop working after the upgrade. Legacy identities keep serving unchanged until you explicitly upgrade. The temporary upgrade command is scheduled for removal after 2026-09-25.
-
 You need an inference server running (llama.cpp, llama-swap, vLLM, Ollama or LM Studio; any OpenAI-compatible `/v1/chat/completions` works). Your friends need a browser.
 
 **Optional — no engine yet?** [Install Ollama](https://ollama.com/download), then:
@@ -112,11 +110,17 @@ If your engine is on another port or another machine:
 infercat serve --upstream http://127.0.0.1:18080
 ```
 
-Flags you pass to `serve` are remembered in `config.json`, so the next `serve` needs none.
+Persistent `serve` settings are remembered in `config.json`. Per-run flags such as `--log-requests`, `--log-prompts`, `--agent`, `--ephemeral` and `--verbose` must be supplied each time. `--log-requests` prints one line per completed request on the terminal, without prompt content.
 
 Add a microphone and spoken replies with the [voice hosting recipe](docs/VOICE.md).
 Make pictures with the [image generation hosting recipe](docs/IMAGES.md).
 Search the web in an opted-in chat with the [search hosting recipe](docs/SEARCH.md).
+
+Open the local **console** with `infercat console` to inspect usage, manage keys and change supported settings. `serve --console IP:PORT` chooses its loopback listener (default `127.0.0.1:9101`; `off` disables it). See the [console and admin API](docs/ARCHITECTURE.md#local-admin-api).
+
+For **remote administration**, use `infercat remote on|off|rotate|status` on the running host. Enabling or rotating returns the admin code once; the loopback console listener must be on. The admin code authorizes key, settings and stored-data administration separately from friend invites. See [remote console budgets](docs/LIMITS.md#remote-console).
+
+The **agent route** lets opted-in friends submit agent runs, inspect steps and captured outputs, answer approvals, and cancel work. Install it with `infercat agent install`, enable the runtime with `serve --agent` and a friend's access with `keys limits alice --agent=true`; each run uses its own confined workspace. Installation and supported-platform boundaries are in [Agent runtime](docs/AGENT-RUNTIME.md).
 
 <details>
 <summary><b>macOS says it cannot verify the developer</b></summary>
@@ -131,7 +135,7 @@ xattr -d com.apple.quarantine ./infercat
 </details>
 
 <details>
-<summary><b>All <code>serve</code> flags</b></summary>
+<summary><b>Common <code>serve</code> flags</b></summary>
 
 | `serve` flag | What it does |
 |---|---|
@@ -145,12 +149,22 @@ xattr -d com.apple.quarantine ./infercat
 | `--log-prompts`, `--ephemeral`, `--verbose` | per-run: log message content; throwaway host identity; tunnel log on the terminal |
 | `--data-dir DIR` | where keys, usage, config and the host key live |
 
-`infercat serve -h` says the same, with the data directory's files.
+Run `infercat serve -h` for the complete flag list and the data directory's files.
 </details>
 
 `infercat setup --profile apple-64g` reuses hash-matched cached models and downloads missing published engine/model pins into your data directory. It starts each owned member, checks its model identity (and one small prompt for the anchor), then stops it before saving compatible settings. Existing engines stay running. Use repeatable `--model-path anchor=/path/to/model.gguf` overrides (asset ids also work), or `--custom profile.json` for compatibility checks with no downloads or launches. A failed anchor, cancellation, or conflicting settings leave the previous host config intact. An optional member that fails its check is marked unavailable; chat can still be configured.
 
 Run `infercat serve` next: it starts the installed anchor and keeps it resident, starts on-demand members for admitted requests, and stops them after the profile’s idle interval. `infercat status` shows each member; embeddings use the profile’s separate embedding model. Engines already running at setup remain externally owned and are never stopped by the host. Setup prints and records the materialized command for managed members; rerun setup after an embedded profile changes. Members without a published engine build are reported as unavailable. Native speech uses the verified helpers-v0.1.0 release and a separately pinned sherpa runtime. ASR has no selected profile artifact yet; the 16 GB tier uses Q4 E4B with vision, memory verified in a 16 GB macOS VM; performance unverified on real hardware. NVIDIA is unmeasured. See the [profile schema](docs/ARCHITECTURE.md#loadout-profiles-and-setup) and [native Kokoro helper](packaging/helpers/README.md).
+
+**Existing host?** Stop `serve`, run `infercat identity upgrade` once, then start `serve` and rotate or add keys to send every friend a fresh `ic2` invite. The old identity is backed up as `host.key.json.pre-ic2`; existing invites stop working after the upgrade. Legacy identities keep serving unchanged until you explicitly upgrade. The temporary upgrade command is scheduled for removal after 2026-09-25.
+
+The embedded profiles are:
+
+| Profile | Intended host |
+|---|---|
+| `apple-64g` | 64 GB Apple silicon host with a Metal model loadout. |
+| `apple-16g` | 16 GB Apple silicon host; memory checked in a macOS VM, real-hardware performance unverified. |
+| `nvidia-12g` | Linux NVIDIA host with 12 GB VRAM; unmeasured. |
 
 ## Quickstart (friend)
 
@@ -166,7 +180,7 @@ The header shows the path you are on (`relayed via nyc · 64 ms`), the model, an
 
 ## What friends can reach
 
-Exactly `/v1/models`, `/v1/chat/completions` and `/v1/responses` through the gateway to your inference server (and `/v1/embeddings` when the engine has it) — nothing else on your machine: no other port, no files, no admin API. The tunnel exposes the gateway and only the gateway; `serve` prints this line every time it starts.
+The [gateway route table](docs/ARCHITECTURE.md#gateway-http-api) lists the reachable endpoints: model/chat/Responses/embedding APIs, configured audio and image APIs, and key-scoped runs, events and captured outputs. Remote console routes require a separate admin bearer and explicit enablement; a friend key does not authorize them. The gateway does not expose arbitrary host ports or filesystem paths.
 
 ## Privacy
 
@@ -183,7 +197,24 @@ infercat keys add bob --rpm 6 --daily-tokens 50000          # tight, for a stran
 infercat keys limits alice --rpm 60 --daily-tokens 1000000 --max-output-tokens 8192
 ```
 
-Defaults: 20 requests a minute · 20 000 tokens a minute · 1 request at a time · 4096 output tokens · the engine's context · 200 000 tokens a day · every model. A friend over a limit gets `429` with `Retry-After`; a burst beyond the engine's slots queues briefly, then `503` — never a stalled engine. The web app shows each friend their own meters.
+Defaults from `keys add`:
+
+| Field / flag | Default |
+|---|---|
+| `rpm` / `--rpm` | 20 metered requests/minute |
+| `tpm` / `--tpm` | 20,000 tokens/minute |
+| `max_concurrent` / `--max-concurrent` | 1 request |
+| `max_output_tokens` / `--max-output-tokens` | 4,096 tokens |
+| `max_context` / `--max-context` | 0: use the engine's context |
+| `daily_tokens` / `--daily-tokens` | 200,000 tokens/day |
+| `daily_audio_seconds` / `--daily-audio-seconds` | 3,600 seconds/day |
+| `daily_speech_chars` / `--daily-speech-chars` | 200,000 characters/day |
+| `daily_images` / `--daily-images` | 20 images/day |
+| `max_queued_images` / `--max-queued-images` | 8 queued images |
+| `search_per_day` / `--search-per-day` | 50 searches/day |
+| `models` / `--models` | Empty list: all shared models |
+
+A friend over a limit gets `429` with `Retry-After`; a burst beyond the engine's slots queues briefly, then `503` — never a stalled engine. The web app shows each friend their own meters.
 
 Manage friends: `keys list` · `keys pause alice` (403 until `keys resume`) · `keys revoke alice` (permanent; asks first) · `keys rotate alice` (new invite, old one stops). Watch: `status` (live) and `usage` (history). Changes take effect on the running host at once.
 
@@ -213,7 +244,6 @@ No browser needed: the same binary turns an invite into a local OpenAI-compatibl
 bin/infercat connect ic2.…          # paste the invite
 ```
 ```
-Infercat 0.1.0
 host      Max's laptop  ·  gemma-4-E2B-it-Q4_K_M.gguf
 path      relayed via New York City · 27 ms       # re-checked every 30 s, printed when it changes
 local     http://127.0.0.1:11435

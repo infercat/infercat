@@ -125,9 +125,11 @@ interface Conn {
 }
 ```
 
-## Gateway HTTP API (002 serves; 004 consumes). Plain HTTP/1.1 inside the tunnel.
+## Gateway HTTP API
 
-Auth: `Authorization: Bearer <secret>` on every route except `/healthz`.
+Plain HTTP/1.1 inside the tunnel. This is the canonical reachable-route table.
+
+Auth: friend `Authorization: Bearer <secret>` on the API routes below except `/healthz`. The remote-console family uses its separate admin bearer. Optional engines, enabled run kinds and per-key permissions determine availability.
 
 | Route | Behaviour |
 |---|---|
@@ -137,6 +139,16 @@ Auth: `Authorization: Bearer <secret>` on every route except `/healthz`.
 | `POST /v1/responses` | Stateless translation to the chat pipeline, streamed or non-streamed; same auth, limits, text queue and settlement. See Responses below. |
 | `POST /v1/chat/completions` | stream and non-stream. Gateway MUST: flush every SSE chunk immediately; inject `stream_options.include_usage=true` when streaming; normalize the body once (strip engine-override aliases such as `n_predict`/`n`/`best_of`/`priority`, fill `model`, clamp `max_tokens` to the key's cap and shrink it to fit the context and the TPM/daily windows, floor 16); pass `reasoning_content` through untouched. An engine 400/422 caused by the request maps to 400 `invalid_request` with the engine's message — except a context overflow (llama.cpp `exceed_context_size_error`, vLLM "maximum context length"), which maps to 422 `context_too_long` so clients never retry it (036); 5xx → 502 |
 | `POST /v1/embeddings` | pass-through with auth + limits |
+| `POST /v1/audio/transcriptions`, `POST /v1/audio/speech` | Configured audio engines; friend auth, model allowlists and audio budgets. |
+| `POST /v1/images/generations` | Synchronous image generation through the image-run pipeline. |
+| `GET /v1/images/jobs`, `POST /v1/images/jobs` | List this key's image jobs or atomically submit a batch. |
+| `GET /v1/images/outputs/{run-id}`, `DELETE /v1/images/outputs/{run-id}` | Read or discard this key's image output; no caller-supplied filesystem path. |
+| `GET /v1/runs`, `POST /v1/runs` | List key-scoped runs or submit an enabled run kind; agent access is per-key opt-in. |
+| `GET /v1/runs/{id}`, `DELETE /v1/runs/{id}` | Read the run snapshot or request cancellation. |
+| `POST /v1/runs/{id}/approval` | Answer the current approval by id; stale answers are refused. |
+| `GET /v1/runs/{id}/outputs/{output-id}` | Read a captured output belonging to this key. |
+| `GET /v1/events` | Key-scoped SSE run updates with cursor replay/reset. |
+| `/console/`, `/console/api/*` | Explicitly enabled remote administration with an admin bearer, not a friend key; only the remote-console whitelist is served. |
 | anything else | 404 in error format |
 
 Error format (OpenAI-shaped, MUST):
@@ -286,6 +298,8 @@ Deadlines, one owner each (no absolute request timeout): header read 30 s · bod
 30 s · engine first byte 120 s · engine idle 60 s (reset per line) · client write 60 s (re-armed per event)
 · idle keep-alive 2 min · auxiliary engine call 3 s. A slow-but-live stream is never cut. Body cap 4 MiB.
 These are constants; the `--queue-timeout`, `--request-timeout`, `--max-body` flags are retired.
+
+<a id="local-admin-api"></a>
 
 ## Admin API (003), unix socket `admin.sock`, HTTP
 
