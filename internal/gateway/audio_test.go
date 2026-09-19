@@ -527,3 +527,50 @@ func TestAudioHealthOnlyRequiresHostModel(t *testing.T) {
 		t.Fatal("model-less request charged")
 	}
 }
+
+func TestAudioUnreadableHistoryRefusesBeforeDispatch(t *testing.T) {
+	t.Parallel()
+	dir := t.TempDir()
+	// A directory in place of the ledger is unreadable as history on every OS,
+	// including runners whose privileges bypass file permission bits.
+	if err := os.Mkdir(filepath.Join(dir, usage.FileName), 0700); err != nil {
+		t.Fatal(err)
+	}
+	var calls atomic.Int32
+	engine, _ := audioEngine(t, func(w http.ResponseWriter, r *http.Request) {
+		calls.Add(1)
+		http.Error(w, "history refusal reached the engine", http.StatusInternalServerError)
+	})
+	h := newHarness(t, Config{}, nil)
+	g := New(Config{DataDir: dir, Transcribe: engine, Speech: engine}, h.up, h.store, h.rec, nil)
+	if g.audioHistoryErr == nil {
+		t.Fatal("unreadable ledger did not fail history loading")
+	}
+	for _, route := range []endpoint{transcribeEndpoint, speechEndpoint} {
+		t.Run(string(route), func(t *testing.T) {
+			body, ct := []byte(`{"model":"m1","input":"hello"}`), "application/json"
+			if route == transcribeEndpoint {
+				body, ct = multipartAudio(t, wave(1))
+			}
+			r := httptest.NewRequest(http.MethodPost, string(route), bytes.NewReader(body))
+			r.Header.Set("Authorization", "Bearer "+testSecret)
+			r.Header.Set("Content-Type", ct)
+			out := httptest.NewRecorder()
+			g.Handler().ServeHTTP(out, r)
+			var failure errorBody
+			if err := json.Unmarshal(out.Body.Bytes(), &failure); err != nil || out.Code != 503 || failure.Error.Code != CodeUpstreamDown || failure.Error.Type != "upstream_error" || out.Header().Get("Retry-After") != "1" {
+				t.Fatalf("history refusal: %d %v %s (%v)", out.Code, out.Header(), out.Body.String(), err)
+			}
+			if c := g.Counters(h.key.ID); calls.Load() != 0 || c.InFlight != 0 || c.RPMUsed != 0 || c.TodayAudioSeconds != 0 || c.TodaySpeechChars != 0 || c.TodayTokens != 0 {
+				t.Fatalf("refusal dispatched or charged: calls=%d counters=%+v", calls.Load(), c)
+			}
+		})
+	}
+	for _, event := range h.rec.waitFor(t, 2) {
+		for _, meter := range event.Meters {
+			if meter.Charged != 0 {
+				t.Fatal("refusal recorded a charge", meter)
+			}
+		}
+	}
+}
