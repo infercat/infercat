@@ -66,6 +66,10 @@ keeps a home engine safe under a crowd.
 - **Streaming while queued works:** a waiting stream gets its `200` head and `: queued` keepalives at
   once, so a busy host reads as busy, not broken; a queued stream that times out ends with an SSE error
   event, which is why some rows read `status 200 · code queue_timeout`.
+- **Run events have a per-key cap:** at most two concurrent `GET /v1/events` subscriptions.
+  A third receives HTTP **429**, `Retry-After: 1`, and JSON `error.code=concurrency_limited`,
+  `error.type=rate_limit_error`, `error.message="run storage, live-run or subscriber limit reached"`.
+  Use one `/v1/events` subscription per device for all runs; close unused subscriptions before retrying.
 - **Every abuse and failure shape stayed contained** (each tested once): a 4 MiB+ body → `413` before a
   slot; a burst past a key's `max_concurrent` → `429 concurrency_limited`; one key opening 50 sessions →
   bounded to its own concurrency (`in_flight` max 1), so an invite cannot monopolize the engine; the
