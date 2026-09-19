@@ -281,6 +281,16 @@ writes remain silent. Cursor replay reconstructs updates; reset recovery uses
 summaries plus GET. Queue position may be absent; elapsed means run age including
 waits, never an estimate.
 
+`GET /v1/events` allows at most **two concurrent subscriptions per key**. A third
+receives HTTP **429**, `Retry-After: 1`, and a JSON error instead of an SSE stream:
+
+```json
+{"error":{"message":"run storage, live-run or subscriber limit reached","type":"rate_limit_error","code":"concurrency_limited"}}
+```
+
+Use one `/v1/events` subscription per device for all runs, and close unused
+subscriptions before retrying. The existing subscriptions remain open.
+
 `GET /v1/runs/{id}/outputs/{output_id}` returns immutable captured bytes, scoped
 to the requesting key. `POST /v1/runs/{id}/approval` accepts `{id, allow}` and
 returns the authoritative snapshot after a commit-once answer. Cancellation stays

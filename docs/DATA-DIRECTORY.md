@@ -25,9 +25,11 @@ English · [简体中文](DATA-DIRECTORY.zh-CN.md)
 | `profiles/trees/` | Private extracted model, engine and pinned helper/runtime trees; successful setup retires trees the new manifest does not reference. Failed checks retain verified downloads. |
 | `profiles/install-<sha256>.json` | The versioned installation record: profile digest, canonical paths, model/helper/runtime file hashes, symlink targets, external ownership, unavailable reasons, and materialized commands. Config points to the active record. |
 | `profiles/members/<id>/` | Generated engine config, isolated HOME, and `engine.log` (wraps at 1 MiB). |
+| `profiles/members/<id>/engine.json` | Generated audio.cpp member configuration (0600). |
 | `agent/runtime-<harness>-node<version>/` | Privately installed pinned Node/harness, integrity lock and installed marker. |
 | `agent/npm-cache/` | Installer cache for integrity-locked harness packages. |
 | `agent/workspaces/run-*/` | Ephemeral per-run files, `tmp/` and `.runtime/`; removed after outputs are captured and the child joins. |
+| `agent/workspaces/run-*/.runtime/runtime.log` | Bounded child runtime diagnostics (0600); removed with the ephemeral workspace. |
 | `tunnel.log` | The tunnel engine's log (`serve --verbose` prints it instead). |
 
 `infercat serve -h` also lists these files. See the [host quickstart](../README.md#quickstart-host).
