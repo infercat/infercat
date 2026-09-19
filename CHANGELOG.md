@@ -5,27 +5,89 @@ app shows the same one under Settings. Dates are the tag's.
 
 ## Unreleased — 0.1.5
 
-- **Search in chat.** Hosts can offer `web_search` using `search.key_file`, with a per-key `--search-per-day` budget.
+Hosts can install and supervise a model loadout, offer search and pictures inside a chat,
+and accept agent jobs with per-run read confinement on macOS and Linux.
 
-- **One-command setup.** `infercat setup` downloads and verifies what a profile needs (resumable,
-  SHA-256 before use, bounded link-safe extraction; llama.cpp b10809, stable-diffusion.cpp
-  master-851, sherpa-onnx v1.13.7 and the models), writes an installation manifest, dry-starts and
-  probes each member; `serve` supervises the members with request-held leases, on-demand start and
-  idle stop, a separate embedding destination, and honest dormant-versus-failed offers. (151b-A,
-  151b-B)
-- **The agent route.** A per-key opt-in run kind drives the pinned harness: approvals with the
-  verbatim question, steps with captured outputs (including write diffs), typed failure causes,
-  metered detail and output reads, one active agent run per host.
-  (116c, 116d, 116e)
-- **Host tools in chat.** With an explicit request field, the model can call `make_image`: the chat
-  becomes a run with two metered model calls, a visible zero-charge handoff row, the image on its own
-  row, and limit refusals inside the turn keep their code and Retry-After. (148, 148-a)
-- **The run row's Details** shows an inline diff card for write steps and host-measured tokens per
-  second. (162)
+**Upgrade:** If you used one-command setup, run `infercat setup` again with your chosen profile
+after upgrading. The embedded profile digests changed, including llama.cpp's prompt-cache
+and context-checkpoint caps; an existing installation must be refreshed. (185)
 
-## v0.1.4 — 2026-09-13
+**Friends (the chat app)**
 
-Two days after 0.1.3: friends can ask a host for pictures, third-party coding clients can talk to a
+- **Search and pictures in chat.** The app requests the host tools advertised by `/me` without
+  another toggle. `web_search` uses the host's Exa account and shows captured search details;
+  `make_image` puts durable image jobs beneath the streamed reply and in the Images sheet.
+  Inner refusals preserve their error code and `Retry-After`. Search has at most three tool
+  rounds, two searches and four metered model calls per turn. (146, 148, 148-a, 164, 167)
+- **Agent runs.** Friends with an agent-enabled key can submit jobs, inspect steps and captured
+  outputs, answer the agent's approval question, and cancel work. Failures retain their cause;
+  interrupted work is not automatically replayed. The host runs one agent job at a time.
+  Details can show captured write diffs and throughput calculated from host measurements;
+  unknown measurements stay omitted. (116c, 116d, 116e, 162)
+- **Returning visitors can open `/try`.** The service worker no longer intercepts redirecting
+  navigations. A waiting update now offers a dismissible reload line; activation requires the
+  user's tap, and visible tabs check for updates at most hourly. (181, 184)
+- **Clearer actions and status.** Invite placeholders use `ic2`, send/retry controls reflect the
+  session state, and pending-reply copy distinguishes waiting from generation. (190)
+
+**Hosts**
+
+- **One-command setup.** `infercat setup --profile <tier>` fetches verified, resumable artifacts,
+  reuses hash-matched caches, extracts them within bounded paths, and dry-starts each owned
+  member before saving an installation manifest and config. A failed anchor, cancellation or
+  settings conflict preserves the previous config; unavailable optional members are reported.
+  (151b-A)
+- **Managed engines.** `serve` keeps the installed anchor resident, starts other members for
+  admitted requests and stops them after their idle interval. Request leases protect active
+  work; embeddings use the separate embedding member. Externally owned engines are never
+  stopped. Status distinguishes dormant members from failed ones. Published native speech
+  helpers and their sherpa runtime are pinned in all three profiles. (151b-B, 151b-C)
+- **The 16 GB Apple profile** uses Q4 E4B with vision and matching q8 KV caches. Memory was
+  verified in a 16 GB macOS VM with the earlier f16 configuration; the shipped q8 command was
+  verified on real Apple silicon, but **performance on real 16 GB hardware remains unverified**.
+  Its VM CPU fallback for flash attention is slow and unsupported. No ASR artifact is selected
+  for this tier; NVIDIA remains unmeasured. Apple-silicon Metal detection no longer depends
+  on display metadata, and mixed-case installation paths no longer prevent startup.
+  (151c, 176, 178, 179, 180a)
+- **Bounded llama.cpp caches.** All three profiles set `--cache-ram 512 --ctx-checkpoints 4`.
+  Rerun setup after upgrading to install the changed profile commands. (185)
+- **Agent read confinement.** The confined child can access its own workspace and required
+  runtime/system files, not other runs or the host's key/run records. The Exa key crosses a
+  one-time inherited descriptor rather than a child environment variable; sandbox failures
+  retain diagnostics. See [Agent runtime](docs/AGENT-RUNTIME.md) for the precise platform and
+  network boundaries. (161)
+- **Search configuration.** Set `search.key_file` to the separately stored Exa key file to offer
+  `web_search`; per-key `--search-per-day` defaults to 50. Only the query is sent to Exa, not
+  the conversation or friend credentials. (164)
+- **Help and docs match the shipped host.** CLI help names all profiles and current commands;
+  status leads with the host header; console settings and revoked-invite guidance are clearer.
+  EN/ZH setup and storage docs, limit defaults, gateway routes and remote-admin entry points
+  are synchronized. (187, 188, 190, 192)
+
+**Developers and third-party clients**
+
+- **Host-tool protocol.** `/me.host_tools` advertises available names; a client opts in with
+  `host_tools` on `POST /v1/chat/completions`. It cannot combine that selection with its own
+  `tools` or `tool_choice`; clients that run their own tool loop are unaffected. The agent
+  route reports an unavailable runtime as `agent_unavailable` (503). (148, 164, 116c)
+- **Versioned browser runtimes survive deploys.** Each deploy retains the released wasm pairs
+  in the runtime manifest, downloads their release assets, and verifies SHA-256 before
+  publication. Existing client versions no longer lose their `/v/<version>/` assets. (165)
+- **Website endpoints and metadata.** `/try` accepts `ic2`; GET and HEAD return the same 302.
+  `/github` redirects to the repository. The landing anatomy uses `ic2`, and the shell has
+  canonical and no-JavaScript markup. (164, 184, 187)
+- **Release plumbing.** Image builds use bundled BuildKit instead of an extra Docker Hub pull.
+  macOS signing/notarization wiring and verification are available behind the required release
+  secrets; their presence in the source does not mean an unsigned build is signed. (182, 183)
+- **Smaller shared code and faster checks.** CLI mirrors, atomic writes, gateway errors and test
+  scaffolding are shared; dead web/run paths and pre-release chat migrations are removed.
+  Source-file limits run first, verification prerequisites are shared, and CI proof families
+  and isolated fixtures run in parallel with virtual join clocks where appropriate.
+  (157 follow-up, 163, 168–175, 177, 189)
+
+## v0.1.4 — 2026-09-11
+
+Since 0.1.3: friends can ask a host for pictures, third-party coding clients can talk to a
 host through the Responses API, a host can describe its whole loadout as a profile and check it,
 and the console shows what the host keeps for each friend. Every slice was gated, reviewed and
 proved against a real engine before it landed. Landed after this cut (the agent route, one-command
@@ -92,9 +154,9 @@ setup, host tools in chat) ships in 0.1.5.
   147, 149)
 - CI bounds its compiler and reconnect integration tests. (131)
 
-## v0.1.3 — 2026-09-11
+## v0.1.3 — 2026-09-10
 
-One day after 0.1.2: the host serves several engines at once, keeps its accounting exact across a
+Since 0.1.2: the host serves several engines at once, keeps its accounting exact across a
 restart, speaks replies in their own language, and gives the public gateway all of its slots.
 Every slice was gated and proved against a real host before it landed.
 
