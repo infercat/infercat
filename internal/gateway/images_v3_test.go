@@ -106,10 +106,18 @@ func TestSyncCompletionIsIndependentOfProbeCadence(t *testing.T) {
 		json.NewEncoder(w).Encode(map[string]any{"data": []map[string]string{{"b64_json": tinyImage()}}})
 	})
 	h.gw.imageProbeEvery = time.Minute
+	// The four-job CI baseline reached 4.17 s. Allow >2x that scheduling cost,
+	// while still refusing to wait for even one 60 s recovery-probe interval.
+	const completionBound = 10 * time.Second
+	h.srv.Client().Timeout = completionBound
 	start := time.Now()
 	response := h.post("/v1/images/generations", `{"prompt":"one","n":4}`)
-	if response.status != 200 || time.Since(start) > 2*time.Second {
+	if response.status != 200 || time.Since(start) > completionBound {
 		t.Fatal(response.status, time.Since(start))
+	}
+	var result struct{ Data []json.RawMessage }
+	if err := json.Unmarshal(response.body, &result); err != nil || len(result.Data) != 4 {
+		t.Fatalf("four completed images: %s (%v)", response.body, err)
 	}
 }
 func TestInvalidOutputsTripBreakerAndExposeRetryTime(t *testing.T) {
