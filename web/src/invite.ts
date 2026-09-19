@@ -131,6 +131,7 @@ export interface InviteHint {
 export function inviteHint(text: string): InviteHint {
   if (text.trim() === '') return { state: 'empty', host: '' };
   try {
+    // Admin-code paste feedback in the shared Connect field (086); decoding/routing stays separate.
     return { state: 'valid', host: `${decodeInvite(text.trim().startsWith('ia1.')?'ic1.'+text.trim().slice(4):text).addr.slice(0, 6)}…` };
   } catch {
     return { state: 'invalid', host: '' };
