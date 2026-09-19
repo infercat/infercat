@@ -183,7 +183,7 @@ unzip web-<version>.zip -d web && python3 -m http.server 8080 --directory web --
 
 ## 朋友能访问什么
 
-[网关接口表](docs/ARCHITECTURE.md#gateway-http-api)列出了可访问的接口：模型、聊天、Responses、嵌入，已配置的语音和图片接口，以及按密钥隔离的运行、事件和捕获输出。远程控制台需明确开启，并使用独立的管理凭证；朋友的密钥不能授权。网关不开放任意主机端口或文件系统路径。
+[网关接口表](docs/ARCHITECTURE.md#gateway-http-api)列出了可访问的接口：`/me`、模型、聊天、Responses、嵌入，已配置的语音和图片接口，以及按密钥隔离的运行、事件和捕获输出。远程控制台需明确开启，并使用独立的管理凭证；朋友的密钥不能授权。网关不开放任意主机端口或文件系统路径。
 
 ## 隐私
 

@@ -469,8 +469,8 @@ is refused; reconnect without a cursor to receive the current reset inventory.
 ### Run gateway adapter
 
 Authenticated `POST /v1/runs` accepts `{kind, input, priority?}` and returns 202 with
-an ID only after durable creation. No kind is registered in production yet, so
-submission currently refuses unknown kinds. `GET /v1/runs/{id}` reads the owner's
+an ID only after durable creation. The production `agent` kind is available when
+the installed runtime is enabled and the key opts in; unregistered kinds are refused. `GET /v1/runs/{id}` reads the owner's
 run; `DELETE` requests idempotent cancellation, including a concurrent terminal
 transition. Foreign and absent IDs both return not-found. These control routes
 record zero-resource usage events; they do not charge the model step twice.
@@ -503,9 +503,10 @@ those still reflect ordinary gateway requests and tunnel sessions.
 
 ### Managed coding-agent providers
 
-`internal/agentconfig` owns only provider spans for `connect --configure opencode,dsh`:
+`internal/agentconfig` owns only provider spans for `connect --configure opencode,dsh,codex`:
 an extra JSONC file selected with `OPENCODE_CONFIG`, and a YAML block-map insertion under
-Harness `llm-pi-ai.providers`. It never serializes surrounding settings or changes
+Harness `llm-pi-ai.providers`, and a managed Codex profile in
+`$CODEX_HOME/infercat.config.toml` (normally `~/.codex/infercat.config.toml`). It never serializes surrounding settings or changes
 `agent-default-model`; `/me` supplies model IDs and available limits/capabilities, and the
 listener supplies the local URL. Global receipts under the user config directory
 `infercat/agents` bind each span's SHA-256, target, before-hash and connection owner; a

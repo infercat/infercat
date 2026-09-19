@@ -87,7 +87,10 @@ never disguises the runtime. Supporting Node requires a separately tested bridge
 By default, `connect` loads `https://infercat.ai/v/<package-version>/infercat.wasm.gz`
 and its sibling `wasm_exec.js`. The version comes from this package's own metadata
 and is bundled into the client; it does not follow the mutable root URL. The site's
-`/v/` directory mirrors the current version only; it is not a release archive.
+`/v/` directory retains every released runtime pair listed in
+[`runtime-releases.json`](../../hosting/cloudflare/runtime-releases.json), currently 0.1.3 and
+0.1.4. Deploys fetch the release assets and verify their pinned SHA-256 hashes; older entries
+are never removed when a new version is added. Development pairs are staged separately.
 Pass `{ wasmURL: 'https://your-assets.example/v0/infercat.wasm.gz' }` (or a raw `.wasm` URL) to
 choose an exact artifact; put its matching Go `wasm_exec.js` beside it. Serve wasm with CORS access
 for your app, and allow the runtime script and wasm compilation in your CSP. A response already

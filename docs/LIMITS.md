@@ -13,7 +13,7 @@ requests at once, and the gateway turns a crowd into an orderly queue rather tha
 the host tunnel are nowhere near their limits at the numbers a launch produces. The two defects the test
 found (tickets 035, 036) are correctness/polish, not capacity.
 
-## Layer 1 — the relay (`derp.2185lab.com`, 2 vCPU / 4 GB)
+## Layer 1 — the relay (`derp.infercat.ai`, 2 vCPU / 4 GB)
 
 - **Idle browser friends are almost free.** 100 friends connected at once, each dialing now and then:
   derper used **3.5 % of one core**, 30 MB RAM, and the droplet was bored (CPU < 5 %). Connections are

@@ -181,7 +181,7 @@ The header shows the path you are on (`relayed via nyc · 64 ms`), the model, an
 
 ## What friends can reach
 
-The [gateway route table](docs/ARCHITECTURE.md#gateway-http-api) lists the reachable endpoints: model/chat/Responses/embedding APIs, configured audio and image APIs, and key-scoped runs, events and captured outputs. Remote console routes require a separate admin bearer and explicit enablement; a friend key does not authorize them. The gateway does not expose arbitrary host ports or filesystem paths.
+The [gateway route table](docs/ARCHITECTURE.md#gateway-http-api) lists the reachable endpoints: `/me`, model/chat/Responses/embedding APIs, configured audio and image APIs, and key-scoped runs, events and captured outputs. Remote console routes require a separate admin bearer and explicit enablement; a friend key does not authorize them. The gateway does not expose arbitrary host ports or filesystem paths.
 
 ## Privacy
 
