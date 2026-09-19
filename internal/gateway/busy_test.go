@@ -7,8 +7,10 @@ import (
 	"errors"
 	"io"
 	"net/http"
+	"net/http/httptest"
 	"strings"
 	"testing"
+	"testing/synctest"
 	"time"
 )
 
@@ -77,8 +79,73 @@ func TestQueuedStreamHeadAtOnce(t *testing.T) {
 	h.clean()
 }
 
-// Promise 1: a comment every keepalive interval while waiting. The interval is shortened the way
-// the deadlines are in this suite; the constant a host gets is asserted by value.
+type queuedCapture struct {
+	*httptest.ResponseRecorder
+	frames chan string
+}
+
+func (w *queuedCapture) Flush() { w.ResponseRecorder.Flush(); w.frames <- w.Body.String() }
+
+// Check emission cadence on the fake clock: TCP reads can bunch after a scheduler pause.
+func TestQueuedStreamKeepaliveCadence(t *testing.T) {
+	t.Parallel()
+	synctest.Test(t, func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		out := &queuedCapture{ResponseRecorder: httptest.NewRecorder(), frames: make(chan string, 16)}
+		q := &request{
+			g: &Gateway{queueTimeout: 5 * time.Second, queuedEvery: 100 * time.Millisecond, writeTimeout: defaultWriteTimeout},
+			r: httptest.NewRequest(http.MethodPost, "/v1/chat/completions", nil).WithContext(ctx),
+			w: out, rc: http.NewResponseController(out), n: normalized{stream: true},
+			destination: &Destination{Queue: slotQueue{cap: func() int { return 1 }}},
+		}
+		queue := &q.destination.Queue
+		if _, err := queue.acquire(ctx, time.Second, time.Second, nil); err != nil {
+			t.Fatal(err)
+		}
+		done := make(chan *gwError, 1)
+		go func() { done <- q.acquireSlot() }()
+		var frames []string
+		check := func(n int) {
+			t.Helper()
+			for {
+				select {
+				case frame := <-out.frames:
+					frames = append(frames, frame)
+				default:
+					if len(frames) != n || frames[n-1] != strings.Repeat(": queued\n\n", n) {
+						t.Fatalf("want %d flushed queued comments: %q", n, frames)
+					}
+					return
+				}
+			}
+		}
+		synctest.Wait()
+		check(1)
+		for n := 2; n <= 5; n++ {
+			time.Sleep(q.g.queuedEvery - time.Nanosecond)
+			synctest.Wait()
+			check(n - 1) // No early comment, even one nanosecond before the tick.
+			time.Sleep(time.Nanosecond)
+			synctest.Wait()
+			check(n)
+		}
+		queue.release()
+		if err := <-done; err != nil || !q.slot || q.ev.QueuedMS != 400 {
+			t.Fatalf("queue handover: err=%v slot=%v queued_ms=%d", err, q.slot, q.ev.QueuedMS)
+		}
+		if out.Code != 200 || out.Header().Get("Content-Type") != "text/event-stream" {
+			t.Fatalf("queued stream head: %d %v", out.Code, out.Header())
+		}
+		queue.release()
+		if in, waiting := queue.counts(); in != 0 || waiting != 0 {
+			t.Fatalf("queue leaked: %d in flight, %d waiting", in, waiting)
+		}
+	})
+}
+
+// Promise 1 on the wire: five queued comments precede the answer on the same response.
+// Cadence is pinned above; network delivery time is not an emission timestamp.
 func TestQueuedStreamKeepalive(t *testing.T) {
 	t.Parallel()
 	if defaultQueuedEvery != 5*time.Second {
@@ -91,25 +158,13 @@ func TestQueuedStreamKeepalive(t *testing.T) {
 	release := h.hold(h.bob())
 
 	_, br, _ := queuedStream(t, h, context.Background())
-	start := time.Now()
-	var at []time.Duration
-	for len(at) < 5 {
+	for i := 0; i < 5; i++ {
 		e, err := readEvent(br)
 		if err != nil {
 			t.Fatal(err)
 		}
 		if e != ": queued\n\n" {
-			t.Fatalf("event %d while queued: %q", len(at), e)
-		}
-		at = append(at, time.Since(start))
-	}
-	// One at once, then one per interval: the fifth lands around 400 ms, never before the fourth tick.
-	if at[0] > 50*time.Millisecond || at[4] < 380*time.Millisecond || at[4] > 900*time.Millisecond {
-		t.Fatalf("keepalives at %v; want the first at once and then every ~100 ms", at)
-	}
-	for i := 1; i < len(at); i++ {
-		if gap := at[i] - at[i-1]; gap < 80*time.Millisecond {
-			t.Fatalf("keepalives %d and %d only %s apart: %v", i-1, i, gap, at)
+			t.Fatalf("event %d while queued: %q", i, e)
 		}
 	}
 	h.shortStreams()
