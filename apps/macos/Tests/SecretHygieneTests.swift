@@ -147,32 +147,51 @@ final class LimitEncodingTests: XCTestCase {
     func testAnUntouchedFieldSendsNothing() {
         let draft = LimitsDraft()
         XCTAssertTrue(draft.flags(offeredBy: nil).isEmpty,
-                      "a field nobody edited must keep the host's own value")
+                      "a field nobody chose must keep the host's own value")
         XCTAssertTrue(draft.isEntirelyTheHosts)
+        XCTAssertEqual(draft[.dailyTokens], .hostDefault)
     }
 
-    /// The host coerces 0 to its default on almost every field, so "no limit" is -1.
-    func testAClearedFieldSendsMinusOneNotZero() {
+    /// The host coerces 0 to its default on almost every field, so "no limit" is -1 —
+    /// and it is a choice the person makes, never something an empty box means.
+    func testNoLimitIsAnExplicitChoiceAndSendsMinusOne() {
         var draft = LimitsDraft()
-        draft[.dailyTokens] = "200000"
-        draft[.dailyTokens] = ""
+        draft[.dailyTokens] = .unlimited
         let flags = draft.flags(offeredBy: nil)
         XCTAssertEqual(flags, ["--daily-tokens", "-1"])
         XCTAssertNotEqual(flags, ["--daily-tokens", "0"], "0 is the host's default, not unlimited")
     }
 
+    /// Clearing a number returns the field to the host's default, not to unlimited.
+    /// This is the one confusion the form must make impossible.
+    func testClearingANumberReturnsToTheHostsDefault() {
+        var draft = LimitsDraft()
+        draft.setText("200000", for: .dailyTokens)
+        XCTAssertEqual(draft[.dailyTokens], .custom("200000"))
+        draft.setText("", for: .dailyTokens)
+        XCTAssertEqual(draft[.dailyTokens], .hostDefault)
+        XCTAssertTrue(draft.flags(offeredBy: nil).isEmpty,
+                      "an emptied box must send nothing, never -1")
+    }
+
+    /// Fields the host would ignore never offer the choice.
+    func testNoLimitIsNotOfferedWhereTheHostWouldIgnoreIt() {
+        XCTAssertFalse(LimitField.maxContext.unlimitedHonoured, "0 already means the engine's window")
+        XCTAssertFalse(LimitField.maxQueuedImages.unlimitedHonoured, "the host clamps this to 16")
+        XCTAssertTrue(LimitField.dailyTokens.unlimitedHonoured)
+    }
+
     /// …except max-context, whose documented sentinel for "the engine's window" is 0.
     func testClearedContextSendsZero() {
         var draft = LimitsDraft()
-        draft[.maxContext] = "65536"
-        draft[.maxContext] = ""
+        draft[.maxContext] = .unlimited
         XCTAssertEqual(draft.flags(offeredBy: nil), ["--max-context", "0"])
     }
 
     func testTypedValuesGoThroughVerbatim() {
         var draft = LimitsDraft()
-        draft[.rpm] = "60"
-        draft[.dailyTokens] = "500,000"
+        draft.setText("60", for: .rpm)
+        draft.setText("500,000", for: .dailyTokens)
         XCTAssertEqual(draft.flags(offeredBy: nil), ["--rpm", "60", "--daily-tokens", "500000"])
     }
 
@@ -185,8 +204,8 @@ final class LimitEncodingTests: XCTestCase {
         XCTAssertTrue(LimitField.searchPerDay.isOffered(by: status))
 
         var draft = LimitsDraft()
-        draft[.dailyImages] = "5"
-        draft[.rpm] = "60"
+        draft.setText("5", for: .dailyImages)
+        draft.setText("60", for: .rpm)
         XCTAssertEqual(draft.flags(offeredBy: status), ["--rpm", "60"])
     }
 
@@ -204,10 +223,11 @@ final class LimitEncodingTests: XCTestCase {
         struct Wrapper: Decodable { var data: [FriendKey] }
         let keys = try Contract.decoder.decode(Wrapper.self, from: try Fixtures.demo("keys.en")).data
         var draft = LimitsDraft(from: keys[0].limits, agent: keys[0].agent ?? false)
-        draft[.rpm] = "99"
+        draft.setText("99", for: .rpm)
         let flags = draft.flags(offeredBy: nil)
         XCTAssertTrue(flags.contains("--rpm"))
         XCTAssertTrue(flags.contains("--daily-tokens"), "a prefilled field is still sent on save")
+        XCTAssertFalse(flags.contains("0"), "an existing key never reports the host's default")
         XCTAssertTrue(draft.agent)
     }
 
