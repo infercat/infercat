@@ -259,18 +259,32 @@ extension CLIClient {
     }
 }
 
+/// `ISO8601DateFormatter` is not `Sendable` and is not thread safe, so the two the
+/// decoder needs live behind a lock rather than being captured by its closure.
+private final class Timestamps: @unchecked Sendable {
+    static let shared = Timestamps()
+    private let lock = NSLock()
+    private let plain = ISO8601DateFormatter()
+    private let fractional: ISO8601DateFormatter = {
+        let formatter = ISO8601DateFormatter()
+        formatter.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        return formatter
+    }()
+
+    func date(from text: String) -> Date? {
+        lock.withLock { plain.date(from: text) ?? fractional.date(from: text) }
+    }
+}
+
 enum Contract {
     /// One decoder for every payload. The host prints RFC 3339 with a `Z`; a few
     /// timestamps are Go zero values, which parse fine and read as long ago.
     static let decoder: JSONDecoder = {
         let decoder = JSONDecoder()
-        let fractional = ISO8601DateFormatter()
-        fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
-        let plain = ISO8601DateFormatter()
         decoder.dateDecodingStrategy = .custom { inner in
             let text = try inner.singleValueContainer().decode(String.self)
-            if let date = plain.date(from: text) ?? fractional.date(from: text) { return date }
-            throw CLIError.malformed
+            guard let date = Timestamps.shared.date(from: text) else { throw CLIError.malformed }
+            return date
         }
         return decoder
     }()

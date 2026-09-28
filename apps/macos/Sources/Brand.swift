@@ -143,20 +143,6 @@ struct FactCell: View {
     }
 }
 
-extension View {
-    /// macOS 26 blurs scrolled content under the toolbar. The one sentence of state
-    /// sits at the top of every screen, so it must not read as dimmed: keep a hard
-    /// edge where the system offers one, and do nothing on macOS 14 and 15.
-    @ViewBuilder
-    func hardScrollEdge() -> some View {
-        if #available(macOS 26.0, *) {
-            self.scrollEdgeEffectHidden(true, for: .top)
-        } else {
-            self
-        }
-    }
-}
-
 /// The small uppercase heading over a block ("Needs attention", "Connected now").
 struct BlockLabel: View {
     let text: String

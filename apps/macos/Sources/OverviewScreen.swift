@@ -28,7 +28,6 @@ struct OverviewScreen: View {
             .padding(.bottom, 24)
             .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .hardScrollEdge()
         .opacity(model.stale ? 0.55 : 1)
     }
 
