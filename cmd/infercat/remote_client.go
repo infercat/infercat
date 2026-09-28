@@ -206,3 +206,17 @@ func (e *env) remoteExpose(ctx context.Context, pre string, args []string) error
 	}
 	return nil
 }
+
+// Local-only commands also own flag values. A value spelling --host is not a selector.
+func targetValueFlags() map[string]bool {
+	names := append([]string{"data-dir", "register", "profile", "custom", "model-path", "configure", "listen", "console",
+		"upstream", "upstream-key", "upstream-transcribe-model", "upstream-speech-model", "upstream-speech-voices",
+		"upstream-transcribe", "upstream-transcribe-key", "upstream-speech", "upstream-images", "upstream-images-key",
+		"upstream-images-model", "upstream-speech-key", "max-transcription-seconds", "slots", "dev-listen", "derpmap-url", "region", "name", "web-url"}, machineValueFlags...)
+	values := make(map[string]bool, len(names)*2)
+	for _, name := range names {
+		values["--"+name] = true
+		values["-"+name] = true
+	}
+	return values
+}

@@ -100,8 +100,7 @@ type env struct {
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	_, asJSON, _ := parseMachineSchema(os.Args[1:])
-	os.Exit(run(ctx, os.Args[1:], os.Stdout, os.Stderr, os.Stdin, !asJSON && isTerminal(os.Stdout), newPlatform()))
+	os.Exit(run(ctx, os.Args[1:], os.Stdout, os.Stderr, os.Stdin, isTerminal(os.Stdout), newPlatform()))
 }
 
 // isTerminal reports whether f is a character device, which is what "someone is watching" means
@@ -112,17 +111,7 @@ func isTerminal(f *os.File) bool {
 }
 
 func run(ctx context.Context, args []string, out, errw io.Writer, in io.Reader, tty bool, plat platform) int {
-	values := map[string]bool{"--data-dir": true, "-data-dir": true}
-	for _, name := range machineValueFlags {
-		values["--"+name] = true
-		values["-"+name] = true
-	}
-	clean, target, targetErr := machine.ParseTarget(args, values)
-	if target.Remote() {
-		e := &env{out: out, errw: errw, in: in, plat: plat, tty: tty, remoteTarget: target}
-		return e.runRemote(ctx, clean, targetErr)
-	}
-
+	// Re-exec argv belongs to the child, including any global-looking flags.
 	if len(args) > 0 && args[0] == "_confine" {
 		return agent.Confine(args[1:])
 	}
@@ -132,6 +121,15 @@ func run(ctx context.Context, args []string, out, errw io.Writer, in io.Reader, 
 	if len(args) > 0 && args[0] == "_profile-guardian" {
 		return supervise.Guardian(args[1:], false)
 	}
+	_, asJSON, _ := parseMachineSchema(args)
+	tty = tty && !asJSON
+	values := targetValueFlags()
+	clean, target, targetErr := machine.ParseTarget(args, values)
+	if target.Remote() {
+		e := &env{out: out, errw: errw, in: in, plat: plat, tty: tty, remoteTarget: target}
+		return e.runRemote(ctx, clean, targetErr)
+	}
+
 	e := &env{out: out, errw: errw, in: in, plat: plat, tty: tty}
 	if code, handled := e.machineRead(ctx, args); handled {
 		return code
