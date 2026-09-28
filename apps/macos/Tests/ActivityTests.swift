@@ -47,6 +47,7 @@ final class ActivityDecodingTests: XCTestCase {
         let log = MainActor.assumeIsolated { () -> ActivityLog in
             let log = ActivityLog()
             log.append(decoded)
+            log.flushForTesting()
             return log
         }
         let visible = MainActor.assumeIsolated { log.visible }
@@ -88,6 +89,13 @@ final class ActivityDecodingTests: XCTestCase {
     }
 }
 
+/// Holds every short nap open, so a test can see exactly how many publishes the
+/// cooldown suppressed.
+final class HoldingNapper: Napper, @unchecked Sendable {
+    func nap(seconds: Int) async { try? await Task.sleep(for: .seconds(600)) }
+    func nap(milliseconds: Int) async { try? await Task.sleep(for: .seconds(600)) }
+}
+
 /// The buffer, the pause, and the gap — the three things the list must get right.
 @MainActor
 final class ActivityLogTests: XCTestCase {
@@ -104,15 +112,62 @@ final class ActivityLogTests: XCTestCase {
     func testTheBufferIsARingOfFiveHundred() {
         let log = ActivityLog()
         for index in 0..<700 { log.append(event(index)) }
+        log.flushForTesting()
         XCTAssertEqual(log.visible.count, ActivityLog.capacity)
         // The newest survive; the oldest fall off the front.
         XCTAssertEqual(log.rows(friend: nil, errorsOnly: false).first?.row?.promptTokens, 699)
+    }
+
+    /// The defect: `heldBack` was inferred from the buffer's length, which stops
+    /// meaning anything once the ring is full — a busy host reached that in 25 s and
+    /// the counter then read zero while the whole buffer rolled underneath it.
+    func testThePausedCountIsTrueOnAFullRing() {
+        let log = ActivityLog(napper: FakeNapper(runFor: .max))
+        for index in 0..<ActivityLog.capacity { log.append(event(index)) }
+        log.flushForTesting()
+        XCTAssertEqual(log.visible.count, ActivityLog.capacity)
+
+        log.setPaused(true)
+        for index in 0..<1_200 { log.append(event(1_000 + index)) }
+
+        XCTAssertEqual(log.heldBack, 1_200, "every arrival while paused is counted")
+        XCTAssertTrue(log.overflowedWhilePaused, "and more arrived than the ring can hold")
+        XCTAssertEqual(log.visible.count, ActivityLog.capacity, "the list itself did not move")
+    }
+
+    /// Below the ring's size the count is exact and says nothing about overflow.
+    func testThePausedCountBelowTheRing() {
+        let log = ActivityLog(napper: FakeNapper(runFor: .max))
+        for index in 0..<480 { log.append(event(index)) }
+        log.flushForTesting()
+        log.setPaused(true)
+        for index in 0..<100 { log.append(event(1_000 + index)) }
+        XCTAssertEqual(log.heldBack, 100)
+        XCTAssertFalse(log.overflowedWhilePaused)
+    }
+
+    /// Twenty events a second must not be twenty list publishes a second.
+    func testPublishesAreCoalesced() {
+        let log = ActivityLog(napper: HoldingNapper())
+        var publishes = 0
+        log.onPublish = { publishes += 1 }
+        for index in 0..<1_000 { log.append(event(index)) }
+        XCTAssertEqual(publishes, 1,
+            "one publish, then the cooldown holds the rest until it ends")
+
+        // Resuming from a pause always publishes at once, cooldown or not.
+        log.setPaused(true)
+        log.append(event(9_999))
+        XCTAssertEqual(publishes, 1, "paused means paused")
+        log.setPaused(false)
+        XCTAssertEqual(publishes, 2)
     }
 
     /// Pausing stops the list moving. The stream never stops, and nothing is lost.
     func testPauseHoldsTheListWhileTheStreamKeepsFilling() {
         let log = ActivityLog()
         for index in 0..<5 { log.append(event(index)) }
+        log.flushForTesting()
         log.setPaused(true)
         let frozen = log.visible.count
         for index in 5..<12 { log.append(event(index)) }
@@ -130,6 +185,7 @@ final class ActivityLogTests: XCTestCase {
         log.append(event(1))
         log.drop(4)
         log.append(event(2))
+        log.flushForTesting()
         let items = log.rows(friend: nil, errorsOnly: false)
         XCTAssertEqual(items.count, 3)
         guard case let .gap(_, count) = items[1] else { return XCTFail("a gap row must be there") }
@@ -141,6 +197,7 @@ final class ActivityLogTests: XCTestCase {
         let log = ActivityLog()
         log.drop(3)
         log.drop(5)
+        log.flushForTesting()
         let items = log.rows(friend: nil, errorsOnly: false)
         XCTAssertEqual(items.count, 1)
         guard case let .gap(_, count) = items[0] else { return XCTFail("one gap") }
@@ -153,6 +210,7 @@ final class ActivityLogTests: XCTestCase {
         log.append(event(2, key: "k_bao", status: 429))
         log.append(event(3, key: "k_lin", status: 429))
         log.drop(2)
+        log.flushForTesting()
 
         XCTAssertEqual(log.rows(friend: nil, errorsOnly: false).count, 4)
         // The gap survives "Errors", because some of what was lost may have been
@@ -170,17 +228,20 @@ final class ActivityLogTests: XCTestCase {
         log.append(event(1, endpoint: "/me"))
         log.append(event(2, endpoint: "/v1/models"))
         log.append(event(3))
+        log.flushForTesting()
         XCTAssertEqual(log.visible.count, 1)
     }
 
-    /// A new host is a new tail: the old run's rows do not linger.
-    func testGoneClearsTheTail() async throws {
+    /// A host that stops is exactly when the owner wants to see what just happened,
+    /// so the rows survive it — as they already did when it merely stopped answering.
+    func testGoneKeepsTheRows() async throws {
         let cli = FixtureCLI(language: .en)
         let model = HostModel(client: cli, napper: FakeNapper(runFor: .max))
         model.activity.append(event(1))
+        model.activity.flushForTesting()
         XCTAssertEqual(model.activity.visible.count, 1)
         model.acceptForTesting(WatchFrame(body: .gone(reason: "host_stopped")))
-        XCTAssertTrue(model.activity.visible.isEmpty)
+        XCTAssertEqual(model.activity.visible.count, 1, "a restart must not empty Activity")
     }
 }
 

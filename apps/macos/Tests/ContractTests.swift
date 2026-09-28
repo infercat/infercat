@@ -361,6 +361,27 @@ final class PresentationTests: XCTestCase {
         }
     }
 
+    /// A language chosen once must survive a relaunch, including on a Mac whose own
+    /// locale is the other one.
+    func testTheLanguageChoiceIsRemembered() {
+        let key = "ai.infercat.mac.language"
+        let original = UserDefaults.standard.string(forKey: key)
+        defer {
+            if let original { UserDefaults.standard.set(original, forKey: key) }
+            else { UserDefaults.standard.removeObject(forKey: key) }
+        }
+        let first = HostModel(client: FixtureCLI(language: .en))
+        first.language = .zh
+        XCTAssertEqual(Language.remembered, .zh)
+
+        // A fresh model, as a relaunch would build one.
+        let second = HostModel(client: FixtureCLI(language: .en))
+        XCTAssertEqual(second.language, .zh, "the choice must survive a relaunch")
+
+        second.language = .system
+        XCTAssertEqual(HostModel(client: FixtureCLI(language: .en)).language, .system)
+    }
+
     func testChineseIsActuallyChinese() {
         XCTAssertEqual(Copy.text("act_quit", language: .zh), "退出 Infercat")
         XCTAssertEqual(Copy.text("pop_running_1", language: .zh), "运行中——1 位朋友已连接")
