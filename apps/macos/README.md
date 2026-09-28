@@ -60,9 +60,21 @@ no socket, no reading the host's files, and the admin token never enters the app
   in time. A host that dies without printing still reports 69 or 75 correctly.
 - **One `watch --json` subprocess** for live data, at 2 s while a window or the popover
   is visible and 10 s otherwise, restarted on a visibility change with a one-second
-  debounce and on exit with backoff to 30 s. Stopping it closes stdout first, then
-  sends SIGTERM, then SIGKILL after a second: `watch` cannot see a signal while it is
-  blocked writing to a pipe nobody reads.
+  debounce. Stopping it closes stdout first, then sends SIGTERM, then SIGKILL after a
+  second: `watch` cannot see a signal while it is blocked writing to a pipe nobody reads.
+- **A stream that ends is two different things, handled differently.** With no host,
+  `watch` prints one `gone` line and exits 69 after a fraction of a second, so
+  respawning it on a timer would be the polling-by-spawning this architecture exists
+  to avoid. That case does not respawn `watch` at all: the stream enters *waiting for
+  the host* and asks `service status --json` on its own ladder — 2 s doubling to a
+  30 s ceiling — starting `watch` again only once the service reports running.
+  Pressing Start, or bringing the window or popover on screen, cuts the current wait
+  short. Ten minutes with no host installed costs **24 subprocesses**, a number
+  `CadenceTests` pins with a fake clock. Any other ending (a crash, exit 75, output we
+  cannot read) does restart `watch`, on the same ladder from 1 s, and the delay resets
+  only after a `status` frame has actually arrived — a `hello` or a `gone` is not
+  evidence that anything works. A `gone` followed by the stream ending is one service
+  read, not one per callback.
 - **A command subprocess only when someone acts.** Its stdout is capped at 1 MiB,
   its stderr is drained and never logged, and it is never replayed. An action that
   goes unanswered says so; the app re-reads instead of resending.
