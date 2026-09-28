@@ -149,7 +149,7 @@ struct PopoverView: View {
                 }
                 .buttonStyle(.plain)
                 .accessibilityElement(children: .combine)
-                .accessibilityLabel("\(friend.name), \(rowState(friend)), \(Copy.exact(friend.today_tokens)) tokens today")
+                .accessibilityLabel(model.text("a11y_row", ["name": friend.name, "state": rowState(friend), "x": Copy.exact(friend.today_tokens)]))
             }
             if model.connected.count > 4 {
                 Text(model.text("pop_more", ["n": String(model.connected.count - 4)]))

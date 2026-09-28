@@ -14,7 +14,7 @@ struct OverviewScreen: View {
             VStack(alignment: .leading, spacing: 20) {
                 if model.stale { staleBanner }
                 switch model.screen {
-                case .loading: LoadingBody()
+                case .loading: LoadingBody(language: model.language)
                 case .stopped: stoppedBody
                 case .failed: failedBody
                 case .empty: emptyBody
@@ -271,7 +271,7 @@ struct OverviewScreen: View {
                         .font(Brand.mono()).frame(width: 110, alignment: .trailing)
                 }
                 .accessibilityElement(children: .combine)
-                .accessibilityLabel("\(friend.name), \(rowState(friend)), \(Copy.exact(friend.today_tokens)) tokens today")
+                .accessibilityLabel(model.text("a11y_row", ["name": friend.name, "state": rowState(friend), "x": Copy.exact(friend.today_tokens)]))
             }
         }
     }
@@ -316,6 +316,7 @@ struct OverviewScreen: View {
 
 /// The first read, after 300 ms. Skeletons do not pulse under Reduce Motion (§5).
 private struct LoadingBody: View {
+    let language: Language
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var dim = false
 
@@ -335,7 +336,7 @@ private struct LoadingBody: View {
             skeleton(width: 420, height: 14)
         }
         .onAppear { if !reduceMotion { withAnimation(.easeInOut(duration: 1).repeatForever()) { dim = true } } }
-        .accessibilityLabel(Text("Reading the host"))
+        .accessibilityLabel(Text(Copy.text("a11y_reading", language: language)))
     }
 
     private func skeleton(width: CGFloat?, height: CGFloat) -> some View {

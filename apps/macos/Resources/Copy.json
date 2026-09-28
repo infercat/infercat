@@ -148,6 +148,8 @@
   "mb_running_1":   { "en": "Infercat — running, 1 friend connected", "zh": "Infercat — 运行中，1 位朋友已连接" },
   "mb_running_0":   { "en": "Infercat — running, nobody connected", "zh": "Infercat — 运行中，没有人连接" },
 
+  "a11y_row":       { "en": "{name}, {state}, {x} tokens today", "zh": "{name}，{state}，今天 {x} token" },
+  "a11y_reading":   { "en": "Reading the host", "zh": "正在读取主机" },
   "sq_inflight":    { "en": "in flight", "zh": "进行中" },
   "sq_connected":   { "en": "connected", "zh": "已连接" },
   "sq_paused":      { "en": "paused", "zh": "已暂停" },
