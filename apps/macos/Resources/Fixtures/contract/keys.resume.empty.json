@@ -1,0 +1,11 @@
+{
+  "schema": 1,
+  "command": "keys.resume",
+  "host": {
+    "version": "0.1.6-fixture",
+    "name": "Example host"
+  },
+  "data": {
+    "ok": false
+  }
+}

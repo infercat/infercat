@@ -13,6 +13,13 @@ rm -f "$into"/*.json
 for name in \
   status.empty status.populated \
   keys.list.empty keys.list.populated \
+  keys.get.empty keys.get.populated \
+  keys.add.empty keys.add.populated \
+  keys.rotate.empty keys.rotate.populated \
+  keys.limits.empty keys.limits.populated \
+  keys.pause.empty keys.pause.populated \
+  keys.resume.empty keys.resume.populated \
+  keys.revoke.empty keys.revoke.populated \
   service.status.empty service.status.populated \
   service.install.empty service.install.populated \
   service.start.empty service.start.populated \

@@ -1,0 +1,14 @@
+{
+  "schema": 1,
+  "command": "keys.rotate",
+  "host": {
+    "version": "0.1.6-fixture",
+    "name": "Example host"
+  },
+  "data": {
+    "key_id": "",
+    "name": "",
+    "invite": "",
+    "link": ""
+  }
+}

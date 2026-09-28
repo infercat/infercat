@@ -28,6 +28,46 @@ struct CLICommand: Sendable, Equatable {
     static func setName(_ name: String) -> CLICommand {
         CLICommand(operation: "settings.set", arguments: ["settings", "set", "--json", "--", "name=\(name)"])
     }
+
+    // MARK: Keys
+
+    static func keysShow(_ id: String) -> CLICommand {
+        CLICommand(operation: "keys.get", arguments: ["keys", "show", id, "--json"])
+    }
+
+    /// `keys add --json [limits] [--agent] -- NAME`. The name is free text and always
+    /// follows `--`, so a friend called `--force` is a name and not a flag. `--agent`
+    /// exists on `keys add` in machine mode only, which is the only mode this app uses.
+    static func keysAdd(name: String, limits: [String], agent: Bool) -> CLICommand {
+        var argv = ["keys", "add", "--json"] + limits
+        if agent { argv.append("--agent") }
+        return CLICommand(operation: "keys.add", arguments: argv + ["--", name])
+    }
+
+    /// `keys limits ID --json [limits]`. Only the flags passed change.
+    static func keysLimits(_ id: String, limits: [String]) -> CLICommand {
+        CLICommand(operation: "keys.limits", arguments: ["keys", "limits", id, "--json"] + limits)
+    }
+
+    /// `--agent=true|false` is its own switch on `keys limits`, not a limit flag,
+    /// and `keys add` has none — agent access is granted in a second command.
+    static func keysAgent(_ id: String, on: Bool) -> CLICommand {
+        CLICommand(operation: "keys.limits", arguments: ["keys", "limits", id, "--json", "--agent=\(on)"])
+    }
+
+    static func keysPause(_ id: String) -> CLICommand {
+        CLICommand(operation: "keys.pause", arguments: ["keys", "pause", id, "--json"])
+    }
+    static func keysResume(_ id: String) -> CLICommand {
+        CLICommand(operation: "keys.resume", arguments: ["keys", "resume", id, "--json"])
+    }
+    /// Revoking is destructive, so machine mode refuses it without `--yes`.
+    static func keysRevoke(_ id: String) -> CLICommand {
+        CLICommand(operation: "keys.revoke", arguments: ["keys", "revoke", id, "--yes", "--json"])
+    }
+    static func keysRotate(_ id: String) -> CLICommand {
+        CLICommand(operation: "keys.rotate", arguments: ["keys", "rotate", id, "--json"])
+    }
 }
 
 // MARK: - Errors
@@ -77,6 +117,8 @@ struct HostStatus: Decodable, Sendable {
     var bridge: Bridge?
     var remote: Remote?
     var models_pinned: [String]?
+    var destinations: [Destination]?
+    var agent: Agent?
 
     struct Upstream: Decodable, Sendable {
         var kind: String
@@ -106,6 +148,19 @@ struct HostStatus: Decodable, Sendable {
         var requests_today: Int
     }
     struct Remote: Decodable, Sendable { var enabled: Bool; var in_use: Bool }
+    /// What this machine can actually serve. `id` is the discriminator — "text",
+    /// "transcribe", "speech", "embed", "images" — while `kind` is "engine" for all
+    /// of them, so a limit is offered on `id`, never on `kind`.
+    struct Destination: Decodable, Sendable, Identifiable {
+        var id: String
+        var kind: String
+        var models: [String]?
+    }
+    /// `state` is an open set; the app only asks whether it is off.
+    struct Agent: Decodable, Sendable { var state: String }
+
+    var servedKinds: Set<String> { Set((destinations ?? []).map(\.id)) }
+    var agentAvailable: Bool { (agent?.state ?? "off") != "off" }
 
     /// One row of `keys[]` inside a status payload — the live view of a friend.
     /// Note this is NOT the `keys.list` shape: it carries no limits.
@@ -136,9 +191,9 @@ struct HostStatus: Decodable, Sendable {
     enum Way: String, Sendable { case tunnel, publicURL }
 }
 
-// MARK: - keys.list payload
+// MARK: - keys.list / keys.get payloads
 
-/// `data` is a bare array. Only the fields cut A reads are modelled; the rest is cut B.
+/// One row of `keys list --json` (a bare array), and the head of `keys show --json`.
 struct FriendKey: Decodable, Sendable, Identifiable {
     var id: String
     var name: String
@@ -147,8 +202,12 @@ struct FriendKey: Decodable, Sendable, Identifiable {
     var limits: Limits
     var created_at: Date?
     var last_seen: Date?
+    /// Request-only on the mutation routes, reported back here. Absent on older hosts.
+    var agent: Bool?
+    /// `keys show` only: the last seven UTC days, oldest first.
+    var daily: [Day]?
 
-    struct Limits: Decodable, Sendable {
+    struct Limits: Decodable, Sendable, Equatable {
         var rpm: Int
         var tpm: Int
         var max_concurrent: Int
@@ -156,8 +215,47 @@ struct FriendKey: Decodable, Sendable, Identifiable {
         var max_context: Int
         var daily_tokens: Int
         var models: [String]?
+        var search_per_day: Int?
+        var daily_images: Int?
+        var max_queued_images: Int?
+        var daily_audio_seconds: Int?
+        var daily_speech_chars: Int?
     }
+
+    /// `daily[]` from `keys show`. `counts` is the usage aggregate; the app reads the
+    /// two token fields and ignores the rest.
+    struct Day: Decodable, Sendable, Identifiable {
+        var date: String
+        var counts: Counts
+        var id: String { date }
+        var tokens: Int { counts.prompt_tokens + counts.completion_tokens }
+        struct Counts: Decodable, Sendable {
+            var prompt_tokens: Int
+            var completion_tokens: Int
+        }
+    }
+
+    var isRevoked: Bool { status == "revoked" }
+    var isPaused: Bool { status == "paused" }
+    /// `last_seen` is always present and is Go's zero time when the friend has never
+    /// connected, so "never" is a value to recognise, not a missing field.
+    var seenAt: Date? { last_seen.flatMap { $0.isGoZero ? nil : $0 } }
+    var createdAt: Date? { created_at.flatMap { $0.isGoZero ? nil : $0 } }
 }
+
+// MARK: - keys.add / keys.rotate payload
+
+/// The one payload in this app that carries a secret. It is never stored: it lives in
+/// `InviteSecret`, which exists only while the once-card is open (design spec §4).
+struct MintedInvite: Decodable, Sendable {
+    var key_id: String
+    var name: String
+    var invite: String
+    var link: String
+}
+
+/// `{"ok": true}` — what the mutating key verbs answer with.
+struct Acknowledged: Decodable, Sendable { var ok: Bool }
 
 // MARK: - service.status payload
 
@@ -274,6 +372,12 @@ private final class Timestamps: @unchecked Sendable {
     func date(from text: String) -> Date? {
         lock.withLock { plain.date(from: text) ?? fractional.date(from: text) }
     }
+}
+
+extension Date {
+    /// Go marshals a zero `time.Time` as `0001-01-01T00:00:00Z`. Every "never"
+    /// in these payloads arrives that way rather than as null.
+    var isGoZero: Bool { self < Date(timeIntervalSince1970: -60_000_000_000) }
 }
 
 enum Contract {

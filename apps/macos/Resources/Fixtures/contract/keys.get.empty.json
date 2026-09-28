@@ -1,0 +1,30 @@
+{
+  "schema": 1,
+  "command": "keys.get",
+  "host": {
+    "version": "0.1.6-fixture",
+    "name": "Example host"
+  },
+  "data": {
+    "id": "",
+    "name": "",
+    "status": "",
+    "agent": false,
+    "limits": {
+      "search_per_day": 0,
+      "daily_images": 0,
+      "max_queued_images": 0,
+      "daily_audio_seconds": 0,
+      "daily_speech_chars": 0,
+      "rpm": 0,
+      "tpm": 0,
+      "max_concurrent": 0,
+      "max_output_tokens": 0,
+      "max_context": 0,
+      "daily_tokens": 0
+    },
+    "created_at": "0001-01-01T00:00:00Z",
+    "last_seen": "0001-01-01T00:00:00Z",
+    "today_tokens": 0
+  }
+}
