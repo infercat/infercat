@@ -275,8 +275,18 @@ final class PresentationTests: XCTestCase {
         let subject = model()
         subject.inject(status: nil, service: try service("stopped"), keys: [], usage: nil, lastStatusAt: nil)
         XCTAssertEqual(subject.screen, .stopped)
+        // launchd has a pid and nothing has answered, and nothing gives us a reason
+        // to expect one shortly: that is a fault, and the screen says so.
         subject.inject(status: nil, service: try service("running"), keys: [], usage: nil, lastStatusAt: nil)
+        XCTAssertEqual(subject.screen, .notResponding)
+        XCTAssertTrue(subject.notResponding)
+        // Within the grace period after the app asked for a start, it is still loading.
+        subject.start()
+        defer { subject.stopMonitoring() }
+        subject.inject(status: nil, service: try service("running"), keys: [], usage: nil, lastStatusAt: nil)
+        XCTAssertTrue(subject.booting)
         XCTAssertEqual(subject.screen, .loading)
+        XCTAssertEqual(subject.presence, .starting)
         subject.inject(status: nil, service: try service("running"), keys: [], usage: nil,
                        lastStatusAt: nil, failure: .unsupportedSchema(2))
         XCTAssertEqual(subject.screen, .failed)

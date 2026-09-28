@@ -49,6 +49,10 @@ final class CountingCLI: CLIClient, @unchecked Sendable {
     private let lock = NSLock()
     private var _watchBehaviour: WatchBehaviour
     private var _running: Bool
+    /// After this many `noHost` attempts, the stream starts working.
+    private var _healAfter = Int.max
+    /// `running` flips on every service read, for the flapping case.
+    private var _flapping = false
     private(set) var watchSpawns = 0
     private(set) var commandSpawns: [String] = []
 
@@ -65,19 +69,41 @@ final class CountingCLI: CLIClient, @unchecked Sendable {
         get { lock.withLock { _running } }
         set { lock.withLock { _running = newValue } }
     }
+    var healAfter: Int {
+        get { lock.withLock { _healAfter } }
+        set { lock.withLock { _healAfter = newValue } }
+    }
+    var flapping: Bool {
+        get { lock.withLock { _flapping } }
+        set { lock.withLock { _flapping = newValue } }
+    }
     var spawns: Int { lock.withLock { watchSpawns + commandSpawns.count } }
     var serviceReads: Int { lock.withLock { commandSpawns.filter { $0 == "service.status" }.count } }
 
     func run(_ command: CLICommand) async throws -> Data {
-        lock.withLock { commandSpawns.append(command.operation) }
-        guard command.operation == "service.status" else { throw CLIError.hostStopped }
-        let name = running ? "service.running" : "service.stopped"
-        return try Fixtures.demo(name)
+        let isRunning = lock.withLock { () -> Bool in
+            commandSpawns.append(command.operation)
+            if _flapping { _running.toggle() }
+            return _running
+        }
+        switch command.operation {
+        case "service.status":
+            return try Fixtures.demo(isRunning ? "service.running" : "service.stopped")
+        case "keys.list":
+            return try Fixtures.demo("keys.en")
+        case "usage":
+            return try Fixtures.demo("usage")
+        default:
+            throw CLIError.hostStopped
+        }
     }
 
     func watch(intervalSeconds: Int) -> AsyncThrowingStream<WatchFrame, Error> {
-        lock.withLock { watchSpawns += 1 }
-        let behaviour = self.behaviour
+        let behaviour = lock.withLock { () -> WatchBehaviour in
+            watchSpawns += 1
+            if watchSpawns > _healAfter { return .healthy }
+            return _watchBehaviour
+        }
         return AsyncThrowingStream { continuation in
             Task {
                 switch behaviour {
@@ -116,19 +142,85 @@ final class CadenceTests: XCTestCase {
         try await settle(napper)
         stream.stop()
 
-        // One `watch` (which fails at once), then only `service status` reads.
-        XCTAssertEqual(cli.watchSpawns, 1, "watch must not be respawned while no host is there")
-        XCTAssertGreaterThan(cli.serviceReads, 0)
-        XCTAssertLessThanOrEqual(cli.spawns, 30,
-            "ten minutes without a host must cost a few dozen subprocesses, not thousands")
-        XCTAssertGreaterThanOrEqual(cli.spawns, 15, "the app must still be looking for the host")
-        // Measured: 1 watch + 23 service reads over the 2·4·8·16·30… ladder.
-        XCTAssertEqual(cli.spawns, 24, "the ten-minute cost is fixed by the ladder, so pin it")
-
-        // The ladder: 2, 4, 8, 16, then the 30 s ceiling.
+        // Measured: 24 `watch` attempts on the 2·4·8·16·30… ladder, plus the three
+        // `service status` reads taken while the ladder was still short enough for
+        // the wording to matter.
+        XCTAssertEqual(cli.spawns, 26, "the ten-minute cost is fixed by the ladder, so pin it")
+        XCTAssertLessThanOrEqual(cli.serviceReads, 3, "the service is read for wording, not as a gate")
         XCTAssertEqual(Array(napper.delays.prefix(5)), [2, 4, 8, 16, 30])
         XCTAssertEqual(napper.delays.suffix(3), [30, 30, 30])
         XCTAssertTrue(napper.delays.allSatisfy { $0 <= WatchStream.ceiling })
+    }
+
+    /// The round-2 defect: launchd holds a pid while `watch` still exits 69 — a host
+    /// booting, crash-looping under KeepAlive, or serving another data dir. The old
+    /// loop left `waitingForHost` the moment `running` was true and respawned with no
+    /// delay at all: 99,429 spawns and an empty delay list through this same harness.
+    func testAPidWithoutAnAnswerStillClimbsTheLadder() async throws {
+        let cli = CountingCLI(watch: .noHost, running: true)
+        let napper = FakeNapper(runFor: 600)
+        let stream = WatchStream(client: cli, napper: napper)
+        stream.start()
+        try await settle(napper)
+        stream.stop()
+
+        XCTAssertEqual(cli.spawns, 26, "a pid is not an answer, so it must not shorten anything")
+        XCTAssertEqual(Array(napper.delays.prefix(5)), [2, 4, 8, 16, 30])
+        XCTAssertFalse(napper.delays.isEmpty, "the defect produced no delays at all")
+    }
+
+    /// The same host, once it finally answers: picked up, and the ladder resets.
+    func testAHostThatStartsAnsweringResetsTheLadder() async throws {
+        let cli = CountingCLI(watch: .noHost, running: true)
+        cli.healAfter = 3
+        let napper = FakeNapper(runFor: 600)
+        let stream = WatchStream(client: cli, napper: napper)
+        stream.start()
+        try await waitUntil("the stream is delivering") { stream.phase == .streaming }
+        stream.stop()
+
+        XCTAssertEqual(cli.watchSpawns, 4, "three refusals, then the one that worked")
+        XCTAssertEqual(napper.delays, [2, 4, 8], "it climbed while nothing answered")
+        XCTAssertLessThanOrEqual(cli.spawns, 8)
+    }
+
+    /// `running` flapping true/false changes the wording and nothing else.
+    func testFlappingServiceStatusDoesNotChangeTheCadence() async throws {
+        let cli = CountingCLI(watch: .noHost, running: false)
+        cli.flapping = true
+        let napper = FakeNapper(runFor: 600)
+        let stream = WatchStream(client: cli, napper: napper)
+        stream.start()
+        try await settle(napper)
+        stream.stop()
+
+        XCTAssertEqual(cli.spawns, 26, "the ladder owns the timing, whatever launchd says")
+        XCTAssertEqual(Array(napper.delays.prefix(5)), [2, 4, 8, 16, 30])
+    }
+
+    /// Someone pressing Start over and over while nothing answers. Each press may cut
+    /// one wait short; it may not turn the ladder into a spin.
+    func testHammeringStartStaysBounded() async throws {
+        let cli = CountingCLI(watch: .noHost, running: true)
+        let napper = FakeNapper(runFor: 600)
+        let stream = WatchStream(client: cli, napper: napper)
+        stream.start()
+        let pressing = Task {
+            while !Task.isCancelled {
+                stream.checkNow()
+                await Task.yield()
+            }
+        }
+        try await settle(napper)
+        pressing.cancel()
+        stream.stop()
+
+        // Every early wake still costs a full rung of waiting before the next one is
+        // honoured, so the worst a person can do is roughly double the attempts.
+        XCTAssertLessThanOrEqual(cli.spawns, 80,
+            "an early wake must not reset the ladder below its floor more than once per action")
+        XCTAssertTrue(napper.delays.allSatisfy { $0 <= WatchStream.ceiling })
+        XCTAssertTrue(napper.delays.contains(WatchStream.ceiling), "the ladder still reaches the ceiling")
     }
 
     /// The same ten minutes, with the loop the defect produced, would have cost this
@@ -140,26 +232,6 @@ final class CadenceTests: XCTestCase {
         XCTAssertGreaterThan(cyclesInTenMinutes * 3, 1_000)
     }
 
-    /// A host that appears is picked up on the next check, not on the next ladder top.
-    func testHostComingUpIsPickedUpWithinOneCheck() async throws {
-        let cli = CountingCLI(watch: .noHost, running: false)
-        // No horizon here: this test is about the loop noticing, not about cost.
-        let napper = FakeNapper(runFor: .max)
-        let stream = WatchStream(client: cli, napper: napper)
-        var services: [Bool] = []
-        stream.onService = { services.append($0.running) }
-        stream.start()
-        // Let the waiting loop take a few turns, then bring the host up.
-        try await Task.sleep(for: .milliseconds(120))
-        cli.running = true
-        cli.behaviour = .healthy
-        try await waitUntil("the stream is running again") { stream.phase == .streaming }
-        stream.stop()
-
-        XCTAssertEqual(cli.watchSpawns, 2, "exactly one respawn, once the service said running")
-        XCTAssertEqual(services.last, true)
-    }
-
     /// Pressing Start, or bringing a window on screen, cuts the wait short.
     func testCheckNowShortensTheLadder() async throws {
         let cli = CountingCLI(watch: .noHost, running: false)
@@ -167,13 +239,12 @@ final class CadenceTests: XCTestCase {
         let stream = WatchStream(client: cli, napper: napper)
         stream.start()
         try await waitUntil("the waiting loop started") { stream.phase == .waitingForHost }
-        let before = cli.serviceReads
-        cli.running = true
+        let before = cli.watchSpawns
         cli.behaviour = .healthy
         stream.checkNow()
-        try await waitUntil("the check happened") { cli.serviceReads > before }
+        try await waitUntil("the retry happened") { cli.watchSpawns > before }
         stream.stop()
-        XCTAssertGreaterThan(cli.serviceReads, before)
+        XCTAssertGreaterThan(cli.watchSpawns, before)
     }
 
     /// A binary that fails immediately, over and over, backs off instead of spinning.
@@ -185,11 +256,11 @@ final class CadenceTests: XCTestCase {
         try await settle(napper)
         stream.stop()
 
-        XCTAssertEqual(Array(napper.delays.prefix(6)), [1, 2, 4, 8, 16, 30])
+        XCTAssertEqual(Array(napper.delays.prefix(5)), [2, 4, 8, 16, 30])
         XCTAssertTrue(napper.delays.allSatisfy { $0 <= WatchStream.ceiling })
         XCTAssertLessThanOrEqual(cli.watchSpawns, 30,
             "a crash loop must cost tens of spawns in ten minutes, not thousands")
-        XCTAssertEqual(cli.serviceReads, 0, "a crash is not a missing host; do not poll the service")
+        XCTAssertLessThanOrEqual(cli.serviceReads, 3, "the wording is settled early, then left alone")
     }
 
     /// A `hello` or a `gone` is not evidence that anything works, so neither resets
@@ -203,7 +274,7 @@ final class CadenceTests: XCTestCase {
         stream.stop()
         // Strictly increasing until the ceiling: nothing reset it.
         let ladder = Array(napper.delays.prefix(5))
-        XCTAssertEqual(ladder, [1, 2, 4, 8, 16])
+        XCTAssertEqual(ladder, [2, 4, 8, 16, 30])
     }
 
     // MARK: - Helpers
@@ -227,6 +298,24 @@ final class CadenceTests: XCTestCase {
 @MainActor
 final class ServiceReadTests: XCTestCase {
 
+    /// Requirement 5's audit, as a test: the only other places the model can spawn
+    /// from a callback are the auxiliary reads, and a live stream must not drive them.
+    func testAStreamingHostDoesNotDriveTheAuxiliaryReads() async throws {
+        let cli = CountingCLI(watch: .healthy, running: true)
+        let model = HostModel(client: cli, napper: FakeNapper(runFor: .max))
+        model.start()
+        defer { model.stopMonitoring() }
+        try await waitUntil("the first status arrived") { model.status != nil }
+        try await waitUntil("the first keys read landed") { !model.friendKeys.isEmpty }
+        let after = cli.commandSpawns.filter { $0 == "keys.list" || $0 == "usage" }.count
+        // Let many status frames go by.
+        try await Task.sleep(for: .milliseconds(250))
+        let later = cli.commandSpawns.filter { $0 == "keys.list" || $0 == "usage" }.count
+        XCTAssertEqual(after, later,
+            "limits and usage are read once, then at most once a minute while visible")
+        XCTAssertLessThanOrEqual(cli.watchSpawns, 2, "one stream at a time")
+    }
+
     func testGoneFollowedByTheStreamEndingIsOneServiceRead() async throws {
         let cli = CountingCLI(watch: .noHost, running: false)
         let napper = FakeNapper(runFor: 2)
@@ -243,5 +332,13 @@ final class ServiceReadTests: XCTestCase {
             "a stopped host must not cost a service read per stream callback")
         XCTAssertEqual(cli.watchSpawns, 1)
         XCTAssertFalse(model.hostRunning)
+    }
+
+    private func waitUntil(_ what: String, _ condition: () -> Bool) async throws {
+        for _ in 0..<400 {
+            if condition() { return }
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        XCTFail("timed out waiting for \(what)")
     }
 }
