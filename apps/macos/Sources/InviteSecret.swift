@@ -50,9 +50,12 @@ final class InviteSecret: ObservableObject {
         guard let value = what == .link ? link : invite else { return }
         let board = NSPasteboard.general
         board.clearContents()
-        // `transient` asks clipboard managers not to record it in their history.
         board.setString(value, forType: .string)
+        // The two flags clipboard managers honour: `transient` asks them not to keep
+        // it in history at all, `concealed` says it is a secret even if they do.
+        // Neither is enforceable, so they are asked for together.
         board.setString("", forType: .init("org.nspasteboard.TransientType"))
+        board.setString("", forType: .init("org.nspasteboard.ConcealedType"))
         taken = true
     }
     enum What { case link, code }
