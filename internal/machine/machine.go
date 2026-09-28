@@ -8,6 +8,7 @@ import (
 	"fmt"
 	"io"
 	"net/http"
+	"slices"
 	"strings"
 
 	"github.com/infercat/infercat/internal/admin"
@@ -30,8 +31,9 @@ type Failure struct {
 func (e *Failure) Error() string { return e.Message }
 
 // Parse removes --json or --json=1 before the literal-argument delimiter. It never reads
-// stdin or terminal state. Unsupported schemas still receive the schema-1 error envelope.
-func Parse(args []string) (rest []string, enabled bool, err error) {
+// stdin or terminal state. valueFlags names additional value-taking flags without dashes.
+// Unsupported schemas still receive the schema-1 error envelope.
+func Parse(args []string, valueFlags ...string) (rest []string, enabled bool, err error) {
 	for i := 0; i < len(args); i++ {
 		a := args[i]
 		if a == "--" {
@@ -49,8 +51,9 @@ func Parse(args []string) (rest []string, enabled bool, err error) {
 			continue
 		}
 		rest = append(rest, a)
-		// A data-directory value is an argv value, even if its spelling is --json.
-		if (a == "--data-dir" || a == "-data-dir") && i+1 < len(args) {
+		// A flag value stays literal, even if its spelling is --json.
+		name := strings.TrimLeft(a, "-")
+		if strings.HasPrefix(a, "-") && (name == "data-dir" || slices.Contains(valueFlags, name)) && i+1 < len(args) {
 			i++
 			rest = append(rest, args[i])
 		}
