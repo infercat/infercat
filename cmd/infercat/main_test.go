@@ -778,12 +778,7 @@ func TestDownUpstreamNamesTheWayOut(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer os.RemoveAll(dir)
-	dead, err := net.Listen("tcp", "127.0.0.1:0") // a port nothing is behind
-	if err != nil {
-		t.Fatal(err)
-	}
-	url := "http://" + dead.Addr().String()
-	dead.Close()
+	url := deadUpstreamURL(t)
 
 	r := serveOnce(t, dir, "--upstream", url)
 	for _, want := range []string{"is not answering", configPath(dir), "--upstream auto"} {

@@ -13,6 +13,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync/atomic"
 	"testing"
 	"time"
 )
@@ -331,14 +332,21 @@ func TestDryProbe(t *testing.T) {
 	}
 }
 func TestAbsentAndCancelledProbe(t *testing.T) {
-	m, s := serverMember(t, func(w http.ResponseWriter, r *http.Request) { <-r.Context().Done() })
+	var down atomic.Bool
+	m, s := serverMember(t, func(w http.ResponseWriter, r *http.Request) {
+		if down.Load() {
+			panic(http.ErrAbortHandler)
+		}
+		<-r.Context().Done()
+	})
+	defer s.Close()
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Millisecond)
 	defer cancel()
 	r := Check(ctx, m, nil, nil)
 	if r.Err == nil {
 		t.Fatal("cancelled probe accepted")
 	}
-	s.Close()
+	down.Store(true)
 	if r = Check(context.Background(), m, nil, nil); r.State != "missing" || r.Err != nil {
 		t.Fatal(r)
 	}

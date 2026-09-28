@@ -349,7 +349,16 @@ func TestE2RefreshKeepsTheLastGoodInfoWhenTheEngineGoesAway(t *testing.T) {
 	mux := http.NewServeMux()
 	mux.HandleFunc("/props", jsonOK(`{"total_slots":2,"default_generation_settings":{"n_ctx":4096}}`))
 	mux.HandleFunc("/v1/models", jsonOK(`{"data":[{"id":"gemma"}]}`))
-	srv := httptest.NewServer(mux)
+	var down atomic.Bool
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if down.Load() {
+			// Keep ownership of the address while its probes fail.
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
+		mux.ServeHTTP(w, r)
+	}))
+	t.Cleanup(srv.Close)
 
 	up, err := Open(ctx, srv.URL, "")
 	if err != nil {
@@ -359,7 +368,7 @@ func TestE2RefreshKeepsTheLastGoodInfoWhenTheEngineGoesAway(t *testing.T) {
 	if !before.Health.OK || before.ModelContext != 4096 {
 		t.Fatalf("info before = %+v", before)
 	}
-	srv.Close()
+	down.Store(true)
 
 	if err := up.Refresh(ctx); err == nil {
 		t.Error("Refresh against a dead engine returned no error")

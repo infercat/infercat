@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"io"
 	"mime/multipart"
+	"net"
 	"net/http"
 	"net/http/httptest"
 	"os"
@@ -14,6 +15,7 @@ import (
 	"strconv"
 	"strings"
 	"sync/atomic"
+	"syscall"
 	"testing"
 	"time"
 
@@ -52,7 +54,15 @@ func multipartAudio(t *testing.T, audio []byte) ([]byte, string) {
 }
 func audioEngine(t *testing.T, handler http.HandlerFunc) (upstream.AudioEngine, *httptest.Server) {
 	t.Helper()
+	return audioEngineWithHealth(t, handler, nil)
+}
+func audioEngineWithHealth(t *testing.T, handler http.HandlerFunc, down *atomic.Bool) (upstream.AudioEngine, *httptest.Server) {
+	t.Helper()
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if down != nil && down.Load() {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
 		if r.Header.Get("Authorization") != "Bearer engine-key" {
 			t.Error("engine bearer absent")
 		}
@@ -257,10 +267,19 @@ func TestAudioConcurrentReservations(t *testing.T) {
 	cancel()
 	<-done
 }
+
+// audioDialFailure preserves real probe metadata but injects failure before WroteHeaders.
+// This proves pre-dispatch accounting; it does not exercise the operating system's dial.
+type audioDialFailure struct{ upstream.AudioEngine }
+
+func (a audioDialFailure) AudioDo(context.Context, string, string, []byte) (*http.Response, error) {
+	return nil, &net.OpError{Op: "dial", Net: "tcp", Err: syscall.ECONNREFUSED}
+}
+
 func TestAudioRefusalsAndRestart(t *testing.T) {
 	t.Parallel()
 	var calls atomic.Int32
-	engine, server := audioEngine(t, func(w http.ResponseWriter, r *http.Request) {
+	engine, _ := audioEngine(t, func(w http.ResponseWriter, r *http.Request) {
 		calls.Add(1)
 		http.Error(w, `{"error":"This model maximum context length rejected PRIVATE AUDIO TEXT"}`, 400)
 	})
@@ -274,7 +293,8 @@ func TestAudioRefusalsAndRestart(t *testing.T) {
 		t.Fatal("refusal reached engine")
 	}
 	h.setKey(func(k *keys.Key) { k.Limits.Models = nil })
-	server.Close()
+	// Keep the real server's port owned; only the next request's dial fails.
+	h.gw.router.route(string(transcribeEndpoint)).Audio = audioDialFailure{engine}
 	h.expectErr(postAudio(t, h, string(transcribeEndpoint), ct, raw), CodeUpstreamDown)
 	if h.gw.Counters(h.key.ID).TodayAudioSeconds != 0 {
 		t.Fatal("dial failure was charged")
@@ -316,7 +336,8 @@ func TestAudioFailureChargingAndHistoryRefusal(t *testing.T) {
 }
 func TestAudioCapabilityAndUnconfiguredRoutes(t *testing.T) {
 	t.Parallel()
-	engine, server := audioEngine(t, func(w http.ResponseWriter, r *http.Request) { http.NotFound(w, r) })
+	var down atomic.Bool
+	engine, _ := audioEngineWithHealth(t, func(w http.ResponseWriter, r *http.Request) { http.NotFound(w, r) }, &down)
 	h := newHarness(t, Config{Transcribe: engine}, nil)
 	var me meResponse
 	_ = json.Unmarshal(h.get("/me").body, &me)
@@ -324,7 +345,7 @@ func TestAudioCapabilityAndUnconfiguredRoutes(t *testing.T) {
 		t.Fatal("configured route capabilities wrong")
 	}
 	h.expectErr(h.post(string(speechEndpoint), `{}`), CodeNotFound)
-	server.Close()
+	down.Store(true)
 	_ = engine.Refresh(context.Background())
 	_ = json.Unmarshal(h.get("/me").body, &me)
 	if me.Host.Audio.Transcriptions != nil {
