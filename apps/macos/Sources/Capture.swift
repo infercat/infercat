@@ -8,7 +8,8 @@ import SwiftUI
 enum Capture {
 
     struct Scene {
-        enum Surface { case popover, firstRun, window }
+        enum Sheet: Sendable { case mint, limits, once, duplicate, edit }
+        enum Surface: Sendable { case popover, firstRun, window, friends, sheet(Sheet) }
         let name: String
         let surface: Surface
         let build: (HostModel, Language) -> Void
@@ -94,6 +95,49 @@ enum Capture {
                          lastStatusAt: Demo.clock.addingTimeInterval(-12), at: Demo.clock)
         },
 
+        // Friends (cut B).
+        Scene(name: "friends-1-list", surface: .friends) { model, language in
+            Demo.friends(model, language)
+        },
+        Scene(name: "friends-2-inspector", surface: .friends) { model, language in
+            Demo.friends(model, language, select: "k_lin")
+        },
+        Scene(name: "friends-3-paused", surface: .friends) { model, language in
+            Demo.friends(model, language, select: "k_pia")
+        },
+        Scene(name: "friends-4-revoked", surface: .friends) { model, language in
+            Demo.friends(model, language, select: "k_old", showRevoked: true)
+        },
+        Scene(name: "friends-5-empty", surface: .friends) { model, language in
+            Demo.friends(model, language, keys: [])
+        },
+        Scene(name: "friends-6-loading", surface: .friends) { model, language in
+            Demo.friends(model, language, keys: [], loading: true)
+        },
+        Scene(name: "friends-7-not-answering", surface: .friends) { model, language in
+            Demo.friends(model, language, select: "k_lin", stale: true)
+        },
+        Scene(name: "friends-8-action-unanswered", surface: .friends) { model, language in
+            Demo.friends(model, language, select: "k_wei", notice: true)
+        },
+
+        // The invite sheet, its detour, and the once-card.
+        Scene(name: "invite-1-name", surface: .sheet(.mint)) { model, language in
+            Demo.friends(model, language)
+        },
+        Scene(name: "invite-2-limits", surface: .sheet(.limits)) { model, language in
+            Demo.friends(model, language)
+        },
+        Scene(name: "invite-3-once-card", surface: .sheet(.once)) { model, language in
+            Demo.friends(model, language)
+        },
+        Scene(name: "invite-4-duplicate", surface: .sheet(.duplicate)) { model, language in
+            Demo.friends(model, language)
+        },
+        Scene(name: "invite-5-edit-limits", surface: .sheet(.edit)) { model, language in
+            Demo.friends(model, language, select: "k_lin")
+        },
+
         // The founder picks the mono face on a real build (design spec §10.3).
         Scene(name: "font-plex-vs-sf", surface: .popover) { _, _ in }
     ]
@@ -141,6 +185,11 @@ enum Capture {
         case .window:
             return try windowSnapshot(MainWindow(model: model, openConsole: {}),
                                       size: CGSize(width: 980, height: 640), appearance: appearance)
+        case .friends:
+            return try windowSnapshot(MainWindow(model: model, openConsole: {}, startOn: .friends),
+                                      size: CGSize(width: 1060, height: 680), appearance: appearance)
+        case .sheet(let kind):
+            return try snapshot(SheetPreview(model: model, kind: kind), width: 460, appearance: appearance)
         }
     }
 
@@ -199,6 +248,34 @@ enum Capture {
     }
 }
 
+/// The invite sheet at each of its steps, without a window to present it from.
+private struct SheetPreview: View {
+    @ObservedObject var model: HostModel
+    let kind: Capture.Scene.Sheet
+
+    var body: some View {
+        InviteSheet(model: model, request: request, preview: preview) {}
+    }
+
+    private var request: InviteRequest {
+        switch kind {
+        case .edit: InviteRequest(kind: .limits(keyID: "k_lin", name: model.friendKeys.first?.name ?? "Lin"))
+        case .duplicate: InviteRequest(kind: .mint(prefillName: model.friendKeys.first?.name ?? "Lin"))
+        default: InviteRequest(kind: .mint(prefillName: ""))
+        }
+    }
+
+    private var preview: InviteSheet.Preview? {
+        switch kind {
+        case .mint: nil
+        case .limits: .limits
+        case .once: .once
+        case .duplicate: .duplicate
+        case .edit: nil
+        }
+    }
+}
+
 /// IBM Plex Mono beside SF Mono at 11 pt, in both appearances, for the founder's pick.
 private struct FontSample: View {
     let language: Language
@@ -221,8 +298,10 @@ private struct FontSample: View {
 
 /// Demo payloads, decoded from the bundled fixtures and adjusted per scene.
 @MainActor
-private enum Demo {
-    static let clock = Date(timeIntervalSince1970: 1_790_000_000)
+enum Demo {
+    /// 2026-09-28T14:35Z — the moment the demo fixtures describe, so "last seen"
+    /// reads as the past and the freshness line reads as live.
+    static let clock = Date(timeIntervalSince1970: 1_790_606_100)
 
     static func service(_ which: String) throws -> ServiceStatus {
         struct Wrapper: Decodable { var data: ServiceStatus }
@@ -259,6 +338,32 @@ private enum Demo {
     }
 
     /// `generous` raises the daily limit so no friend trips the 90% attention rule.
+    /// A Friends screen in one of its states, all of it from the bundled fixtures.
+    static func friends(_ model: HostModel, _ language: Language, select: String? = nil,
+                        keys: [FriendKey]? = nil, showRevoked: Bool = false,
+                        loading: Bool = false, stale: Bool = false, notice: Bool = false) {
+        let rows = keys ?? self.keys(language, generous: true)
+        model.inject(status: status(language), service: try? service("running"),
+                     keys: rows, usage: try? usage(),
+                     lastStatusAt: stale ? clock.addingTimeInterval(-12) : clock,
+                     at: stale ? clock : clock.addingTimeInterval(2))
+        model.previewFriends(select: select, showRevoked: showRevoked, loading: loading,
+                             detail: select == nil ? nil : detail(language),
+                             notice: notice ? model.text("act_unanswered") : nil)
+    }
+
+    static func minted(_ language: Language) -> MintedInvite? {
+        struct Wrapper: Decodable { var data: MintedInvite }
+        guard let bytes = try? Fixtures.demo("minted.\(language.code)") else { return nil }
+        return try? Contract.decoder.decode(Wrapper.self, from: bytes).data
+    }
+
+    static func detail(_ language: Language) -> FriendKey? {
+        struct Wrapper: Decodable { var data: FriendKey }
+        guard let bytes = try? Fixtures.demo("keyshow.\(language.code)") else { return nil }
+        return try? Contract.decoder.decode(Wrapper.self, from: bytes).data
+    }
+
     static func keys(_ language: Language, generous: Bool = false) -> [FriendKey] {
         guard var object = try? JSONSerialization.jsonObject(with: try Fixtures.demo("keys.\(language.code)")) as? [String: Any],
               var rows = object["data"] as? [[String: Any]] else { return [] }
