@@ -1018,5 +1018,269 @@
   "inv_untouched": {
     "en": "Fields you leave alone use the host's default.",
     "zh": "没有改动的字段沿用主机的默认值。"
+  },
+  "act_all_friends": {
+    "en": "All friends",
+    "zh": "全部朋友"
+  },
+  "act_all": {
+    "en": "All",
+    "zh": "全部"
+  },
+  "act_errors": {
+    "en": "Errors",
+    "zh": "错误"
+  },
+  "act_paused_n": {
+    "en": "Paused — {n} new",
+    "zh": "已暂停——{n} 条新增"
+  },
+  "act_privacy": {
+    "en": "Counts and timings. Never what was said.",
+    "zh": "只有次数和耗时。绝不包含内容。"
+  },
+  "act_time": {
+    "en": "Time",
+    "zh": "时间"
+  },
+  "act_friend": {
+    "en": "Friend",
+    "zh": "朋友"
+  },
+  "act_request": {
+    "en": "Request",
+    "zh": "请求"
+  },
+  "act_result": {
+    "en": "Result",
+    "zh": "结果"
+  },
+  "act_tokens": {
+    "en": "Tokens in → out",
+    "zh": "token 入 → 出"
+  },
+  "act_first": {
+    "en": "First token",
+    "zh": "首个 token"
+  },
+  "act_total": {
+    "en": "Total",
+    "zh": "总计"
+  },
+  "act_queued": {
+    "en": "queued {n} ms",
+    "zh": "排队 {n} ms"
+  },
+  "act_dropped": {
+    "en": "{n} events not shown — the host could not keep up",
+    "zh": "有 {n} 条事件未显示——主机没能及时处理"
+  },
+  "act_open_friend": {
+    "en": "Open friend",
+    "zh": "查看朋友"
+  },
+  "act_empty": {
+    "en": "Nothing yet today",
+    "zh": "今天还没有记录"
+  },
+  "act_empty_filtered": {
+    "en": "Nothing matches this filter",
+    "zh": "没有符合筛选条件的记录"
+  },
+  "act_empty_body": {
+    "en": "Requests appear here as they settle. Counts and timings only.",
+    "zh": "请求结束后会出现在这里。只显示次数和耗时。"
+  },
+  "kind_chat": {
+    "en": "chat",
+    "zh": "对话"
+  },
+  "kind_transcribe": {
+    "en": "transcribe",
+    "zh": "转写"
+  },
+  "kind_speech": {
+    "en": "speech",
+    "zh": "语音"
+  },
+  "kind_embed": {
+    "en": "embed",
+    "zh": "向量"
+  },
+  "kind_image": {
+    "en": "image",
+    "zh": "图片"
+  },
+  "kind_search": {
+    "en": "search",
+    "zh": "搜索"
+  },
+  "kind_app": {
+    "en": "app",
+    "zh": "应用"
+  },
+  "kind_other": {
+    "en": "other",
+    "zh": "其他"
+  },
+  "res_done": {
+    "en": "done",
+    "zh": "完成"
+  },
+  "res_refused": {
+    "en": "refused",
+    "zh": "已拒绝"
+  },
+  "res_cancelled": {
+    "en": "cancelled by the friend",
+    "zh": "对方已取消"
+  },
+  "res_rate": {
+    "en": "refused · over requests per minute",
+    "zh": "已拒绝 · 超出每分钟请求数"
+  },
+  "res_concurrency": {
+    "en": "refused · too many at once",
+    "zh": "已拒绝 · 同时进行的太多"
+  },
+  "res_budget": {
+    "en": "refused · out of tokens for today",
+    "zh": "已拒绝 · 今天的 token 已用完"
+  },
+  "res_audio_budget": {
+    "en": "refused · out of audio for today",
+    "zh": "已拒绝 · 今天的音频已用完"
+  },
+  "res_speech_budget": {
+    "en": "refused · out of speech for today",
+    "zh": "已拒绝 · 今天的语音已用完"
+  },
+  "res_image_budget": {
+    "en": "refused · out of images for today",
+    "zh": "已拒绝 · 今天的图片已用完"
+  },
+  "res_image_queue": {
+    "en": "refused · image queue full",
+    "zh": "已拒绝 · 图片队列已满"
+  },
+  "res_image_abandoned": {
+    "en": "the image was abandoned",
+    "zh": "图片生成已放弃"
+  },
+  "res_paused": {
+    "en": "refused · paused",
+    "zh": "已拒绝 · 已暂停"
+  },
+  "res_revoked": {
+    "en": "refused · invite revoked",
+    "zh": "已拒绝 · 邀请码已撤销"
+  },
+  "res_invalid_key": {
+    "en": "refused · invite not recognised",
+    "zh": "已拒绝 · 邀请码无法识别"
+  },
+  "res_model": {
+    "en": "refused · model not allowed",
+    "zh": "已拒绝 · 不允许该模型"
+  },
+  "res_context": {
+    "en": "refused · too long",
+    "zh": "已拒绝 · 内容过长"
+  },
+  "res_too_large": {
+    "en": "refused · request too large",
+    "zh": "已拒绝 · 请求过大"
+  },
+  "res_queue_timeout": {
+    "en": "refused · waited too long",
+    "zh": "已拒绝 · 等待超时"
+  },
+  "res_engine": {
+    "en": "the engine failed",
+    "zh": "引擎出错"
+  },
+  "res_no_images": {
+    "en": "refused · no image model",
+    "zh": "已拒绝 · 没有图片模型"
+  },
+  "res_agent": {
+    "en": "refused · agent unavailable",
+    "zh": "已拒绝 · 智能体不可用"
+  },
+  "res_storage": {
+    "en": "the host couldn't store it",
+    "zh": "主机无法保存"
+  },
+  "res_not_found": {
+    "en": "refused · nothing there",
+    "zh": "已拒绝 · 没有这个接口"
+  },
+  "res_bad_request": {
+    "en": "refused · bad request",
+    "zh": "已拒绝 · 请求有误"
+  },
+  "set_name": {
+    "en": "Host name",
+    "zh": "主机名称"
+  },
+  "set_name_hint": {
+    "en": "What your friends see as the host. Applies at once.",
+    "zh": "朋友看到的主机名。立刻生效。"
+  },
+  "set_save": {
+    "en": "Save",
+    "zh": "保存"
+  },
+  "set_saved": {
+    "en": "Saved",
+    "zh": "已保存"
+  },
+  "set_login": {
+    "en": "Start the host when I log in",
+    "zh": "登录时启动主机"
+  },
+  "set_login_hint": {
+    "en": "launchd starts the host with your session. Applies at once.",
+    "zh": "由 launchd 随登录会话启动主机。立刻生效。"
+  },
+  "set_language": {
+    "en": "Language",
+    "zh": "语言"
+  },
+  "set_language_hint": {
+    "en": "The app's language. Applies at once; the host is unaffected.",
+    "zh": "应用界面的语言。立刻生效；不影响主机。"
+  },
+  "set_lang_system": {
+    "en": "System",
+    "zh": "跟随系统"
+  },
+  "set_console_hint": {
+    "en": "The console this host already serves, in your browser.",
+    "zh": "在浏览器中打开这台主机自带的控制台。"
+  },
+  "set_at_once": {
+    "en": "applies at once",
+    "zh": "立刻生效"
+  },
+  "a11y_tokens": {
+    "en": "{in} tokens in, {out} out",
+    "zh": "输入 {in} token，输出 {out}"
+  },
+  "act_count_1": {
+    "en": "1 request today",
+    "zh": "今天 1 次请求"
+  },
+  "act_count_n": {
+    "en": "{n} requests today",
+    "zh": "今天 {n} 次请求"
+  },
+  "set_on": {
+    "en": "On",
+    "zh": "已开启"
+  },
+  "set_off": {
+    "en": "Off",
+    "zh": "已关闭"
   }
 }
