@@ -23,9 +23,10 @@ type Host struct {
 
 // Failure also lets local operations (such as service management) use the same exit policy.
 type Failure struct {
-	Code    string `json:"code"`
-	Message string `json:"message"`
-	Exit    int    `json:"-"`
+	Code       string `json:"code"`
+	Message    string `json:"message"`
+	Exit       int    `json:"-"`
+	RetryAfter string `json:"retry_after,omitempty"`
 }
 
 func (e *Failure) Error() string { return e.Message }
@@ -42,18 +43,18 @@ func Parse(args []string, valueFlags ...string) (rest []string, enabled bool, er
 		}
 		if a == "--json" || strings.HasPrefix(a, "--json=") {
 			if enabled {
-				err = &Failure{"invalid_arguments", "--json may be specified only once", 2}
+				err = &Failure{Code: "invalid_arguments", Message: "--json may be specified only once", Exit: 2}
 			}
 			enabled = true
 			if a != "--json" && a != "--json=1" {
-				err = &Failure{"unsupported_schema", "supported JSON schema: 1", 2}
+				err = &Failure{Code: "unsupported_schema", Message: "supported JSON schema: 1", Exit: 2}
 			}
 			continue
 		}
 		rest = append(rest, a)
-		// A flag value stays literal, even if its spelling is --json.
+		// Flag and selector values remain literal, even when spelled --json.
 		name := strings.TrimLeft(a, "-")
-		if strings.HasPrefix(a, "-") && (name == "data-dir" || slices.Contains(valueFlags, name)) && i+1 < len(args) {
+		if strings.HasPrefix(a, "-") && (name == "data-dir" || name == "host" || name == "host-file" || slices.Contains(valueFlags, name)) && i+1 < len(args) {
 			i++
 			rest = append(rest, args[i])
 		}
@@ -68,17 +69,21 @@ func Classify(command string, err error) *Failure {
 		return failure
 	}
 	switch {
+	case errors.Is(err, admin.ErrRemoteUnavailable):
+		return &Failure{Code: "not_available_remotely", Message: err.Error(), Exit: 1}
 	case errors.Is(err, admin.ErrNoDaemon):
-		return &Failure{"host_stopped", err.Error(), 69}
+		return &Failure{Code: "host_stopped", Message: err.Error(), Exit: 69}
 	case errors.Is(err, admin.ErrTimeout):
-		return &Failure{"host_not_responding", err.Error(), 75}
+		return &Failure{Code: "host_not_responding", Message: err.Error(), Exit: 75}
 	case errors.Is(err, admin.ErrResponse):
-		return &Failure{"invalid_response", err.Error(), 1}
+		return &Failure{Code: "invalid_response", Message: err.Error(), Exit: 1}
 	}
 	var api *admin.APIError
 	if errors.As(err, &api) {
 		code := "admin_error"
 		switch api.Status {
+		case http.StatusTooManyRequests:
+			return &Failure{Code: "rate_limited", Message: api.Message, Exit: 75, RetryAfter: api.RetryAfter}
 		case http.StatusBadRequest:
 			code = "invalid_request"
 		case http.StatusUnauthorized:
@@ -93,9 +98,9 @@ func Classify(command string, err error) *Failure {
 		case http.StatusConflict:
 			code = "conflict"
 		}
-		return &Failure{code, api.Message, 1}
+		return &Failure{Code: code, Message: api.Message, Exit: 1}
 	}
-	return &Failure{"command_failed", err.Error(), 1}
+	return &Failure{Code: "command_failed", Message: err.Error(), Exit: 1}
 }
 
 // Write emits exactly one object. Raw data is copied byte for byte, apart from whitespace

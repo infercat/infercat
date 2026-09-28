@@ -24,8 +24,9 @@ var (
 
 // APIError retains the route's failure sentence. Routes have no common error-code body.
 type APIError struct {
-	Status  int
-	Message string
+	Status     int
+	Message    string
+	RetryAfter string
 }
 
 func (e *APIError) Error() string { return e.Message }
@@ -35,6 +36,8 @@ func (e *APIError) Error() string { return e.Message }
 type Client struct {
 	http        *http.Client
 	base, token string
+	remote      bool
+	close       func() error
 }
 
 func NewClient(dir string) (*Client, error) {
@@ -67,6 +70,11 @@ const maxResponse = 16 << 20
 // Call returns the successful JSON body without decoding/re-encoding it. The bound applies
 // to errors too; neither an error nor a partial body becomes a successful machine payload.
 func (c *Client) Call(ctx context.Context, method, path string, body json.RawMessage) (json.RawMessage, error) {
+	if c.remote {
+		if err := ValidateRemoteCall(method, path, body); err != nil {
+			return nil, err
+		}
+	}
 	if !strings.HasPrefix(path, "/") || strings.HasPrefix(path, "//") || strings.ContainsAny(path, "\r\n#") {
 		return nil, errors.New("invalid admin route")
 	}
@@ -80,12 +88,12 @@ func (c *Client) Call(ctx context.Context, method, path string, body json.RawMes
 	}
 	resp, err := c.http.Do(req)
 	if err != nil {
-		return nil, callError(err)
+		return nil, c.callError(err)
 	}
 	defer resp.Body.Close()
 	raw, err := io.ReadAll(io.LimitReader(resp.Body, maxResponse+1))
 	if err != nil {
-		return nil, callError(err)
+		return nil, c.callError(err)
 	}
 	if len(raw) > maxResponse {
 		return nil, ErrResponse
@@ -101,7 +109,7 @@ func (c *Client) Call(ctx context.Context, method, path string, body json.RawMes
 		if message == "" {
 			message = "admin API: " + resp.Status
 		}
-		return nil, &APIError{Status: resp.StatusCode, Message: message}
+		return nil, &APIError{Status: resp.StatusCode, Message: message, RetryAfter: resp.Header.Get("Retry-After")}
 	}
 	if !json.Valid(raw) {
 		return nil, ErrResponse
