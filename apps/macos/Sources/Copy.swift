@@ -2,6 +2,21 @@ import Foundation
 
 enum Language: String, CaseIterable, Sendable {
     case system, en, zh
+
+    /// Where the choice lives between launches. A language is a preference, not a
+    /// secret, so UserDefaults is the right place — and it is read before the model
+    /// exists, so nothing ever renders in the other language first.
+    private static let defaultsKey = "ai.infercat.mac.language"
+
+    static var remembered: Language {
+        guard let raw = UserDefaults.standard.string(forKey: defaultsKey),
+              let stored = Language(rawValue: raw) else { return .system }
+        return stored
+    }
+
+    func remember() {
+        UserDefaults.standard.set(rawValue, forKey: Self.defaultsKey)
+    }
     /// The table key this language reads.
     var code: String {
         switch self {

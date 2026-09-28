@@ -62,7 +62,11 @@ final class HostModel: ObservableObject {
     @Published private(set) var working = false
     @Published var hostName = Host.current().localizedName ?? "My Mac"
     @Published private(set) var nameFailed: String?
-    @Published var language: Language = .system
+    /// Read from the preference before the first view renders, and written back
+    /// whenever it changes, so 简体中文 on an English Mac survives a relaunch.
+    @Published var language: Language = .remembered {
+        didSet { if language != oldValue { language.remember() } }
+    }
     @Published private(set) var now = Date()
 
     private let client: any CLIClient
@@ -84,13 +88,14 @@ final class HostModel: ObservableObject {
     private var friendDetailTask: Task<Void, Never>?
     /// The live tail of settled requests. It is fed from this model's own stream and
     /// never starts one of its own, so Activity adds no spawn edge at all.
-    let activity = ActivityLog()
+    let activity: ActivityLog
 
     /// `napper` is the seam the cadence tests use to run the ladders without waiting
     /// for them; production always gets the real one.
     init(client: any CLIClient, napper: any Napper = RealNapper()) {
         self.client = client
         self.napper = napper
+        activity = ActivityLog(napper: napper)
         watch = WatchStream(client: client, napper: napper)
         watch.onFrame = { [weak self] frame in self?.accept(frame) }
         watch.onEnd = { [weak self] error in self?.streamEnded(error) }
@@ -320,8 +325,9 @@ final class HostModel: ObservableObject {
             if let name = pendingName { pendingName = nil; Task { await applyName(name) } }
             readAuxiliaryIfDue()
         case .gone:
-            // The tail belongs to the run that just ended; a new host is a new tail.
-            activity.clear()
+            // The rows stay. The design keeps them when the host is not answering,
+            // and from the owner's side a restart is the same event: throwing away
+            // what just happened is exactly when they most want to look at it.
             // No service read here. `gone` is followed within a moment by the stream
             // ending, and WatchStream owns the one check that follows — otherwise a
             // stopped host costs two subprocesses per ending instead of one.
