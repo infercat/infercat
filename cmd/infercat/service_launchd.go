@@ -12,6 +12,7 @@ import (
 	"strings"
 
 	"github.com/infercat/infercat/internal/fsx"
+	"github.com/infercat/infercat/internal/machine"
 	"github.com/infercat/infercat/internal/product"
 )
 
@@ -33,7 +34,47 @@ func (s launchdService) logPath() string {
 func (s launchdService) domain() string { return "gui/" + s.h.uid }
 func (s launchdService) target() string { return s.domain() + "/" + serviceLabel() }
 
+// macOS privacy protection gates these locations for background processes. Relative roots
+// are under the user's home; /Volumes covers removable and network volumes.
+const macOSBackgroundProtectedRoots = "Desktop\nDocuments\nDownloads\nLibrary/Mobile Documents\n/Volumes"
+
+func refuseProtectedServiceBinary(home, binary string) error {
+	homes := []string{filepath.Clean(home)}
+	if resolved, err := filepath.EvalSymlinks(home); err == nil {
+		homes = append(homes, resolved)
+	}
+	protected := func(path string) bool {
+		for _, root := range strings.Split(macOSBackgroundProtectedRoots, "\n") {
+			for _, home := range homes {
+				base := root
+				if !filepath.IsAbs(base) {
+					base = filepath.Join(home, base)
+				}
+				if path == base || strings.HasPrefix(path, base+string(filepath.Separator)) {
+					return true
+				}
+			}
+		}
+		return false
+	}
+	refusal := &machine.Failure{Code: "binary_in_protected_directory", Message: "the service binary is in a macOS privacy-protected directory; move the binary, for example to /usr/local/bin or /Applications", Exit: 1}
+	if protected(filepath.Clean(binary)) {
+		return refusal
+	}
+	resolved, err := filepath.EvalSymlinks(binary)
+	if err == nil && protected(resolved) {
+		return refusal
+	}
+	if err != nil && !errors.Is(err, os.ErrNotExist) {
+		return err
+	}
+	return nil
+}
+
 func (s launchdService) install(ctx context.Context, dataDir string, atLogin bool) error {
+	if err := refuseProtectedServiceBinary(s.h.home, s.h.binary); err != nil {
+		return err
+	}
 	if err := os.MkdirAll(filepath.Dir(s.logPath()), 0o755); err != nil {
 		return err
 	}

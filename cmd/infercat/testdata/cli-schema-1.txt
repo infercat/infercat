@@ -937,6 +937,7 @@ service.status data.pid integer always
 service.status data.running boolean always
 service.status data.since string always
 service.status data.start_at_login boolean always
+service.status data.stuck boolean always
 service.install data object always
 service.install data.binary string always
 service.install data.installed boolean always
@@ -947,6 +948,7 @@ service.install data.pid integer always
 service.install data.running boolean always
 service.install data.since string always
 service.install data.start_at_login boolean always
+service.install data.stuck boolean always
 service.uninstall data object always
 service.uninstall data.binary string always
 service.uninstall data.installed boolean always
@@ -957,6 +959,7 @@ service.uninstall data.pid integer always
 service.uninstall data.running boolean always
 service.uninstall data.since string always
 service.uninstall data.start_at_login boolean always
+service.uninstall data.stuck boolean always
 service.start data object always
 service.start data.binary string always
 service.start data.installed boolean always
@@ -967,6 +970,7 @@ service.start data.pid integer always
 service.start data.running boolean always
 service.start data.since string always
 service.start data.start_at_login boolean always
+service.start data.stuck boolean always
 service.stop data object always
 service.stop data.binary string always
 service.stop data.installed boolean always
@@ -977,6 +981,7 @@ service.stop data.pid integer always
 service.stop data.running boolean always
 service.stop data.since string always
 service.stop data.start_at_login boolean always
+service.stop data.stuck boolean always
 service.restart data object always
 service.restart data.binary string always
 service.restart data.installed boolean always
@@ -987,6 +992,7 @@ service.restart data.pid integer always
 service.restart data.running boolean always
 service.restart data.since string always
 service.restart data.start_at_login boolean always
+service.restart data.stuck boolean always
 service.login data object always
 service.login data.binary string always
 service.login data.installed boolean always
@@ -997,6 +1003,7 @@ service.login data.pid integer always
 service.login data.running boolean always
 service.login data.since string always
 service.login data.start_at_login boolean always
+service.login data.stuck boolean always
 version data object always
 version data.commit string always
 version data.date string always

@@ -32,6 +32,10 @@ and context-checkpoint caps; an existing installation must be refreshed. (185)
 
 **Hosts**
 
+- **Safer macOS service installation.** Refuse binaries in privacy-protected folders
+  before writing the LaunchAgent. Service status reports a loaded job still lacking
+  a PID after two seconds as stuck, without guessing the cause. (199)
+
 - **Keep it running.** `infercat service install|uninstall|start|stop|restart|status|login` manages
   a per-user LaunchAgent on macOS and the packaged systemd user unit on Linux, with `--json` for
   scripts. `service start` refuses while another host already serves the data directory, and Linux

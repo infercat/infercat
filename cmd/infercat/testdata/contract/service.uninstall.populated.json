@@ -13,6 +13,7 @@
     "installed": true,
     "loaded": true,
     "running": true,
+    "stuck": true,
     "start_at_login": true,
     "lingering": true
   }

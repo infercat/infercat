@@ -13,6 +13,7 @@
     "installed": false,
     "loaded": false,
     "running": false,
+    "stuck": false,
     "start_at_login": false
   }
 }

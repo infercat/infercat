@@ -221,7 +221,7 @@ func newLaunchdFake(t *testing.T) *launchdFake {
 }
 
 func (f *launchdFake) host(home string) serviceHost {
-	return serviceHost{goos: "darwin", home: home, uid: "501", binary: "/usr/local/bin/infercat", run: f.tool.run}
+	return serviceHost{goos: "darwin", home: home, uid: "501", binary: filepath.Join(home, "bin", "infercat"), run: f.tool.run}
 }
 
 func TestServiceLaunchdVerbsDriveLaunchctl(t *testing.T) {
@@ -470,7 +470,7 @@ func TestServiceJSONEnvelope(t *testing.T) {
 	if code != 0 || msg.Command != "service.status" || msg.Data == nil || msg.Error != nil {
 		t.Fatal(code, out.String())
 	}
-	if msg.Data.Installed || msg.Data.Running || msg.Data.Log == "" || msg.Data.Binary != "/usr/local/bin/infercat" {
+	if msg.Data.Installed || msg.Data.Running || msg.Data.Log == "" || msg.Data.Binary != host.binary {
 		t.Fatal(out.String())
 	}
 	// Zero values are present in machine mode, and lingering is systemd's alone.
@@ -653,7 +653,7 @@ func TestServiceResolvesTheSupervisorThroughPATH(t *testing.T) {
 		t.Fatal(err)
 	}
 	t.Setenv("PATH", bin)
-	host := serviceHost{goos: "darwin", home: home, uid: "501", binary: "/usr/local/bin/infercat", run: runTool}
+	host := serviceHost{goos: "darwin", home: home, uid: "501", binary: filepath.Join(home, "bin", "infercat"), run: runTool}
 	e := &env{out: io.Discard, errw: io.Discard, svcHost: &host}
 	for _, action := range []string{"install", "start"} {
 		if err := e.cmdService(context.Background(), "", []string{action, "--data-dir", data}); err != nil {

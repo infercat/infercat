@@ -26,7 +26,7 @@ systemd user unit; both run this same binary's ` + "`serve`" + `, with the setti
   install    write the LaunchAgent (macOS) / enable the user unit (Linux); does not start it
   uninstall  stop it and remove the LaunchAgent (macOS) / disable the unit (Linux)
   start      start it now; stop, restart do the obvious thing
-  status     installed, loaded, running, pid, since, start at login, binary, log
+  status     installed, loaded, running, stuck, pid, since, start at login, binary, log
   login on   start at login, login off stops that. A running host keeps running either way;
              the new value applies from the next login.
 
@@ -52,6 +52,7 @@ type serviceStatus struct {
 	Installed    bool   `json:"installed"`
 	Loaded       bool   `json:"loaded"`
 	Running      bool   `json:"running"`
+	Stuck        bool   `json:"stuck"`
 	StartAtLogin bool   `json:"start_at_login"`
 	Lingering    *bool  `json:"lingering,omitempty"`
 
@@ -300,8 +301,8 @@ func (e *env) serviceAction(ctx context.Context, action, dataDir string, atLogin
 	if err != nil {
 		return st, err
 	}
-	if (action == "start" || action == "restart") && !st.Running {
-		st = waitForService(ctx, m, st, host.settle)
+	if !st.Running && (action == "start" || action == "restart" || action == "status" && host.goos == "darwin" && st.Loaded && st.PID == 0) {
+		st = waitForService(ctx, m, st, host.settle, host.goos == "darwin")
 	}
 	st.Since, st.host = serviceRunningHost(ctx, st, dataDir)
 	return st, nil
@@ -331,7 +332,7 @@ func (e *env) refuseSecondHost(ctx context.Context, m serviceManager, dataDir st
 }
 
 // waitForService gives the supervisor a moment to report a pid after start or restart.
-func waitForService(ctx context.Context, m serviceManager, st serviceStatus, settle time.Duration) serviceStatus {
+func waitForService(ctx context.Context, m serviceManager, st serviceStatus, settle time.Duration, detectStuck bool) serviceStatus {
 	deadline := time.Now().Add(settle)
 	for time.Now().Before(deadline) {
 		select {
@@ -348,6 +349,7 @@ func waitForService(ctx context.Context, m serviceManager, st serviceStatus, set
 			return st
 		}
 	}
+	st.Stuck = detectStuck && settle > 0 && ctx.Err() == nil && st.Loaded && st.PID == 0 && !st.Running
 	return st
 }
 
@@ -429,6 +431,9 @@ func serviceStateLine(st serviceStatus) string {
 		return strings.Join(append(parts, "not loaded"), " · ")
 	}
 	parts = append(parts, "loaded")
+	if st.Stuck {
+		return "loaded · stuck (no pid after 2s)"
+	}
 	if !st.Running {
 		return strings.Join(append(parts, "not running"), " · ")
 	}
