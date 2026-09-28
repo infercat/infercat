@@ -9,7 +9,11 @@ enum Capture {
 
     struct Scene {
         enum Sheet: Sendable { case mint, limits, once, duplicate, edit }
-        enum Surface: Sendable { case popover, firstRun, window, friends, sheet(Sheet) }
+        enum Surface: Sendable {
+            case popover, firstRun, window, friends, sheet(Sheet)
+            /// The main window opened on a named screen.
+            case screen(Route)
+        }
         let name: String
         let surface: Surface
         let build: (HostModel, Language) -> Void
@@ -138,6 +142,41 @@ enum Capture {
             Demo.friends(model, language, select: "k_lin")
         },
 
+        // Activity and Settings (cut C).
+        Scene(name: "activity-1-live", surface: .screen(.activity)) { model, language in
+            Demo.friends(model, language, keys: Demo.keys(language, generous: true))
+            Demo.activity(model, language)
+        },
+        Scene(name: "activity-2-errors", surface: .screen(.activity)) { model, language in
+            Demo.friends(model, language, keys: Demo.keys(language, generous: true))
+            Demo.activity(model, language, errorsOnly: true)
+        },
+        Scene(name: "activity-3-paused", surface: .screen(.activity)) { model, language in
+            Demo.friends(model, language, keys: Demo.keys(language, generous: true))
+            Demo.activity(model, language, paused: true)
+        },
+        Scene(name: "activity-4-dropped", surface: .screen(.activity)) { model, language in
+            Demo.friends(model, language, keys: Demo.keys(language, generous: true))
+            Demo.activity(model, language, dropped: true)
+        },
+        Scene(name: "activity-5-empty", surface: .screen(.activity)) { model, language in
+            Demo.friends(model, language, keys: Demo.keys(language, generous: true))
+        },
+        Scene(name: "activity-6-not-answering", surface: .screen(.activity)) { model, language in
+            Demo.friends(model, language, keys: Demo.keys(language, generous: true), stale: true)
+            Demo.activity(model, language)
+        },
+        Scene(name: "settings-1-running", surface: .screen(.settings)) { model, language in
+            Demo.friends(model, language, keys: Demo.keys(language, generous: true))
+        },
+        Scene(name: "settings-2-stopped", surface: .screen(.settings)) { model, _ in
+            model.inject(status: nil, service: try? Demo.service("stopped"), keys: [],
+                         usage: nil, lastStatusAt: nil)
+        },
+        Scene(name: "settings-3-not-answering", surface: .screen(.settings)) { model, language in
+            Demo.friends(model, language, keys: Demo.keys(language, generous: true), stale: true)
+        },
+
         // The founder picks the mono face on a real build (design spec §10.3).
         Scene(name: "font-plex-vs-sf", surface: .popover) { _, _ in }
     ]
@@ -188,6 +227,9 @@ enum Capture {
         case .friends:
             return try windowSnapshot(MainWindow(model: model, openConsole: {}, startOn: .friends),
                                       size: CGSize(width: 1060, height: 680), appearance: appearance)
+        case .screen(let route):
+            return try windowSnapshot(MainWindow(model: model, openConsole: {}, startOn: route),
+                                      size: CGSize(width: 1120, height: 700), appearance: appearance)
         case .sheet(let kind):
             return try snapshot(SheetPreview(model: model, kind: kind), width: 460, appearance: appearance)
         }
@@ -350,6 +392,43 @@ enum Demo {
         model.previewFriends(select: select, showRevoked: showRevoked, loading: loading,
                              detail: select == nil ? nil : detail(language),
                              notice: notice ? model.text("act_unanswered") : nil)
+    }
+
+    /// A plausible tail of settled requests, built from the demo friends. Everything
+    /// here is counts and timings; there is nowhere for text to live.
+    static func activity(_ model: HostModel, _ language: Language,
+                         errorsOnly: Bool = false, paused: Bool = false, dropped: Bool = false) {
+        let keys = self.keys(language, generous: true)
+        let rows: [(Int, String, Int, String?, Int, Int, Int, Int)] = [
+            (0, "/v1/chat/completions", 200, nil, 1_204, 386, 212, 9_600),
+            (1, "/v1/chat/completions", 200, nil, 842, 1_190, 198, 27_400),
+            (2, "/v1/audio/transcriptions", 200, nil, 0, 0, 0, 3_100),
+            (3, "/v1/chat/completions", 200, nil, 6_120, 2_048, 340, 51_000),
+            (4, "/v1/chat/completions", 429, "rate_limited", 0, 0, 0, 4),
+            (5, "/v1/embeddings", 200, nil, 512, 0, 0, 400),
+            (6, "/v1/chat/completions", 200, nil, 2_310, 744, 240, 18_200),
+            (7, "/v1/chat/completions", 200, nil, 988, 1_422, 205, 33_900),
+            (8, "/v1/chat/completions", 499, "client_closed", 760, 92, 221, 2_800),
+            (9, "/v1/chat/completions", 200, nil, 4_402, 1_876, 310, 46_100),
+        ]
+        for (index, endpoint, status, code, into, out, ttft, total) in rows.reversed() {
+            let owner = keys[index % 3]
+            model.activity.append(UsageEvent(
+                ts: clock.addingTimeInterval(-Double(index) * 97),
+                key_id: owner.id, endpoint: endpoint, status: status,
+                prompt_tokens: into, completion_tokens: out, queued_ms: 120,
+                ttft_ms: ttft, total_ms: total, kind: nil,
+                model: "qwen3.8-flash-next", via: index == 3 ? "bridge" : "tunnel", code: code))
+            if dropped, index == 4 { model.activity.drop(6) }
+        }
+        model.activity.previewErrorsOnly = errorsOnly
+        if paused {
+            model.activity.setPaused(true)
+            model.activity.append(UsageEvent(
+                ts: clock, key_id: keys[0].id, endpoint: "/v1/chat/completions", status: 200,
+                prompt_tokens: 120, completion_tokens: 340, queued_ms: 0, ttft_ms: 190,
+                total_ms: 8_100, kind: nil, model: nil, via: nil, code: nil))
+        }
     }
 
     static func minted(_ language: Language) -> MintedInvite? {

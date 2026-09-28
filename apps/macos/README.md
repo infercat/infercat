@@ -4,12 +4,12 @@ A native macOS 14+ menu-bar app and one window, Swift 6 and SwiftUI with an AppK
 `NSStatusItem`. Architecture and the CLI machine contract: `docs/design/desktop-app.md`
 in the PM repo; the design it is built from: `docs/design/desktop-app-ui.md`.
 
-**This is cuts A and B of ticket 197.** It has the menu-bar item with its six states
-and the popover, first run, the Overview screen in all seven of its states, and
-Friends — the list, the inspector, pause, resume, rotate, revoke, edit limits, and
-the New invite flow with its once-card and QR. English and Simplified Chinese, light
-and dark, throughout. Activity, Engine, Usage and Settings are in the sidebar but say
-"comes in the next build" and offer the web console, which already does the job.
+**This is v0 of ticket 197, cuts A, B and C.** The menu-bar item with its six states
+and the popover; first run; Overview in all seven of its states; Friends — the list,
+the inspector, pause, resume, rotate, revoke, edit limits, and the New invite flow
+with its once-card and QR; Activity; and the v0 Settings. English and Simplified
+Chinese, light and dark, throughout. Engine and Usage are v1: their sidebar entries
+say "comes in the next build" and offer the web console, which already does the job.
 
 ## Build and test, unsigned
 
@@ -86,6 +86,8 @@ no socket, no reading the host's files, and the admin token never enters the app
   | `checkNow()` (Start pressed, a surface appeared) → next attempt | cuts the current nap short, honoured at most once per 30 s of waiting, and never lowers the ladder |
   | visibility change → restart for a new interval | 1 s debounce, and only while a stream is actually delivering |
   | damaged bundle, or a schema we cannot read | the loop stops; it will not fix itself |
+  | **Activity** — any number of rows, filters, pause, resume | **none: it adds no edge at all.** Every row is an `event` line of the stream that is already running, so the screen is a view of it and never a source |
+  | Settings: Save name, Start at login, Open web console | one subprocess per press, and `working` means a second press while the first is out does nothing |
 
   Ten minutes with no host installed costs **26 subprocesses**; ten minutes with a pid
   but nothing answering costs the same 26; someone holding Start down through those
@@ -95,8 +97,8 @@ no socket, no reading the host's files, and the admin token never enters the app
   the loop is one read per user action. Limits and today's usage are read once on the
   first status and then at most once a minute while a surface is visible — never at
   the status cadence — and a read that fails still counts, so a failure cannot spin.
-  `keys show` is one read per friend selected. Every mutation is one subprocess,
-  guarded so a second cannot start while the first is in flight.
+  Every mutation is one subprocess, guarded so a second cannot start while the first
+  is in flight.
 
 - **A command subprocess only when someone acts.** Its stdout is capped at 1 MiB,
   its stderr is drained and never logged, and it is never replayed. An action that
@@ -112,6 +114,14 @@ no socket, no reading the host's files, and the admin token never enters the app
   screen changes when the next status confirms it.
 - **Lifecycle only through `infercat service`.** The host outlives the app: Quit says
   so and leaves it running.
+- **Activity can never hold what was said.** `usage.Event` on the host carries
+  `prompt` and `completion` when it runs with `--log-prompts`. The stream is
+  documented to strip them, and the app's decoder does not declare them either, so
+  there is no property for request text to land in. A test feeds an event line
+  carrying both and asserts no trace survives into the row or the list. App polls are
+  not listed — an idle browser tab polls every 30 s per friend, and the design's own
+  count is the host's `model_calls` — and a `dropped` line becomes a visible gap row,
+  never a silent one.
 - **The invite secret lives in memory and nowhere else.** `InviteSecret` is not
   `Codable`, is never written, never logged, never interpolated into an error, and
   reaches the pasteboard only through a button the person pressed — marked transient
@@ -136,6 +146,8 @@ no socket, no reading the host's files, and the admin token never enters the app
 | `Sources/HostModel.swift` | the six menu-bar states, the seven Overview states, attention, actions |
 | `Sources/PopoverView.swift`, `FirstRunView.swift`, `MainWindow.swift`, `OverviewScreen.swift` | the surfaces |
 | `Sources/FriendsScreen.swift`, `FriendInspector.swift`, `FriendsModel.swift` | Friends: the list, one friend in full, and the sorting and status lines behind them |
+| `Sources/ActivityScreen.swift`, `Activity.swift` | Activity: the live tail of settled requests, and the types that keep request text out of it |
+| `Sources/SettingsScreen.swift` | Settings: name, start at login, language, the console |
 | `Sources/InviteSheet.swift`, `InviteSecret.swift`, `Limits.swift` | the invite flow, the secret that exists only while the once-card is open, and the limit form |
 | `Sources/Brand.swift`, `Copy.swift` | cobalt, the loaf, status squares, IBM Plex Mono, EN/ZH copy |
 | `Sources/Fixtures.swift`, `Capture.swift` | the fixture client and the screenshot harness |

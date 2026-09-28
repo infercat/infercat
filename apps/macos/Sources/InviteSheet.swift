@@ -328,6 +328,10 @@ struct LimitsFields: View {
             TextField(model.text("inv_all_models"), text: $draft.models)
                 .textFieldStyle(.roundedBorder)
                 .font(Brand.mono(11, relativeTo: .body))
+                // A mono font taller than the row's default clipped the field's
+                // bottom edge; give it the height its own text needs.
+                .frame(minHeight: 22)
+                .padding(.vertical, 1)
             Spacer(minLength: 0)
         }
         .accessibilityElement(children: .combine)
