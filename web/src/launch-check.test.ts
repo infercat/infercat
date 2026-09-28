@@ -47,11 +47,13 @@ beforeAll(async () => {
   browser = await chromium.launch();
 }, 20000);
 afterAll(async () => { await browser?.close(); await server?.close(); });
+// CI runner, 20 cold-transform samples: p95 2.80 s (connection 0.68 s, chat 2.11 s).
+// Allow ~5x p95 for contention, rounded to the sibling browser cases' 15 s budget.
 it('the live path follows the demo redirect and sends one completed fake-gateway chat without leaking its fragment', async () => {
   const lines: string[] = [];
   await liveChat(browser, origin, line => lines.push(line));
   expect(lines).toEqual(['LIVE connection: PASS — public demo connected', 'LIVE chat: PASS — one short message, nonempty complete answer, no browser errors']);
-});
+}, 15000);
 it.each(['normal', 'reasoning-only', 'eof-no-done', 'error-mid-stream', 'capped'])('checks the real answer wrapper and stream completion: %s', async (streamMode) => {
   mode = streamMode;
   const context = await browser.newContext({ locale: 'en-US' });
