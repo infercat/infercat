@@ -89,6 +89,9 @@ type env struct {
 	// tty is whether out is a terminal. Only decoration depends on it: the QR code is drawn for a
 	// person and would be noise in a pipe (ticket 009 promise 11).
 	tty bool
+	// svcHost overrides what `service` reads about this machine, so its tests bind a fake
+	// launchctl or systemctl instead of the real one. nil means the real machine.
+	svcHost *serviceHost
 }
 
 func main() {
@@ -117,6 +120,9 @@ func run(ctx context.Context, args []string, out, errw io.Writer, in io.Reader, 
 	}
 	e := &env{out: out, errw: errw, in: in, plat: plat, tty: tty}
 	if code, handled := e.machineRead(ctx, args); handled {
+		return code
+	}
+	if code, handled := e.machineService(ctx, args); handled {
 		return code
 	}
 	dataDir, rest, err := splitGlobal(args)
@@ -149,6 +155,8 @@ func run(ctx context.Context, args []string, out, errw io.Writer, in io.Reader, 
 		err = e.cmdUsage(ctx, dataDir, cargs)
 	case "expose":
 		err = e.cmdExpose(ctx, dataDir, cargs)
+	case "service":
+		err = e.cmdService(ctx, dataDir, cargs)
 	case "connect":
 		err = e.cmdConnect(ctx, dataDir, cargs)
 	case "version":
@@ -312,10 +320,12 @@ Commands:
   usage      what your friends have used, from the usage log
   connect    use an invite from this machine: an OpenAI-compatible API on localhost for any app
   expose     enable or disable a public endpoint for this host
+  service    keep the host running without a terminal: install, start, stop, restart, status, login
   version    print the version
 
 Start here:
   infercat serve                  # finds llama.cpp, Ollama, LM Studio, or vLLM
+  infercat service install        # keep it running: launchd on macOS, systemd --user on Linux
   infercat keys add alice         # prints Alice's invite, once
   infercat remote on                  # mint a remote admin code (off|rotate|status)
   infercat console --print             # open the host console URL
