@@ -42,7 +42,7 @@ func (e *env) cmdRemote(ctx context.Context, pre string, args []string) error {
 	if fs.NArg() != 0 {
 		return errUsage
 	}
-	dir, err := resolveDataDir(*dd)
+	dir, err := e.adminDir(*dd)
 	if err != nil {
 		return err
 	}

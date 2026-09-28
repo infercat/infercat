@@ -70,6 +70,11 @@ func (e *env) hostClient(ctx context.Context, dir string) (*admin.Client, machin
 }
 
 func (e *env) executeMachine(ctx context.Context, r machineRequest) (machine.Host, json.RawMessage, error) {
+	if e.remoteTarget.Remote() {
+		if err := remoteMachineRequest(r); err != nil {
+			return machine.Host{}, nil, err
+		}
+	}
 	own := machine.Host{Version: product.Version}
 	if r.command == "version" {
 		data, err := json.Marshal(struct {

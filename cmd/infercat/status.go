@@ -26,11 +26,18 @@ func (e *env) cmdStatus(ctx context.Context, pre string, args []string) error {
 	fs := flag.NewFlagSet("status", flag.ContinueOnError)
 	dd := fs.String("data-dir", pre, dataDirUsage)
 	watch := fs.Bool("watch", false, "redraw every interval and stream one line per completed request; Ctrl-C stops")
-	interval := fs.Duration("interval", time.Second, "how often --watch redraws")
+	defaultInterval := time.Second
+	if e.remoteTarget.Remote() {
+		defaultInterval = 2 * time.Second
+	}
+	interval := fs.Duration("interval", defaultInterval, "how often --watch redraws")
 	if err := e.parse(fs, statusHelp, args); err != nil {
 		return err
 	}
-	dataDir, err := resolveDataDir(*dd)
+	if e.remoteTarget.Remote() && *watch && *interval < time.Second {
+		return badMachine("remote watch interval must be at least 1s")
+	}
+	dataDir, err := e.adminDir(*dd)
 	if err != nil {
 		return err
 	}
@@ -43,7 +50,7 @@ func (e *env) cmdStatus(ctx context.Context, pre string, args []string) error {
 		agentsOut = e.out
 	}
 	agentCount := 0
-	if client == nil || !client.Remote() {
+	if !e.remoteTarget.Remote() && (client == nil || !client.Remote()) {
 		agentCount, err = writeAgents(agentsOut)
 		if err != nil {
 			return err
@@ -55,6 +62,9 @@ func (e *env) cmdStatus(ctx context.Context, pre string, args []string) error {
 		st, err = clientStatus(ctx, client)
 	}
 	if errors.Is(err, admin.ErrNoDaemon) {
+		if e.remoteTarget.Remote() {
+			return err
+		}
 		if agentCount > 0 && !*watch {
 			fmt.Fprintln(e.out, "no running host or bridge for this data directory")
 			return nil
@@ -67,6 +77,9 @@ func (e *env) cmdStatus(ctx context.Context, pre string, args []string) error {
 	if !*watch {
 		writeStatus(e.out, st)
 		return nil
+	}
+	if e.remoteTarget.Remote() {
+		return e.watchRemoteHuman(ctx, client, st, *interval)
 	}
 	return e.watchStatus(ctx, dataDir, client, st, max(*interval, 100*time.Millisecond))
 }

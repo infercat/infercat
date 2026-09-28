@@ -20,11 +20,18 @@ func (e *env) cmdUsage(ctx context.Context, pre string, args []string) error {
 	fs := flag.NewFlagSet("usage", flag.ContinueOnError)
 	dd := fs.String("data-dir", pre, dataDirUsage)
 	key := fs.String("key", "", "only this key id or name")
+	calendar := "today"
+	if e.remoteTarget.Remote() {
+		fs.StringVar(&calendar, "window", "today", "calendar window: today or week")
+	}
 	since := fs.String("since", "24h", "how far back to look: 30m, 24h, 7d, or all")
 	if err := e.parse(fs, usageHelp, args); err != nil {
 		return err
 	}
-	dataDir, err := resolveDataDir(*dd)
+	if e.remoteTarget.Remote() && calendar != "today" && calendar != "week" {
+		return badMachine("--window must be today or week")
+	}
+	dataDir, err := e.adminDir(*dd)
 	if err != nil {
 		return err
 	}
@@ -62,6 +69,10 @@ func (e *env) cmdUsage(ctx context.Context, pre string, args []string) error {
 		}
 		if keyID != "" {
 			q.Set("key_id", keyID)
+		}
+		if e.remoteTarget.Remote() {
+			q = url.Values{"window": []string{calendar}}
+			*since = calendar
 		}
 		raw, err := client.Call(ctx, "GET", "/usage?"+q.Encode(), nil)
 		if err != nil {
@@ -115,7 +126,11 @@ func (e *env) writeUsage(rep *usage.Report, since, keyID string, names map[strin
 		}
 	}
 	t := rep.Total
-	fmt.Fprintf(e.out, "usage · last %s · %s\n\n", since, scope)
+	if e.remoteTarget.Remote() {
+		fmt.Fprintf(e.out, "usage · calendar %s · %s\n\n", since, scope)
+	} else {
+		fmt.Fprintf(e.out, "usage · last %s · %s\n\n", since, scope)
+	}
 	if t.Requests == 0 && len(t.Meters) == 0 {
 		fmt.Fprintln(e.out, "nothing yet")
 		return
