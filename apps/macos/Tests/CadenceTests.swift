@@ -29,6 +29,15 @@ final class FakeNapper: Napper, @unchecked Sendable {
         await Task.yield()
     }
 
+    /// Short naps — the friend-detail debounce — recorded separately so the ladder
+    /// assertions stay about the ladder.
+    private var shortNaps = 0
+    func nap(milliseconds: Int) async {
+        lock.withLock { shortNaps += 1 }
+        await Task.yield()
+    }
+    var debounces: Int { lock.withLock { shortNaps } }
+
     var delays: [Int] { lock.withLock { naps } }
     var elapsed: Int { lock.withLock { horizon } }
     var isDone: Bool { lock.withLock { stopped } }
@@ -93,6 +102,8 @@ final class CountingCLI: CLIClient, @unchecked Sendable {
             return try Fixtures.demo("keys.en")
         case "usage":
             return try Fixtures.demo("usage")
+        case "keys.get":
+            return try Fixtures.demo("keyshow.en")
         default:
             throw CLIError.hostStopped
         }

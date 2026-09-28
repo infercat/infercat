@@ -372,9 +372,13 @@ final class PresentationTests: XCTestCase {
         XCTAssertEqual(Copy.compact(84_200), "84.2k")
         XCTAssertEqual(Copy.compact(1_560_000), "1.56M")
         XCTAssertEqual(Copy.exact(200_000), "200,000")
-        XCTAssertEqual(Copy.duration(seconds: 273_600), "3d 4h")
-        XCTAssertEqual(Copy.duration(seconds: 15_120), "4h 12m")
-        XCTAssertEqual(Copy.duration(seconds: 41), "41s")
+        XCTAssertEqual(Copy.duration(seconds: 273_600, language: .en), "3d 4h")
+        XCTAssertEqual(Copy.duration(seconds: 15_120, language: .en), "4h 12m")
+        XCTAssertEqual(Copy.duration(seconds: 41, language: .en), "41s")
+        // A duration inside a Chinese sentence speaks Chinese, not "3d 4h".
+        XCTAssertEqual(Copy.duration(seconds: 273_600, language: .zh), "3 天 4 小时")
+        XCTAssertEqual(Copy.duration(seconds: 15_120, language: .zh), "4 小时 12 分钟")
+        XCTAssertEqual(Copy.duration(seconds: 41, language: .zh), "41 秒")
     }
 
     func testFixtureClientDrivesTheModelEndToEnd() async throws {

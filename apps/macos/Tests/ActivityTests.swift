@@ -239,6 +239,31 @@ final class CutCSpawnTests: XCTestCase {
         XCTAssertTrue(stopped.installed, "a stopped host is still installed, so the switch stays usable")
     }
 
+    /// Holding the down arrow across the whole list must not become one subprocess
+    /// per row: the pending read is cancelled, only one is ever in flight, and a
+    /// friend the person skated past is never read at all.
+    func testHoldingAnArrowAcrossFiftyFriendsIsBounded() async throws {
+        let cli = CountingCLI(watch: .healthy, running: true)
+        let model = HostModel(client: cli, napper: FakeNapper(runFor: .max))
+        let before = cli.commandSpawns.filter { $0 == "keys.get" }.count
+        for index in 0..<50 { model.openFriend("k_\(index)") }
+        // Let whatever survived the cancellations finish.
+        try await Task.sleep(for: .milliseconds(200))
+        let reads = cli.commandSpawns.filter { $0 == "keys.get" }.count - before
+        XCTAssertLessThanOrEqual(reads, 3,
+            "fifty selections in one burst must cost at most a couple of reads")
+        XCTAssertEqual(model.selectedFriend, "k_49", "and the latest selection wins")
+    }
+
+    /// Letting go of the arrow does read the friend actually landed on.
+    func testTheFriendYouStopOnIsRead() async throws {
+        let cli = CountingCLI(watch: .healthy, running: true)
+        let model = HostModel(client: cli, napper: FakeNapper(runFor: .max))
+        model.openFriend("k_lin")
+        try await waitUntil("the detail arrived") { model.friendDetail != nil }
+        XCTAssertEqual(cli.commandSpawns.filter { $0 == "keys.get" }.count, 1)
+    }
+
     private func waitUntil(_ what: String, _ condition: () -> Bool) async throws {
         for _ in 0..<400 {
             if condition() { return }

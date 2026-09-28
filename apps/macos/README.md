@@ -88,6 +88,7 @@ no socket, no reading the host's files, and the admin token never enters the app
   | damaged bundle, or a schema we cannot read | the loop stops; it will not fix itself |
   | **Activity** — any number of rows, filters, pause, resume | **none: it adds no edge at all.** Every row is an `event` line of the stream that is already running, so the screen is a view of it and never a source |
   | Settings: Save name, Start at login, Open web console | one subprocess per press, and `working` means a second press while the first is out does nothing |
+  | selecting a friend → `keys show` | 150 ms debounce, latest-wins, one read in flight. Holding an arrow key across fifty friends costs at most three reads, not fifty |
 
   Ten minutes with no host installed costs **26 subprocesses**; ten minutes with a pid
   but nothing answering costs the same 26; someone holding Start down through those
@@ -97,8 +98,11 @@ no socket, no reading the host's files, and the admin token never enters the app
   the loop is one read per user action. Limits and today's usage are read once on the
   first status and then at most once a minute while a surface is visible — never at
   the status cadence — and a read that fails still counts, so a failure cannot spin.
-  Every mutation is one subprocess, guarded so a second cannot start while the first
-  is in flight.
+  `keys show` is one read per friend the person stops on: a new selection cancels the
+  pending one, so arrow-key navigation costs a read for where they landed, not for
+  every row they passed. Every mutation is one subprocess, guarded so a second cannot
+  start while the first is in flight, and saving limits sends only the fields that
+  moved — one command, plus a second only when the agent switch itself was moved.
 
 - **A command subprocess only when someone acts.** Its stdout is capped at 1 MiB,
   its stderr is drained and never logged, and it is never replayed. An action that

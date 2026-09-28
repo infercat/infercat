@@ -82,7 +82,10 @@ final class SecretHygieneTests: XCTestCase {
         // clipboard managers do not keep a history entry.
         secret.copy(.link)
         XCTAssertEqual(board.string(forType: .string), result.link)
-        XCTAssertNotNil(board.string(forType: .init("org.nspasteboard.TransientType")))
+        XCTAssertNotNil(board.string(forType: .init("org.nspasteboard.TransientType")),
+                        "clipboard managers are asked not to keep it in history")
+        XCTAssertNotNil(board.string(forType: .init("org.nspasteboard.ConcealedType")),
+                        "and to treat it as a secret if they do")
         XCTAssertTrue(secret.taken)
     }
 
@@ -116,6 +119,35 @@ final class SecretHygieneTests: XCTestCase {
         XCTAssertTrue(result.invite.hasPrefix(mask.prefix(8)))
         XCTAssertLessThan(mask.count, result.invite.count)
         XCTAssertFalse(result.invite.contains(mask))
+    }
+
+    /// Only what changed is sent, so an edit cannot overwrite a value that something
+    /// else moved in the meantime — and an untouched agent switch costs no command.
+    func testEditingOneLimitSendsOnlyThatLimit() throws {
+        struct Wrapper: Decodable { var data: [FriendKey] }
+        let keys = try Contract.decoder.decode(Wrapper.self, from: try Fixtures.demo("keys.en")).data
+        var draft = LimitsDraft(from: keys[0].limits, agent: keys[0].agent ?? false)
+        XCTAssertTrue(draft.nothingChanged, "opening the form changes nothing")
+        XCTAssertTrue(draft.flags(offeredBy: nil).isEmpty)
+        XCTAssertNil(draft.agentChange, "an untouched switch means no second command")
+
+        draft.setText("30", for: .rpm)
+        XCTAssertEqual(draft.flags(offeredBy: nil), ["--rpm", "30"])
+        XCTAssertEqual(CLICommand.keysLimits("k_lin", limits: draft.flags(offeredBy: nil)).arguments,
+                       ["keys", "limits", "k_lin", "--json", "--rpm", "30"])
+        XCTAssertNil(draft.agentChange)
+        XCTAssertFalse(draft.nothingChanged)
+    }
+
+    /// Moving the agent switch is the only thing that sends the second command.
+    func testTheAgentSwitchIsItsOwnChange() throws {
+        struct Wrapper: Decodable { var data: [FriendKey] }
+        let keys = try Contract.decoder.decode(Wrapper.self, from: try Fixtures.demo("keys.en")).data
+        var draft = LimitsDraft(from: keys[0].limits, agent: true)
+        XCTAssertNil(draft.agentChange)
+        draft.agent = false
+        XCTAssertEqual(draft.agentChange, false)
+        XCTAssertTrue(draft.flags(offeredBy: nil).isEmpty, "the limits themselves did not move")
     }
 
     func testTheScreenTruncatesButTheCopyIsWhole() async throws {
@@ -219,16 +251,19 @@ final class LimitEncodingTests: XCTestCase {
                        "an explicitly empty allowlist is how you clear one")
     }
 
-    func testPrefillingFromAKeyDoesNotResetTheOtherFields() throws {
+    /// Editing one field sends one field. A prefilled value the person did not touch
+    /// is not re-sent, so a save cannot overwrite a limit something else changed in
+    /// the meantime.
+    func testPrefillingFromAKeySendsOnlyWhatMoved() throws {
         struct Wrapper: Decodable { var data: [FriendKey] }
         let keys = try Contract.decoder.decode(Wrapper.self, from: try Fixtures.demo("keys.en")).data
         var draft = LimitsDraft(from: keys[0].limits, agent: keys[0].agent ?? false)
         draft.setText("99", for: .rpm)
         let flags = draft.flags(offeredBy: nil)
-        XCTAssertTrue(flags.contains("--rpm"))
-        XCTAssertTrue(flags.contains("--daily-tokens"), "a prefilled field is still sent on save")
-        XCTAssertFalse(flags.contains("0"), "an existing key never reports the host's default")
+        XCTAssertEqual(flags, ["--rpm", "99"])
+        XCTAssertFalse(flags.contains("--daily-tokens"), "an untouched field is left alone")
         XCTAssertTrue(draft.agent)
+        XCTAssertNil(draft.agentChange, "and the switch nobody moved sends nothing")
     }
 
     func testArgvKeepsJSONAfterTheVerbAndTheNameAfterDashDash() {
