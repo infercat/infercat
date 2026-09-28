@@ -1,4 +1,4 @@
-# The eleven jobs preserve every check/release-dry proof; make check stays the local entrypoint.
+# The twelve jobs preserve every check/release-dry proof; make check stays the local entrypoint.
 # No publishing or secrets: only release.yml on a tag can publish.
 name: CI
 
@@ -272,3 +272,37 @@ jobs:
           go build -o "$RUNNER_TEMP/infercat-agent-probe" ./cmd/infercat
           "$RUNNER_TEMP/infercat-agent-probe" --data-dir "$RUNNER_TEMP/agent-fixture" agent install
           INFERCAT_AGENT_TEST_INSTALL="$RUNNER_TEMP/agent-fixture" go test -race -v -count=1 ./internal/agent -run '^Test161|^TestPinned'
+
+  macos:
+    name: macOS app — unsigned build, unit tests, fixtures
+    runs-on: macos-15
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v5
+      - uses: actions/setup-go@v6
+        with:
+          go-version-file: go.mod
+      - name: Contract fixtures are still what the CLI prints
+        run: |
+          sh apps/macos/vendor-fixtures.sh
+          git diff --exit-code -- apps/macos/Resources/Fixtures/contract
+      - name: Build and test, unsigned
+        run: |
+          xcodebuild -project apps/macos/InfercatMac.xcodeproj -scheme Infercat \
+            -configuration Debug -destination 'platform=macOS' \
+            -derivedDataPath "$RUNNER_TEMP/infercat-mac" \
+            -resultBundlePath "$RUNNER_TEMP/InfercatMac.xcresult" \
+            CODE_SIGNING_ALLOWED=NO build test
+      - name: Screens of every state, from fixtures
+        continue-on-error: true
+        run: |
+          "$RUNNER_TEMP/infercat-mac/Build/Products/Debug/Infercat.app/Contents/MacOS/Infercat" \
+            --capture "$RUNNER_TEMP/mac-screens"
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: infercat-mac
+          path: |
+            ${{ runner.temp }}/InfercatMac.xcresult
+            ${{ runner.temp }}/mac-screens
+          retention-days: 7
