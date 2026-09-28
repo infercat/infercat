@@ -39,7 +39,9 @@ func (e *env) machineRead(ctx context.Context, args []string) (int, bool) {
 	if err != nil {
 		return machine.Write(e.out, command, machine.Host{}, nil, err), true
 	}
-
+	if command == "watch" {
+		return e.machineWatch(ctx, r), true
+	}
 	host, data, err := e.executeMachine(ctx, r)
 	return machine.Write(e.out, command, host, data, err), true
 }

@@ -18,6 +18,8 @@ import (
 var (
 	ErrTimeout  = errors.New("the running host did not answer in time")
 	ErrResponse = errors.New("the host returned an invalid response; an action may have applied — check its state before trying again")
+	// A lost connection remains an ambiguous reply for mutations; watch can distinguish it from malformed JSON.
+	ErrDisconnected = fmt.Errorf("%w: connection ended before a complete reply", ErrResponse)
 )
 
 // APIError retains the route's failure sentence. Routes have no common error-code body.
@@ -113,6 +115,6 @@ func callError(err error) error {
 	case errors.Is(err, os.ErrNotExist), errors.Is(err, syscall.ECONNREFUSED):
 		return ErrNoDaemon
 	default:
-		return fmt.Errorf("%w: connection ended before a complete reply", ErrResponse)
+		return ErrDisconnected
 	}
 }
