@@ -27,8 +27,8 @@ enum Route: String, CaseIterable, Identifiable, Sendable {
         case .settings: "6"
         }
     }
-    /// Overview and Friends land in cut B; the rest are cut C.
-    var inThisBuild: Bool { self == .overview || self == .friends }
+    /// Everything but Engine and Usage, which are v1.
+    var inThisBuild: Bool { self != .engine && self != .usage }
 }
 
 /// The main window: sidebar, toolbar, and the screen. First run replaces the whole
@@ -175,8 +175,9 @@ struct MainWindow: View {
     /// line used to carry was always the part that got truncated — the sidebar foot
     /// already shows it, on every screen.
     private var subtitle: String {
-        guard model.hostRunning, let served = model.status?.model else { return "" }
         if route == .friends { return model.friendsSubtitle }
+        if route == .activity { return model.activitySubtitle }
+        guard model.hostRunning, let served = model.status?.model else { return "" }
         return route == .overview ? served : ""
     }
 
@@ -219,6 +220,13 @@ struct MainWindow: View {
             OverviewScreen(model: model, openConsole: openConsole, invite: $invite)
         case .friends:
             FriendsScreen(model: model, openConsole: openConsole, invite: $invite)
+        case .activity:
+            ActivityScreen(model: model, log: model.activity, openConsole: openConsole) { keyID in
+                model.selectedFriend = keyID
+                route = .friends
+            }
+        case .settings:
+            SettingsScreen(model: model, openConsole: openConsole)
         default:
             ComingSoonScreen(model: model, route: route, openConsole: openConsole)
         }

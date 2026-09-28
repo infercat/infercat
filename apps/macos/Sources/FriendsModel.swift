@@ -68,6 +68,15 @@ extension HostModel {
         return parts.joined(separator: " · ")
     }
 
+    /// "live · 214 requests today" under the Activity title. The count is the host's
+    /// own `model_calls`, which is what the screen lists.
+    var activitySubtitle: String {
+        guard let usage else { return "" }
+        return usage.total.model_calls == 1
+            ? text("act_count_1")
+            : text("act_count_n", ["n": Copy.exact(usage.total.model_calls)])
+    }
+
     /// The row's one status line (design spec §2).
     func rowStatusLine(_ row: FriendRow) -> String {
         if row.paused {
