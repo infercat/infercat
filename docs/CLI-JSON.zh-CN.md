@@ -49,6 +49,8 @@ infercat keys revoke k_example --yes --json
 
 密钥的 `force`、`agent` 修改只允许在本机进行。远程控制台遇到任一字段（包括显式 false 或 null）都会在修改前拒绝。既有远程控制台 API 和查询白名单保持不变。设置仅接受路由白名单：`name`、`web_url`、`slots`、`console`、`log_requests`。
 
+`console --json` 在浏览器中打开本地主机控制台，并返回 `data: {"opened":true}`。stdout 和 stderr 都不会包含 URL 或管理令牌。`console --print --json` 会被拒绝，因为打印出的 URL 带有密钥。
+
 `stored clear ID --expect CURSOR --yes` 先读取当前记录、核对游标，再把同一快照的计数发送给 DELETE。冲突时拒绝，不重试。`expose --on|--off` 保留本地桥接配置写入，并返回 reload 的 `{ "ok": true }`；注册仍是人类操作。
 
 ## Watch
@@ -84,6 +86,7 @@ CLI 最多缓存 256 个事件。stdout 读取缓慢不会阻塞事件读取；`
 | `keys.rotate` | `keys rotate ID --json` | POST /keys/{id}/rotate | 1 |
 | `usage` | `usage --json --window today\|week [--key ID]` | GET /usage | 1 |
 | `engine` | `engine --json` | GET /engine | 1 |
+| `console.open` | `console --json` | GET /status | 1 |
 | `settings.get` | `settings --json` | GET /settings | 1 |
 | `settings.set` | `settings set --json -- k=v…` | PATCH /settings | 1 |
 | `runs.list` | `runs list --json [--key ID]` | GET /runs | 1 |

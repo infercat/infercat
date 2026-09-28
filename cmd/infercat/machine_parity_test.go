@@ -157,7 +157,8 @@ func TestMachineAdminRouteAndBodyParity(t *testing.T) {
 		t.Fatalf("admin/API drift\nadmin: %v\nCLI: %v", got, routes)
 	}
 	for _, op := range machineOperations {
-		if op.Operation == "watch" || len(op.Routes) == 0 {
+		// console.open owns {opened:true}; its status read is covered by status parity.
+		if op.Operation == "watch" || op.Operation == "console.open" || len(op.Routes) == 0 {
 			continue
 		}
 		t.Run(op.Operation, func(t *testing.T) {

@@ -84,6 +84,10 @@ func (e *env) executeMachine(ctx context.Context, r machineRequest) (machine.Hos
 	if err != nil {
 		return host, nil, err
 	}
+	if r.command == "console.open" {
+		raw, err := e.machineConsole(ctx, r.dir, status)
+		return host, raw, err
+	}
 	if r.path == "/status" {
 		return host, status, nil
 	}

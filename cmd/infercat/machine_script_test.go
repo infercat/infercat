@@ -40,7 +40,13 @@ func TestMachineScripts(t *testing.T) {
 			if err := bridge.Save(dir, bridge.Config{Endpoint: "https://example.test", Host: "test", Token: strings.Repeat("b", 64)}); err != nil {
 				return err
 			}
-			server, err := admin.Serve(dir, func() admin.Status { return admin.Status{Name: "script host", Keys: []admin.Key{}} }, nil, admin.NewEvents(nil), http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			server, err := admin.Serve(dir, func() admin.Status {
+				st := admin.Status{Name: "script host", Keys: []admin.Key{}}
+				if _, err := os.Stat(filepath.Join(dir, "console")); err == nil {
+					st.Console = "127.0.0.1:9101"
+				}
+				return st
+			}, nil, admin.NewEvents(nil), http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 				w.Header().Set("Content-Type", "application/json")
 				if control, _ := os.ReadFile(filepath.Join(dir, "failure")); len(control) > 0 {
 					w.WriteHeader(409)

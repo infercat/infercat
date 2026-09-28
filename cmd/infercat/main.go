@@ -90,7 +90,8 @@ type env struct {
 	tty bool
 	// svcHost overrides what `service` reads about this machine, so its tests bind a fake
 	// launchctl or systemctl instead of the real one. nil means the real machine.
-	svcHost *serviceHost
+	svcHost     *serviceHost
+	openBrowser func(context.Context, string) error
 }
 
 func main() {

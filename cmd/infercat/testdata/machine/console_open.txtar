@@ -1,0 +1,40 @@
+# Fake browser executable: never opens a browser or prints the secret URL.
+mkdir bin
+cp browser.sh bin/open
+chmod 0755 bin/open
+env PATH=$WORK/bin:$PATH
+cp enabled.txt $HOST/console
+exit 0 infercat --data-dir $HOST console --json
+! stderr .
+cmpenv stdout success.json
+exists opened
+
+exit 2 infercat --data-dir $HOST console --print --json
+! stderr .
+cmpenv stdout refused.json
+
+exit 69 infercat --data-dir $NOHOST console --json
+! stderr .
+cmpenv stdout stopped.json
+
+env OPEN_EXIT=1
+exit 1 infercat --data-dir $HOST console --json
+! stderr .
+cmpenv stdout error.json
+
+-- browser.sh --
+#!/bin/sh
+printf 'PRIVATE diagnostic: %s' "$1"
+printf 'PRIVATE diagnostic: %s' "$1" >&2
+: > "$WORK/opened"
+exit "${OPEN_EXIT:-0}"
+-- enabled.txt --
+enabled
+-- success.json --
+{"schema":1,"command":"console.open","host":{"version":"$VERSION","name":"script host"},"data":{"opened":true}}
+-- refused.json --
+{"schema":1,"command":"console.open","error":{"code":"invalid_arguments","message":"flag provided but not defined: -print"}}
+-- stopped.json --
+{"schema":1,"command":"console.open","error":{"code":"host_stopped","message":"no running host found for this data dir"}}
+-- error.json --
+{"schema":1,"command":"console.open","error":{"code":"command_failed","message":"could not open the local console in a browser"}}

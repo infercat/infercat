@@ -49,6 +49,8 @@ With a host running, key mutations and usage use the authenticated admin routes.
 
 `force` and `agent` key changes are local-only; the remote console refuses either field, including an explicit false or null, before mutation. The human remote console API and its query allow-list are unchanged. Settings use only the route's whitelist: `name`, `web_url`, `slots`, `console`, `log_requests`.
 
+`console --json` opens the local console in the browser and returns `data: {"opened":true}`. Neither the URL nor the admin token reaches stdout or stderr. `console --print --json` is refused because the printed URL carries a secret.
+
 `stored clear ID --expect CURSOR --yes` fetches the current record, checks that its cursor matches, then sends that same snapshot's counts to DELETE. A conflict refuses without retry. `expose --on|--off` retains the local bridge configuration write and returns the reload's `{ "ok": true }`; registration remains a human operation.
 
 ## Watch
@@ -84,6 +86,7 @@ Generated from `infercat api --json`; `{id}` is the admin path parameter. `--dat
 | `keys.rotate` | `keys rotate ID --json` | POST /keys/{id}/rotate | 1 |
 | `usage` | `usage --json --window today\|week [--key ID]` | GET /usage | 1 |
 | `engine` | `engine --json` | GET /engine | 1 |
+| `console.open` | `console --json` | GET /status | 1 |
 | `settings.get` | `settings --json` | GET /settings | 1 |
 | `settings.set` | `settings set --json -- k=v…` | PATCH /settings | 1 |
 | `runs.list` | `runs list --json [--key ID]` | GET /runs | 1 |

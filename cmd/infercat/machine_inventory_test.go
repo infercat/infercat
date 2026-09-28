@@ -90,6 +90,10 @@ func payloadType(op string) reflect.Type {
 		value = admin.RemoteResult{}
 	case "usage":
 		value = usage.Report{}
+	case "console.open":
+		value = struct {
+			Opened bool `json:"opened"`
+		}{}
 	case "engine":
 		value = upstream.Info{}
 	case "settings.get", "settings.set":

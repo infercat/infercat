@@ -542,6 +542,8 @@ engine data.slots integer always
 engine data.url string always
 engine data.vision map<boolean?> always+nullable
 engine data.vision{} boolean? value
+console.open data object always
+console.open data.opened boolean always
 settings.get data object always
 settings.get data.configured_console string omitempty
 settings.get data.configured_web_url string always

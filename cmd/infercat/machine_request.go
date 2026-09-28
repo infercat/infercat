@@ -65,6 +65,8 @@ func machineOperation(args []string) (string, []string) {
 		}
 	}
 	switch command {
+	case "console":
+		command = "console.open"
 	case "keys.show":
 		command = "keys.get"
 	case "keys.ls":
@@ -107,6 +109,8 @@ func parseMachine(pre string, args []string) (machineRequest, error) {
 		if command == "stored.clear" {
 			fs.StringVar(&r.expect, "expect", "", "")
 		}
+	case "console.open":
+		// --print is deliberately not registered: the URL contains an admin secret.
 	case "usage":
 		fs.StringVar(&window, "window", "today", "")
 		fs.StringVar(&r.key, "key", "", "")
@@ -179,7 +183,7 @@ func parseMachine(pre string, args []string) (machineRequest, error) {
 		return r, badMachine("machine operations require a key ID")
 	}
 	switch command {
-	case "status", "remote.status":
+	case "status", "remote.status", "console.open":
 		r.path = "/status"
 	case "engine":
 		r.path = "/engine"

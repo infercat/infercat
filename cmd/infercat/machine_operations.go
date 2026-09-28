@@ -33,6 +33,7 @@ var machineOperations = []operationSpec{
 	operation("keys.rotate", "keys rotate ID --json", "POST /keys/{id}/rotate"),
 	operation("usage", "usage --json --window today|week [--key ID]", "GET /usage"),
 	operation("engine", "engine --json", "GET /engine"),
+	operation("console.open", "console --json", "GET /status"),
 	operation("settings.get", "settings --json", "GET /settings"),
 	operation("settings.set", "settings set --json -- k=v…", "PATCH /settings"),
 	operation("runs.list", "runs list --json [--key ID]", "GET /runs"),
