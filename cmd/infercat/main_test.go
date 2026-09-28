@@ -26,6 +26,7 @@ import (
 	"github.com/infercat/infercat/internal/keys"
 	"github.com/infercat/infercat/internal/product"
 	runstate "github.com/infercat/infercat/internal/run"
+	"github.com/infercat/infercat/internal/tunnel"
 	"github.com/infercat/infercat/internal/upstream"
 	"github.com/infercat/infercat/internal/usage"
 )
@@ -70,7 +71,8 @@ func execIn(t *testing.T, plat platform, stdin string, args ...string) result {
 	return result{code, out.String(), errw.String()}
 }
 
-const fakeAddr = "tcFAKEADDRESSFORTESTS"
+// Fixed v2 address from the public host-v040 test key with a test-only PSK.
+const fakeAddr = "tcpGFwWCCk4JKStlHCeLl3LFafX6m7E9kGtGq2jJ353CtECfiiCWFrWCCkw8wWHudKMOe9x_uce97IGTEA8kOJ-LJumvOH2kgcMmFxWCACAgICAgICAgICAgICAgICAgICAgICAgICAgICAgICAmFpGQEu"
 
 func TestKeysAddPrintsAnInviteExactlyOnce(t *testing.T) {
 	t.Parallel()
@@ -624,7 +626,7 @@ func TestServeRoutesTunnelLogAndFollowsSlots(t *testing.T) {
 	if r.code != 0 {
 		t.Fatalf("exit %d\n%s%s", r.code, r.out, r.err)
 	}
-	for _, want := range []string{product.Name, "upstream  llama.cpp", "slots 1", "tunnel    [invalid tunnel address]", "relay     Testville"} {
+	for _, want := range []string{product.Name, "upstream  llama.cpp", "slots 1", "tunnel    " + tunnel.Display(fakeAddr), "relay     Testville"} {
 		if !strings.Contains(r.out, want) {
 			t.Errorf("startup output lacks %q:\n%s", want, r.out)
 		}

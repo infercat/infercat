@@ -15,6 +15,7 @@ import (
 	"github.com/infercat/infercat/internal/keys"
 	"github.com/infercat/infercat/internal/product"
 	"github.com/infercat/infercat/internal/usage"
+	"github.com/tailscale/tailcat"
 )
 
 func (e *env) cmdKeys(ctx context.Context, pre string, args []string) error {
@@ -531,8 +532,24 @@ Limit flags: --rpm --tpm --max-concurrent --max-output-tokens --max-context --da
              --search-per-day --models
 `
 
+var errLegacyIdentity = errors.New("legacy ic1 identities cannot mint invites; use Infercat v0.1.4, the last release with identity upgrade")
+
+func mintableAddr(addr string) error {
+	ci, err := tailcat.ParseAddr(tailcat.Addr(addr))
+	if err != nil {
+		return errors.New("host has an invalid tunnel address")
+	}
+	if ci.PresharedKey.IsZero() {
+		return errLegacyIdentity
+	}
+	return nil
+}
+
 // Mint and rotation share the exact secret-to-invite path with the admin API.
 func (e *env) mintKey(ctx context.Context, store *keys.FileStore, addr, name string, limits keys.Limits) (*keys.Key, string, error) {
+	if err := mintableAddr(addr); err != nil {
+		return nil, "", err
+	}
 	k, secret, err := store.Add(ctx, name, limits)
 	if err != nil {
 		return nil, "", err
@@ -540,6 +557,9 @@ func (e *env) mintKey(ctx context.Context, store *keys.FileStore, addr, name str
 	return k, e.plat.encodeInvite(addr, secret), nil
 }
 func (e *env) rotateKey(ctx context.Context, store *keys.FileStore, addr, id string) (string, error) {
+	if err := mintableAddr(addr); err != nil {
+		return "", err
+	}
 	secret, err := store.Rotate(ctx, id)
 	if err != nil {
 		return "", err

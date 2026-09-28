@@ -2,7 +2,7 @@ English · [简体中文](DATA-DIRECTORY.zh-CN.md)
 
 # Data directory
 
-`host.lock` is a permanent lock-file inode, not a PID file. `serve` holds an exclusive OS lock for its lifetime; a second `serve` or identity upgrade on the same directory refuses. The OS releases the lock on process exit, including a crash; do not delete the file while a host is running. Stop older binaries too: they predate this lock; the upgrade also checks their admin listener. `infercat identity upgrade` requires a stopped host, saves `host.key.json.pre-ic2` once without overwriting it, and atomically publishes the version-2 identity. Do not run an older binary on an upgraded identity: it ignores the marker and serves the legacy form of the same key, so `ic2` invites fail silently at the handshake.
+`host.lock` is a permanent lock-file inode, not a PID file. `serve` holds an exclusive OS lock for its lifetime; a second `serve` on the same directory refuses. The OS releases the lock on process exit, including a crash; do not delete the file while a host is running. Legacy identities keep serving existing invites but cannot mint or rotate invites; v0.1.4 was the last release with the one-time identity upgrade command. Do not run a pre-0.1.4 binary on an upgraded identity: it ignores the marker and serves the legacy form of the same key, so `ic2` invites fail silently at the handshake.
 
 `~/Library/Application Support/infercat` (macOS), `~/.config/infercat` (Linux),
 `%AppData%\infercat` (Windows), or `--data-dir`:
@@ -11,7 +11,7 @@ English · [简体中文](DATA-DIRECTORY.zh-CN.md)
 |---|---|
 | `host.key.json` | Your host identity. Back it up; do not sync it; deleting it invalidates every invite you sent. |
 | `host.lock` | Exclusive OS lock held by a running host; keep the inode in place. |
-| `host.key.json.pre-ic2` | One-time legacy identity backup made by `identity upgrade`. |
+| `host.key.json.pre-ic2` | Legacy identity backup left by the retired v0.1.4 migration. |
 | `keys.json` | Friends' keys as hashes (never the secret), their status and limits. |
 | `usage.jsonl` | One line per request: key, endpoint, status, token counts, timings. No prompt content unless you run `serve --log-prompts`. |
 | `admin.sock` / `admin.port` | Local admin endpoint: Unix socket, or the Windows loopback port record. |

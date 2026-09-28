@@ -2,7 +2,7 @@
 
 # 数据目录
 
-`host.lock` 是永久保留的锁文件 inode，不是 PID 文件。`serve` 在整个运行期间持有操作系统独占锁；同一目录上的第二个 `serve` 或身份升级会被拒绝。进程退出（包括崩溃）时，操作系统释放锁；主机运行期间不要删除该文件。旧版本没有这把锁，也必须停止；升级命令还会检查旧版的管理监听器。`infercat identity upgrade` 要求主机停止，只保存一次 `host.key.json.pre-ic2` 且不覆盖，然后原子写入第二版身份。不要用旧版程序运行已升级的身份：旧版会忽略标记，以同一把密钥提供旧格式身份，导致 `ic2` 邀请在握手时静默失败。
+`host.lock` 是保留在磁盘上的锁文件，不是 PID 文件。`serve` 在运行期间持有操作系统独占锁；同一目录上的第二个 `serve` 会被拒绝。进程退出或崩溃时，操作系统会释放锁；主机运行期间不要删除这个文件。旧身份仍可通过已有邀请码提供服务，但不能生成或轮换邀请码；v0.1.4 是最后包含一次性身份升级命令的版本。不要用早于 v0.1.4 的程序运行已升级的身份：旧版本会忽略这个标记，用同一把密钥提供旧格式的地址，`ic2` 邀请会在握手时静默失败。
 
 默认目录：macOS 为 `~/Library/Application Support/infercat`，Linux 为 `~/.config/infercat`，Windows 为 `%AppData%\infercat`；也可用 `--data-dir` 指定。
 
@@ -10,7 +10,7 @@
 |---|---|
 | `host.key.json` | 主机身份。请备份，不要同步；删除会使所有已发出的邀请失效。 |
 | `host.lock` | 运行中的主机持有的独占系统锁；保留该 inode。 |
-| `host.key.json.pre-ic2` | `identity upgrade` 创建的一次性旧身份备份。 |
+| `host.key.json.pre-ic2` | 已移除的 v0.1.4 迁移命令留下的旧身份备份。 |
 | `keys.json` | 好友密钥的哈希（不保存密钥明文）、状态和限额。 |
 | `usage.jsonl` | 每次请求一行：密钥、接口、状态、token 数和耗时。除非开启 `serve --log-prompts`，否则没有提示词内容。 |
 | `admin.sock` / `admin.port` | 本地管理端点：Unix socket，或 Windows 回环端口记录。 |

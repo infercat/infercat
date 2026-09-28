@@ -159,8 +159,6 @@ xattr -d com.apple.quarantine ./infercat
 
 接着运行 `infercat serve`：它启动并常驻已安装的主模型，按请求启动其他成员，并在配置的空闲时间后停止它们。`infercat status` 显示各成员状态；嵌入请求使用配置中的独立嵌入模型。安装时已运行的引擎仍由外部管理，主机不会停止它们。Setup 会打印并记录托管成员的实际启动命令；内置配置更新后需重新运行 setup。没有已发布引擎构建的成员会标为不可用。原生语音使用已验证的 helpers-v0.1.0 及单独固定版本的 sherpa 运行环境。ASR 尚未选定配置资源；16 GB 档使用支持视觉的 Q4 E4B，内存已在 16 GB macOS 虚拟机验证，真实硬件性能尚未验证。NVIDIA 尚未测量。详见[配置格式](docs/ARCHITECTURE.md#loadout-profiles-and-setup)和[原生 Kokoro 辅助程序](packaging/helpers/README.md)。
 
-**已有主机？** 先停止 `serve`，运行一次 `infercat identity upgrade`，再启动 `serve`，轮换或新增密钥，把新的 `ic2` 邀请码发给每位朋友。旧身份备份为 `host.key.json.pre-ic2`；升级后，原有邀请码全部失效。在你明确升级之前，旧身份仍按原样提供服务。这个临时升级命令计划在 2026-09-25 之后移除。
-
 内置三种配置：
 
 | 配置 | 目标主机 |

@@ -32,6 +32,9 @@ and context-checkpoint caps; an existing installation must be refreshed. (185)
 
 **Hosts**
 
+- **Temporary identity migration retired.** `infercat identity upgrade` is removed; v0.1.4 is
+  the last release carrying it. Legacy identities still serve existing invites, but refuse to
+  mint or rotate invites through the CLI or console. (137)
 - **One-command setup.** `infercat setup --profile <tier>` fetches verified, resumable artifacts,
   reuses hash-matched caches, extracts them within bounded paths, and dry-starts each owned
   member before saving an installation manifest and config. A failed anchor, cancellation or

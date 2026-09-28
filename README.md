@@ -157,8 +157,6 @@ Run `infercat serve -h` for the complete flag list and the data directory's file
 
 Run `infercat serve` next: it starts the installed anchor and keeps it resident, starts on-demand members for admitted requests, and stops them after the profile’s idle interval. `infercat status` shows each member; embeddings use the profile’s separate embedding model. Engines already running at setup remain externally owned and are never stopped by the host. Setup prints and records the materialized command for managed members; rerun setup after an embedded profile changes. Members without a published engine build are reported as unavailable. Native speech uses the verified helpers-v0.1.0 release and a separately pinned sherpa runtime. ASR has no selected profile artifact yet; the 16 GB tier uses Q4 E4B with vision, memory verified in a 16 GB macOS VM (f16 configuration, September 2026); the shipped q8 command was verified on real Apple silicon (180a row F). Performance is unverified on real 16 GB hardware. The q8 anchor runs in VMs only via CPU fallback for flash attention (slow); not a supported configuration. NVIDIA is unmeasured. See the [profile schema](docs/ARCHITECTURE.md#loadout-profiles-and-setup) and [native Kokoro helper](packaging/helpers/README.md).
 
-**Existing host?** Stop `serve`, run `infercat identity upgrade` once, then start `serve` and rotate or add keys to send every friend a fresh `ic2` invite. The old identity is backed up as `host.key.json.pre-ic2`; existing invites stop working after the upgrade. Legacy identities keep serving unchanged until you explicitly upgrade. The temporary upgrade command is scheduled for removal after 2026-09-25.
-
 The embedded profiles are:
 
 | Profile | Intended host |

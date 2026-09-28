@@ -496,8 +496,9 @@ func (e *env) printStartup(ctx context.Context, s startup) {
 		health = "  " + healthWord(false, info.Health.Since)
 	}
 	fmt.Fprintf(e.out, "%s %s\n", product.Name, product.Version)
-	if identity, err := tunnel.ReadIdentity(filepath.Join(s.dataDir, tunnel.KeyFile)); err == nil && identity.Format == 0 {
-		fmt.Fprintln(e.out, "identity  legacy ic1; stop serve and run infercat identity upgrade to enable ic2")
+	legacy := errors.Is(mintableAddr(s.tun.Addr()), errLegacyIdentity)
+	if legacy {
+		fmt.Fprintln(e.out, "identity  "+errLegacyIdentity.Error())
 	}
 	fmt.Fprintf(e.out, "upstream  %s  %s%s\n", kindWord(string(info.Kind)), info.URL, health)
 	models := modelList(info.Models)
@@ -557,6 +558,8 @@ func (e *env) printStartup(ctx context.Context, s startup) {
 		}
 	}
 	switch {
+	case legacy:
+		fmt.Fprintf(e.out, "\n%s active; existing invites keep working\n", plural(active, "key"))
 	case len(list) == 0:
 		fmt.Fprintf(e.out, "\nMint a friend: %s keys add <name>\n", product.CLIName)
 	case active == 0:

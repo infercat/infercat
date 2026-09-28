@@ -24,14 +24,14 @@ Browser traffic is relay-only until tailcat ships WebRTC (issue #4). Native clie
 
 Tailcat 0.6.0 clients accept both address forms. New identities persist `infercat_format: 2`
 and enable the WireGuard pre-shared key (PSK); their invites use `ic2`. A missing marker is
-legacy even if the file already contains a PSK: that identity remains unchanged and mints `ic1`.
+legacy even if the file already contains a PSK: that identity keeps serving existing `ic1` invites,
+but cannot mint or rotate invites. Its startup notice names v0.1.4, the last release with the
+one-time identity upgrade command.
 Clients accept both versions; older clients reject `ic2` with the newer-app message before
 connecting. The full new address contains a shared secret, so keep the whole invite private.
-To migrate, stop `serve`, run `infercat identity upgrade`, then start it and rotate/add keys to
-re-issue every invite. The command preserves the old file as `host.key.json.pre-ic2` without
-overwriting an existing backup and atomically replaces the identity. `serve` and the upgrade
-hold one OS lock for the data directory; process exit releases it. Old invites name the retired
-endpoint, so an unreachable result cannot prove that an upgrade happened.
+`serve` holds one OS lock for the data directory; process exit releases it. Existing invites
+keep working while their identity is unchanged. Old invites name the retired endpoint after
+an identity replacement, so an unreachable result cannot prove that an upgrade happened.
 
 ## Go layout and ownership (scope contracts)
 
