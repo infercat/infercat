@@ -57,9 +57,11 @@ infercat keys revoke k_example --yes --json
 infercat watch --json --interval 2s
 ```
 
-每行一个对象：`hello`（schema、host、interval_ms、events）、`status`（schema、at、data）、`event`（schema、data）、`dropped`（schema、count），连接结束时输出 `gone`（schema、reason）。事件订阅建立后才输出 `hello`；按间隔查询状态。响应压缩为单行，绝不包含提示词或回答正文。
+每行一个对象：`hello`（schema、host、interval_ms、events）、`status`（schema、at、data）、`event`（schema、data）、`dropped`（schema、count），连接结束时输出 `gone`（schema、reason）。事件订阅建立后输出 `hello`，紧接着立即输出已取得的首条 `status`；之后按间隔查询状态。响应压缩为单行，绝不包含提示词或回答正文。
 
 CLI 最多缓存 256 个事件。stdout 读取缓慢不会阻塞事件读取；`dropped` 只报告该转发队列确知的丢失量。主机既有事件广播也可能丢失事件，且不报告丢失量，因此这不是持久审计流。当前总量请查询 status/usage。
+
+机器模式的 watch 在正常运行和已处理的失败中不向 stderr 写入内容；只有进程的致命诊断可能出现在那里。主机停止或重启会让当前连接输出 `gone` 并以 69 退出；watch 不自行重连，由调用方重新启动。
 
 启动时没有主机，watch 只输出一行 `gone`，退出码为 69，不输出 `hello`。超时退出码为 75。中断 watch 会取消连接并等待读取协程退出，不会停止主机。远程主机模式属于另行实施的工作。服务生命周期命令由服务层（196）实现，下方操作表和字段清单也包含它们。
 

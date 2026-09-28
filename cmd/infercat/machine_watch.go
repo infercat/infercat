@@ -17,7 +17,7 @@ type watchSource interface {
 }
 
 func (e *env) machineWatch(ctx context.Context, r machineRequest) int {
-	client, host, _, err := hostClient(ctx, r.dir)
+	client, host, initial, err := hostClient(ctx, r.dir)
 	if err != nil {
 		if ctx.Err() != nil {
 			return 0
@@ -28,10 +28,10 @@ func (e *env) machineWatch(ctx context.Context, r machineRequest) int {
 		}
 		return failure.Exit
 	}
-	return e.watchHost(ctx, r, client, host)
+	return e.watchHost(ctx, r, client, host, initial)
 }
 
-func (e *env) watchHost(ctx context.Context, r machineRequest, client watchSource, host machine.Host) int {
+func (e *env) watchHost(ctx context.Context, r machineRequest, client watchSource, host machine.Host, initial json.RawMessage) int {
 	enc := json.NewEncoder(e.out)
 	enc.SetEscapeHTML(false)
 	write := func(kind string, fields map[string]any) error {
@@ -80,6 +80,9 @@ func (e *env) watchHost(ctx context.Context, r machineRequest, client watchSourc
 		return 0
 	}
 	if write("hello", map[string]any{"host": host, "interval_ms": r.interval.Milliseconds(), "events": true}) != nil {
+		return 1
+	}
+	if write("status", map[string]any{"at": time.Now().UTC(), "data": initial}) != nil {
 		return 1
 	}
 	ticker := time.NewTicker(r.interval)

@@ -8,6 +8,7 @@ import (
 	"strings"
 	"sync"
 	"testing"
+	"testing/synctest"
 	"time"
 
 	"github.com/infercat/infercat/internal/admin"
@@ -23,8 +24,9 @@ func TestMachineWatchRealHTTP(t *testing.T) {
 	rd, wr := io.Pipe()
 	defer rd.Close()
 	done := make(chan int, 1)
+	var stderr bytes.Buffer
 	go func() {
-		done <- run(ctx, []string{"--data-dir", f.dir, "watch", "--json", "--interval", "10ms"}, wr, io.Discard, forbiddenInput{}, false, newPlatform())
+		done <- run(ctx, []string{"--data-dir", f.dir, "watch", "--json", "--interval", "1h"}, wr, &stderr, forbiddenInput{}, false, newPlatform())
 		wr.Close()
 	}()
 	dec := json.NewDecoder(rd)
@@ -41,11 +43,15 @@ func TestMachineWatchRealHTTP(t *testing.T) {
 		return line
 	}
 	hello := read()
-	if string(hello["type"]) != `"hello"` || string(hello["schema"]) != "1" || string(hello["interval_ms"]) != "10" {
+	if string(hello["type"]) != `"hello"` || string(hello["schema"]) != "1" || string(hello["interval_ms"]) != "3600000" {
 		t.Fatal(hello)
 	}
+	initial := read()
+	if string(initial["type"]) != `"status"` || initial["at"] == nil || !bytes.Contains(initial["data"], []byte(`"name":"test host"`)) {
+		t.Fatal(initial)
+	}
 	f.hub.Record(ctx, usage.Event{KeyID: f.id, Prompt: "PRIVATE PROMPT", Completion: "PRIVATE COMPLETION", Status: 200, CompletionTokens: 7})
-	status, event := false, false
+	status, event := true, false
 	for !status || !event {
 		line := read()
 		switch string(line["type"]) {
@@ -76,6 +82,9 @@ func TestMachineWatchRealHTTP(t *testing.T) {
 	}
 	if code := <-done; code != 69 {
 		t.Fatal(code)
+	}
+	if stderr.Len() != 0 {
+		t.Fatal("machine watch stderr", stderr.String())
 	}
 	if err := dec.Decode(new(any)); err != io.EOF {
 		t.Fatal("output after gone", err)
@@ -128,7 +137,9 @@ func TestMachineWatchCountsOnlyItsOwnDropsAndJoins(t *testing.T) {
 	}}
 	e := &env{out: w}
 	done := make(chan int, 1)
-	go func() { done <- e.watchHost(ctx, machineRequest{interval: time.Hour}, source, machine.Host{}) }()
+	go func() {
+		done <- e.watchHost(ctx, machineRequest{interval: time.Hour}, source, machine.Host{}, json.RawMessage(`{"initial":true}`))
+	}()
 	select {
 	case <-produced:
 	case <-time.After(3 * time.Second):
@@ -175,7 +186,7 @@ func TestMachineWatchDistinguishesDisconnectFromMalformedReply(t *testing.T) {
 			var out bytes.Buffer
 			e := &env{out: &out}
 			source := watchProbe{emit: func(context.Context, func(json.RawMessage), func()) error { return tc.err }}
-			if code := e.watchHost(context.Background(), machineRequest{interval: time.Hour}, source, machine.Host{}); code != tc.exit {
+			if code := e.watchHost(context.Background(), machineRequest{interval: time.Hour}, source, machine.Host{}, json.RawMessage(`{"initial":true}`)); code != tc.exit {
 				t.Fatal(code)
 			}
 			var line struct{ Type, Reason string }
@@ -184,4 +195,36 @@ func TestMachineWatchDistinguishesDisconnectFromMalformedReply(t *testing.T) {
 			}
 		})
 	}
+}
+
+func TestMachineWatchPollsAfterImmediateSnapshot(t *testing.T) {
+	synctest.Test(t, func(t *testing.T) {
+		ctx, cancel := context.WithCancel(context.Background())
+		defer cancel()
+		var out lockedBuffer
+		e := &env{out: &out}
+		source := watchProbe{emit: func(ctx context.Context, _ func(json.RawMessage), ready func()) error {
+			ready()
+			<-ctx.Done()
+			return ctx.Err()
+		}}
+		done := make(chan int, 1)
+		go func() {
+			done <- e.watchHost(ctx, machineRequest{interval: 2 * time.Second}, source, machine.Host{}, json.RawMessage(`{"initial":true}`))
+		}()
+		synctest.Wait()
+		if !strings.Contains(out.String(), `"initial":true`) || strings.Contains(out.String(), `"kept"`) {
+			t.Fatal(out.String())
+		}
+		time.Sleep(2 * time.Second)
+		synctest.Wait()
+		if strings.Count(out.String(), `"type":"status"`) != 2 || !strings.Contains(out.String(), `"kept":0`) {
+			t.Fatal(out.String())
+		}
+		cancel()
+		synctest.Wait()
+		if code := <-done; code != 0 {
+			t.Fatal(code)
+		}
+	})
 }

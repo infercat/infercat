@@ -57,9 +57,11 @@ With a host running, key mutations and usage use the authenticated admin routes.
 infercat watch --json --interval 2s
 ```
 
-One object per line: `hello` (schema, host, interval_ms, events), `status` (schema, at, data), `event` (schema, data), `dropped` (schema, count), then `gone` (schema, reason) when the connection ends. `hello` follows the event subscription opening; status is polled on the interval. Response bodies are compacted to one line. Prompt and completion text never appear.
+One object per line: `hello` (schema, host, interval_ms, events), `status` (schema, at, data), `event` (schema, data), `dropped` (schema, count), then `gone` (schema, reason) when the connection ends. `hello` follows the event subscription opening, immediately followed by the already-fetched first `status`; later status lines are polled on the interval. Response bodies are compacted to one line. Prompt and completion text never appear.
 
 The CLI buffers at most 256 events. A slow stdout reader does not block the event reader; `dropped` reports only losses observed in this forwarding queue. The host's existing event fan-out is also lossy and does not report its losses, so this is not a durable audit stream. Read aggregate status/usage for current totals.
+
+Machine-mode watch writes nothing to stderr during normal operation, including handled failures; only fatal process diagnostics may appear there. A host stop or restart ends the current connection with `gone` and exit 69; watch never reconnects itself. The consumer starts a new watch.
 
 With no host at startup, watch prints one `gone` line and exits 69, without `hello`. A timeout exits 75. Interrupting watch cancels its connections and joins its reader; it does not stop the host. Remote-host mode is separate work. Service lifecycle commands are implemented by the service layer (196), and are included in the operation and field inventories below.
 
