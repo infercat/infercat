@@ -60,11 +60,7 @@ struct ActivityScreen: View {
             .labelsHidden()
             .frame(width: 150)
 
-            Button(log.paused
-                   ? model.text("act_paused_n", ["n": String(log.heldBack)])
-                   : model.text("act_pause")) {
-                log.setPaused(!log.paused)
-            }
+            Button(pauseLabel) { log.setPaused(!log.paused) }
             .controlSize(.regular)
 
             Spacer(minLength: 8)
@@ -76,6 +72,15 @@ struct ActivityScreen: View {
         .padding(.horizontal, 16)
         .padding(.top, 60)
         .padding(.bottom, 10)
+    }
+
+    /// "Paused — 12 new", and when more arrived than the ring holds, that the oldest
+    /// of them are already gone rather than a number that quietly under-counts.
+    private var pauseLabel: String {
+        guard log.paused else { return model.text("act_pause") }
+        let key = log.overflowedWhilePaused ? "act_paused_over" : "act_paused_n"
+        return model.text(key, ["n": Copy.exact(log.heldBack),
+                                "cap": Copy.exact(ActivityLog.capacity)])
     }
 
     private var staleBanner: some View {

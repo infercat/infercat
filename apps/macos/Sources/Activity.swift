@@ -148,20 +148,37 @@ enum ResultWord {
 final class ActivityLog: ObservableObject {
     /// The design's buffer: the last 500 items, gap markers included.
     static let capacity = 500
+    /// At most five list publishes a second. A busy host settles twenty requests a
+    /// second, and republishing five hundred rows for each of them cost about a
+    /// quarter of a core with the screen open.
+    static let publishIntervalMS = 200
 
     /// What the screen shows. While paused this does not move.
     @Published private(set) var visible: [ActivityItem] = []
-    /// How many have arrived since the pause began.
+    /// How many arrived since the pause began. Counted on arrival, not inferred from
+    /// the buffer's length: once the ring is full the buffer stops growing, and the
+    /// difference between it and `visible` stops meaning anything.
     @Published private(set) var heldBack = 0
     @Published private(set) var paused = false
+    /// True when more arrived while paused than the ring can hold, so the oldest of
+    /// them are already gone. The screen says so rather than quietly dropping them.
+    @Published private(set) var overflowedWhilePaused = false
 
     /// Capture-only: the filter the screen opens with, so a screenshot can show one.
     var previewErrorsOnly = false
+    /// Test hook: fires once per publish, so coalescing can be measured.
+    var onPublish: (() -> Void)?
 
+    private let napper: any Napper
     private var buffer: [ActivityItem] = []
+    private var arrivedWhilePaused = 0
+    private var coolingDown = false
+    private var pendingPublish = false
     /// `dropped` lines arrive separately from the events they stand for, so a run of
     /// them collapses into the one gap row at the tail.
     private var tailGap: UUID?
+
+    init(napper: any Napper = RealNapper()) { self.napper = napper }
 
     func append(_ event: UsageEvent) {
         // App polls are not what "what just happened" means, and an idle browser tab
@@ -188,28 +205,68 @@ final class ActivityLog: ObservableObject {
     private func push(_ item: ActivityItem) {
         buffer.append(item)
         if buffer.count > Self.capacity { buffer.removeFirst(buffer.count - Self.capacity) }
+        if paused {
+            arrivedWhilePaused += 1
+            if arrivedWhilePaused > Self.capacity { overflowedWhilePaused = true }
+        }
         publish()
     }
 
+    /// Publishes at once, then not again for `publishIntervalMS`; anything that
+    /// arrives during the cooldown is published when it ends.
     private func publish() {
         guard !paused else {
-            heldBack = max(0, buffer.count - visible.count)
+            heldBack = arrivedWhilePaused
             return
         }
+        guard !coolingDown else {
+            pendingPublish = true
+            return
+        }
+        flush()
+        coolingDown = true
+        Task { [weak self] in
+            guard let self else { return }
+            await self.napper.nap(milliseconds: Self.publishIntervalMS)
+            self.coolingDown = false
+            guard self.pendingPublish else { return }
+            self.pendingPublish = false
+            self.publish()
+        }
+    }
+
+    private func flush() {
         visible = buffer
         heldBack = 0
+        onPublish?()
     }
 
     func setPaused(_ value: Bool) {
         paused = value
-        // Resuming shows everything that arrived meanwhile; the stream never stopped.
-        if !value { publish() }
+        if value {
+            arrivedWhilePaused = 0
+            overflowedWhilePaused = false
+        } else {
+            // Resuming shows everything that is still there; the stream never stopped.
+            pendingPublish = false
+            flush()
+        }
+    }
+
+    /// Test-only: publish now, without waiting out the cooldown. Production never
+    /// calls this — the cooldown is the point.
+    func flushForTesting() {
+        pendingPublish = false
+        guard !paused else { return }
+        flush()
     }
 
     func clear() {
         buffer.removeAll()
         visible.removeAll()
         heldBack = 0
+        arrivedWhilePaused = 0
+        overflowedWhilePaused = false
         tailGap = nil
     }
 
