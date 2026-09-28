@@ -41,10 +41,11 @@ enum Copy {
         value.formatted(.number.grouping(.automatic))
     }
 
-    /// Three significant figures, as the console prints them: 1.56M, 84.2k, 192k.
+    /// Three significant figures, as the console prints them: 1.56M, 84.2k, 192k —
+    /// and 22k rather than 22.0k, because a trailing zero is not information.
     private static func trim(_ value: Double) -> String {
         let places = value < 10 ? 2 : (value < 100 ? 1 : 0)
-        return value.formatted(.number.precision(.fractionLength(places)).grouping(.never))
+        return value.formatted(.number.precision(.fractionLength(0...places)).grouping(.never))
     }
 
     /// `3d 4h`, `4h 12m`, `41s` — two units at most, largest first.
