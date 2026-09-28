@@ -113,6 +113,18 @@ infercat serve --upstream http://127.0.0.1:18080
 
 Persistent `serve` settings are remembered in `config.json`. Per-run flags such as `--log-requests`, `--log-prompts`, `--agent`, `--ephemeral` and `--verbose` must be supplied each time. `--log-requests` prints one line per completed request on the terminal, without prompt content.
 
+### Keep it running
+
+Nobody wants to leave a terminal open. `infercat service` hands the host to the system's own supervisor — a per-user LaunchAgent on macOS, the packaged systemd user unit on Linux ([Linux packages](docs/LINUX.md)):
+
+```
+infercat service install     # starts at login from now on; --start-at-login=false to skip that
+infercat service start
+infercat service status      # installed, running, pid, since, binary, log
+```
+
+`stop`, `restart` and `uninstall` do what they say; `service login on|off` changes only whether the host starts at login, without touching a host that is running. The service runs as you, never as root, and runs the same `infercat serve` with the settings remembered in `config.json`. On macOS its output goes to `~/Library/Logs/Infercat/host.log`; on Linux use `journalctl --user -u infercat`. Never run a second `serve` against the same data directory — `service start` refuses while one is already there. Windows has no service yet.
+
 Add a microphone and spoken replies with the [voice hosting recipe](docs/VOICE.md).
 Make pictures with the [image generation hosting recipe](docs/IMAGES.md).
 Search the web in an opted-in chat with the [search hosting recipe](docs/SEARCH.md).

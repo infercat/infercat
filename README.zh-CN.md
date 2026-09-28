@@ -115,6 +115,18 @@ infercat serve --upstream http://127.0.0.1:18080
 
 `serve` 的持久设置会保存在 `config.json` 中。`--log-requests`、`--log-prompts`、`--agent`、`--ephemeral` 和 `--verbose` 等单次运行选项需要每次指定。`--log-requests` 在终端为每个已完成的请求打印一行，不含提示词内容。
 
+### 让它一直运行
+
+谁也不想一直开着一个终端窗口。`infercat service` 把主机交给系统自带的守护机制：macOS 用当前用户的 LaunchAgent，Linux 用软件包自带的 systemd 用户单元（见[Linux 软件包](docs/LINUX.zh-CN.md)）：
+
+```
+infercat service install     # 从此登录即启动；加 --start-at-login=false 可跳过
+infercat service start
+infercat service status      # 是否安装、是否运行、pid、启动时间、可执行文件、日志
+```
+
+`stop`、`restart`、`uninstall` 一如其名；`service login on|off` 只改变“登录时是否启动”，不会动正在运行的主机。服务以你自己的用户身份运行，绝不用 root，运行的就是同一个 `infercat serve`，沿用 `config.json` 里记下的设置。macOS 上它的输出写入 `~/Library/Logs/Infercat/host.log`；Linux 上用 `journalctl --user -u infercat` 查看。不要让两个 `serve` 使用同一个数据目录——若已有主机在用，`service start` 会直接拒绝。Windows 暂无服务支持。
+
 用[语音主机配方](docs/VOICE.md)添加麦克风和朗读回复。
 用[图片生成主机配方](docs/IMAGES.zh-CN.md)让朋友生成图片。
 用[搜索主机配方](docs/SEARCH.zh-CN.md)为明确选择主机工具的对话提供网页搜索。

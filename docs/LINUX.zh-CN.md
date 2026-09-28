@@ -42,6 +42,21 @@ infercat keys add alice
 用户级服务通常随登录会话运行；若希望退出登录后仍继续运行，管理员可执行
 `sudo loginctl enable-linger USERNAME`。
 
+`infercat service` 就是对这个单元执行上面那些命令的封装，因此 Linux 和 macOS 用同一套动词，
+应用也能同时驱动两边：
+
+```sh
+infercat service install         # 等价于 systemctl --user enable infercat
+infercat service start           # stop、restart、uninstall 一如其名
+infercat service login off       # 取消登录自启，不会停止正在运行的主机
+infercat service status          # 是否安装、是否加载、是否运行、pid、启动时间、可执行文件、日志
+infercat service status --json   # 同样的内容，输出为一个 JSON 对象，便于脚本使用
+```
+
+`status` 还会报告 lingering 是否开启；这些动词从不修改它，因为那是管理员的决定。若已有主机在
+使用该数据目录，`service start` 会直接拒绝。它们也从不写入单元文件——单元由软件包提供——所以
+若要使用非默认的数据目录，请写进单元文件本身，或者手动运行 `serve`。
+
 ## 数据与控制台
 
 数据属于运行主机的用户，保存在 `$XDG_CONFIG_HOME/infercat`；未设置该变量时使用

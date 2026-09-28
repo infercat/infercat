@@ -32,6 +32,10 @@ and context-checkpoint caps; an existing installation must be refreshed. (185)
 
 **Hosts**
 
+- **Keep it running.** `infercat service install|uninstall|start|stop|restart|status|login` manages
+  a per-user LaunchAgent on macOS and the packaged systemd user unit on Linux, with `--json` for
+  scripts. `service start` refuses while another host already serves the data directory, and Linux
+  reports when lingering is off without changing it. Windows is not supported yet. (196)
 - **Temporary identity migration retired.** `infercat identity upgrade` is removed; v0.1.4 is
   the last release carrying it. Legacy identities still serve existing invites, but refuse to
   mint or rotate invites through the CLI or console. (137)

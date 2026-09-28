@@ -44,6 +44,22 @@ and start the unit again. Never run both hosts against the same data directory.
 A user service normally follows the login session; to keep it running after logout, an
 administrator can enable lingering with `sudo loginctl enable-linger USERNAME`.
 
+`infercat service` wraps those same commands on this unit, so one set of verbs works on Linux and
+macOS alike and the app can drive either:
+
+```sh
+infercat service install         # systemctl --user enable infercat
+infercat service start           # stop, restart and uninstall do what they say
+infercat service login off       # stop starting at login, without stopping a running host
+infercat service status          # installed, loaded, running, pid, since, binary, log
+infercat service status --json   # the same as one JSON object, for scripts
+```
+
+`status` also reports whether lingering is on; these verbs never change it, because that is an
+administrator's decision. `service start` refuses while another host is already serving the data
+directory. They never write the unit file — the package owns it — so a data directory other than
+the default belongs in the unit itself, or the host runs `serve` by hand.
+
 ## Data and console
 
 Data belongs to the hosting user: `$XDG_CONFIG_HOME/infercat`, or `~/.config/infercat` when
