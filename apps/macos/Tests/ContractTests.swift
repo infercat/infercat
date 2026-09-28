@@ -15,7 +15,7 @@ final class ContractTests: XCTestCase {
 
     func testEveryVendoredFixtureIsAnEnvelopeOrAWatchLine() throws {
         let names = Fixtures.allContractNames()
-        XCTAssertEqual(names.count, 29, "vendor-fixtures.sh and the bundle disagree")
+        XCTAssertEqual(names.count, 43, "vendor-fixtures.sh and the bundle disagree")
         for name in names where !name.hasPrefix("watch.") {
             let envelope = try Contract.decoder.decode(Envelope.self, from: try Fixtures.contract(name))
             XCTAssertEqual(envelope.schema, 1, name)
@@ -48,6 +48,41 @@ final class ContractTests: XCTestCase {
         XCTAssertEqual(keys[0].limits.daily_tokens, 1)
         XCTAssertEqual(keys[0].limits.models, ["example"])
         XCTAssertTrue(try payload("keys.list.empty", as: [FriendKey].self).isEmpty)
+    }
+
+    func testKeysGetDecodesWithItsSevenDays() throws {
+        let key = try payload("keys.get.populated", as: FriendKey.self)
+        XCTAssertEqual(key.agent, true)
+        XCTAssertEqual(key.daily?.count, 1)
+        XCTAssertEqual(key.daily?.first?.tokens, 2)
+        XCTAssertEqual(key.limits.search_per_day, 1)
+        XCTAssertEqual(key.limits.daily_speech_chars, 1)
+        // The zero form keeps `daily` decodable and `agent` present.
+        let bare = try payload("keys.get.empty", as: FriendKey.self)
+        XCTAssertEqual(bare.agent, false)
+        XCTAssertNil(bare.limits.models)
+    }
+
+    func testMintedInviteAndAcknowledgementsDecode() throws {
+        for name in ["keys.add.populated", "keys.rotate.populated"] {
+            let minted = try payload(name, as: MintedInvite.self)
+            XCTAssertFalse(minted.key_id.isEmpty)
+            XCTAssertFalse(minted.invite.isEmpty)
+        }
+        for name in ["keys.add.empty", "keys.rotate.empty"] {
+            _ = try payload(name, as: MintedInvite.self)
+        }
+        for name in ["keys.pause", "keys.resume", "keys.revoke", "keys.limits"] {
+            XCTAssertTrue(try payload("\(name).populated", as: Acknowledged.self).ok)
+            XCTAssertFalse(try payload("\(name).empty", as: Acknowledged.self).ok)
+        }
+    }
+
+    /// `last_seen` is always present and is Go's zero time for "never".
+    func testNeverSeenIsTheZeroTimeNotNull() throws {
+        let key = try payload("keys.get.empty", as: FriendKey.self)
+        XCTAssertNotNil(key.last_seen, "the field is always there")
+        XCTAssertNil(key.seenAt, "but the zero time means never")
     }
 
     func testServiceStatusDecodes() throws {

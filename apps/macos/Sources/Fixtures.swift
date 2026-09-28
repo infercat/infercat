@@ -23,6 +23,15 @@ final class FixtureCLI: CLIClient, @unchecked Sendable {
         case "keys.list":
             guard lock.withLock({ running }) else { throw CLIError.hostStopped }
             return try Fixtures.demo("keys.\(language.code)")
+        case "keys.get":
+            guard lock.withLock({ running }) else { throw CLIError.hostStopped }
+            return try Fixtures.demo("keyshow.\(language.code)")
+        case "keys.add", "keys.rotate":
+            guard lock.withLock({ running }) else { throw CLIError.hostStopped }
+            return try Fixtures.demo("minted.\(language.code)")
+        case "keys.limits", "keys.pause", "keys.resume", "keys.revoke":
+            guard lock.withLock({ running }) else { throw CLIError.hostStopped }
+            return try Fixtures.contract("keys.pause.populated")
         case "usage":
             guard lock.withLock({ running }) else { throw CLIError.hostStopped }
             return try Fixtures.demo("usage")

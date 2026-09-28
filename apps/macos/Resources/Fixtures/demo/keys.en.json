@@ -21,7 +21,8 @@
       },
       "created_at": "2026-09-20T09:00:00Z",
       "last_seen": "2026-09-28T14:32:07Z",
-      "today_tokens": 84200
+      "today_tokens": 84200,
+      "agent": true
     },
     {
       "id": "k_bao",
@@ -37,8 +38,9 @@
         "models": null
       },
       "created_at": "2026-09-20T09:00:00Z",
-      "last_seen": "2026-09-28T14:32:07Z",
-      "today_tokens": 41600
+      "last_seen": "2026-09-28T14:31:52Z",
+      "today_tokens": 41600,
+      "agent": false
     },
     {
       "id": "k_wei",
@@ -54,8 +56,117 @@
         "models": null
       },
       "created_at": "2026-09-20T09:00:00Z",
-      "last_seen": "2026-09-28T14:32:07Z",
-      "today_tokens": 192000
+      "last_seen": "2026-09-28T14:30:18Z",
+      "today_tokens": 192000,
+      "agent": false
+    },
+    {
+      "id": "k_ada",
+      "name": "Ada",
+      "status": "active",
+      "limits": {
+        "rpm": 20,
+        "tpm": 40000,
+        "max_concurrent": 2,
+        "max_output_tokens": 4096,
+        "max_context": 0,
+        "daily_tokens": 200000,
+        "models": null
+      },
+      "created_at": "2026-09-20T09:00:00Z",
+      "last_seen": "2026-09-28T11:20:00Z",
+      "today_tokens": 12900,
+      "agent": false
+    },
+    {
+      "id": "k_ada2",
+      "name": "Ada-laptop",
+      "status": "active",
+      "limits": {
+        "rpm": 20,
+        "tpm": 40000,
+        "max_concurrent": 2,
+        "max_output_tokens": 4096,
+        "max_context": 0,
+        "daily_tokens": 200000,
+        "models": null
+      },
+      "created_at": "2026-09-20T09:00:00Z",
+      "last_seen": "2026-09-27T18:02:00Z",
+      "today_tokens": 0,
+      "agent": false
+    },
+    {
+      "id": "k_tom",
+      "name": "Tomás",
+      "status": "active",
+      "limits": {
+        "rpm": 20,
+        "tpm": 40000,
+        "max_concurrent": 2,
+        "max_output_tokens": 4096,
+        "max_context": 0,
+        "daily_tokens": 200000,
+        "models": null
+      },
+      "created_at": "2026-09-26T10:00:00Z",
+      "last_seen": "0001-01-01T00:00:00Z",
+      "today_tokens": 0,
+      "agent": false
+    },
+    {
+      "id": "k_pia",
+      "name": "Pia",
+      "status": "paused",
+      "limits": {
+        "rpm": 20,
+        "tpm": 40000,
+        "max_concurrent": 2,
+        "max_output_tokens": 4096,
+        "max_context": 0,
+        "daily_tokens": 100000,
+        "models": null
+      },
+      "created_at": "2026-09-20T09:00:00Z",
+      "last_seen": "2026-09-24T09:15:00Z",
+      "today_tokens": 0,
+      "agent": false
+    },
+    {
+      "id": "k_old",
+      "name": "Sam",
+      "status": "revoked",
+      "limits": {
+        "rpm": 20,
+        "tpm": 40000,
+        "max_concurrent": 2,
+        "max_output_tokens": 4096,
+        "max_context": 0,
+        "daily_tokens": 200000,
+        "models": null
+      },
+      "created_at": "2026-09-20T09:00:00Z",
+      "last_seen": "2026-09-10T08:00:00Z",
+      "today_tokens": 0,
+      "agent": false
+    },
+    {
+      "id": "k_old2",
+      "name": "Old-laptop",
+      "status": "revoked",
+      "limits": {
+        "rpm": 20,
+        "tpm": 40000,
+        "max_concurrent": 2,
+        "max_output_tokens": 4096,
+        "max_context": 0,
+        "daily_tokens": 200000,
+        "models": null
+      },
+      "created_at": "2026-09-20T09:00:00Z",
+      "last_seen": "2026-09-02T08:00:00Z",
+      "today_tokens": 0,
+      "agent": false
     }
   ]
 }

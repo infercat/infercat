@@ -1,0 +1,14 @@
+{
+  "schema": 1,
+  "command": "keys.add",
+  "host": {
+    "version": "0.1.6",
+    "name": "host"
+  },
+  "data": {
+    "key_id": "k_new",
+    "name": "Lin",
+    "invite": "ic2.demo-not-a-real-invite.AAAABBBBCCCCDDDDEEEEFFFF",
+    "link": "https://infercat.ai#ic2.demo-not-a-real-invite.AAAABBBBCCCCDDDDEEEEFFFF"
+  }
+}
