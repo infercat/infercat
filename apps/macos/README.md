@@ -87,6 +87,7 @@ no socket, no reading the host's files, and the admin token never enters the app
   | visibility change → restart for a new interval | 1 s debounce, and only while a stream is actually delivering |
   | damaged bundle, or a schema we cannot read | the loop stops; it will not fix itself |
   | **Activity** — any number of rows, filters, pause, resume | **none: it adds no edge at all.** Every row is an `event` line of the stream that is already running, so the screen is a view of it and never a source |
+  | Activity's list publishes | at most five a second. A busy host settles twenty requests a second, and republishing five hundred rows for each cost about a quarter of a core; the first publish after a quiet moment is immediate, the rest wait out a 200 ms cooldown, and pause and resume always publish at once |
   | Settings: Save name, Start at login, Open web console | one subprocess per press, and `working` means a second press while the first is out does nothing |
   | selecting a friend → `keys show` | 150 ms debounce, latest-wins, one read in flight. Holding an arrow key across fifty friends costs at most three reads, not fifty |
 
@@ -125,7 +126,10 @@ no socket, no reading the host's files, and the admin token never enters the app
   carrying both and asserts no trace survives into the row or the list. App polls are
   not listed — an idle browser tab polls every 30 s per friend, and the design's own
   count is the host's `model_calls` — and a `dropped` line becomes a visible gap row,
-  never a silent one.
+  never a silent one. Pausing counts arrivals as they arrive rather than inferring
+  them from the buffer's length, which stops meaning anything once the ring is full;
+  when more arrive than the ring holds, the button says so. The rows survive the host
+  going away, because that is exactly when someone wants to look at them.
 - **The invite secret lives in memory and nowhere else.** `InviteSecret` is not
   `Codable`, is never written, never logged, never interpolated into an error, and
   reaches the pasteboard only through a button the person pressed — marked transient

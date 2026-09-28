@@ -159,6 +159,10 @@ enum Capture {
             Demo.friends(model, language, keys: Demo.keys(language, generous: true))
             Demo.activity(model, language, dropped: true)
         },
+        Scene(name: "activity-7-paused-overflow", surface: .screen(.activity)) { model, language in
+            Demo.friends(model, language, keys: Demo.keys(language, generous: true))
+            Demo.activity(model, language, paused: true, overflow: true)
+        },
         Scene(name: "activity-5-empty", surface: .screen(.activity)) { model, language in
             Demo.friends(model, language, keys: Demo.keys(language, generous: true))
         },
@@ -397,7 +401,8 @@ enum Demo {
     /// A plausible tail of settled requests, built from the demo friends. Everything
     /// here is counts and timings; there is nowhere for text to live.
     static func activity(_ model: HostModel, _ language: Language,
-                         errorsOnly: Bool = false, paused: Bool = false, dropped: Bool = false) {
+                         errorsOnly: Bool = false, paused: Bool = false,
+                         dropped: Bool = false, overflow: Bool = false) {
         let keys = self.keys(language, generous: true)
         let rows: [(Int, String, Int, String?, Int, Int, Int, Int)] = [
             (0, "/v1/chat/completions", 200, nil, 1_204, 386, 212, 9_600),
@@ -422,12 +427,17 @@ enum Demo {
             if dropped, index == 4 { model.activity.drop(6) }
         }
         model.activity.previewErrorsOnly = errorsOnly
+        model.activity.flushForTesting()
         if paused {
             model.activity.setPaused(true)
-            model.activity.append(UsageEvent(
-                ts: clock, key_id: keys[0].id, endpoint: "/v1/chat/completions", status: 200,
-                prompt_tokens: 120, completion_tokens: 340, queued_ms: 0, ttft_ms: 190,
-                total_ms: 8_100, kind: nil, model: nil, via: nil, code: nil))
+            // A dozen for the everyday case; more than the ring holds for the one the
+            // counter used to get wrong.
+            for index in 0..<(overflow ? 1_200 : 12) {
+                model.activity.append(UsageEvent(
+                    ts: clock, key_id: keys[index % 3].id, endpoint: "/v1/chat/completions",
+                    status: 200, prompt_tokens: 120, completion_tokens: 340, queued_ms: 0,
+                    ttft_ms: 190, total_ms: 8_100, kind: nil, model: nil, via: nil, code: nil))
+            }
         }
     }
 
