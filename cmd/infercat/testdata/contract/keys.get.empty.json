@@ -9,6 +9,7 @@
     "id": "",
     "name": "",
     "status": "",
+    "agent": false,
     "limits": {
       "search_per_day": 0,
       "daily_images": 0,

@@ -10,6 +10,7 @@
       "id": "k_example",
       "name": "Example host",
       "status": "active",
+      "agent": true,
       "limits": {
         "search_per_day": 1,
         "daily_images": 1,

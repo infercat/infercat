@@ -25,11 +25,13 @@ infercat keys revoke k_example --yes --json
 {"schema":1,"command":"keys.pause","error":{"code":"key_not_found","message":"no key k_example"}}
 ```
 
-除 JSON 值外围的空白外，`data` 与管理路由响应逐字节一致。CLI 不归一化数组、null、零值或省略字段。[生成的字段清单](../cmd/infercat/testdata/cli-schema-1.txt) 记录这些区别。CLI 自己定义的新载荷（`api`、`version`、封装）保留零值，空列表使用 `[]`。host 元数据描述操作开始时的主机；离线命令使用 CLI 构建版本和本地保存的名称（`version` 和 `api` 的名称为空）。
+除 JSON 值外围的空白外，`data` 与管理路由响应逐字节一致。CLI 不归一化数组、null、零值或省略字段。[生成的字段清单](../cmd/infercat/testdata/cli-schema-1.txt) 记录这些区别。CLI 自己定义的新载荷（`api`、`version`、`console.open`、封装）保留零值，空列表使用 `[]`。host 元数据描述操作开始时的主机；离线命令使用 CLI 构建版本和本地保存的名称（`version` 和 `api` 的名称为空）。
 
 新增字段或操作兼容旧契约。错误代码，以及引擎类型、密钥状态、运行状态/种类等字符串枚举是开放的：保留或显示未知值，不要据此拒绝响应。删除、重命名或更改字段类型，把必有字段改为可省略，改变 null 的允许性、退出码含义或既有操作语义，都需要新 schema。schema 1 和裸 `--json` 必须继续有效，不能被新版本暗中替换。客户端忽略未知字段。
 
-**脚本迁移：** 原先未封装的 `keys add --json`、`keys rotate --json`、`remote … --json` 结果现在位于 schema 1 的 `data` 中。读取路径改为 `.data`，新密钥名称移到 `--` 后。`remote.status` 和 `expose.status` 返回完整的 `/status` 响应，不做字段投影。
+参数错误的 `command` 可能只是尚未解析完整的命令前缀（如 `keys`、`expose`、`help`，也可能为空），不一定是操作表中的行；调用方应将错误关联到自己启动的操作。
+
+**脚本迁移：** 原先未封装的 `keys add --json`、`keys rotate --json`、`remote … --json` 结果现在位于 schema 1 的 `data` 中。读取路径改为 `.data`，新密钥名称移到 `--` 后。单横线 `-json` 不再接受，请使用 `--json`。`remote.status` 和 `expose.status` 返回完整的 `/status` 响应，不做字段投影。
 
 | 退出码 | 含义 |
 |---|---|
@@ -59,13 +61,13 @@ infercat keys revoke k_example --yes --json
 infercat watch --json --interval 2s
 ```
 
-每行一个对象：`hello`（schema、host、interval_ms、events）、`status`（schema、at、data）、`event`（schema、data）、`dropped`（schema、count），连接结束时输出 `gone`（schema、reason）。事件订阅建立后输出 `hello`，紧接着立即输出已取得的首条 `status`；之后按间隔查询状态。响应压缩为单行，绝不包含提示词或回答正文。
+每行一个对象：`hello`（schema、host、interval_ms、events）、`status`（schema、at、data）、`event`（schema、data）、`dropped`（schema、count），连接结束时输出 `gone`（schema、reason）。事件订阅建立后输出 `hello`，紧接着立即输出已取得的首条 `status`；之后按间隔查询状态。JSON 对象的属性顺序不属于契约，应按字段名解码。响应压缩为单行，绝不包含提示词或回答正文。
 
 CLI 最多缓存 256 个事件。stdout 读取缓慢不会阻塞事件读取；`dropped` 只报告该转发队列确知的丢失量。主机既有事件广播也可能丢失事件，且不报告丢失量，因此这不是持久审计流。当前总量请查询 status/usage。
 
 机器模式的 watch 在正常运行和已处理的失败中不向 stderr 写入内容；只有进程的致命诊断可能出现在那里。主机停止或重启会让当前连接输出 `gone` 并以 69 退出；watch 不自行重连，由调用方重新启动。
 
-启动时没有主机，watch 只输出一行 `gone`，退出码为 69，不输出 `hello`。超时退出码为 75。中断 watch 会取消连接并等待读取协程退出，不会停止主机。远程主机模式属于另行实施的工作。服务生命周期命令由服务层（196）实现，下方操作表和字段清单也包含它们。
+启动时没有主机，watch 只输出一行 `gone`，退出码为 69，不输出 `hello`。超时退出码为 75。stdout 可写时，中断 watch 会取消连接并等待读取协程退出，不会停止主机。如果调用方停止读取 stdout，操作系统的管道写入可能阻塞，在解除阻塞前无法响应 SIGINT/SIGTERM。停止这种子进程时，调用方必须关闭 stdout 管道（或继续读取）；不要在管道保持打开但无人读取时等待退出。远程主机模式属于另行实施的工作。服务生命周期命令由服务层（196）实现，下方操作表和字段清单也包含它们。
 
 ## 操作
 

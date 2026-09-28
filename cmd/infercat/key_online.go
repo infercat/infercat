@@ -31,7 +31,7 @@ func remoteKey(ctx context.Context, client *admin.Client, ref string) (*keys.Key
 	}
 	var all, live []consoleKey
 	convert := func(k consoleKey) *keys.Key {
-		return &keys.Key{ID: k.ID, Name: k.Name, Status: k.Status, Limits: k.Limits, CreatedAt: k.Created}
+		return &keys.Key{ID: k.ID, Name: k.Name, Status: k.Status, Agent: k.Agent, Limits: k.Limits, CreatedAt: k.Created}
 	}
 	for _, k := range list {
 		if k.ID == ref {

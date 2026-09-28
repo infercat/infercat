@@ -219,6 +219,7 @@ watch data.uptime_s integer always
 watch data.version string always
 keys.list data array<object> always
 keys.list data[] object element
+keys.list data[].agent boolean always
 keys.list data[].created_at string(timestamp) always
 keys.list data[].daily array<object> omitempty
 keys.list data[].daily[] object element
@@ -272,6 +273,7 @@ keys.list data[].name string always
 keys.list data[].status string always
 keys.list data[].today_tokens integer always
 keys.get data object always
+keys.get data.agent boolean always
 keys.get data.created_at string(timestamp) always
 keys.get data.daily array<object> omitempty
 keys.get data.daily[] object element

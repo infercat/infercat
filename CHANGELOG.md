@@ -75,7 +75,8 @@ and context-checkpoint caps; an existing installation must be refreshed. (185)
 
 - **Versioned CLI JSON for host management.** `--json` now means schema 1. Existing
   `keys add`, `keys rotate` and `remote` JSON results move into `.data`; scripts must
-  update, and new key names must follow `--`. Added machine-readable operations,
+  update, and new key names must follow `--`. Single-dash `-json` is no longer
+  accepted; use `--json`. Added machine-readable operations,
   `watch --json`, and the [CLI contract](docs/CLI-JSON.md). (195)
 
 - **Host-tool protocol.** `/me.host_tools` advertises available names; a client opts in with

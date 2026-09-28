@@ -118,6 +118,7 @@ type consoleKey struct {
 	ID          string       `json:"id"`
 	Name        string       `json:"name"`
 	Status      keys.Status  `json:"status"`
+	Agent       bool         `json:"agent"`
 	Limits      keys.Limits  `json:"limits"`
 	Created     time.Time    `json:"created_at"`
 	LastSeen    time.Time    `json:"last_seen"`
@@ -205,7 +206,7 @@ func (e *env) consoleAPI(store *keys.FileStore, addr string, up upstream.Upstrea
 		if err != nil {
 			return consoleKey{}, err
 		}
-		return consoleKey{ID: k.ID, Name: k.Name, Status: k.Status, Limits: k.Limits, Created: k.CreatedAt,
+		return consoleKey{ID: k.ID, Name: k.Name, Status: k.Status, Agent: k.Agent, Limits: k.Limits, Created: k.CreatedAt,
 			LastSeen: rep.LastSeen()[k.ID], TodayTokens: day.Total.PromptTokens + day.Total.CompletionTokens}, err
 	}
 	route("GET /keys", func(w http.ResponseWriter, r *http.Request) (any, error) {
@@ -244,6 +245,9 @@ func (e *env) consoleAPI(store *keys.FileStore, addr string, up upstream.Upstrea
 		return v, nil
 	})
 	route("GET /usage", func(w http.ResponseWriter, r *http.Request) (any, error) {
+		if consoleRemote(r) && r.URL.Query().Has("key_id") {
+			return nil, errors.New("key_id: local host only")
+		}
 		if since, ok := r.URL.Query()["since"]; ok {
 			if consoleRemote(r) {
 				return nil, errors.New("since: local host only")

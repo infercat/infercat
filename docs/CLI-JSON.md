@@ -25,11 +25,13 @@ Free text (new names and settings assignments) must follow `--`; put flags, incl
 {"schema":1,"command":"keys.pause","error":{"code":"key_not_found","message":"no key k_example"}}
 ```
 
-`data` is the admin route's response byte for byte, apart from whitespace outside its JSON value. The CLI does not normalize arrays, nulls, zero values or omitted fields. Standalone [decoder fixtures](../cmd/infercat/testdata/contract/) cover every operation and watch line; they are constructed examples, not captured host data. The [generated field inventory](../cmd/infercat/testdata/cli-schema-1.txt) records those distinctions. New CLI-owned payloads (`api`, `version`, envelopes) use present zero values and `[]` for empty lists. The host metadata describes the host at the start of the operation; offline commands use the CLI build and remembered local name (empty for `version` and `api`).
+`data` is the admin route's response byte for byte, apart from whitespace outside its JSON value. The CLI does not normalize arrays, nulls, zero values or omitted fields. Standalone [decoder fixtures](../cmd/infercat/testdata/contract/) cover every operation and watch line; they are constructed examples, not captured host data. The [generated field inventory](../cmd/infercat/testdata/cli-schema-1.txt) records those distinctions. New CLI-owned payloads (`api`, `version`, `console.open`, envelopes) use present zero values and `[]` for empty lists. The host metadata describes the host at the start of the operation; offline commands use the CLI build and remembered local name (empty for `version` and `api`).
 
 Adding fields or operations is compatible. Error codes and string enums describing engine kinds, key status and run state/kind are open: preserve or display unfamiliar values rather than rejecting the response. Removing, renaming or retyping fields, making a required field optional, changing nullability, changing an exit code's meaning or changing an existing operation's semantics requires a new schema. Schema 1 and bare `--json` must continue to work; a new version does not silently replace them. Consumers ignore unknown fields.
 
-**Script migration:** the former unwrapped `keys add --json`, `keys rotate --json` and `remote … --json` results now live inside schema 1's `data` envelope. Move readers to `.data`; move new key names after `--`. `remote.status` and `expose.status` return the complete `/status` body, not a projection.
+An invalid-argument envelope may use an unresolved command prefix such as `keys`, `expose` or `help` (or an empty name), rather than an operation-table row. Associate failures with the operation the caller launched.
+
+**Script migration:** the former unwrapped `keys add --json`, `keys rotate --json` and `remote … --json` results now live inside schema 1's `data` envelope. Move readers to `.data`; move new key names after `--`. Single-dash `-json` is no longer accepted; use `--json`. `remote.status` and `expose.status` return the complete `/status` body, not a projection.
 
 | Exit | Meaning |
 |---|---|
@@ -59,13 +61,13 @@ With a host running, key mutations and usage use the authenticated admin routes.
 infercat watch --json --interval 2s
 ```
 
-One object per line: `hello` (schema, host, interval_ms, events), `status` (schema, at, data), `event` (schema, data), `dropped` (schema, count), then `gone` (schema, reason) when the connection ends. `hello` follows the event subscription opening, immediately followed by the already-fetched first `status`; later status lines are polled on the interval. Response bodies are compacted to one line. Prompt and completion text never appear.
+One object per line: `hello` (schema, host, interval_ms, events), `status` (schema, at, data), `event` (schema, data), `dropped` (schema, count), then `gone` (schema, reason) when the connection ends. `hello` follows the event subscription opening, immediately followed by the already-fetched first `status`; later status lines are polled on the interval. JSON object property order is not part of the contract; decode by field name. Response bodies are compacted to one line. Prompt and completion text never appear.
 
 The CLI buffers at most 256 events. A slow stdout reader does not block the event reader; `dropped` reports only losses observed in this forwarding queue. The host's existing event fan-out is also lossy and does not report its losses, so this is not a durable audit stream. Read aggregate status/usage for current totals.
 
 Machine-mode watch writes nothing to stderr during normal operation, including handled failures; only fatal process diagnostics may appear there. A host stop or restart ends the current connection with `gone` and exit 69; watch never reconnects itself. The consumer starts a new watch.
 
-With no host at startup, watch prints one `gone` line and exits 69, without `hello`. A timeout exits 75. Interrupting watch cancels its connections and joins its reader; it does not stop the host. Remote-host mode is separate work. Service lifecycle commands are implemented by the service layer (196), and are included in the operation and field inventories below.
+With no host at startup, watch prints one `gone` line and exits 69, without `hello`. A timeout exits 75. When stdout is writable, interrupting watch cancels its connections and joins its reader; it does not stop the host. If the consumer stops reading stdout, an OS pipe write can block and cannot observe SIGINT/SIGTERM until it unblocks. To stop that subprocess, the consumer must close its stdout pipe (or keep draining it); do not wait for exit while leaving an unread pipe open. Remote-host mode is separate work. Service lifecycle commands are implemented by the service layer (196), and are included in the operation and field inventories below.
 
 ## Operations
 
