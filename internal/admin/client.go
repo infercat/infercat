@@ -58,6 +58,10 @@ func NewClient(dir string) (*Client, error) {
 	return &Client{http: hc, base: base, token: token}, nil
 }
 
+// Local clients own no tunnel; the remote constructor extends this lifecycle seam.
+func (c *Client) Close() error { return nil }
+func (c *Client) Remote() bool { return false }
+
 const maxResponse = 16 << 20
 
 // Call returns the successful JSON body without decoding/re-encoding it. The bound applies

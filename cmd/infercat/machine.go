@@ -46,17 +46,19 @@ func (e *env) machineRead(ctx context.Context, args []string) (int, bool) {
 	return machine.Write(e.out, command, host, data, err), true
 }
 
-func hostClient(ctx context.Context, dir string) (*admin.Client, machine.Host, json.RawMessage, error) {
-	client, err := admin.NewClient(dir)
+func (e *env) hostClient(ctx context.Context, dir string) (*admin.Client, machine.Host, json.RawMessage, error) {
+	client, err := e.adminClient(ctx, dir)
 	if err != nil {
 		return nil, machine.Host{}, nil, err
 	}
 	raw, err := client.Call(ctx, "GET", "/status", nil)
 	if err != nil {
+		client.Close()
 		return nil, machine.Host{}, nil, err
 	}
 	var host machine.Host
 	if err = json.Unmarshal(raw, &host); err != nil {
+		client.Close()
 		return nil, host, nil, admin.ErrResponse
 	}
 	return client, host, raw, nil
@@ -77,13 +79,14 @@ func (e *env) executeMachine(ctx context.Context, r machineRequest) (machine.Hos
 		data, err := json.Marshal(machineOperations)
 		return own, data, err
 	}
-	client, host, status, err := hostClient(ctx, r.dir)
+	client, host, status, err := e.hostClient(ctx, r.dir)
 	if errors.Is(err, admin.ErrNoDaemon) && (r.command == "keys.list" || r.command == "keys.add") {
 		return e.offlineMachine(ctx, r)
 	}
 	if err != nil {
 		return host, nil, err
 	}
+	defer client.Close()
 	if r.command == "console.open" {
 		raw, err := e.machineConsole(ctx, r.dir, status)
 		return host, raw, err

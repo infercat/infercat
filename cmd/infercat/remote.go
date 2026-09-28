@@ -46,7 +46,12 @@ func (e *env) cmdRemote(ctx context.Context, pre string, args []string) error {
 	if err != nil {
 		return err
 	}
-	st, err := admin.Fetch(ctx, dir)
+	client, err := e.adminClient(ctx, dir)
+	if err != nil {
+		return err
+	}
+	defer client.Close()
+	st, err := clientStatus(ctx, client)
 	if err != nil {
 		return err
 	}
@@ -73,7 +78,8 @@ func (e *env) cmdRemote(ctx context.Context, pre string, args []string) error {
 	if action == "on" {
 		action = "enable"
 	}
-	result, err := admin.RemoteAction(ctx, dir, action)
+	var result admin.RemoteResult
+	err = callJSON(ctx, client, "POST", "/remote/"+action, nil, &result)
 	if err != nil {
 		return err
 	}

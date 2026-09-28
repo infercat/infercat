@@ -32,9 +32,12 @@ func (e *env) cmdUsage(ctx context.Context, pre string, args []string) error {
 	if err != nil {
 		return err
 	}
-	client, err := onlineClient(ctx, dataDir)
+	client, err := e.onlineClient(ctx, dataDir)
 	if err != nil {
 		return err
+	}
+	if client != nil {
+		defer client.Close()
 	}
 	if client != nil {
 		var list []consoleKey

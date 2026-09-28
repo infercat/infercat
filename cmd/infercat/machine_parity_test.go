@@ -107,6 +107,8 @@ func operationArgs(name, id, cursor string) []string {
 	switch name {
 	case "status", "version", "api", "engine":
 		return []string{name, "--json"}
+	case "console.open":
+		return []string{"console", "--json"}
 	case "settings.get":
 		return []string{"settings", "--json"}
 	case "settings.set":

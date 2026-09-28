@@ -12,8 +12,8 @@ import (
 
 // Absence is established with a read before choosing the offline path. Once a mutation
 // is dispatched, every failure is returned; it can never fall back to a second file write.
-func onlineClient(ctx context.Context, dir string) (*admin.Client, error) {
-	client, _, _, err := hostClient(ctx, dir)
+func (e *env) onlineClient(ctx context.Context, dir string) (*admin.Client, error) {
+	client, _, _, err := e.hostClient(ctx, dir)
 	if errors.Is(err, admin.ErrNoDaemon) {
 		return nil, nil
 	}

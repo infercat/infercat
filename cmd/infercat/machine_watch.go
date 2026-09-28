@@ -17,7 +17,7 @@ type watchSource interface {
 }
 
 func (e *env) machineWatch(ctx context.Context, r machineRequest) int {
-	client, host, initial, err := hostClient(ctx, r.dir)
+	client, host, initial, err := e.hostClient(ctx, r.dir)
 	if err != nil {
 		if ctx.Err() != nil {
 			return 0
@@ -28,6 +28,7 @@ func (e *env) machineWatch(ctx context.Context, r machineRequest) int {
 		}
 		return failure.Exit
 	}
+	defer client.Close()
 	return e.watchHost(ctx, r, client, host, initial)
 }
 

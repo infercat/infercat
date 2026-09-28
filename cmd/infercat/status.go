@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -33,15 +34,26 @@ func (e *env) cmdStatus(ctx context.Context, pre string, args []string) error {
 	if err != nil {
 		return err
 	}
+	client, clientErr := e.adminClient(ctx, dataDir)
+	if client != nil {
+		defer client.Close()
+	}
 	var agentsOut io.Writer = io.Discard
 	if !*watch {
 		agentsOut = e.out
 	}
-	agentCount, err := writeAgents(agentsOut)
-	if err != nil {
-		return err
+	agentCount := 0
+	if client == nil || !client.Remote() {
+		agentCount, err = writeAgents(agentsOut)
+		if err != nil {
+			return err
+		}
 	}
-	st, err := admin.Fetch(ctx, dataDir)
+	var st admin.Status
+	err = clientErr
+	if err == nil {
+		st, err = clientStatus(ctx, client)
+	}
 	if errors.Is(err, admin.ErrNoDaemon) {
 		if agentCount > 0 && !*watch {
 			fmt.Fprintln(e.out, "no running host or bridge for this data directory")
@@ -56,7 +68,7 @@ func (e *env) cmdStatus(ctx context.Context, pre string, args []string) error {
 		writeStatus(e.out, st)
 		return nil
 	}
-	return e.watchStatus(ctx, dataDir, st, max(*interval, 100*time.Millisecond))
+	return e.watchStatus(ctx, dataDir, client, st, max(*interval, 100*time.Millisecond))
 }
 
 func writeAgents(w io.Writer) (int, error) {
@@ -79,13 +91,28 @@ func writeAgents(w io.Writer) (int, error) {
 // no library — with the last watchLines request lines from the event stream beneath it. Ctrl-C
 // ends it cleanly. A host that stops answering mid-watch is shown as such and the watch keeps
 // trying, since a restart is exactly when someone is watching.
-func (e *env) watchStatus(ctx context.Context, dataDir string, st admin.Status, every time.Duration) error {
+func (e *env) watchStatus(ctx context.Context, dataDir string, client *admin.Client, st admin.Status, every time.Duration) error {
 	ctx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	events := make(chan usage.Event, 64)
 	go func() {
 		for ctx.Err() == nil {
-			_ = admin.Watch(ctx, dataDir, func(ev usage.Event) { events <- ev })
+			if client.Remote() {
+				return
+			}
+			stream, err := e.adminClient(ctx, dataDir)
+			if err == nil {
+				_ = stream.Events(ctx, func(raw json.RawMessage) {
+					var ev usage.Event
+					if json.Unmarshal(raw, &ev) == nil {
+						select {
+						case events <- ev:
+						case <-ctx.Done():
+						}
+					}
+				}, nil)
+				stream.Close()
+			}
 			select {
 			case <-time.After(every):
 			case <-ctx.Done():
@@ -97,7 +124,9 @@ func (e *env) watchStatus(ctx context.Context, dataDir string, st admin.Status, 
 	var lines []string
 	refresh := func(st admin.Status, err error) {
 		var b strings.Builder
-		_, _ = writeAgents(&b)
+		if !client.Remote() {
+			_, _ = writeAgents(&b)
+		}
 		if err != nil {
 			fmt.Fprintf(&b, "%s %s — no answer from the host for %s (%v); still watching\n", product.Name, product.Version, dataDir, err)
 		} else {
@@ -121,7 +150,7 @@ func (e *env) watchStatus(ctx context.Context, dataDir string, st admin.Status, 
 			fmt.Fprintln(e.out)
 			return nil
 		case <-t.C:
-			refresh(admin.Fetch(ctx, dataDir))
+			refresh(e.refreshStatus(ctx, dataDir, client))
 			draw()
 		case ev := <-events:
 			who := names[ev.KeyID]

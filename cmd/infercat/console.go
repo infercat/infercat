@@ -60,7 +60,12 @@ func (e *env) cmdConsole(ctx context.Context, pre string, args []string) error {
 	if err != nil {
 		return err
 	}
-	st, err := admin.Fetch(ctx, dir)
+	client, err := e.adminClient(ctx, dir)
+	if err != nil {
+		return err
+	}
+	defer client.Close()
+	st, err := clientStatus(ctx, client)
 	if err != nil {
 		return err
 	}
