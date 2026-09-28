@@ -1002,5 +1002,21 @@
   "after_waiting": {
     "en": "Waiting for {name}'s first connection.",
     "zh": "等待 {name} 首次连接。"
+  },
+  "lim_state_default": {
+    "en": "Host's default",
+    "zh": "主机默认值"
+  },
+  "lim_state_custom": {
+    "en": "Custom",
+    "zh": "自定义"
+  },
+  "lim_state_none": {
+    "en": "No limit",
+    "zh": "不限"
+  },
+  "inv_untouched": {
+    "en": "Fields you leave alone use the host's default.",
+    "zh": "没有改动的字段沿用主机的默认值。"
   }
 }

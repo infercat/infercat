@@ -88,6 +88,14 @@ enum LimitField: String, CaseIterable, Identifiable, Sendable {
     /// A ceiling the host will not exceed however large a number it is handed.
     var hostCeiling: Int? { self == .maxQueuedImages ? 16 : nil }
 
+    /// Whether "no limit" is a thing this field can actually be.
+    ///
+    /// `max_context` cannot: `0` means the engine's own window, and there is no value
+    /// that means "larger than the engine can do". `max_queued_images` cannot either:
+    /// the host clamps anything negative — or anything over 16 — back to 16. Offering
+    /// the choice on those two would be offering something the host would ignore.
+    var unlimitedHonoured: Bool { self != .maxContext && self != .maxQueuedImages }
+
     /// Whether this machine can serve the thing this limit limits.
     func isOffered(by status: HostStatus?) -> Bool {
         guard let needed = requiresDestination else { return true }
@@ -123,8 +131,18 @@ enum LimitField: String, CaseIterable, Identifiable, Sendable {
 /// sent at all: an empty box the app could not prefill would otherwise mint an
 /// unlimited key. A field the person *cleared* is a different thing, and does send.
 struct LimitsDraft: Equatable, Sendable {
-    private var text: [String: String] = [:]
-    private(set) var touched: Set<String> = []
+    /// What a field is set to. Three states, and the person picks between them —
+    /// there is no way to land in one by accident.
+    enum Setting: Equatable, Sendable {
+        /// Nobody touched it. Nothing is sent, and the host applies its own value.
+        case hostDefault
+        /// A number the person typed.
+        case custom(String)
+        /// An explicit "no limit". Sends this field's own unlimited value.
+        case unlimited
+    }
+
+    private var settings: [String: Setting] = [:]
     var models: String = "" { didSet { if models != oldValue { touchedModels = true } } }
     private(set) var touchedModels = false
     var agent = false
@@ -132,35 +150,49 @@ struct LimitsDraft: Equatable, Sendable {
     init() {}
 
     /// Prefilled from limits the host reported for a real key — never from numbers
-    /// baked into the app. Everything prefilled counts as already set, so editing one
-    /// field in the Edit limits sheet does not silently reset the others.
-    init(from limits: FriendKey.Limits, agent: Bool = false, markTouched: Bool = true) {
+    /// baked into the app. An existing key has no "host's default" state: the host has
+    /// already told us what it applied, so every field is either a number or unlimited.
+    init(from limits: FriendKey.Limits, agent: Bool = false) {
         for field in LimitField.allCases {
             guard let value = field.value(in: limits) else { continue }
-            // A stored value of 0 or less is not a limit: it is the host default
-            // or unlimited, and either way there is no number to show.
-            text[field.rawValue] = value <= 0 ? "" : Copy.exact(value)
-            if markTouched { touched.insert(field.rawValue) }
+            // A stored value at or below zero means unlimited — except on the two
+            // fields where the host has no such state, where it means "leave it
+            // alone" and the placeholder explains what the host will do instead.
+            settings[field.rawValue] = if value > 0 {
+                .custom(Copy.exact(value))
+            } else {
+                field.unlimitedHonoured ? .unlimited : .hostDefault
+            }
         }
         models = (limits.models ?? []).joined(separator: ", ")
-        touchedModels = markTouched
+        touchedModels = true
         self.agent = agent
     }
 
-    subscript(field: LimitField) -> String {
-        get { text[field.rawValue] ?? "" }
-        set {
-            guard newValue != text[field.rawValue] else { return }
-            text[field.rawValue] = newValue
-            touched.insert(field.rawValue)
-        }
+    subscript(field: LimitField) -> Setting {
+        get { settings[field.rawValue] ?? .hostDefault }
+        set { settings[field.rawValue] = newValue }
     }
 
-    func isTouched(_ field: LimitField) -> Bool { touched.contains(field.rawValue) }
+    /// The text in the field's box. Empty for both of the non-numeric states; the
+    /// state itself is shown by the control beside it, never by the emptiness.
+    func text(_ field: LimitField) -> String {
+        if case let .custom(value) = self[field] { return value }
+        return ""
+    }
 
-    /// The typed value, or nil when the field is empty or not a number.
+    /// Typing a number makes the field custom; clearing it returns the field to the
+    /// host's default, **not** to unlimited — that one is only ever chosen.
+    mutating func setText(_ value: String, for field: LimitField) {
+        let trimmed = value.trimmingCharacters(in: .whitespaces)
+        self[field] = trimmed.isEmpty ? .hostDefault : .custom(value)
+    }
+
+    func isTouched(_ field: LimitField) -> Bool { self[field] != .hostDefault }
+
+    /// The typed value, or nil when the field holds no number.
     func number(_ field: LimitField) -> Int? {
-        let raw = self[field].filter { $0.isNumber }
+        let raw = text(field).filter { $0.isNumber }
         return raw.isEmpty ? nil : Int(raw)
     }
 
@@ -168,12 +200,11 @@ struct LimitsDraft: Equatable, Sendable {
         models.split(separator: ",").map { $0.trimmingCharacters(in: .whitespaces) }.filter { !$0.isEmpty }
     }
 
-    /// Every field carries a number the CLI will accept, or is empty.
+    /// Every custom field carries a number the CLI will accept.
     func isWellFormed(offeredBy status: HostStatus?) -> Bool {
         LimitField.allCases.allSatisfy { field in
-            guard field.isOffered(by: status) else { return true }
-            let raw = self[field].trimmingCharacters(in: .whitespaces)
-            return raw.isEmpty || number(field) != nil
+            guard field.isOffered(by: status), case .custom = self[field] else { return true }
+            return number(field) != nil
         }
     }
 
@@ -186,8 +217,16 @@ struct LimitsDraft: Equatable, Sendable {
     /// is not handed image limits it would have to invent a meaning for.
     func flags(offeredBy status: HostStatus?) -> [String] {
         var argv: [String] = []
-        for field in LimitField.allCases where field.isOffered(by: status) && isTouched(field) {
-            argv += [field.flag, String(number(field) ?? field.unlimitedValue)]
+        for field in LimitField.allCases where field.isOffered(by: status) {
+            switch self[field] {
+            case .hostDefault:
+                continue
+            case .unlimited:
+                argv += [field.flag, String(field.unlimitedValue)]
+            case .custom:
+                guard let value = number(field) else { continue }
+                argv += [field.flag, String(value)]
+            }
         }
         // An explicitly empty `--models` sends null, which clears the allowlist back
         // to every model. Not passing it at all leaves the allowlist untouched.
@@ -195,8 +234,10 @@ struct LimitsDraft: Equatable, Sendable {
         return argv
     }
 
-    /// Nothing was edited and nothing was prefilled: the host decides everything.
-    var isEntirelyTheHosts: Bool { touched.isEmpty && !touchedModels }
+    /// Nothing was chosen and nothing was prefilled: the host decides everything.
+    var isEntirelyTheHosts: Bool {
+        !touchedModels && LimitField.allCases.allSatisfy { self[$0] == .hostDefault }
+    }
 
     /// One line for the summary row: "20 requests a minute · 200k tokens a day · 1 at
     /// once", or the honest sentence when the app has no numbers to show.
@@ -210,8 +251,10 @@ struct LimitsDraft: Equatable, Sendable {
     }
 
     private func display(_ field: LimitField, language: Language) -> String {
-        guard isTouched(field) else { return Copy.text("inv_host_default", language: language) }
-        guard let value = number(field), value > 0 else { return Copy.text("inv_none", language: language) }
-        return Copy.compact(value)
+        switch self[field] {
+        case .hostDefault: Copy.text("inv_host_default", language: language)
+        case .unlimited: Copy.text("inv_none", language: language)
+        case .custom: number(field).map { Copy.compact($0) } ?? Copy.text("inv_host_default", language: language)
+        }
     }
 }

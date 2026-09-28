@@ -245,6 +245,8 @@ struct FriendInspector: View {
         }
     }
 
+    /// An existing key has no "host's default": the host already applied one and told
+    /// us the number. A value at or below zero is the key being unlimited.
     private var limitsSummary: String {
         let limits = row.key.limits
         func line(_ key: String, _ value: Int) -> String {

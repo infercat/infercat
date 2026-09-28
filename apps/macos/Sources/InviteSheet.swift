@@ -232,38 +232,94 @@ struct LimitsFields: View {
             } label: {
                 Text(model.text("inv_more")).font(.callout)
             }
-            Text(model.text("inv_empty")).font(.caption).foregroundStyle(.secondary)
+            Text(model.text("inv_untouched")).font(.caption).foregroundStyle(.secondary)
         }
     }
 
+    /// One field, and the menu that says which of the three states it is in. The
+    /// menu is the only way to reach "No limit": an empty box means the host decides,
+    /// and nothing about this sheet lets those two be confused.
     private func row(_ field: LimitField) -> some View {
         HStack(spacing: 12) {
             Text(model.text(field.copyKey))
                 .font(.callout)
-                .frame(width: 190, alignment: .leading)
+                .frame(width: 172, alignment: .leading)
             TextField(placeholder(field), text: Binding(
-                get: { draft[field] },
-                set: { draft[field] = $0 }))
+                get: { draft.text(field) },
+                set: { draft.setText($0, for: field) }))
                 .textFieldStyle(.roundedBorder)
                 .font(Brand.mono(11, relativeTo: .body))
-                .frame(width: 130)
+                .frame(width: 110)
                 .multilineTextAlignment(.trailing)
-            if let ceiling = field.hostCeiling {
+                .disabled(draft[field] == .unlimited)
+                .help(hint(field))
+            Menu {
+                Picker("", selection: Binding(
+                    get: { state(field) },
+                    set: { apply($0, to: field) })) {
+                    Text(model.text("lim_state_default")).tag(0)
+                    Text(model.text("lim_state_custom")).tag(1)
+                    // A field the host would ignore never offers "No limit".
+                    if field.unlimitedHonoured {
+                        Text(model.text("lim_state_none")).tag(2)
+                    }
+                }
+                .pickerStyle(.inline)
+                .labelsHidden()
+            } label: {
+                Text(stateWord(field))
+                    .font(.caption)
+                    .frame(minWidth: 86, alignment: .leading)
+            }
+            .menuStyle(.borderlessButton)
+            .fixedSize()
+            if let ceiling = field.hostCeiling, draft[field] != .hostDefault {
                 Text(model.text("l_ceiling", ["n": String(ceiling)]))
                     .font(.caption2).foregroundStyle(.secondary)
             }
             Spacer(minLength: 0)
         }
         .accessibilityElement(children: .combine)
-        .accessibilityLabel(model.text(field.copyKey))
+        .accessibilityLabel("\(model.text(field.copyKey)), \(stateWord(field))")
     }
 
-    /// An untouched field says what the host will do; `max_context` says the ceiling.
-    private func placeholder(_ field: LimitField) -> String {
-        if field == .maxContext, let ceiling = model.status?.upstream.model_context, ceiling > 0 {
-            return model.text("inv_ceiling", ["n": Copy.compact(ceiling)])
+    private func hint(_ field: LimitField) -> String {
+        guard field == .maxContext, let ceiling = model.status?.upstream.model_context, ceiling > 0
+        else { return model.text(field.copyKey) }
+        return model.text("inv_ceiling", ["n": Copy.compact(ceiling)])
+    }
+
+    private func state(_ field: LimitField) -> Int {
+        switch draft[field] {
+        case .hostDefault: 0
+        case .custom: 1
+        case .unlimited: 2
         }
-        return draft.isTouched(field) ? model.text("inv_none") : model.text("inv_host_default")
+    }
+
+    private func apply(_ choice: Int, to field: LimitField) {
+        switch choice {
+        case 1: draft[field] = .custom(draft.text(field))
+        case 2: draft[field] = .unlimited
+        default: draft[field] = .hostDefault
+        }
+    }
+
+    private func stateWord(_ field: LimitField) -> String {
+        switch draft[field] {
+        case .hostDefault: model.text("lim_state_default")
+        case .custom: model.text("lim_state_custom")
+        case .unlimited: model.text("lim_state_none")
+        }
+    }
+
+    /// The menu beside the box already says which state the field is in, so the
+    /// placeholder only carries what the menu cannot: the engine's own context window.
+    private func placeholder(_ field: LimitField) -> String {
+        guard field == .maxContext, draft[field] != .unlimited,
+              let ceiling = model.status?.upstream.model_context, ceiling > 0 else { return "" }
+        // The number alone; the sentence is the field's tooltip, where it has room.
+        return Copy.compact(ceiling)
     }
 
     private var modelsRow: some View {
@@ -331,8 +387,9 @@ struct OnceCard: View {
             HStack {
                 Text(model.text("once_lost")).font(.caption).foregroundStyle(.secondary)
                 Spacer()
-                Button(model.text("once_done")) { closeCard() }
-                    .buttonStyle(.borderedProminent)
+                // The spec makes Copy link the default action, so Done stays quiet
+                // until the person has actually taken the invite somewhere.
+                doneButton
             }
         }
         .padding(22)
@@ -343,6 +400,15 @@ struct OnceCard: View {
                 .keyboardShortcut(.cancelAction)
                 .opacity(0).frame(width: 0, height: 0).accessibilityHidden(true)
         )
+    }
+
+    @ViewBuilder
+    private var doneButton: some View {
+        if secret.taken {
+            Button(model.text("once_done")) { closeCard() }.buttonStyle(.borderedProminent)
+        } else {
+            Button(model.text("once_done")) { closeCard() }
+        }
     }
 
     /// Always black on white, whatever the appearance: a camera needs the contrast.
