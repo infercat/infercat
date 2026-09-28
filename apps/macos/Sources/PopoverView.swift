@@ -38,11 +38,7 @@ struct PopoverView: View {
                     .font(.system(.body, weight: .semibold))
                     .fixedSize(horizontal: false, vertical: true)
             }
-            Text(meta)
-                .font(Brand.mono())
-                .foregroundStyle(.secondary)
-                .textSelection(.enabled)
-                .fixedSize(horizontal: false, vertical: true)
+            meta
             if let sentence = stateSentence {
                 Text(sentence)
                     .font(.callout)
@@ -77,22 +73,48 @@ struct PopoverView: View {
     }
 
     /// The mono line under the headline: who we are, what we serve, how fast.
-    private var meta: String {
+    ///
+    /// One row, not one string: a measured value and its unit must never be split
+    /// across a line break ("41" / "tok/s"), so the rate is fixed and the two names
+    /// truncate in the middle instead — which is also how the design truncates names.
+    @ViewBuilder
+    private var meta: some View {
+        HStack(spacing: 5) {
+            ForEach(Array(metaParts.enumerated()), id: \.offset) { index, part in
+                if index > 0 { Text("·").foregroundStyle(.tertiary) }
+                Text(part.text)
+                    .lineLimit(1)
+                    .truncationMode(.middle)
+                    .layoutPriority(part.keepWhole ? 1 : 0)
+                    .fixedSize(horizontal: part.keepWhole, vertical: false)
+            }
+        }
+        .font(Brand.mono())
+        .foregroundStyle(.secondary)
+        .textSelection(.enabled)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel(metaParts.map(\.text).joined(separator: ", "))
+    }
+
+    private struct MetaPart { let text: String; let keepWhole: Bool }
+
+    private var metaParts: [MetaPart] {
         guard let status = model.status, model.hostRunning else {
             if let service = model.service, service.installed, !service.since.isEmpty {
-                return model.text("pop_stopped_at", ["time": service.since])
+                return [MetaPart(text: model.text("pop_stopped_at", ["time": service.since]), keepWhole: false)]
             }
-            return model.hostName
+            return [MetaPart(text: model.hostName, keepWhole: false)]
         }
-        var parts = [status.name.isEmpty ? model.hostName : status.name]
-        if let served = status.model { parts.append(served) }
+        var parts = [MetaPart(text: status.name.isEmpty ? model.hostName : status.name, keepWhole: false)]
+        if let served = status.model { parts.append(MetaPart(text: served, keepWhole: false)) }
         if status.engine.metrics {
-            parts.append("\(Int(status.engine.tokens_per_s_1m.rounded())) tok/s")
+            parts.append(MetaPart(text: "\(Int(status.engine.tokens_per_s_1m.rounded())) tok/s", keepWhole: true))
         }
         if model.stale, let at = model.lastStatusAt {
-            parts.append(model.text("as_of", ["time": at.formatted(date: .omitted, time: .standard)]))
+            parts.append(MetaPart(text: model.text("as_of", ["time": at.formatted(date: .omitted, time: .standard)]),
+                                  keepWhole: true))
         }
-        return parts.joined(separator: " · ")
+        return parts
     }
 
     private var stateSentence: String? {

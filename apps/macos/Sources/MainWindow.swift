@@ -27,7 +27,8 @@ enum Route: String, CaseIterable, Identifiable, Sendable {
         case .settings: "6"
         }
     }
-    var inThisBuild: Bool { self == .overview }
+    /// Overview and Friends land in cut B; the rest are cut C.
+    var inThisBuild: Bool { self == .overview || self == .friends }
 }
 
 /// The main window: sidebar, toolbar, and the screen. First run replaces the whole
@@ -35,8 +36,12 @@ enum Route: String, CaseIterable, Identifiable, Sendable {
 struct MainWindow: View {
     @ObservedObject var model: HostModel
     var openConsole: () -> Void
+    /// The capture harness opens the window on a named screen; the app always starts
+    /// on Overview.
+    var startOn: Route = .overview
     @State private var route: Route = .overview
     @State private var confirmStop = false
+    @State private var invite: InviteRequest?
 
     var body: some View {
         Group {
@@ -47,6 +52,16 @@ struct MainWindow: View {
             }
         }
         .tint(Brand.cobalt)
+        .onAppear { route = startOn }
+        .sheet(item: $invite) { request in
+            InviteSheet(model: model, request: request) { invite = nil }
+        }
+        .background(
+            Button("") { invite = InviteRequest() }
+                .keyboardShortcut("n", modifiers: .command)
+                .disabled(!model.hostRunning)
+                .opacity(0).frame(width: 0, height: 0).accessibilityHidden(true)
+        )
         .confirmationDialog(stopTitle, isPresented: $confirmStop) {
             Button(model.text("stop_ok"), role: .destructive) { Task { await model.lifecycle("stop") } }
             Button(model.text("cancel"), role: .cancel) {}.keyboardShortcut(.defaultAction)
@@ -156,13 +171,13 @@ struct MainWindow: View {
 
     // MARK: - Toolbar
 
+    /// The model, and nothing else. The title area is narrow, and the uptime this
+    /// line used to carry was always the part that got truncated — the sidebar foot
+    /// already shows it, on every screen.
     private var subtitle: String {
-        guard route == .overview else { return "" }
-        guard let status = model.status, model.hostRunning else { return "" }
-        var parts: [String] = []
-        if let served = status.model { parts.append(served) }
-        parts.append(model.text("sb_up", ["t": Copy.duration(seconds: status.uptime_s)]))
-        return parts.joined(separator: " · ")
+        guard model.hostRunning, let served = model.status?.model else { return "" }
+        if route == .friends { return model.friendsSubtitle }
+        return route == .overview ? served : ""
     }
 
     @ToolbarContentBuilder
@@ -180,9 +195,8 @@ struct MainWindow: View {
             }
         }
         ToolbarItem(placement: .primaryAction) {
-            Button(model.text("act_invite")) {}
-                .disabled(true)
-                .help(model.text("soon_invite"))
+            Button(model.text("act_invite")) { invite = InviteRequest() }
+                .disabled(!model.hostRunning)
         }
     }
 
@@ -202,7 +216,9 @@ struct MainWindow: View {
     private var screen: some View {
         switch route {
         case .overview:
-            OverviewScreen(model: model, openConsole: openConsole, onStop: { confirmStop = true })
+            OverviewScreen(model: model, openConsole: openConsole, invite: $invite)
+        case .friends:
+            FriendsScreen(model: model, openConsole: openConsole, invite: $invite)
         default:
             ComingSoonScreen(model: model, route: route, openConsole: openConsole)
         }
