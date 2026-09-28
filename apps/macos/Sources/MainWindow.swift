@@ -140,8 +140,12 @@ struct MainWindow: View {
                 Text(model.hostRunning ? model.text("sb_running") : model.text("pop_stopped"))
                     .font(.system(.callout, weight: .semibold))
                 if let uptime = model.status?.uptime_s, model.hostRunning {
+                    // One line, always: the foot is the narrowest place in the app and
+                    // a wrapped uptime pushes the whole block taller on every screen.
                     Text(model.text("sb_up", ["t": Copy.duration(seconds: uptime, language: model.language)]))
                         .font(Brand.mono(10)).foregroundStyle(.secondary)
+                        .lineLimit(1)
+                        .fixedSize(horizontal: true, vertical: false)
                 }
             }
             Spacer(minLength: 4)

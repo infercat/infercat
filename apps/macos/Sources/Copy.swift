@@ -61,7 +61,10 @@ enum Copy {
         }
         let joiner = language.code == "zh" ? " " : " "
         if days > 0 {
-            return hours > 0 ? unit(days, "u_day") + joiner + unit(hours, "u_hour") : unit(days, "u_day")
+            // Past a hundred days the hours are noise, and the two units together no
+            // longer fit the sidebar foot in Chinese. Drop them.
+            guard days < 100, hours > 0 else { return unit(days, "u_day") }
+            return unit(days, "u_day") + joiner + unit(hours, "u_hour")
         }
         if hours > 0 {
             return minutes > 0 ? unit(hours, "u_hour") + joiner + unit(minutes, "u_min") : unit(hours, "u_hour")

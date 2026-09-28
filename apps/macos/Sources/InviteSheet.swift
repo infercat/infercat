@@ -381,6 +381,9 @@ struct OnceCard: View {
                     Text(model.text("once_use_buttons"))
                         .font(.caption2)
                         .foregroundStyle(.secondary)
+                        // The sentence that explains how to copy must never be the
+                        // thing that gets truncated.
+                        .fixedSize(horizontal: false, vertical: true)
                     HStack(spacing: 8) {
                         Button(copied ? model.text("once_copied") : model.text("once_copy_link")) {
                             secret.copy(.link); flash()

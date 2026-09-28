@@ -265,7 +265,7 @@
   },
   "sb_up": {
     "en": "up {t}",
-    "zh": "已运行 {t}"
+    "zh": "{t}"
   },
   "sb_stop": {
     "en": "Stop…",
@@ -1300,7 +1300,7 @@
     "zh": "秒"
   },
   "once_use_buttons": {
-    "en": "Shortened to fit. Use Copy link or Copy code — they take the whole thing.",
-    "zh": "为了显示做了截断。请用“复制链接”或“复制邀请码”——复制的是完整内容。"
+    "en": "Shortened to fit — use Copy link or Copy code for the whole thing.",
+    "zh": "上面是截断显示。请用“复制链接”或“复制邀请码”获取完整内容。"
   }
 }
