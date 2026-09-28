@@ -39,11 +39,7 @@ func (e *env) machineRead(ctx context.Context, args []string) (int, bool) {
 	if err != nil {
 		return machine.Write(e.out, command, machine.Host{}, nil, err), true
 	}
-	switch command {
-	case "status", "version", "keys.list", "keys.get", "keys.add", "keys.limits", "keys.pause", "keys.resume", "keys.revoke", "keys.rotate", "usage", "remote.status", "remote.on", "remote.off", "remote.rotate", "expose.status", "expose.on", "expose.off":
-	default:
-		return machine.Write(e.out, command, machine.Host{}, nil, badMachine("unknown machine operation: "+command)), true
-	}
+
 	host, data, err := e.executeMachine(ctx, r)
 	return machine.Write(e.out, command, host, data, err), true
 }

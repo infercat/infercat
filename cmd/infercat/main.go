@@ -136,6 +136,15 @@ func run(ctx context.Context, args []string, out, errw io.Writer, in io.Reader, 
 	}
 	cmd, cargs := rest[0], rest[1:]
 	switch cmd {
+	case "watch":
+		e.machineHelp("watch")
+		if len(cargs) == 1 && (cargs[0] == "--help" || cargs[0] == "-h") {
+			err = errDone
+		} else {
+			err = errUsage
+		}
+	case "engine", "settings", "runs", "stored", "api":
+		err = e.cmdInspect(ctx, dataDir, cmd, cargs)
 	case "remote":
 		err = e.cmdRemote(ctx, dataDir, cargs)
 	case "console":
@@ -309,6 +318,12 @@ Usage:
   infercat <command> [flags]
 
 Commands:
+  engine     inspect the running engine
+  settings   inspect or update host settings
+  runs       list host runs
+  stored     inspect or clear a key's stored data
+  api        list the CLI machine operations
+  watch      stream status and metadata events (--json)
   agent      install the optional, pinned agent runtime
   setup      check a loadout against local models and running engines
   serve      run the host: the tunnel and the gateway in front of your inference server
@@ -332,6 +347,7 @@ Start here:
   infercat connect ic2.tc….…      # a friend's side: any app, base URL http://127.0.0.1:11435/v1
 
 Global flags:
+  --json[=1]      schema-1 machine output (see docs/CLI-JSON.md)
   --data-dir DIR   where keys, usage, config, and the host key live
                    (default: <user config dir>/infercat)
 

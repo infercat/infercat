@@ -45,6 +45,13 @@ var machineOperations = []operationSpec{
 	operation("expose.status", "expose --json", "GET /status"),
 	operation("expose.on", "expose --on --json", "POST /reload"),
 	operation("expose.off", "expose --off --json", "POST /reload"),
+	operation("service.status", "service status --json"),
+	operation("service.install", "service install --json [--start-at-login=false]"),
+	operation("service.uninstall", "service uninstall --json"),
+	operation("service.start", "service start --json"),
+	operation("service.stop", "service stop --json"),
+	operation("service.restart", "service restart --json"),
+	operation("service.login", "service login on|off --json"),
 	operation("version", "version --json"),
 	operation("api", "api --json"),
 }
