@@ -95,11 +95,14 @@ struct ActivityScreen: View {
 
     // MARK: - The table
 
+    /// Same reasoning as Friends: `List(selection:)` is what makes the rows reachable
+    /// by Tab, movable by arrow keys, and one VoiceOver element each. The header is a
+    /// section header so it still pins.
     private var table: some View {
-        ScrollView {
-            LazyVStack(spacing: 0, pinnedViews: .sectionHeaders) {
-                Section {
-                    ForEach(items) { item in
+        List(selection: $selected) {
+            Section {
+                ForEach(items) { item in
+                    Group {
                         switch item {
                         case .gap(_, let count):
                             gapRow(count)
@@ -107,12 +110,16 @@ struct ActivityScreen: View {
                             requestRow(row)
                         }
                     }
-                } header: {
-                    header
+                    .listRowInsets(EdgeInsets())
+                    .listRowSeparator(.hidden)
+                    .tag(item.id)
                 }
+            } header: {
+                header
             }
-            .padding(.bottom, 10)
         }
+        .listStyle(.inset)
+        .scrollContentBackground(.hidden)
         .opacity(model.stale ? 0.55 : 1)
     }
 
@@ -166,8 +173,6 @@ struct ActivityScreen: View {
             .padding(.horizontal, 16)
             .padding(.vertical, 6)
             .contentShape(Rectangle())
-            .background(isSelected ? Color.accentColor.opacity(0.16) : .clear)
-            .onTapGesture { selected = isSelected ? nil : row.id }
             .accessibilityElement(children: .combine)
             .accessibilityLabel(voiceOver(row))
 

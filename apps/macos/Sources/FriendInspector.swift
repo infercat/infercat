@@ -24,6 +24,8 @@ struct FriendInspector: View {
     @ObservedObject var model: HostModel
     let row: HostModel.FriendRow
     @Binding var invite: InviteRequest?
+    /// Return in the list moves focus here, to the one verb a host can take back.
+    var primaryFocus: FocusState<Bool>.Binding
     @State private var confirmRevoke = false
     @State private var confirmRotate = false
 
@@ -104,6 +106,7 @@ struct FriendInspector: View {
                     togglePause()
                 }
                 .disabled(!actionsEnabled)
+                .focused(primaryFocus)
                 Menu {
                     Button(model.text("act_edit_limits")) {
                         invite = InviteRequest(kind: .limits(keyID: row.id, name: row.name))

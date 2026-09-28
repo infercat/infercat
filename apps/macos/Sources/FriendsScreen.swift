@@ -8,6 +8,7 @@ struct FriendsScreen: View {
     var openConsole: () -> Void
     @Binding var invite: InviteRequest?
     @FocusState private var filterFocused: Bool
+    @FocusState private var inspectorFocus: Bool
     @State private var filter = ""
 
     var body: some View {
@@ -37,7 +38,7 @@ struct FriendsScreen: View {
             list.frame(minWidth: 280, idealWidth: 360, maxWidth: 520)
             Group {
                 if let selected = model.selectedFriend, let row = rows.first(where: { $0.id == selected }) {
-                    FriendInspector(model: model, row: row, invite: $invite)
+                    FriendInspector(model: model, row: row, invite: $invite, primaryFocus: $inspectorFocus)
                 } else if let revoked = model.friendKeys.first(where: { $0.id == model.selectedFriend }) {
                     RevokedInspector(model: model, key: revoked, invite: $invite)
                 } else {
@@ -62,18 +63,32 @@ struct FriendsScreen: View {
             header
             Divider()
             if model.actionNotice != nil { actionBanner }
-            ScrollView {
-                LazyVStack(spacing: 0) {
-                    ForEach(rows) { row in
-                        FriendRowView(model: model, row: row,
-                                      selected: model.selectedFriend == row.id)
-                            .contentShape(Rectangle())
-                            .onTapGesture { model.selectedFriend = row.id }
-                    }
-                    if !model.revokedFriends.isEmpty { revokedFold }
+            // `List(selection:)`, not a tap-gesture stack: it is the only thing that
+            // gives arrow keys, Tab, Return and one-element-per-row VoiceOver without
+            // hand-rolling focus. `.inset` is the style the sidebar already uses —
+            // the sidebar style draws its selection as a vibrancy layer that the
+            // capture harness cannot render.
+            List(selection: $model.selectedFriend) {
+                ForEach(rows) { row in
+                    FriendRowView(model: model, row: row, selected: model.selectedFriend == row.id)
+                        .listRowInsets(EdgeInsets())
+                        .listRowSeparator(.hidden)
+                        .tag(row.id)
                 }
-                .padding(.bottom, 8)
-                .opacity(model.stale ? 0.55 : 1)
+                if !model.revokedFriends.isEmpty {
+                    revokedFold
+                        .listRowInsets(EdgeInsets())
+                        .listRowSeparator(.hidden)
+                }
+            }
+            .listStyle(.inset)
+            .scrollContentBackground(.hidden)
+            .opacity(model.stale ? 0.55 : 1)
+            // Return opens the inspector's primary action on the selected friend.
+            .onKeyPress(.return) {
+                guard model.selectedFriend != nil else { return .ignored }
+                inspectorFocus = true
+                return .handled
             }
         }
         .background(Color(nsColor: .textBackgroundColor))
@@ -192,7 +207,7 @@ struct FriendRowView: View {
         }
         .padding(.horizontal, 14)
         .padding(.vertical, 8)
-        .background(selected ? Color.accentColor.opacity(0.16) : .clear)
+        // The List draws the selection; a second tint on top would double it.
         .accessibilityElement(children: .combine)
         .accessibilityLabel(voiceOver)
         .accessibilityAddTraits(selected ? [.isSelected, .isButton] : .isButton)
