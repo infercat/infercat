@@ -34,6 +34,29 @@ final class HostModel: ObservableObject {
     /// The last command we sent that the host refused, kept for "Copy details".
     @Published private(set) var failedCommand: String?
 
+    // Friends and invites (cut B). The list logic is in FriendsModel.swift.
+    /// `keys show` for the selected friend: limits, the 7-day bars, agent access.
+    @Published private(set) var friendDetail: FriendKey?
+    @Published var selectedFriend: String?
+    @Published var showRevoked = false
+    /// The verb the app is waiting on, so exactly one row can say "Waiting for the host…".
+    @Published private(set) var actionInFlight: Action?
+    /// The spec's §4 sentence once an action has gone 5 s without an answer.
+    @Published private(set) var actionNotice: String?
+    /// The inline refusal on the invite sheet's name field (a duplicate, usually).
+    @Published private(set) var inviteRefusal: String?
+    /// True while `keys add` is running, so Create cannot be pressed twice.
+    @Published private(set) var minting = false
+    /// True until the first `keys list` has come back, so the list can show its
+    /// skeleton rather than claim there are no friends.
+    @Published private(set) var loadingKeys = true
+
+    /// One pending mutation. `verb` is the operation name, so the view can match it.
+    struct Action: Equatable, Sendable {
+        let keyID: String
+        let verb: String
+    }
+
     // What we are doing.
     @Published private(set) var starting = false
     @Published private(set) var working = false
@@ -301,6 +324,150 @@ final class HostModel: ObservableObject {
         }
     }
 
+    // MARK: - Friends (cut B)
+
+    /// Re-reads `keys list`. The Friends screen calls this on entry, after every
+    /// mutation, and at most once a minute while visible; `force` is the first two.
+    func readKeys(force: Bool = false) {
+        if force { keysReadAt = nil }
+        readAuxiliaryIfDue()
+    }
+
+    /// `keys show` for one friend. Read on selection and after a mutation on them,
+    /// never on the status cadence: the 7-day history does not change every 2 s.
+    func openFriend(_ id: String?) {
+        selectedFriend = id
+        friendDetail = nil
+        guard let id else { return }
+        Task {
+            guard let detail = try? await client.read(.keysShow(id), as: FriendKey.self) else { return }
+            guard selectedFriend == id else { return }
+            friendDetail = detail
+        }
+    }
+
+    /// Pause, resume, revoke and saving limits. No optimistic update: the row is
+    /// marked as waiting, the command runs, and the list is re-read afterwards.
+    /// An action that has not answered in 5 s says so and re-reads; it never resends.
+    @discardableResult
+    func act(_ command: CLICommand, on keyID: String) async -> Bool {
+        guard actionInFlight == nil else { return false }
+        actionInFlight = Action(keyID: keyID, verb: command.operation)
+        actionNotice = nil
+        let warning = Task { [weak self] in
+            try? await Task.sleep(for: .seconds(5))
+            guard let self, !Task.isCancelled, self.actionInFlight?.keyID == keyID else { return }
+            self.actionNotice = self.text("act_unanswered")
+            self.readKeys(force: true)
+        }
+        defer { warning.cancel(); actionInFlight = nil }
+        do {
+            _ = try await client.read(command, as: Acknowledged.self)
+            readKeys(force: true)
+            if selectedFriend == keyID { openFriend(keyID) }
+            return true
+        } catch let error as CLIError {
+            failure = error
+            failedCommand = "infercat " + command.arguments.joined(separator: " ")
+            readKeys(force: true)
+            return false
+        } catch {
+            failure = .malformed
+            return false
+        }
+    }
+
+    func dismissActionNotice() { actionNotice = nil }
+
+    /// `keys add`. Returns the minted invite for the once-card to hold, or nil when
+    /// the host refused — a duplicate name becomes the inline refusal, not an alert.
+    func mint(name: String, limits: [String], agent: Bool) async -> MintedInvite? {
+        guard !minting else { return nil }
+        minting = true
+        inviteRefusal = nil
+        defer { minting = false }
+        let trimmed = name.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return nil }
+        // The host would refuse this anyway; saying so without a subprocess keeps the
+        // refusal instant and lets it carry the Rotate offer the design asks for.
+        if let existing = existingFriend(named: trimmed) {
+            let ago = existing.seenAt.map { relative($0) } ?? text("row_never")
+            inviteRefusal = text("inv_dup", ["name": trimmed, "ago": ago])
+            return nil
+        }
+        do {
+            let minted = try await client.read(.keysAdd(name: trimmed, limits: limits, agent: agent),
+                                               as: MintedInvite.self)
+            readKeys(force: true)
+            return minted
+        } catch let error as CLIError {
+            inviteRefusal = refusalText(error, name: trimmed)
+            readKeys(force: true)
+            return nil
+        } catch {
+            inviteRefusal = text("err_malformed")
+            return nil
+        }
+    }
+
+    /// `keys rotate`, which answers with a new invite for the same once-card.
+    func rotate(_ keyID: String) async -> MintedInvite? {
+        guard actionInFlight == nil else { return nil }
+        actionInFlight = Action(keyID: keyID, verb: "keys.rotate")
+        defer { actionInFlight = nil }
+        do {
+            let minted = try await client.read(.keysRotate(keyID), as: MintedInvite.self)
+            readKeys(force: true)
+            openFriend(keyID)
+            return minted
+        } catch let error as CLIError {
+            failure = error
+            failedCommand = "infercat keys rotate \(keyID) --json"
+            return nil
+        } catch { return nil }
+    }
+
+    /// `keys limits ID --agent=true|false`, the only way to change the capability
+    /// after minting.
+    func setAgent(_ on: Bool, for keyID: String) async {
+        _ = try? await client.read(.keysAgent(keyID, on: on), as: Acknowledged.self)
+        if selectedFriend == keyID { openFriend(keyID) }
+        readKeys(force: true)
+    }
+
+    /// Agent access is a capability the host grants, not a box the app ticked. After
+    /// minting with it, read it back; if the host did not grant it, say so.
+    @discardableResult
+    func confirmAgent(for keyID: String) async -> Bool {
+        guard let key = try? await client.read(.keysShow(keyID), as: FriendKey.self) else { return false }
+        if key.agent != true { inviteRefusal = text("inv_agent_refused") }
+        return key.agent == true
+    }
+
+    func clearInviteRefusal() { inviteRefusal = nil }
+
+    /// A duplicate name gets the spec's sentence with the Rotate offer; everything
+    /// else keeps the host's own message.
+    ///
+    /// The host has no dedicated code for this: a namesake is a plain 400, which the
+    /// CLI reports as `invalid_request` with a multi-line message meant for a
+    /// terminal. So the app decides from what it already knows — a non-revoked key
+    /// with that name — and only falls back to the host's own words when it does not.
+    private func refusalText(_ error: CLIError, name: String) -> String {
+        guard case let .refused(_, message) = error else { return describe(error) }
+        guard let existing = existingFriend(named: name) else {
+            // The host's message is written for a terminal, newlines and all.
+            return message.split(separator: "\n").first.map(String.init) ?? message
+        }
+        let ago = existing.seenAt.map { relative($0) } ?? text("row_never")
+        return text("inv_dup", ["name": name, "ago": ago])
+    }
+
+    /// The friend a duplicate-name refusal would rotate.
+    func existingFriend(named name: String) -> FriendKey? {
+        friendKeys.first { $0.name == name.trimmingCharacters(in: .whitespacesAndNewlines) && !$0.isRevoked }
+    }
+
     private func streamEnded(_ error: Error?) {
         guard let failed = error as? CLIError else { return }
         // "No host" is not a failure to report: it is the state the app then waits in,
@@ -342,6 +509,7 @@ final class HostModel: ObservableObject {
         Task {
             defer { readingKeys = false }
             if let keys = try? await client.read(.keysList, as: [FriendKey].self) { friendKeys = keys }
+            loadingKeys = false
             if let report = try? await client.read(.usageToday, as: UsageReport.self) { usage = report }
         }
     }
@@ -436,6 +604,23 @@ final class HostModel: ObservableObject {
     }
 
     // MARK: - Test and capture seam
+
+    /// Capture-only: the inline refusal as a real duplicate would produce it.
+    func previewRefusal(for name: String) {
+        guard let existing = existingFriend(named: name) else { return }
+        let ago = existing.seenAt.map { relative($0) } ?? text("row_never")
+        inviteRefusal = text("inv_dup", ["name": name, "ago": ago])
+    }
+
+    /// Used only by the capture harness: the Friends screen in a named state.
+    func previewFriends(select: String?, showRevoked: Bool, loading: Bool,
+                        detail: FriendKey?, notice: String?) {
+        selectedFriend = select
+        friendDetail = detail
+        self.showRevoked = showRevoked
+        loadingKeys = loading
+        actionNotice = notice
+    }
 
     /// Used only by the fixture-backed capture harness and by tests, to place the
     /// model in a state the real CLI would have produced.
