@@ -78,6 +78,9 @@ final class HostModel: ObservableObject {
     /// after that, a host that has not answered yet is "Starting…" rather than a
     /// fault — after it, it is a fault and says so.
     private var startAskedAt: Date?
+    /// The live tail of settled requests. It is fed from this model's own stream and
+    /// never starts one of its own, so Activity adds no spawn edge at all.
+    let activity = ActivityLog()
 
     /// `napper` is the seam the cadence tests use to run the ladders without waiting
     /// for them; production always gets the real one.
@@ -312,6 +315,8 @@ final class HostModel: ObservableObject {
             if let name = pendingName { pendingName = nil; Task { await applyName(name) } }
             readAuxiliaryIfDue()
         case .gone:
+            // The tail belongs to the run that just ended; a new host is a new tail.
+            activity.clear()
             // No service read here. `gone` is followed within a moment by the stream
             // ending, and WatchStream owns the one check that follows — otherwise a
             // stopped host costs two subprocesses per ending instead of one.
@@ -319,7 +324,11 @@ final class HostModel: ObservableObject {
             starting = false
             waitingSince = nil
             engineUnhealthySince = nil
-        case .hello, .event, .dropped, .unknown:
+        case .event(let event):
+            activity.append(event)
+        case .dropped(let count):
+            activity.drop(count)
+        case .hello, .unknown:
             break
         }
     }
@@ -445,6 +454,36 @@ final class HostModel: ObservableObject {
     }
 
     func clearInviteRefusal() { inviteRefusal = nil }
+
+    // MARK: - Settings (cut C)
+
+    /// Renaming the host, from Settings. One subprocess per press; `working` means a
+    /// second press does nothing while the first is out.
+    func renameHost(_ value: String) async {
+        let trimmed = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty, !working else { return }
+        await applyName(trimmed)
+        // The name lives on the host, so the screen waits for the host to say it
+        // changed rather than assuming it did.
+        watch.checkNow()
+    }
+
+    /// `service login on|off`. One subprocess per press. The switch keeps showing
+    /// what `service status` last reported until the command answers with a new one.
+    func setStartAtLogin(_ on: Bool) async {
+        guard !working else { return }
+        working = true
+        defer { working = false }
+        do {
+            service = try await client.read(.serviceLogin(on), as: ServiceStatus.self)
+        } catch let error as CLIError {
+            failure = error
+            failedCommand = "infercat service login \(on ? "on" : "off") --json"
+            await refreshService()
+        } catch {
+            failure = .malformed
+        }
+    }
 
     /// A duplicate name gets the spec's sentence with the Rotate offer; everything
     /// else keeps the host's own message.
@@ -604,6 +643,9 @@ final class HostModel: ObservableObject {
     }
 
     // MARK: - Test and capture seam
+
+    /// Test-only: hand the model one frame, as the stream would have.
+    func acceptForTesting(_ frame: WatchFrame) { accept(frame) }
 
     /// Capture-only: the inline refusal as a real duplicate would produce it.
     func previewRefusal(for name: String) {

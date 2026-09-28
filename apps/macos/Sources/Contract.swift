@@ -19,6 +19,12 @@ struct CLICommand: Sendable, Equatable {
     static let consoleOpen = CLICommand(operation: "console.open", arguments: ["console", "--json"])
     static let usageToday = CLICommand(operation: "usage", arguments: ["usage", "--json", "--window", "today"])
 
+    /// `service login on|off --json`. launchd owns this, so it works while stopped.
+    static func serviceLogin(_ on: Bool) -> CLICommand {
+        CLICommand(operation: "service.login",
+                   arguments: ["service", "login", on ? "on" : "off", "--json"])
+    }
+
     /// `service install|start|stop|restart`.
     static func service(_ verb: String) -> CLICommand {
         CLICommand(operation: "service.\(verb)", arguments: ["service", verb, "--json"])
@@ -297,7 +303,9 @@ struct WatchFrame: Sendable {
     enum Body: Sendable {
         case hello(eventsAvailable: Bool, intervalMS: Int)
         case status(HostStatus, at: Date?)
-        case event
+        /// A settled request. The payload declares no prompt or completion field, so
+        /// request text cannot reach the app even if the host stopped stripping it.
+        case event(UsageEvent)
         case dropped(count: Int)
         /// `reason` is an open set: never switch on it, only report it.
         case gone(reason: String)
@@ -325,7 +333,10 @@ struct WatchFrame: Sendable {
             struct Wrapper: Decodable { var data: HostStatus }
             guard let wrapped = try? decoder.decode(Wrapper.self, from: line) else { throw CLIError.malformed }
             return WatchFrame(body: .status(wrapped.data, at: head.at))
-        case "event": return WatchFrame(body: .event)
+        case "event":
+            struct Wrapper: Decodable { var data: UsageEvent }
+            guard let wrapped = try? decoder.decode(Wrapper.self, from: line) else { throw CLIError.malformed }
+            return WatchFrame(body: .event(wrapped.data))
         case "dropped": return WatchFrame(body: .dropped(count: head.count ?? 0))
         case "gone": return WatchFrame(body: .gone(reason: head.reason ?? "unknown"))
         default: return WatchFrame(body: .unknown(head.type))
