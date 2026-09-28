@@ -21,6 +21,7 @@ import (
 	"github.com/infercat/infercat/internal/agent"
 	"github.com/infercat/infercat/internal/gateway"
 	"github.com/infercat/infercat/internal/keys"
+	"github.com/infercat/infercat/internal/machine"
 	"github.com/infercat/infercat/internal/product"
 	runstate "github.com/infercat/infercat/internal/run"
 	"github.com/infercat/infercat/internal/supervise"
@@ -87,7 +88,8 @@ type env struct {
 	plat platform
 	// tty is whether out is a terminal. Only decoration depends on it: the QR code is drawn for a
 	// person and would be noise in a pipe (ticket 009 promise 11).
-	tty bool
+	tty          bool
+	remoteTarget machine.Target
 	// svcHost overrides what `service` reads about this machine, so its tests bind a fake
 	// launchctl or systemctl instead of the real one. nil means the real machine.
 	svcHost            *serviceHost
@@ -110,6 +112,17 @@ func isTerminal(f *os.File) bool {
 }
 
 func run(ctx context.Context, args []string, out, errw io.Writer, in io.Reader, tty bool, plat platform) int {
+	values := map[string]bool{"--data-dir": true, "-data-dir": true}
+	for _, name := range machineValueFlags {
+		values["--"+name] = true
+		values["-"+name] = true
+	}
+	clean, target, targetErr := machine.ParseTarget(args, values)
+	if target.Remote() {
+		e := &env{out: out, errw: errw, in: in, plat: plat, tty: tty, remoteTarget: target}
+		return e.runRemote(ctx, clean, targetErr)
+	}
+
 	if len(args) > 0 && args[0] == "_confine" {
 		return agent.Confine(args[1:])
 	}

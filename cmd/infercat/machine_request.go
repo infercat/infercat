@@ -75,7 +75,7 @@ func machineOperation(args []string) (string, []string) {
 	return command, rest
 }
 
-func parseMachine(pre string, args []string) (machineRequest, error) {
+func parseMachine(pre string, args []string, remote ...bool) (machineRequest, error) {
 	command, args := machineOperation(args)
 	r := machineRequest{command: command, method: "GET", interval: 2 * time.Second}
 	fs := flag.NewFlagSet(command, flag.ContinueOnError)
@@ -172,7 +172,11 @@ func parseMachine(pre string, args []string) (machineRequest, error) {
 		return r, badMachine("--interval must be positive")
 	}
 	var err error
-	r.dir, err = resolveDataDir(r.dir)
+	if len(remote) == 0 || !remote[0] {
+		r.dir, err = resolveDataDir(r.dir)
+	} else {
+		r.dir = ""
+	}
 	if err != nil {
 		return r, err
 	}

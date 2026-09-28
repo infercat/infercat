@@ -33,11 +33,16 @@ func (e *env) machineRead(ctx context.Context, args []string) (int, bool) {
 	}
 	var r machineRequest
 	if err == nil {
-		r, err = parseMachine(pre, rest)
+		r, err = parseMachine(pre, rest, e.remoteTarget.Remote())
 		command = r.command
 	}
 	if err != nil {
 		return machine.Write(e.out, command, machine.Host{}, nil, err), true
+	}
+	if e.remoteTarget.Remote() {
+		if err := remoteMachineRequest(r); err != nil {
+			return machine.Write(e.out, command, machine.Host{}, nil, err), true
+		}
 	}
 	if command == "watch" {
 		return e.machineWatch(ctx, r), true
@@ -80,7 +85,7 @@ func (e *env) executeMachine(ctx context.Context, r machineRequest) (machine.Hos
 		return own, data, err
 	}
 	client, host, status, err := e.hostClient(ctx, r.dir)
-	if errors.Is(err, admin.ErrNoDaemon) && (r.command == "keys.list" || r.command == "keys.add") {
+	if !e.remoteTarget.Remote() && errors.Is(err, admin.ErrNoDaemon) && (r.command == "keys.list" || r.command == "keys.add") {
 		return e.offlineMachine(ctx, r)
 	}
 	if err != nil {
@@ -175,7 +180,7 @@ func (e *env) cmdInspect(ctx context.Context, pre, command string, args []string
 			return nil
 		}
 	}
-	r, err := parseMachine(pre, append([]string{command}, args...))
+	r, err := parseMachine(pre, append([]string{command}, args...), e.remoteTarget.Remote())
 	if err != nil {
 		if machine.Classify(r.command, err).Exit == 2 {
 			fmt.Fprintln(e.errw, err)

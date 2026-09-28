@@ -22,6 +22,9 @@ func (e *env) machineWatch(ctx context.Context, r machineRequest) int {
 		if ctx.Err() != nil {
 			return 0
 		}
+		if e.remoteTarget.Remote() {
+			return e.remoteWatchGone(err)
+		}
 		failure := machine.Classify("watch", err)
 		if json.NewEncoder(e.out).Encode(map[string]any{"schema": machine.Schema, "type": "gone", "reason": failure.Code}) != nil {
 			return 1
@@ -29,6 +32,9 @@ func (e *env) machineWatch(ctx context.Context, r machineRequest) int {
 		return failure.Exit
 	}
 	defer client.Close()
+	if client.Remote() {
+		return e.watchRemote(ctx, r, client, host, initial)
+	}
 	return e.watchHost(ctx, r, client, host, initial)
 }
 
