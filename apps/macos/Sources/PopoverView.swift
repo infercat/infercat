@@ -97,6 +97,7 @@ struct PopoverView: View {
 
     private var stateSentence: String? {
         if !model.hostRunning { return model.text("pop_stopped_sub") }
+        if model.notResponding { return model.text("pop_no_answer_sub") }
         if model.stale { return nil }
         if let upstream = model.status?.upstream, !upstream.healthy {
             let kind = upstream.kind.isEmpty ? "engine" : upstream.kind
@@ -176,6 +177,15 @@ struct PopoverView: View {
                 }
                 .buttonStyle(.borderedProminent)
                 .disabled(model.working)
+            } else if model.notResponding {
+                // Nothing to open and nothing to invite: the two things that help are
+                // restarting it and looking at the console the host also serves.
+                HStack(spacing: 8) {
+                    Button(model.text("act_restart")) { Task { await model.lifecycle("restart") } }
+                        .buttonStyle(.borderedProminent)
+                        .disabled(model.working)
+                    Button(model.text("act_console"), action: openConsole)
+                }
             } else if model.status?.upstream.healthy == false, !model.stale {
                 HStack(spacing: 8) {
                     Button(model.text("act_engine"), action: openWindow).buttonStyle(.borderedProminent)

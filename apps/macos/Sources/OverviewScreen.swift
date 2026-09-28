@@ -15,6 +15,7 @@ struct OverviewScreen: View {
                 if model.stale { staleBanner }
                 switch model.screen {
                 case .loading: LoadingBody(language: model.language)
+                case .notResponding: notRespondingBody
                 case .stopped: stoppedBody
                 case .failed: failedBody
                 case .empty: emptyBody
@@ -70,6 +71,25 @@ struct OverviewScreen: View {
     private var stoppedDetail: String? {
         guard let service = model.service, service.installed, !service.since.isEmpty else { return nil }
         return model.text("pop_stopped_at", ["time": service.since])
+    }
+
+    /// launchd has a pid, nothing answers. Two things help, and both are here.
+    private var notRespondingBody: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            headline(square: .down, word: model.text("sq_down"),
+                     title: model.text("pop_no_answer"), detail: nil)
+            Text(model.text("pop_no_answer_sub"))
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
+            HStack(spacing: 10) {
+                Button(model.text("act_restart")) { Task { await model.lifecycle("restart") } }
+                    .buttonStyle(.borderedProminent)
+                    .controlSize(.large)
+                    .disabled(model.working)
+                Button(model.text("act_console"), action: openConsole)
+                    .controlSize(.large)
+            }
+        }
     }
 
     private var failedBody: some View {

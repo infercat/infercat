@@ -11,7 +11,11 @@ final class HostModel: ObservableObject {
     enum Presence: Sendable { case stopped, starting, engineOffline, needsAttention, friendConnected, running }
 
     /// What the Overview screen shows (design spec §2, "States").
-    enum Screen: Sendable { case loading, running, engineOffline, stopped, empty, notAnswering, failed }
+    enum Screen: Sendable {
+        case loading, running, engineOffline, stopped, empty, notAnswering, failed
+        /// launchd holds a pid, but nothing has ever answered for this data dir.
+        case notResponding
+    }
 
     struct Attention: Identifiable, Sendable {
         enum Remedy: Sendable { case changeLimit(keyID: String), openSettings, openEngine }
@@ -47,6 +51,10 @@ final class HostModel: ObservableObject {
     private var readingKeys = false
     private var waitingSince: Date?
     private var pendingName: String?
+    /// When the app itself last asked for a start or a restart. For the first 30 s
+    /// after that, a host that has not answered yet is "Starting…" rather than a
+    /// fault — after it, it is a fault and says so.
+    private var startAskedAt: Date?
 
     /// `napper` is the seam the cadence tests use to run the ladders without waiting
     /// for them; production always gets the real one.
@@ -83,6 +91,14 @@ final class HostModel: ObservableObject {
         return !upstream.healthy && upstream.url.isEmpty
     }
     var missingBinary: Bool { failure == .missingBinary }
+    /// Inside the grace period after the app asked for a start.
+    var booting: Bool {
+        guard let asked = startAskedAt else { return false }
+        return now.timeIntervalSince(asked) < 30
+    }
+    /// launchd has a pid, nothing has answered, and the grace period is over. This is
+    /// the honest reading of a host that is crash-looping or serving another data dir.
+    var notResponding: Bool { status == nil && hostRunning && !booting }
 
     var attention: [Attention] {
         guard let status, hostRunning, !stale else { return [] }
@@ -120,9 +136,12 @@ final class HostModel: ObservableObject {
     }
 
     var presence: Presence {
-        if starting { return .starting }
         if !hostRunning { return .stopped }
-        if status == nil { return .starting }
+        // `service.running` says launchd has a pid, not that anything answers, so a
+        // host that has never answered is only "starting" while we have a reason to
+        // think it is still coming up.
+        if status == nil { return booting || starting ? .starting : .engineOffline }
+        if starting { return .starting }
         if stale || status?.upstream.healthy == false { return .engineOffline }
         if !attention.isEmpty { return .needsAttention }
         if connectedCount > 0 { return .friendConnected }
@@ -132,7 +151,7 @@ final class HostModel: ObservableObject {
     var screen: Screen {
         if failure != nil, status == nil, hostRunning { return .failed }
         if !hostRunning { return .stopped }
-        if status == nil { return .loading }
+        if status == nil { return notResponding ? .notResponding : .loading }
         if stale { return .notAnswering }
         if status?.upstream.healthy == false { return .engineOffline }
         return friends.isEmpty ? .empty : .running
@@ -144,6 +163,7 @@ final class HostModel: ObservableObject {
         case .stopped: return text("pop_stopped")
         case .starting: return text("pop_starting")
         case .engineOffline:
+            if notResponding { return text("pop_no_answer") }
             if stale { return text("pop_unreachable", ["n": String(age)]) }
             return text("pop_offline", ["t": Copy.duration(seconds: engineOfflineSeconds)])
         default:
@@ -160,7 +180,7 @@ final class HostModel: ObservableObject {
         switch presence {
         case .stopped: return text("mb_stopped")
         case .starting: return text("mb_starting")
-        case .engineOffline: return text("mb_offline")
+        case .engineOffline: return notResponding ? text("mb_no_answer") : text("mb_offline")
         case .needsAttention:
             let count = attention.count
             let base = connectedCount == 1 ? text("mb_running_1") : text("mb_running_n", ["n": String(connectedCount)])
@@ -220,6 +240,9 @@ final class HostModel: ObservableObject {
     // MARK: - Running
 
     func start() {
+        // Launching is itself a reason to expect an answer shortly, so the grace
+        // period starts here too: the first seconds read as "Starting…", not a fault.
+        startAskedAt = Date()
         watch.start()
         Task { await refreshService() }
         ticker = Task { [weak self] in
@@ -331,6 +354,7 @@ final class HostModel: ObservableObject {
         guard !working else { return }
         working = true
         starting = true
+        startAskedAt = Date()
         failure = nil
         nameFailed = nil
         defer { working = false }
@@ -382,9 +406,11 @@ final class HostModel: ObservableObject {
             service = try await client.read(.service(verb), as: ServiceStatus.self)
             if verb == "stop" {
                 status = nil
+                startAskedAt = nil
                 watch.stop()
             } else {
                 starting = true
+                startAskedAt = Date()
                 watch.start()
             }
         } catch let error as CLIError {
