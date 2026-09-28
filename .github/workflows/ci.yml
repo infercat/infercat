@@ -31,6 +31,7 @@ jobs:
         uses: actions/checkout@v5
         with:
           persist-credentials: false
+          fetch-depth: 2 # The CLI schema guard compares its inventory with the parent commit.
       - &go
         uses: actions/setup-go@v6
         id: go
@@ -96,6 +97,7 @@ jobs:
             go list ./... | grep -vE '/internal/(gateway|run|agent)$' > "$RUNNER_TEMP/rest-packages.txt"
             mapfile -t packages < "$RUNNER_TEMP/rest-packages.txt"
             go test -race -count=1 "${packages[@]}"
+            make cli-contract
             sh hack/install_test.sh
             ;;
           esac

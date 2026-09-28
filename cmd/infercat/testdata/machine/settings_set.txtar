@@ -1,0 +1,32 @@
+# Real CLI subprocess, fake local admin host; stdin/stdout are not terminals.
+exit 0 infercat --data-dir $HOST settings set --json -- name=changed
+! stderr .
+cmpenv stdout success.json
+
+# Usage errors remain one JSON object on stdout.
+exit 2 infercat --data-dir $HOST settings set --json --unexpected -- name=changed
+! stderr .
+cmpenv stdout invalid.json
+
+# Stopped-host semantics (including the offline exceptions).
+exit 69 infercat --data-dir $NOHOST settings set --json -- name=changed
+! stderr .
+cmpenv stdout stopped.json
+
+# Route failures keep their sentence and are never replayed.
+cp failure.txt $HOST/failure
+exit 1 infercat --data-dir $HOST settings set --json -- name=changed
+! stderr .
+cmpenv stdout error.json
+
+-- failure.txt --
+fail
+
+-- success.json --
+{"schema":1,"command":"settings.set","host":{"version":"$VERSION","name":"script host"},"data":{ "kept": [null, 0], "empty": [], "future": "<unchanged>" }}
+-- invalid.json --
+{"schema":1,"command":"settings.set","error":{"code":"invalid_arguments","message":"flag provided but not defined: -unexpected"}}
+-- stopped.json --
+{"schema":1,"command":"settings.set","error":{"code":"host_stopped","message":"no running host found for this data dir"}}
+-- error.json --
+{"schema":1,"command":"settings.set","error":{"code":"conflict","message":"fixture conflict"}}

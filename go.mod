@@ -3,6 +3,7 @@ module github.com/infercat/infercat
 go 1.27.1
 
 require (
+	github.com/rogpeppe/go-internal v1.14.1
 	github.com/skip2/go-qrcode v0.0.0-20200617195104-da1b6568686e
 	github.com/tailscale/tailcat v0.6.0
 	tailscale.com v1.103.0-pre.0.20260904030409-31d8badb3bfb
@@ -56,6 +57,7 @@ require (
 	golang.org/x/term v0.45.0 // indirect
 	golang.org/x/text v0.41.0 // indirect
 	golang.org/x/time v0.15.0 // indirect
+	golang.org/x/tools v0.48.0 // indirect
 	golang.zx2c4.com/wintun v0.0.0-20230126152724-0fa3db229ce2 // indirect
 	golang.zx2c4.com/wireguard/windows v0.5.3 // indirect
 	gopkg.in/yaml.v3 v3.0.1

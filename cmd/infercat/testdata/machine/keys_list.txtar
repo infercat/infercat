@@ -1,0 +1,32 @@
+# Real CLI subprocess, fake local admin host; stdin/stdout are not terminals.
+exit 0 infercat --data-dir $HOST keys list --json
+! stderr .
+cmpenv stdout success.json
+
+# Usage errors remain one JSON object on stdout.
+exit 2 infercat --data-dir $HOST keys list --json --unexpected
+! stderr .
+cmpenv stdout invalid.json
+
+# Stopped-host semantics (including the offline exceptions).
+exit 0 infercat --data-dir $NOHOST keys list --json
+! stderr .
+cmpenv stdout stopped.json
+
+# Route failures keep their sentence and are never replayed.
+cp failure.txt $HOST/failure
+exit 1 infercat --data-dir $HOST keys list --json
+! stderr .
+cmpenv stdout error.json
+
+-- failure.txt --
+fail
+
+-- success.json --
+{"schema":1,"command":"keys.list","host":{"version":"$VERSION","name":"script host"},"data":[]}
+-- invalid.json --
+{"schema":1,"command":"keys.list","error":{"code":"invalid_arguments","message":"flag provided but not defined: -unexpected"}}
+-- stopped.json --
+{"schema":1,"command":"keys.list","host":{"version":"$VERSION","name":"$HOSTNAME"},"data":[]}
+-- error.json --
+{"schema":1,"command":"keys.list","error":{"code":"conflict","message":"fixture conflict"}}

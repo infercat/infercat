@@ -1,0 +1,24 @@
+# Real CLI subprocess, fake local admin host; stdin/stdout are not terminals.
+exit 0 infercat --data-dir $HOST version --json
+! stderr .
+cmpenv stdout success.json
+
+# Usage errors remain one JSON object on stdout.
+exit 2 infercat --data-dir $HOST version --json --unexpected
+! stderr .
+cmpenv stdout invalid.json
+
+# Stopped-host semantics (including the offline exceptions).
+exit 0 infercat --data-dir $NOHOST version --json
+! stderr .
+cmpenv stdout stopped.json
+
+-- failure.txt --
+fail
+
+-- success.json --
+{"schema":1,"command":"version","host":{"version":"$VERSION","name":""},"data":{"version":"$VERSION","commit":"$COMMIT","date":"$DATE","schemas":[1]}}
+-- invalid.json --
+{"schema":1,"command":"version","error":{"code":"invalid_arguments","message":"flag provided but not defined: -unexpected"}}
+-- stopped.json --
+{"schema":1,"command":"version","host":{"version":"$VERSION","name":""},"data":{"version":"$VERSION","commit":"$COMMIT","date":"$DATE","schemas":[1]}}

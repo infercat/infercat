@@ -10,7 +10,6 @@ import (
 	"net"
 	"net/http"
 	"net/http/httptest"
-	"os"
 	"regexp"
 	"strings"
 	"sync"
@@ -20,6 +19,7 @@ import (
 
 	"github.com/infercat/infercat/internal/admin"
 	"github.com/infercat/infercat/internal/tunnel"
+	"github.com/rogpeppe/go-internal/testscript"
 )
 
 const testSecret = "s3cr3t-s3cr3t-s3cr3t-s3cr3t-s3cr3t-s3cr3t-0"
@@ -185,7 +185,7 @@ func serveConnector(t *testing.T, sess session) (*connector, string, *lockedBuff
 func TestMain(m *testing.M) {
 	dialTimeout, connectTimeout = 300*time.Millisecond, 300*time.Millisecond
 	silenceTimeout, probeTimeout, pathEvery = 300*time.Millisecond, 300*time.Millisecond, 50*time.Millisecond
-	os.Exit(m.Run())
+	testscript.Main(m, map[string]func(){"infercat": main})
 }
 
 type gwErr struct {

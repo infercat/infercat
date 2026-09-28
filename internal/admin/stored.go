@@ -11,9 +11,14 @@ import (
 
 var storedKey = regexp.MustCompile(`^k_[A-Za-z0-9_-]{1,62}$`)
 
+type StoredClearResult struct {
+	runstate.ClearResult
+	Stored *runstate.StoredData `json:"stored,omitempty"`
+}
+
 // WithStored shares the enclosing admin authentication; no all-key scan is exposed.
 func WithStored(next http.Handler, read func(string) (runstate.StoredData, error), clear func(string, runstate.ClearExpectation) (runstate.ClearResult, error)) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	return withRoutes(next, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/stored" {
 			next.ServeHTTP(w, r)
 			return
@@ -53,10 +58,7 @@ func WithStored(next http.Handler, read func(string) (runstate.StoredData, error
 				result.Warning = "Stored data cleared; refreshed list unavailable: " + readErr.Error()
 			}
 			w.Header().Set("Content-Type", "application/json")
-			_ = json.NewEncoder(w).Encode(struct {
-				runstate.ClearResult
-				Stored *runstate.StoredData `json:"stored,omitempty"`
-			}{result, stored})
+			_ = json.NewEncoder(w).Encode(StoredClearResult{result, stored})
 			return
 		}
 		value, err := read(key)
@@ -66,5 +68,5 @@ func WithStored(next http.Handler, read func(string) (runstate.StoredData, error
 		}
 		w.Header().Set("Content-Type", "application/json")
 		_ = json.NewEncoder(w).Encode(value)
-	})
+	}), "GET /stored", "DELETE /stored", "/stored")
 }

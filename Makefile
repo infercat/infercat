@@ -11,7 +11,7 @@ export VITE_APP_VERSION := $(PRODUCT_VERSION)
 # image URL in index.html, which must be absolute to be picked up.
 export VITE_WEB_URL := $(shell sed -n 's/^[[:space:]]*WebURL[[:space:]]*=[[:space:]]*"\([^"]*\)".*/\1/p' internal/product/product.go)
 
-.PHONY: console-deps web-deps web-typecheck web-browser build test vet wasm web web-test web-lint size-check check clean release-dry release-verify-macos notices notices-check brand launch-check deploy-web
+.PHONY: cli-contract console-deps web-deps web-typecheck web-browser build test vet wasm web web-test web-lint size-check check clean release-dry release-verify-macos notices notices-check brand launch-check deploy-web
 
 build:
 	go build -o bin/infercat ./cmd/infercat
@@ -24,6 +24,10 @@ test:
 
 vet:
 	go vet ./...
+
+cli-contract:
+	go test ./cmd/infercat -run '^TestMachine(FieldInventory|OperationDocs)$$' -args -update-cli-contract
+	git diff --exit-code -- cmd/infercat/testdata/cli-schema-1.txt docs/CLI-JSON.md docs/CLI-JSON.zh-CN.md
 
 check: size-check console-check vet test client-check bridge-check web-lint host-compat
 	# host-compat built web/dist; run every no-invite launch assertion against that exact build.

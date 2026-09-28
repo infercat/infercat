@@ -144,11 +144,12 @@ type Key struct {
 
 // Server is the running admin endpoint.
 type Server struct {
-	l     net.Listener
-	srv   *http.Server
-	clean func()
-	done  chan struct{} // closed by Close: every /events stream ends
-	once  sync.Once
+	routes []string
+	l      net.Listener
+	srv    *http.Server
+	clean  func()
+	done   chan struct{} // closed by Close: every /events stream ends
+	once   sync.Once
 }
 
 // Serve starts the admin endpoint for dataDir. status is called per GET /status; reload is called
@@ -165,7 +166,7 @@ func Serve(dataDir string, status func() Status, reload func() error, events *Ev
 	authed := func(r *http.Request) bool {
 		return token != "" && subtle.ConstantTimeCompare([]byte(r.Header.Get("Authorization")), []byte("Bearer "+token)) == 1
 	}
-	mux := http.NewServeMux()
+	mux := NewMux()
 	mux.HandleFunc("GET /events", func(w http.ResponseWriter, r *http.Request) {
 		if !authed(r) {
 			http.Error(w, "unauthorized", http.StatusUnauthorized)
@@ -233,13 +234,15 @@ func Serve(dataDir string, status func() Status, reload func() error, events *Ev
 		mux.ServeHTTP(w, r)
 	})
 	srv := &http.Server{Handler: handler, ReadHeaderTimeout: 5 * time.Second, IdleTimeout: 30 * time.Second}
-	s := &Server{l: l, srv: srv, clean: clean, done: done}
+	s := &Server{l: l, srv: srv, clean: clean, done: done, routes: mux.Routes()}
 	go srv.Serve(l)
 	return s, nil
 }
 
 // Addr is where the admin endpoint is listening, for the startup banner.
 func (s *Server) Addr() string { return s.l.Addr().String() }
+
+func (s *Server) Routes() []string { return append([]string(nil), s.routes...) }
 
 // Close stops serving and removes the socket / port files.
 func (s *Server) Close() error {

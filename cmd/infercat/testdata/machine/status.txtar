@@ -1,0 +1,66 @@
+# Real CLI subprocess, fake local admin host; stdin/stdout are not terminals.
+exit 0 infercat --data-dir $HOST status --json
+! stderr .
+cmpenv stdout success.json
+
+# Usage errors remain one JSON object on stdout.
+exit 2 infercat --data-dir $HOST status --json --unexpected
+! stderr .
+cmpenv stdout invalid.json
+
+# Stopped-host semantics (including the offline exceptions).
+exit 69 infercat --data-dir $NOHOST status --json
+! stderr .
+cmpenv stdout stopped.json
+
+-- failure.txt --
+fail
+
+-- success.json --
+{"schema":1,"command":"status","host":{"version":"$VERSION","name":"script host"},"data":{
+  "product": "Infercat",
+  "version": "0.1.5-dev",
+  "uptime_s": 0,
+  "mode": "",
+  "name": "script host",
+  "tunnel": {
+    "addr": "",
+    "region": "",
+    "clients": 0,
+    "sessions": null,
+    "rx_bytes": 0,
+    "tx_bytes": 0
+  },
+  "upstream": {
+    "kind": "",
+    "url": "",
+    "healthy": false,
+    "since": "0001-01-01T00:00:00Z",
+    "model_context": 0,
+    "slots": 0
+  },
+  "queue": {
+    "in_flight": 0,
+    "waiting": 0
+  },
+  "engine": {
+    "slots_peak_sampled": 0,
+    "tokens_per_s_1m": 0,
+    "metrics": false,
+    "busy": 0,
+    "waiting": 0,
+    "memory_bytes": 0,
+    "kv_cache_pct": 0
+  },
+  "process": {
+    "goroutines": 0,
+    "heap_bytes": 0,
+    "sys_bytes": 0,
+    "rss_bytes": 0
+  },
+  "keys": []
+}}
+-- invalid.json --
+{"schema":1,"command":"status","error":{"code":"invalid_arguments","message":"flag provided but not defined: -unexpected"}}
+-- stopped.json --
+{"schema":1,"command":"status","error":{"code":"host_stopped","message":"no running host found for this data dir"}}

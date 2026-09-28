@@ -1,0 +1,7 @@
+# No host means exactly one gone line, without a hello or human output.
+exit 69 infercat --data-dir $NOHOST watch --json
+! stderr .
+cmpenv stdout gone.json
+
+-- gone.json --
+{"reason":"host_stopped","schema":1,"type":"gone"}
