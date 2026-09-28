@@ -62,24 +62,51 @@ no socket, no reading the host's files, and the admin token never enters the app
   is visible and 10 s otherwise, restarted on a visibility change with a one-second
   debounce. Stopping it closes stdout first, then sends SIGTERM, then SIGKILL after a
   second: `watch` cannot see a signal while it is blocked writing to a pipe nobody reads.
-- **A stream that ends is two different things, handled differently.** With no host,
-  `watch` prints one `gone` line and exits 69 after a fraction of a second, so
-  respawning it on a timer would be the polling-by-spawning this architecture exists
-  to avoid. That case does not respawn `watch` at all: the stream enters *waiting for
-  the host* and asks `service status --json` on its own ladder — 2 s doubling to a
-  30 s ceiling — starting `watch` again only once the service reports running.
-  Pressing Start, or bringing the window or popover on screen, cuts the current wait
-  short. Ten minutes with no host installed costs **24 subprocesses**, a number
-  `CadenceTests` pins with a fake clock. Any other ending (a crash, exit 75, output we
-  cannot read) does restart `watch`, on the same ladder from 1 s, and the delay resets
-  only after a `status` frame has actually arrived — a `hello` or a `gone` is not
-  evidence that anything works. A `gone` followed by the stream ending is one service
-  read, not one per callback.
+- **One ladder, and one rule.** A `watch` attempt that ends *without having delivered
+  a `status` frame* is answered the same way every time: wait out the current rung —
+  2 s, doubling to a 30 s ceiling — and try again. A `status` frame is the only thing
+  that resets it. `hello`, `gone`, an exit code and `service status` are not evidence.
+  **`service.running` least of all**: it means launchd holds a pid for the LaunchAgent,
+  not that a host answers for this data directory, so a host that is booting,
+  crash-looping under `KeepAlive`, or serving a different `--data-dir` will keep
+  exiting 69 while launchd reports it running. The service is read here only to word
+  what the person sees, and only while the ladder is still 8 s or shorter, because
+  after that only `watch` can tell us anything new.
+
+  Every edge from "a subprocess ended" to "spawn another subprocess", with its
+  minimum delay:
+
+  | Edge | Minimum delay before the next spawn |
+  |---|---|
+  | app launch, Start, Restart, ⌘R → first attempt | none — these are the person asking, once each, and `working` admits one at a time |
+  | attempt ended without a `status` frame → next attempt | the current rung: 2, 4, 8, 16, 30, 30… |
+  | attempt ended having delivered a `status` frame → next attempt | 1 s, and the ladder is back at its foot |
+  | the wording read (`service status`) → the attempt in the same cycle | none, but it happens at most three times per waiting period and never while the ladder is above 8 s |
+  | `checkNow()` (Start pressed, a surface appeared) → next attempt | cuts the current nap short, honoured at most once per 30 s of waiting, and never lowers the ladder |
+  | visibility change → restart for a new interval | 1 s debounce, and only while a stream is actually delivering |
+  | damaged bundle, or a schema we cannot read | the loop stops; it will not fix itself |
+
+  Ten minutes with no host installed costs **26 subprocesses**; ten minutes with a pid
+  but nothing answering costs the same 26; someone holding Start down through those
+  ten minutes costs at most 80. `CadenceTests` pins all of them with a fake clock.
+
+- **The other things that can spawn are rate-limited too.** `service status` outside
+  the loop is one read per user action. Limits and today's usage are read once on the
+  first status and then at most once a minute while a surface is visible — never at
+  the status cadence — and a read that fails still counts, so a failure cannot spin.
+  `keys show` is one read per friend selected. Every mutation is one subprocess,
+  guarded so a second cannot start while the first is in flight.
+
 - **A command subprocess only when someone acts.** Its stdout is capped at 1 MiB,
   its stderr is drained and never logged, and it is never replayed. An action that
   goes unanswered says so; the app re-reads instead of resending.
 - **`gone.reason` and `error.code` are open sets**, and so is a watch line's `type`.
   The app reports them and never switches on them.
+- **launchd having a pid is not the same as a host answering, and the app says which
+  it means.** For 30 s after the app asked for a start — including its own launch —
+  a host that has not answered yet reads "Starting…". After that it reads "The host is
+  not answering", with Restart host and Open web console, because at that point a
+  fault is the honest reading.
 - **No optimistic updates.** A pressed control shows "Waiting for the host…", and the
   screen changes when the next status confirms it.
 - **Lifecycle only through `infercat service`.** The host outlives the app: Quit says
