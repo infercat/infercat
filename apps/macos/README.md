@@ -4,11 +4,12 @@ A native macOS 14+ menu-bar app and one window, Swift 6 and SwiftUI with an AppK
 `NSStatusItem`. Architecture and the CLI machine contract: `docs/design/desktop-app.md`
 in the PM repo; the design it is built from: `docs/design/desktop-app-ui.md`.
 
-**This is cut A of ticket 197.** It has the menu-bar item with its six states and the
-popover, first run, and the main window with the Overview screen in all seven of its
-states, in English and Simplified Chinese, light and dark. Friends, Activity, Engine,
-Usage and Settings are in the sidebar but say "comes in the next build" and offer the
-web console, which already does the job. Nothing in this build fakes an invite.
+**This is cuts A and B of ticket 197.** It has the menu-bar item with its six states
+and the popover, first run, the Overview screen in all seven of its states, and
+Friends — the list, the inspector, pause, resume, rotate, revoke, edit limits, and
+the New invite flow with its once-card and QR. English and Simplified Chinese, light
+and dark, throughout. Activity, Engine, Usage and Settings are in the sidebar but say
+"comes in the next build" and offer the web console, which already does the job.
 
 ## Build and test, unsigned
 
@@ -111,6 +112,19 @@ no socket, no reading the host's files, and the admin token never enters the app
   screen changes when the next status confirms it.
 - **Lifecycle only through `infercat service`.** The host outlives the app: Quit says
   so and leaves it running.
+- **The invite secret lives in memory and nowhere else.** `InviteSecret` is not
+  `Codable`, is never written, never logged, never interpolated into an error, and
+  reaches the pasteboard only through a button the person pressed — marked transient
+  so clipboard managers keep no history. The sheet and the window that presents it are
+  marked non-restorable while it is on screen, so no saved-state snapshot can contain
+  it. After Done, a masked prefix and the date are all that remain.
+  `SecretHygieneTests` fails if a minted secret reaches UserDefaults, the app's
+  directories, the saved-state directory, the pasteboard before a copy, or any error
+  string.
+- **"No limit" is `-1`, not `0`.** The host coerces `0` to its own default on almost
+  every limit field. The only exception is `--max-context`, where `0` is the
+  documented sentinel for the engine's window. The fixtures README has the table and
+  the evidence.
 
 ## Layout
 
@@ -121,6 +135,8 @@ no socket, no reading the host's files, and the admin token never enters the app
 | `Sources/WatchStream.swift` | the one long-lived stream, cadence and backoff |
 | `Sources/HostModel.swift` | the six menu-bar states, the seven Overview states, attention, actions |
 | `Sources/PopoverView.swift`, `FirstRunView.swift`, `MainWindow.swift`, `OverviewScreen.swift` | the surfaces |
+| `Sources/FriendsScreen.swift`, `FriendInspector.swift`, `FriendsModel.swift` | Friends: the list, one friend in full, and the sorting and status lines behind them |
+| `Sources/InviteSheet.swift`, `InviteSecret.swift`, `Limits.swift` | the invite flow, the secret that exists only while the once-card is open, and the limit form |
 | `Sources/Brand.swift`, `Copy.swift` | cobalt, the loaf, status squares, IBM Plex Mono, EN/ZH copy |
 | `Sources/Fixtures.swift`, `Capture.swift` | the fixture client and the screenshot harness |
 | `Resources/Fixtures/` | the vendored contract fixtures and the demo payloads ([README](Resources/Fixtures/README.md)) |
