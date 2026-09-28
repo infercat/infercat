@@ -1,0 +1,32 @@
+{
+  "schema": 1,
+  "command": "usage",
+  "host": {
+    "version": "0.1.6",
+    "name": "host"
+  },
+  "data": {
+    "total": {
+      "requests": 252,
+      "model_calls": 214,
+      "app_polls": 38,
+      "errors": 2,
+      "prompt_tokens": 196400,
+      "completion_tokens": 134600,
+      "seconds": 0,
+      "characters": 0,
+      "ttft_median_ms": 212,
+      "ttft_p95_ms": 480,
+      "total_median_ms": 9600,
+      "total_p95_ms": 51000,
+      "key_id": "",
+      "first_seen": "2026-09-28T08:01:00Z",
+      "last_seen": "2026-09-28T14:32:07Z",
+      "last_call": "2026-09-28T14:32:07Z"
+    },
+    "keys": [],
+    "daily": [],
+    "by_via": {},
+    "malformed_lines": 0
+  }
+}

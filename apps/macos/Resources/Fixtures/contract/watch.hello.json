@@ -1,0 +1,10 @@
+{
+  "events": true,
+  "host": {
+    "version": "0.1.6-fixture",
+    "name": "Example host"
+  },
+  "interval_ms": 2000,
+  "schema": 1,
+  "type": "hello"
+}

@@ -1,0 +1,19 @@
+{
+  "schema": 1,
+  "command": "service.status",
+  "host": {
+    "version": "0.1.6",
+    "name": "host"
+  },
+  "data": {
+    "binary": "/Applications/Infercat.app/Contents/Helpers/infercat",
+    "log": "~/Library/Logs/Infercat/host.log",
+    "since": "14:20",
+    "pid": 0,
+    "installed": false,
+    "loaded": false,
+    "running": false,
+    "stuck": false,
+    "start_at_login": true
+  }
+}

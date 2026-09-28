@@ -1,0 +1,132 @@
+{
+  "schema": 1,
+  "command": "status",
+  "host": {
+    "version": "0.1.6",
+    "name": "Max 的工作站"
+  },
+  "data": {
+    "product": "infercat",
+    "version": "0.1.6",
+    "uptime_s": 273600,
+    "mode": "host",
+    "name": "Max 的工作站",
+    "console": "http://127.0.0.1:8842",
+    "models_pinned": [
+      "qwen3.8-flash-next"
+    ],
+    "tunnel": {
+      "addr": "ia1-4f2c.infercat.net",
+      "region": "New York",
+      "clients": 3,
+      "sessions": [
+        {
+          "key": "k_lin",
+          "path": "relay",
+          "via": "tunnel",
+          "rtt_ms": 24,
+          "handshake_ms": 61,
+          "conns": 1,
+          "rx_bytes": 182411,
+          "tx_bytes": 904220,
+          "since": "2026-09-28T11:02:10Z",
+          "last_byte": "2026-09-28T14:32:07Z",
+          "active": true
+        },
+        {
+          "key": "k_bao",
+          "path": "relay",
+          "via": "tunnel",
+          "rtt_ms": 31,
+          "handshake_ms": 70,
+          "conns": 1,
+          "rx_bytes": 70112,
+          "tx_bytes": 441003,
+          "since": "2026-09-28T12:41:00Z",
+          "last_byte": "2026-09-28T14:31:52Z",
+          "active": true
+        }
+      ],
+      "rx_bytes": 252523,
+      "tx_bytes": 1345223
+    },
+    "upstream": {
+      "kind": "llama.cpp",
+      "url": "http://127.0.0.1:8080",
+      "healthy": true,
+      "since": "2026-09-25T10:28:00Z",
+      "model_context": 65536,
+      "slots": 4
+    },
+    "queue": {
+      "in_flight": 1,
+      "waiting": 0
+    },
+    "engine": {
+      "slots_peak_sampled": 3,
+      "tokens_per_s_1m": 41.4,
+      "metrics": true,
+      "busy": 1,
+      "waiting": 0,
+      "memory_bytes": 22978396160,
+      "kv_cache_pct": 38
+    },
+    "process": {
+      "goroutines": 84,
+      "heap_bytes": 41200128,
+      "sys_bytes": 92274688,
+      "rss_bytes": 71303168
+    },
+    "bridge": {
+      "slots": 2,
+      "enabled": true,
+      "url": "https://try.infercat.net/h/4f2c",
+      "connected": true,
+      "since": "2026-09-25T10:29:00Z",
+      "requests_today": 38
+    },
+    "remote": {
+      "enabled": false,
+      "since": "0001-01-01T00:00:00Z",
+      "in_use": false
+    },
+    "keys": [
+      {
+        "connected": true,
+        "sessions": 1,
+        "id": "k_lin",
+        "name": "林悦",
+        "status": "active",
+        "in_flight": 1,
+        "rpm_used": 3,
+        "tpm_used": 4210,
+        "today_tokens": 84200,
+        "last_seen": "2026-09-28T14:32:07Z"
+      },
+      {
+        "connected": true,
+        "sessions": 1,
+        "id": "k_bao",
+        "name": "阿宝",
+        "status": "active",
+        "in_flight": 0,
+        "rpm_used": 0,
+        "tpm_used": 0,
+        "today_tokens": 41600,
+        "last_seen": "2026-09-28T14:31:52Z"
+      },
+      {
+        "connected": true,
+        "sessions": 1,
+        "id": "k_wei",
+        "name": "小伟",
+        "status": "active",
+        "in_flight": 0,
+        "rpm_used": 0,
+        "tpm_used": 0,
+        "today_tokens": 192000,
+        "last_seen": "2026-09-28T14:30:18Z"
+      }
+    ]
+  }
+}

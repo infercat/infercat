@@ -1,0 +1,91 @@
+{
+  "schema": 1,
+  "command": "keys.list",
+  "host": {
+    "version": "0.1.6-fixture",
+    "name": "Example host"
+  },
+  "data": [
+    {
+      "id": "k_example",
+      "name": "Example host",
+      "status": "active",
+      "agent": true,
+      "limits": {
+        "search_per_day": 1,
+        "daily_images": 1,
+        "max_queued_images": 1,
+        "daily_audio_seconds": 1,
+        "daily_speech_chars": 1,
+        "rpm": 1,
+        "tpm": 1,
+        "max_concurrent": 1,
+        "max_output_tokens": 1,
+        "max_context": 1,
+        "daily_tokens": 1,
+        "models": [
+          "example"
+        ]
+      },
+      "created_at": "2026-09-28T00:00:00Z",
+      "last_seen": "2026-09-28T00:00:00Z",
+      "today_tokens": 1,
+      "daily": [
+        {
+          "date": "2026-09-28",
+          "counts": {
+            "meters": [
+              {
+                "class": "tokens",
+                "unit": "tokens",
+                "measured": 1,
+                "charged": 1
+              }
+            ],
+            "by_via": {
+              "example": {
+                "seconds": 0,
+                "characters": 0,
+                "requests": 0,
+                "model_calls": 0,
+                "app_polls": 0,
+                "errors": 0,
+                "prompt_tokens": 0,
+                "completion_tokens": 0,
+                "ttft_median_ms": 0,
+                "ttft_p95_ms": 0,
+                "total_median_ms": 0,
+                "total_p95_ms": 0,
+                "first_seen": "0001-01-01T00:00:00Z",
+                "last_seen": "0001-01-01T00:00:00Z",
+                "last_call": "0001-01-01T00:00:00Z"
+              }
+            },
+            "key_id": "k_example",
+            "model_calls_by_model": {
+              "example": 1
+            },
+            "seconds": 1,
+            "characters": 1,
+            "requests": 2,
+            "model_calls": 1,
+            "app_polls": 1,
+            "errors": 1,
+            "errors_by_code": {
+              "example": 1
+            },
+            "prompt_tokens": 1,
+            "completion_tokens": 1,
+            "ttft_median_ms": 1,
+            "ttft_p95_ms": 1,
+            "total_median_ms": 1,
+            "total_p95_ms": 1,
+            "first_seen": "2026-09-28T00:00:00Z",
+            "last_seen": "2026-09-28T00:00:00Z",
+            "last_call": "2026-09-28T00:00:00Z"
+          }
+        }
+      ]
+    }
+  ]
+}

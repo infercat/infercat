@@ -1,0 +1,16 @@
+{
+  "data": {
+    "ts": "2026-09-28T00:00:00Z",
+    "key_id": "k_example",
+    "endpoint": "/v1/chat/completions",
+    "status": 200,
+    "stream": false,
+    "prompt_tokens": 3,
+    "completion_tokens": 7,
+    "queued_ms": 0,
+    "ttft_ms": 0,
+    "total_ms": 0
+  },
+  "schema": 1,
+  "type": "event"
+}
