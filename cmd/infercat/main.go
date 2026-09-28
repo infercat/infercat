@@ -362,6 +362,8 @@ Start here:
   infercat connect ic2.tc….…      # a friend's side: any app, base URL http://127.0.0.1:11435/v1
 
 Global flags:
+  --host-file PATH remote admin code in a private file (recommended)
+  --host CODE      remote ia1 admin code; visible in the process argument list
   --json[=1]      schema-1 machine output (see docs/CLI-JSON.md)
   --data-dir DIR   where keys, usage, config, and the host key live
                    (default: <user config dir>/infercat)

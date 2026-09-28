@@ -140,3 +140,68 @@ func TestRemoteWatchIntervalRefusesBeforeFactory(t *testing.T) {
 		t.Fatal(got, out.String())
 	}
 }
+
+func TestRemoteHumanPathsNeverOpenClientStore(t *testing.T) {
+	f := newMachineFixture(t)
+	root := t.TempDir()
+	t.Setenv("HOME", root)
+	t.Setenv("XDG_CONFIG_HOME", filepath.Join(root, "missing-config"))
+	for _, args := range [][]string{{"status"}, {"keys", "list"}, {"keys", "add", "bob"}, {"keys", "limits", f.id, "--rpm", "12"}, {"keys", "rotate", f.id}, {"keys", "pause", f.id}, {"keys", "resume", f.id}, {"usage"}, {"usage", "--window", "week"}, {"settings"}} {
+		t.Run(strings.Join(args, "-"), func(t *testing.T) {
+			e, out, errw := remoteTestEnv(t)
+			calls := 0
+			e.adminClientFactory = func(_ context.Context, dir string) (*admin.Client, error) {
+				calls++
+				if dir != "" {
+					t.Fatal("client data dir resolved")
+				}
+				return admin.NewClient(f.dir)
+			}
+			if code := e.runRemote(context.Background(), args, nil); code != 0 {
+				t.Fatal(code, out.String(), errw.String())
+			}
+			if calls != 1 {
+				t.Fatal("more than one client", calls)
+			}
+			if args[0] == "usage" && !strings.Contains(out.String(), "usage · calendar ") {
+				t.Fatal(out.String())
+			}
+			entries, err := os.ReadDir(root)
+			if err != nil || len(entries) != 0 {
+				t.Fatal(entries, err)
+			}
+		})
+	}
+}
+func TestRemoteHumanFailureNeverChoosesOfflineOrLocalReceipts(t *testing.T) {
+	t.Setenv("HOME", "")
+	t.Setenv("XDG_CONFIG_HOME", "")
+	for _, args := range [][]string{{"status"}, {"keys", "list"}, {"keys", "add", "bob"}, {"usage"}} {
+		e, out, _ := remoteTestEnv(t)
+		e.adminClientFactory = func(context.Context, string) (*admin.Client, error) { return nil, admin.ErrNoDaemon }
+		if code := e.runRemote(context.Background(), args, nil); code != 69 || out.Len() != 0 {
+			t.Fatal(code, out.String())
+		}
+	}
+}
+func TestRemoteHumanValidationBeforeDial(t *testing.T) {
+	for _, args := range [][]string{{"status", "--watch", "--interval", "10ms"}, {"usage", "--window", "month"}, {"settings", "set", "--", "console=off"}} {
+		e, _, _ := remoteTestEnv(t)
+		e.adminClientFactory = func(context.Context, string) (*admin.Client, error) { t.Fatal("validation dialed"); return nil, nil }
+		if code := e.runRemote(context.Background(), args, nil); code == 0 {
+			t.Fatal("accepted invalid operation")
+		}
+	}
+}
+func TestRemoteInviteUsesReturnedLinkOnly(t *testing.T) {
+	e, out, _ := remoteTestEnv(t)
+	e.printDestination("/must-not-read", "friend", "ic2.test.code", true, "https://remote.example/#ic2.test.code")
+	if !strings.Contains(out.String(), "https://remote.example/#ic2.test.code") {
+		t.Fatal(out.String())
+	}
+	out.Reset()
+	e.printDestination("/must-not-read", "friend", "ic2.test.code", true, "")
+	if strings.Contains(out.String(), "https://infercat.ai") {
+		t.Fatal("used local default link")
+	}
+}

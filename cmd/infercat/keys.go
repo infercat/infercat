@@ -124,6 +124,9 @@ func (e *env) open(verb, help, pre string, args []string, want int, reg func(*fl
 		fmt.Fprint(e.errw, help)
 		return nil, "", nil, errUsage
 	}
+	if e.remoteTarget.Remote() {
+		return nil, "", fs.Args(), nil
+	}
 	dataDir, err := resolveDataDir(*dd)
 	if err != nil {
 		return nil, "", nil, err
@@ -154,15 +157,19 @@ func (e *env) keysAdd(ctx context.Context, pre string, args []string) error {
 		defer client.Close()
 	}
 	var k *keys.Key
-	var inv string
+	var inv, link string
 	if client != nil {
 		var result inviteJSON
 		limits := apply(keys.Limits{})
-		if err := callJSON(ctx, client, "POST", "/keys", map[string]any{"name": pos[0], "limits": limits, "force": *force}, &result); err != nil {
+		body := map[string]any{"name": pos[0], "limits": limits}
+		if !e.remoteTarget.Remote() {
+			body["force"] = *force
+		}
+		if err := callJSON(ctx, client, "POST", "/keys", body, &result); err != nil {
 			return err
 		}
 		k = &keys.Key{ID: result.KeyID, Name: result.Name, Limits: keys.WithDefaults(limits)}
-		inv = result.Invite
+		inv, link = result.Invite, result.Link
 	} else {
 		if !*force {
 			if err := e.refuseDuplicate(ctx, store, dataDir, pos[0]); err != nil {
@@ -183,7 +190,7 @@ func (e *env) keysAdd(ctx context.Context, pre string, args []string) error {
 	}
 	fmt.Fprintf(e.out, "key %s  %s\n%s\n\n", k.ID, k.Name, limitsLine(k.Limits))
 	fmt.Fprintf(e.out, "Invite for %s — it is shown once and stored only as a hash:\n\n  %s\n\n", k.Name, inv)
-	e.printDestination(dataDir, k.Name, inv, *noQR)
+	e.printDestination(dataDir, k.Name, inv, *noQR, link)
 	fmt.Fprintf(e.out, "\nLost it? `%s keys rotate %s` issues a new one and retires this.\n", product.CLIName, k.ID)
 	return nil
 }
@@ -223,9 +230,17 @@ func article(word string) string {
 // printDestination answers the question the invite creates — where does my friend paste this? —
 // with a link when the host has a web app to point at, and with the honest alternative when
 // nobody has hosted one yet (ticket 009 promise 2).
-func (e *env) printDestination(dataDir, name, inv string, noQR bool) {
+func (e *env) printDestination(dataDir, name, inv string, noQR bool, returnedLink ...string) {
 	code := inv
-	if link := inviteLink(dataDir, inv); link != "" {
+	link := ""
+	if e.remoteTarget.Remote() {
+		if len(returnedLink) > 0 {
+			link = returnedLink[0]
+		}
+	} else {
+		link = inviteLink(dataDir, inv)
+	}
+	if link != "" {
 		fmt.Fprintf(e.out, "Send %s this link:\n\n  %s\n\n", name, link)
 		code = link // the QR carries the link, so a phone camera finishes the job
 	} else {
@@ -287,6 +302,24 @@ func (e *env) keysList(ctx context.Context, pre string, args []string) error {
 	if err != nil {
 		return err
 	}
+	if e.remoteTarget.Remote() {
+		client, err := e.adminClient(ctx, "")
+		if err != nil {
+			return err
+		}
+		defer client.Close()
+		var rows []consoleKey
+		if err = callJSON(ctx, client, "GET", "/keys", nil, &rows); err != nil {
+			return err
+		}
+		list := make([]*keys.Key, 0, len(rows))
+		seen := map[string]time.Time{}
+		for _, k := range rows {
+			list = append(list, &keys.Key{ID: k.ID, Name: k.Name, Status: k.Status, Limits: k.Limits, CreatedAt: k.Created})
+			seen[k.ID] = k.LastSeen
+		}
+		return e.writeKeys(list, seen)
+	}
 	list, err := store.List(ctx)
 	if err != nil {
 		return err
@@ -299,7 +332,13 @@ func (e *env) keysList(ctx context.Context, pre string, args []string) error {
 	if err != nil {
 		return err
 	}
-	seen := rep.LastSeen()
+	return e.writeKeys(list, rep.LastSeen())
+}
+func (e *env) writeKeys(list []*keys.Key, seen map[string]time.Time) error {
+	if len(list) == 0 {
+		fmt.Fprintf(e.out, "no keys yet — `%s keys add <name>` mints one\n", product.CLIName)
+		return nil
+	}
 	tw := newTable(e.out)
 	fmt.Fprintln(tw, "ID\tNAME\tSTATUS\tRPM\tTPM\tDAILY\tAUDIO S/DAY\tSPEECH CHARS/DAY\tIMAGES/DAY\tIMAGE QUEUE\tCREATED\tLAST SEEN")
 	for _, k := range list {
@@ -402,13 +441,13 @@ func (e *env) keysRotate(ctx context.Context, pre string, args []string) error {
 	if err != nil {
 		return err
 	}
-	var inv string
+	var inv, link string
 	if client != nil {
 		var result inviteJSON
 		if err := callJSON(ctx, client, "POST", "/keys/"+k.ID+"/rotate", nil, &result); err != nil {
 			return err
 		}
-		inv = result.Invite
+		inv, link = result.Invite, result.Link
 	} else {
 		addr, err := e.hostAddr(ctx, dataDir)
 		if err != nil {
@@ -421,7 +460,7 @@ func (e *env) keysRotate(ctx context.Context, pre string, args []string) error {
 		e.reloadHost(ctx, dataDir)
 	}
 	fmt.Fprintf(e.out, "key %s  %s — the previous invite no longer works.\n\n  %s\n\n", k.ID, k.Name, inv)
-	e.printDestination(dataDir, k.Name, inv, *noQR)
+	e.printDestination(dataDir, k.Name, inv, *noQR, link)
 	return nil
 }
 

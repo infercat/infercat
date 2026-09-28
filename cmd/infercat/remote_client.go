@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/infercat/infercat/internal/admin"
+	"github.com/infercat/infercat/internal/bridge"
 	"github.com/infercat/infercat/internal/machine"
 )
 
@@ -31,8 +32,12 @@ func (e *env) remoteError(args []string, err error) int {
 	if asJSON {
 		return machine.Write(e.out, op, machine.Host{}, nil, err)
 	}
+	f := machine.Classify(op, err)
 	fmt.Fprintln(e.errw, err)
-	return machine.Classify(op, err).Exit
+	if f.RetryAfter != "" {
+		fmt.Fprintln(e.errw, "Retry-After:", f.RetryAfter)
+	}
+	return f.Exit
 }
 func (e *env) runRemote(ctx context.Context, args []string, err error) int {
 	if err != nil {
@@ -102,7 +107,7 @@ func (e *env) runRemote(ctx context.Context, args []string, err error) int {
 	case "usage":
 		err = e.cmdUsage(ctx, pre, rest[1:])
 	case "expose":
-		err = e.cmdInspect(ctx, pre, "expose", rest[1:])
+		err = e.remoteExpose(ctx, pre, rest[1:])
 	default:
 		err = e.cmdInspect(ctx, pre, rest[0], rest[1:])
 	}
@@ -152,4 +157,52 @@ func (e *env) remoteWatchGone(err error) int {
 		return 1
 	}
 	return f.Exit
+}
+
+func (e *env) watchRemoteHuman(ctx context.Context, client *admin.Client, st admin.Status, every time.Duration) error {
+	for {
+		fmt.Fprint(e.out, "\x1b[H\x1b[2J")
+		writeStatus(e.out, st)
+		timer := time.NewTimer(every)
+		select {
+		case <-ctx.Done():
+			timer.Stop()
+			return nil
+		case <-timer.C:
+		}
+		var err error
+		st, err = clientStatus(ctx, client)
+		if err != nil {
+			if ctx.Err() != nil {
+				return nil
+			}
+			return err
+		}
+	}
+}
+
+func (e *env) remoteExpose(ctx context.Context, pre string, args []string) error {
+	r, err := parseMachine(pre, append([]string{"expose"}, args...), true)
+	if err != nil {
+		return err
+	}
+	if err = remoteMachineRequest(r); err != nil {
+		return err
+	}
+	_, raw, err := e.executeMachine(ctx, r)
+	if err != nil {
+		return err
+	}
+	var st admin.Status
+	if json.Unmarshal(raw, &st) != nil {
+		return admin.ErrResponse
+	}
+	if st.Bridge == nil || st.Bridge.URL == "" {
+		return fmt.Errorf("host has no registered public endpoint")
+	}
+	fmt.Fprintf(e.out, "%s\n%s\n", st.Bridge.URL, bridge.TrustLine)
+	if !st.Bridge.Enabled {
+		fmt.Fprintln(e.out, "public endpoint disabled; use expose --on on the host to enable it")
+	}
+	return nil
 }
