@@ -155,7 +155,7 @@ struct InviteSheet: View {
                 Button(model.text(isLimitsOnly ? "lim_save" : "inv_create"), action: submit)
                     .buttonStyle(.borderedProminent)
                     .keyboardShortcut(.defaultAction)
-                    .disabled(!canSubmit)
+                    .disabled(!canSubmit || (isLimitsOnly && draft.nothingChanged))
             }
         }
         .padding(22)
@@ -188,9 +188,12 @@ struct InviteSheet: View {
         refusedName = name.trimmingCharacters(in: .whitespacesAndNewlines)
         let flags = draft.flags(offeredBy: model.status)
         if let id = keyID, isLimitsOnly {
+            let agentChange = draft.agentChange
             Task {
-                await model.act(.keysLimits(id, limits: flags), on: id)
-                await model.setAgent(draft.agent, for: id)
+                // One command for the limits that moved, and a second one only when
+                // the agent switch itself was moved.
+                if !flags.isEmpty { await model.act(.keysLimits(id, limits: flags), on: id) }
+                if let wanted = agentChange { await model.setAgent(wanted, for: id) }
                 dismiss()
             }
             return
@@ -364,13 +367,20 @@ struct OnceCard: View {
             HStack(alignment: .top, spacing: 16) {
                 VStack(alignment: .leading, spacing: 10) {
                     // Middle-truncated on screen; `copy` always takes the whole thing.
+                    // Shown middle-truncated and deliberately NOT selectable: a
+                    // hand-copy of this text would carry the ellipsis and quietly
+                    // fail. Copy link and Copy code are the ways out, and they take
+                    // the whole string.
                     Text(InviteSecret.truncatedForScreen(secret.link ?? secret.invite ?? ""))
                         .font(Brand.mono(11, relativeTo: .body))
                         .padding(9)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .background(Color.primary.opacity(0.06))
-                        .textSelection(.enabled)
+                        .textSelection(.disabled)
                         .accessibilityLabel(model.text("a11y_once_link"))
+                    Text(model.text("once_use_buttons"))
+                        .font(.caption2)
+                        .foregroundStyle(.secondary)
                     HStack(spacing: 8) {
                         Button(copied ? model.text("once_copied") : model.text("once_copy_link")) {
                             secret.copy(.link); flash()

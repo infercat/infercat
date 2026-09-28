@@ -147,6 +147,12 @@ struct LimitsDraft: Equatable, Sendable {
     private(set) var touchedModels = false
     var agent = false
 
+    /// What the host reported when this form opened, so "what changed" is answerable.
+    /// Empty for a new invite, where everything is a change by definition.
+    private var baseline: [String: Setting] = [:]
+    private var baselineModels: String?
+    private var baselineAgent: Bool?
+
     init() {}
 
     /// Prefilled from limits the host reported for a real key — never from numbers
@@ -167,6 +173,30 @@ struct LimitsDraft: Equatable, Sendable {
         models = (limits.models ?? []).joined(separator: ", ")
         touchedModels = true
         self.agent = agent
+        // Everything the host told us is the baseline. Saving then sends only what
+        // the person actually moved, so an edit cannot quietly overwrite a value
+        // something else changed in the meantime.
+        baseline = settings
+        baselineModels = models
+        baselineAgent = agent
+    }
+
+    /// Whether this field differs from what the host reported when the form opened.
+    func hasChanged(_ field: LimitField) -> Bool {
+        guard let was = baseline[field.rawValue] else { return isTouched(field) }
+        return was != self[field]
+    }
+    var modelsChanged: Bool {
+        guard let was = baselineModels else { return touchedModels }
+        return was != models
+    }
+    /// nil when the agent switch was not moved, so no second command is sent.
+    var agentChange: Bool? {
+        guard let was = baselineAgent else { return agent ? true : nil }
+        return was == agent ? nil : agent
+    }
+    var nothingChanged: Bool {
+        LimitField.allCases.allSatisfy { !hasChanged($0) } && !modelsChanged && agentChange == nil
     }
 
     subscript(field: LimitField) -> Setting {
@@ -217,7 +247,7 @@ struct LimitsDraft: Equatable, Sendable {
     /// is not handed image limits it would have to invent a meaning for.
     func flags(offeredBy status: HostStatus?) -> [String] {
         var argv: [String] = []
-        for field in LimitField.allCases where field.isOffered(by: status) {
+        for field in LimitField.allCases where field.isOffered(by: status) && hasChanged(field) {
             switch self[field] {
             case .hostDefault:
                 continue
@@ -230,7 +260,7 @@ struct LimitsDraft: Equatable, Sendable {
         }
         // An explicitly empty `--models` sends null, which clears the allowlist back
         // to every model. Not passing it at all leaves the allowlist untouched.
-        if touchedModels { argv += ["--models", modelList.joined(separator: ",")] }
+        if modelsChanged { argv += ["--models", modelList.joined(separator: ",")] }
         return argv
     }
 
