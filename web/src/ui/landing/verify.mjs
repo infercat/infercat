@@ -2,6 +2,7 @@
 import { join } from 'node:path';
 import { readFileSync } from 'node:fs';
 import ts from 'typescript';
+import { landingOrigins } from '../../../dev/launch-support.mjs';
 
 // The authored tables are literals; read their AST so the browser gate checks the actual copy,
 // including identical EN/ZH placeholders, without exposing test-only data in the app bundle.
@@ -54,7 +55,7 @@ export async function landingEvidence(browser, base, shots, inspect = async () =
     const errors = [], foreign = [], videoRequests = [];
     page.on('request', (r) => { if (/\.mp4(?:$|\?)/.test(r.url())) videoRequests.push(r.url()); });
     page.on('pageerror', (e) => errors.push(e.message));
-    page.on('request', (r) => { if (new URL(r.url()).origin !== new URL(base).origin) foreign.push(r.url()); });
+    page.on('request', (r) => { if (!landingOrigins(base).includes(new URL(r.url()).origin)) foreign.push(r.url()); });
     await page.goto(base);
     await page.locator('.landing').waitFor();
     // A dark OS must not select the dormant theme, including native controls and light-dark().
@@ -240,7 +241,7 @@ export async function landingEvidence(browser, base, shots, inspect = async () =
     assert(!errors.length, `page errors: ${errors}`);
     await context.close();
     checked++;
-    console.log(`  ${label}: PASS — layout, labels, language, controls, signup, same-origin`);
+    console.log(`  ${label}: PASS — layout, labels, language, controls, signup, allowed origins`);
   }
   console.log(`049 video: ${checked} passed / 0 failed / 0 skipped of ${checked}`);
   console.log(`052 anatomy: ${checked} passed / 0 failed / 0 skipped of ${checked}`);

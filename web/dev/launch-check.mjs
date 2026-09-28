@@ -1,13 +1,19 @@
-// What a stranger's browser sees on the built app (web/dist), checked and photographed. Two modes:
+// What a stranger's browser sees on the built app (web/dist), checked and photographed. Local and deployed modes:
 //
 //   pnpm launch-check                                  # the connect screen, from a vite preview it starts
-//   INVITE=ic1.… APP=http://127.0.0.1:6831 pnpm launch-check
+//   INVITE=ic2.… APP=http://127.0.0.1:6831 pnpm launch-check
 //                                                      # + the chat against a real host: the README recording
+//
+//   node dev/launch-check.mjs --live                    # strict deployed checks + one public demo chat
+//   APP=https://infercat.ai node dev/launch-check.mjs --live
+// --live follows /try privately, sends one short message and requires a complete answer. It does
+// not record the chat or print invites/fragment URLs. Use an origin for APP, never an invite URL.
+// Deployed origins permit only the injected Cloudflare beacon in addition to first-party requests.
 //
 // Checks — any failure exits 1: nothing on the console at load (warnings included); title,
 // description, Open Graph and Twitter metas, theme-color, manifest and apple-touch-icon links; the
 // manifest parses and carries the product name; every icon and og.png is served; the connect screen
-// asks no third party for anything, fonts included (038 promise 3, Protection 3); every control in
+// asks no unexpected third party for anything, fonts included (local builds allow none); every control in
 // the accessibility tree has a name; text contrast is 4.5:1 or better (3:1 for large text) in light
 // scheme; Tab lands on the invite field first; no horizontal overflow at 390 px. Screenshots go to
 // dev/screenshots/30-*.png (or LAUNCH_SHOTS); with INVITE, the recording goes to ../docs/media/friend-chat.gif (+ .png)
@@ -20,6 +26,7 @@ import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { chromium } from 'playwright';
 import { landingEvidence } from '../src/ui/landing/verify.mjs';
+import { landingOrigins, completedAnswer, safeDiagnostic, liveChat } from './launch-support.mjs';
 
 const here = dirname(fileURLToPath(import.meta.url));
 const web = join(here, '..');
@@ -29,28 +36,31 @@ const demoAt = process.argv.indexOf('--demo-dir');
 const demoDir = demoAt < 0 ? '' : process.argv[demoAt + 1];
 if (demoAt >= 0 && !demoDir) throw new Error('--demo-dir needs an output directory');
 const media = demoDir || join(web, '..', 'docs', 'media');
+const live = process.argv.includes('--live');
+if (live && (demoDir || process.env.INVITE)) throw new Error('--live uses the public demo; omit INVITE and --demo-dir');
 const PORT = Number(process.env.CHECK_PORT ?? 6833);
-const APP = (process.env.APP ?? `http://127.0.0.1:${PORT}`).replace(/\/+$/, '');
+const APP = (process.env.APP ?? (live ? 'https://infercat.ai' : `http://127.0.0.1:${PORT}`)).replace(/\/+$/, '');
+if (new URL(APP).origin !== APP) throw new Error('APP must be an origin without a path, query, credentials or fragment');
 const INVITE = process.env.INVITE ?? '';
 const PUBLIC_ORIGIN = new URL(process.env.VITE_WEB_URL || /WebURL\s*=\s*"([^"]+)"/.exec(readFileSync(join(web, '../internal/product/product.go'), 'utf8'))?.[1] || APP).origin;
 const NAME = /PRODUCT_NAME = '([^']+)'/.exec(readFileSync(join(web, 'src/product.ts'), 'utf8'))?.[1] ?? 'app';
 const QUESTION = demoDir ? 'Why is the sky blue? Answer in one sentence.' : 'Why is the sky blue? Answer in three sentences.';
 
 const problems = [];
-const say = (s) => console.log(`  ${s}`);
+const say = (s) => console.log(`  ${safeDiagnostic(s)}`);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 function watch(page, label) {
   page.on('console', (m) => {
-    if (m.type() === 'warning' || m.type() === 'error') problems.push(`${label}: console.${m.type()} ${m.text()}`);
+    if (m.type() === 'warning' || m.type() === 'error') problems.push(safeDiagnostic(`${label}: console.${m.type()} ${m.text()}`));
   });
-  page.on('pageerror', (e) => problems.push(`${label}: pageerror ${e.message}`));
+  page.on('pageerror', (e) => problems.push(safeDiagnostic(`${label}: pageerror ${e.message}`)));
 }
 
 /**
  * Every URL the page asks for, in order. Protection 3 says a friend's IP goes to the host and the
- * relay and nobody else, so the built app must ask no third party for anything — no font CDN, no
- * analytics, no map, no icon host. `thirdParty` turns that into a failure rather than a promise.
+ * relay and nobody else. Local builds allow no third party; deployed checks also allow the
+ * platform-injected beacon, never a general CDN/analytics exception.
  */
 function netWatch(page) {
   const seen = [];
@@ -75,11 +85,11 @@ function thirdParty(urls, allowed) {
   return [...out];
 }
 
-/** The connect screen is static: nothing may leave the app's own origin. */
+/** Local builds are strict; deployed pages may load the injected beacon. */
 async function firstParty(urls, label) {
-  const strangers = thirdParty(urls, [new URL(APP).origin]);
+  const strangers = thirdParty(urls, landingOrigins(APP));
   for (const o of strangers) problems.push(`${label}: the app requested ${o}, a third party (promise 3)`);
-  say(`${label}: ${urls.length} requests, ${strangers.length} to a third party — ${strangers.length ? strangers.join(', ') : 'none, all same-origin'}`);
+  say(`${label}: ${urls.length} requests, ${strangers.length} unexpected third-party origins — ${strangers.length ? strangers.join(', ') : 'none outside allowed origins'}`);
 }
 
 async function waitFor(url) {
@@ -104,7 +114,7 @@ function shot(file) {
 async function linkedAsset(href, base, expected, request = fetch) {
   if (!href?.trim()) throw new Error(`missing ${expected || 'image'} asset link`);
   let url = new URL(href, base);
-  if (!process.env.APP && url.origin === PUBLIC_ORIGIN) url = new URL(url.pathname + url.search, APP);
+  if (!process.env.APP && !live && url.origin === PUBLIC_ORIGIN) url = new URL(url.pathname + url.search, APP);
   const response = await request(url.href);
   const type = (response.headers.get('content-type') ?? '').split(';')[0].trim().toLowerCase();
   const body = await response.arrayBuffer();
@@ -122,7 +132,7 @@ async function assetFixtures() {
     if (requested !== new URL(href, `${APP}/nested/index.html`).href) throw new Error('asset URL resolution fixture failed');
   }
   await linkedAsset(`${PUBLIC_ORIGIN}/static/og-hash.png`, APP, 'image/svg+xml', response);
-  if (requested !== `${process.env.APP ? PUBLIC_ORIGIN : APP}/static/og-hash.png`) throw new Error('public asset preview fixture failed');
+  if (requested !== `${process.env.APP || live ? PUBLIC_ORIGIN : APP}/static/og-hash.png`) throw new Error('public asset preview fixture failed');
   for (const [status, type, body] of [[200, 'text/html', '<html/>'], [200, 'image/png', ''], [404, 'image/png', 'missing']]) {
     let refused = false;
     try { await linkedAsset('/broken.png', APP, '', async () => new globalThis.Response(body, { status, headers: { 'content-type': type } })); } catch { refused = true; }
@@ -455,8 +465,7 @@ async function chat(browser) {
   await stop.waitFor({ state: 'detached', timeout: 180_000 });
   await page.waitForTimeout(demoDir ? 2000 : 1800);
   if (demoDir) {
-    const answer = await page.locator('.row.assistant > .md').innerText();
-    if (!answer.trim()) throw new Error('demo: model produced no answer');
+    await completedAnswer(page);
     await page.locator('.thinking-toggle').waitFor();
     await page.screenshot({ path: join(media, 'browser-answer.png') });
     const video = page.video();
@@ -520,7 +529,7 @@ async function main() {
   if (demoDir && (!INVITE || !process.env.APP)) throw new Error('demo needs INVITE and APP');
   if (!demoDir) mkdirSync(shots, { recursive: true });
   let preview = null;
-  if (!process.env.APP) {
+  if (!process.env.APP && !live) {
     // Preview the same first-party media that deploy-web copies alongside the built app.
     for (const file of ['demo.mp4', 'demo.zh.mp4', 'demo-poster.png', 'demo-poster.zh.png']) copyFileSync(join(web, '../docs/media', file), join(web, 'dist', file));
     preview = spawn(process.execPath, ['node_modules/vite/bin/vite.js', 'preview', '--port', String(PORT), '--strictPort'], {
@@ -537,21 +546,22 @@ async function main() {
       await chineseCards(browser);
       await landingEvidence(browser, APP, shots, async (page, label) => { await contrast(page, label); await names(page, label); });
     }
-    if (INVITE) await chat(browser);
-    else say('no INVITE: the chat was not exercised (set INVITE=ic1.… APP=… against a running host)');
+    if (live) await liveChat(browser, APP, say);
+    else if (INVITE) await chat(browser);
+    else say('no INVITE: the chat was not exercised (set INVITE=ic2.… APP=… against a running host)');
   } finally {
     await browser.close();
     preview?.kill('SIGTERM');
   }
   if (problems.length) {
     console.error(`\n${problems.length} problem(s):`);
-    for (const p of problems) console.error(`  - ${p}`);
+    for (const p of problems) console.error(`  - ${safeDiagnostic(p)}`);
     process.exit(1);
   }
   console.log('\nlaunch-check: OK');
 }
 
 main().catch((err) => {
-  console.error(err);
+  console.error(safeDiagnostic(err.message));
   process.exit(1);
 });
