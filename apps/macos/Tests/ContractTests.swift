@@ -379,6 +379,10 @@ final class PresentationTests: XCTestCase {
         XCTAssertEqual(Copy.duration(seconds: 273_600, language: .zh), "3 天 4 小时")
         XCTAssertEqual(Copy.duration(seconds: 15_120, language: .zh), "4 小时 12 分钟")
         XCTAssertEqual(Copy.duration(seconds: 41, language: .zh), "41 秒")
+        // Past a hundred days the hours stop being information, and stop fitting.
+        XCTAssertEqual(Copy.duration(seconds: 128 * 86_400 + 23 * 3_600, language: .en), "128d")
+        XCTAssertEqual(Copy.duration(seconds: 128 * 86_400 + 23 * 3_600, language: .zh), "128 天")
+        XCTAssertEqual(Copy.duration(seconds: 99 * 86_400 + 23 * 3_600, language: .zh), "99 天 23 小时")
     }
 
     func testFixtureClientDrivesTheModelEndToEnd() async throws {
