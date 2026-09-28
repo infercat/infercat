@@ -45,8 +45,8 @@ func TestFailureCodes(t *testing.T) {
 		err                 error
 		exit                int
 	}{
-		{"usage", "version", "invalid_arguments", &Failure{"invalid_arguments", "bad flag", 2}, 2},
-		{"confirmation", "keys.revoke", "confirmation_required", &Failure{"confirmation_required", "pass --yes", 2}, 2},
+		{"usage", "version", "invalid_arguments", &Failure{Code: "invalid_arguments", Message: "bad flag", Exit: 2}, 2},
+		{"confirmation", "keys.revoke", "confirmation_required", &Failure{Code: "confirmation_required", Message: "pass --yes", Exit: 2}, 2},
 		{"missing", "status", "host_stopped", admin.ErrNoDaemon, 69},
 		{"timeout", "status", "host_not_responding", admin.ErrTimeout, 75},
 		{"malformed", "status", "invalid_response", admin.ErrResponse, 1},
