@@ -187,7 +187,7 @@ struct OverviewScreen: View {
             parts.append(flight == 1 ? model.text("ov_inflight_1") : model.text("ov_inflight_n", ["n": String(flight)]))
         }
         if let uptime = model.status?.uptime_s {
-            parts.append(model.text("sb_up", ["t": Copy.duration(seconds: uptime)]))
+            parts.append(model.text("sb_up", ["t": Copy.duration(seconds: uptime, language: model.language)]))
         }
         return parts.joined(separator: " · ")
     }

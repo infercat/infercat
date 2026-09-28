@@ -140,7 +140,7 @@ struct MainWindow: View {
                 Text(model.hostRunning ? model.text("sb_running") : model.text("pop_stopped"))
                     .font(.system(.callout, weight: .semibold))
                 if let uptime = model.status?.uptime_s, model.hostRunning {
-                    Text(model.text("sb_up", ["t": Copy.duration(seconds: uptime)]))
+                    Text(model.text("sb_up", ["t": Copy.duration(seconds: uptime, language: model.language)]))
                         .font(Brand.mono(10)).foregroundStyle(.secondary)
                 }
             }

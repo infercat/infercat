@@ -48,14 +48,25 @@ enum Copy {
         return value.formatted(.number.precision(.fractionLength(0...places)).grouping(.never))
     }
 
-    /// `3d 4h`, `4h 12m`, `41s` — two units at most, largest first.
-    static func duration(seconds: Int) -> String {
+    /// `3d 4h`, `4h 12m`, `41s` — two units at most, largest first, and in the app's
+    /// own language: English abbreviates, Chinese uses its own words rather than
+    /// leaving `d` and `h` sitting inside a Chinese sentence.
+    static func duration(seconds: Int, language: Language) -> String {
         let seconds = max(0, seconds)
-        let days = seconds / 86_400, hours = (seconds % 86_400) / 3_600
+        let days = seconds / 86_400
+        let hours = (seconds % 86_400) / 3_600
         let minutes = (seconds % 3_600) / 60
-        if days > 0 { return hours > 0 ? "\(days)d \(hours)h" : "\(days)d" }
-        if hours > 0 { return minutes > 0 ? "\(hours)h \(minutes)m" : "\(hours)h" }
-        if minutes > 0 { return "\(minutes)m" }
-        return "\(seconds)s"
+        func unit(_ value: Int, _ key: String) -> String {
+            language.code == "zh" ? "\(value) \(text(key, language: language))" : "\(value)\(text(key, language: language))"
+        }
+        let joiner = language.code == "zh" ? " " : " "
+        if days > 0 {
+            return hours > 0 ? unit(days, "u_day") + joiner + unit(hours, "u_hour") : unit(days, "u_day")
+        }
+        if hours > 0 {
+            return minutes > 0 ? unit(hours, "u_hour") + joiner + unit(minutes, "u_min") : unit(hours, "u_hour")
+        }
+        if minutes > 0 { return unit(minutes, "u_min") }
+        return unit(seconds, "u_sec")
     }
 }
