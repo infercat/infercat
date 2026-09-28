@@ -66,6 +66,7 @@ final class HostModel: ObservableObject {
     @Published private(set) var now = Date()
 
     private let client: any CLIClient
+    private let napper: any Napper
     let watch: WatchStream
     private var ticker: Task<Void, Never>?
     private var visible = false
@@ -78,6 +79,9 @@ final class HostModel: ObservableObject {
     /// after that, a host that has not answered yet is "Starting…" rather than a
     /// fault — after it, it is a fault and says so.
     private var startAskedAt: Date?
+    /// The one read behind keyboard navigation. Holding an arrow key must not become
+    /// one subprocess per row.
+    private var friendDetailTask: Task<Void, Never>?
     /// The live tail of settled requests. It is fed from this model's own stream and
     /// never starts one of its own, so Activity adds no spawn edge at all.
     let activity = ActivityLog()
@@ -86,6 +90,7 @@ final class HostModel: ObservableObject {
     /// for them; production always gets the real one.
     init(client: any CLIClient, napper: any Napper = RealNapper()) {
         self.client = client
+        self.napper = napper
         watch = WatchStream(client: client, napper: napper)
         watch.onFrame = { [weak self] frame in self?.accept(frame) }
         watch.onEnd = { [weak self] error in self?.streamEnded(error) }
@@ -191,7 +196,7 @@ final class HostModel: ObservableObject {
         case .engineOffline:
             if notResponding { return text("pop_no_answer") }
             if stale { return text("pop_unreachable", ["n": String(age)]) }
-            return text("pop_offline", ["t": Copy.duration(seconds: engineOfflineSeconds)])
+            return text("pop_offline", ["t": Copy.duration(seconds: engineOfflineSeconds, language: language)])
         default:
             return switch connectedCount {
             case 0: text("pop_running_0")
@@ -344,14 +349,24 @@ final class HostModel: ObservableObject {
 
     /// `keys show` for one friend. Read on selection and after a mutation on them,
     /// never on the status cadence: the 7-day history does not change every 2 s.
+    ///
+    /// Arrow keys move the selection as fast as the key repeats, so this is
+    /// debounced and latest-wins: a new selection cancels the pending read, only one
+    /// is ever in flight, and a friend the person skated past is never read at all.
+    static let friendDetailDebounceMS = 150
+
     func openFriend(_ id: String?) {
         selectedFriend = id
         friendDetail = nil
+        friendDetailTask?.cancel()
         guard let id else { return }
-        Task {
-            guard let detail = try? await client.read(.keysShow(id), as: FriendKey.self) else { return }
-            guard selectedFriend == id else { return }
-            friendDetail = detail
+        friendDetailTask = Task { [weak self] in
+            guard let self else { return }
+            await self.napper.nap(milliseconds: Self.friendDetailDebounceMS)
+            guard !Task.isCancelled, self.selectedFriend == id else { return }
+            guard let detail = try? await self.client.read(.keysShow(id), as: FriendKey.self) else { return }
+            guard !Task.isCancelled, self.selectedFriend == id else { return }
+            self.friendDetail = detail
         }
     }
 

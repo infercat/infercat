@@ -4,6 +4,12 @@ import Foundation
 protocol Napper: Sendable {
     /// Returns when the nap is over, or at once if the task was cancelled.
     func nap(seconds: Int) async
+    /// The short waits — a debounce rather than a ladder rung.
+    func nap(milliseconds: Int) async
+}
+
+extension Napper {
+    func nap(milliseconds: Int) async { try? await Task.sleep(for: .milliseconds(milliseconds)) }
 }
 
 struct RealNapper: Napper {
