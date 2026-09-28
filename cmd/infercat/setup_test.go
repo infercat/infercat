@@ -178,10 +178,8 @@ func TestSetupRefusalNeverWrites(t *testing.T) {
 			case "hardware":
 				m.RAMBytes = 1
 			case "offline optional conflict":
-				dead := httptest.NewServer(http.NotFoundHandler())
-				u, _ := url.Parse(dead.URL)
+				u, _ := url.Parse(deadUpstreamURL(t))
 				p.Members[1].Port, _ = strconv.Atoi(u.Port())
-				dead.Close()
 				cfg.UpstreamTranscribe = "http://127.0.0.1:2"
 			}
 			dir := t.TempDir()
