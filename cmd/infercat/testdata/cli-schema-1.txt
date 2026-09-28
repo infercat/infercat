@@ -1050,3 +1050,4 @@ watch.event data.via string omitempty
 error data object always
 error data.code string always
 error data.message string always
+error data.retry_after string omitempty

@@ -29,3 +29,13 @@ func TestRemoteSelectorPreservesOperandsAndRedacts(t *testing.T) {
 		t.Fatal(rest, err)
 	}
 }
+
+func TestSchemaPreservesHostAndSharedFlagValues(t *testing.T) {
+	for _, flag := range []string{"--host", "--host-file", "--models", "-models", "--data-dir"} {
+		args := []string{"status", flag, "--json", "--json=1"}
+		rest, enabled, err := Parse(args, "models")
+		if err != nil || !enabled || !reflect.DeepEqual(rest, args[:3]) {
+			t.Fatal(flag, rest, enabled, err)
+		}
+	}
+}
