@@ -165,11 +165,16 @@ struct ProcessCLI: CLIClient {
                     }
                     let code = child.wait()
                     if interrupted { continuation.finish(); return }
-                    // 69 is the documented "no host for this data directory" exit; the
-                    // stream prints one `gone` line first, so the model already knows.
-                    if code == 0 || code == 69 { continuation.finish() }
-                    else if code == 75 { continuation.finish(throwing: CLIError.notAnswering) }
-                    else { continuation.finish(throwing: CLIError.malformed) }
+                    // 69 is the documented "no host for this data directory" exit, and
+                    // it ends the stream as `hostStopped` rather than as a clean
+                    // finish. The difference decides whether the app waits for a host
+                    // or restarts `watch`; a clean finish also means "we stopped it".
+                    switch code {
+                    case 0: continuation.finish()
+                    case 69: continuation.finish(throwing: CLIError.hostStopped)
+                    case 75: continuation.finish(throwing: CLIError.notAnswering)
+                    default: continuation.finish(throwing: CLIError.malformed)
+                    }
                 } catch {
                     child.requestStop()
                     _ = child.wait()

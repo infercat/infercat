@@ -48,11 +48,14 @@ final class HostModel: ObservableObject {
     private var waitingSince: Date?
     private var pendingName: String?
 
-    init(client: any CLIClient) {
+    /// `napper` is the seam the cadence tests use to run the ladders without waiting
+    /// for them; production always gets the real one.
+    init(client: any CLIClient, napper: any Napper = RealNapper()) {
         self.client = client
-        watch = WatchStream(client: client)
+        watch = WatchStream(client: client, napper: napper)
         watch.onFrame = { [weak self] frame in self?.accept(frame) }
         watch.onEnd = { [weak self] error in self?.streamEnded(error) }
+        watch.onService = { [weak self] service in self?.serviceChanged(service) }
     }
 
     // MARK: - Derived state
@@ -64,7 +67,13 @@ final class HostModel: ObservableObject {
     var age: Int { max(0, Int(now.timeIntervalSince(lastStatusAt ?? now))) }
     /// The host is up but has not spoken for 10 s (design spec §4, "Freshness").
     var stale: Bool { lastStatusAt != nil && age >= 10 }
-    var hostRunning: Bool { service?.running ?? (status != nil) }
+    /// A fresh status line is the host answering, which outranks anything launchd
+    /// last said about it. Without that, a host answering while `service status` still
+    /// reported "not loaded" used to cost one extra subprocess per status frame.
+    var hostRunning: Bool {
+        if status != nil, !stale { return true }
+        return service?.running ?? (status != nil)
+    }
     /// First run is "the host was never installed" — with a bundled binary this is
     /// the only honest meaning left (design spec §10.1).
     var firstRun: Bool { service?.installed == false && status == nil }
@@ -252,28 +261,39 @@ final class HostModel: ObservableObject {
             starting = false
             failure = nil
             failedCommand = nil
-            if service?.running != true { Task { await refreshService() } }
             waitingSince = value.queue.waiting > 0 ? (waitingSince ?? now) : nil
             engineUnhealthySince = value.upstream.healthy ? nil : (engineUnhealthySince ?? now)
             if let name = pendingName { pendingName = nil; Task { await applyName(name) } }
             readAuxiliaryIfDue()
         case .gone:
+            // No service read here. `gone` is followed within a moment by the stream
+            // ending, and WatchStream owns the one check that follows — otherwise a
+            // stopped host costs two subprocesses per ending instead of one.
             status = nil
             starting = false
             waitingSince = nil
             engineUnhealthySince = nil
-            Task { await refreshService() }
         case .hello, .event, .dropped, .unknown:
             break
         }
     }
 
     private func streamEnded(_ error: Error?) {
-        if let failed = error as? CLIError {
-            failure = failed
-            failedCommand = "infercat watch --json"
+        guard let failed = error as? CLIError else { return }
+        // "No host" is not a failure to report: it is the state the app then waits in,
+        // and WatchStream is already asking `service status` on its own ladder.
+        guard failed != .hostStopped else { return }
+        failure = failed
+        failedCommand = "infercat watch --json"
+    }
+
+    /// The only consumer of `service status` reads taken by the waiting loop.
+    private func serviceChanged(_ next: ServiceStatus) {
+        service = next
+        if !next.running {
+            status = nil
+            starting = false
         }
-        Task { await refreshService() }
     }
 
     private func refreshService() async {
