@@ -1,0 +1,11 @@
+{
+  "schema": 1,
+  "command": "console.open",
+  "host": {
+    "version": "0.1.6-fixture",
+    "name": "Example host"
+  },
+  "data": {
+    "opened": true
+  }
+}

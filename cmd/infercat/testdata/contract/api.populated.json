@@ -1,0 +1,488 @@
+{
+  "schema": 1,
+  "command": "api",
+  "host": {
+    "version": "0.1.6-fixture",
+    "name": "Example host"
+  },
+  "data": [
+    {
+      "operation": "status",
+      "argv": [
+        "status",
+        "--json"
+      ],
+      "routes": [
+        "GET /status"
+      ],
+      "schemas": [
+        1
+      ]
+    },
+    {
+      "operation": "watch",
+      "argv": [
+        "watch",
+        "--json",
+        "[--interval",
+        "2s]"
+      ],
+      "routes": [
+        "GET /status",
+        "GET /events"
+      ],
+      "schemas": [
+        1
+      ]
+    },
+    {
+      "operation": "keys.list",
+      "argv": [
+        "keys",
+        "list",
+        "--json"
+      ],
+      "routes": [
+        "GET /keys"
+      ],
+      "schemas": [
+        1
+      ]
+    },
+    {
+      "operation": "keys.get",
+      "argv": [
+        "keys",
+        "show",
+        "ID",
+        "--json"
+      ],
+      "routes": [
+        "GET /keys/{id}"
+      ],
+      "schemas": [
+        1
+      ]
+    },
+    {
+      "operation": "keys.add",
+      "argv": [
+        "keys",
+        "add",
+        "--json",
+        "[limits]",
+        "--",
+        "NAME"
+      ],
+      "routes": [
+        "POST /keys"
+      ],
+      "schemas": [
+        1
+      ]
+    },
+    {
+      "operation": "keys.limits",
+      "argv": [
+        "keys",
+        "limits",
+        "ID",
+        "--json",
+        "[limits]"
+      ],
+      "routes": [
+        "PATCH /keys/{id}"
+      ],
+      "schemas": [
+        1
+      ]
+    },
+    {
+      "operation": "keys.pause",
+      "argv": [
+        "keys",
+        "pause",
+        "ID",
+        "--json"
+      ],
+      "routes": [
+        "POST /keys/{id}/pause"
+      ],
+      "schemas": [
+        1
+      ]
+    },
+    {
+      "operation": "keys.resume",
+      "argv": [
+        "keys",
+        "resume",
+        "ID",
+        "--json"
+      ],
+      "routes": [
+        "POST /keys/{id}/resume"
+      ],
+      "schemas": [
+        1
+      ]
+    },
+    {
+      "operation": "keys.revoke",
+      "argv": [
+        "keys",
+        "revoke",
+        "ID",
+        "--yes",
+        "--json"
+      ],
+      "routes": [
+        "POST /keys/{id}/revoke"
+      ],
+      "schemas": [
+        1
+      ]
+    },
+    {
+      "operation": "keys.rotate",
+      "argv": [
+        "keys",
+        "rotate",
+        "ID",
+        "--json"
+      ],
+      "routes": [
+        "POST /keys/{id}/rotate"
+      ],
+      "schemas": [
+        1
+      ]
+    },
+    {
+      "operation": "usage",
+      "argv": [
+        "usage",
+        "--json",
+        "--window",
+        "today|week",
+        "[--key",
+        "ID]"
+      ],
+      "routes": [
+        "GET /usage"
+      ],
+      "schemas": [
+        1
+      ]
+    },
+    {
+      "operation": "engine",
+      "argv": [
+        "engine",
+        "--json"
+      ],
+      "routes": [
+        "GET /engine"
+      ],
+      "schemas": [
+        1
+      ]
+    },
+    {
+      "operation": "console.open",
+      "argv": [
+        "console",
+        "--json"
+      ],
+      "routes": [
+        "GET /status"
+      ],
+      "schemas": [
+        1
+      ]
+    },
+    {
+      "operation": "settings.get",
+      "argv": [
+        "settings",
+        "--json"
+      ],
+      "routes": [
+        "GET /settings"
+      ],
+      "schemas": [
+        1
+      ]
+    },
+    {
+      "operation": "settings.set",
+      "argv": [
+        "settings",
+        "set",
+        "--json",
+        "--",
+        "k=v…"
+      ],
+      "routes": [
+        "PATCH /settings"
+      ],
+      "schemas": [
+        1
+      ]
+    },
+    {
+      "operation": "runs.list",
+      "argv": [
+        "runs",
+        "list",
+        "--json",
+        "[--key",
+        "ID]"
+      ],
+      "routes": [
+        "GET /runs"
+      ],
+      "schemas": [
+        1
+      ]
+    },
+    {
+      "operation": "stored.get",
+      "argv": [
+        "stored",
+        "ID",
+        "--json"
+      ],
+      "routes": [
+        "GET /stored"
+      ],
+      "schemas": [
+        1
+      ]
+    },
+    {
+      "operation": "stored.clear",
+      "argv": [
+        "stored",
+        "clear",
+        "ID",
+        "--expect",
+        "CURSOR",
+        "--yes",
+        "--json"
+      ],
+      "routes": [
+        "GET /stored",
+        "DELETE /stored"
+      ],
+      "schemas": [
+        1
+      ]
+    },
+    {
+      "operation": "remote.status",
+      "argv": [
+        "remote",
+        "status",
+        "--json"
+      ],
+      "routes": [
+        "GET /status"
+      ],
+      "schemas": [
+        1
+      ]
+    },
+    {
+      "operation": "remote.on",
+      "argv": [
+        "remote",
+        "on",
+        "--json"
+      ],
+      "routes": [
+        "POST /remote/enable"
+      ],
+      "schemas": [
+        1
+      ]
+    },
+    {
+      "operation": "remote.off",
+      "argv": [
+        "remote",
+        "off",
+        "--json"
+      ],
+      "routes": [
+        "POST /remote/off"
+      ],
+      "schemas": [
+        1
+      ]
+    },
+    {
+      "operation": "remote.rotate",
+      "argv": [
+        "remote",
+        "rotate",
+        "--json"
+      ],
+      "routes": [
+        "POST /remote/rotate"
+      ],
+      "schemas": [
+        1
+      ]
+    },
+    {
+      "operation": "expose.status",
+      "argv": [
+        "expose",
+        "--json"
+      ],
+      "routes": [
+        "GET /status"
+      ],
+      "schemas": [
+        1
+      ]
+    },
+    {
+      "operation": "expose.on",
+      "argv": [
+        "expose",
+        "--on",
+        "--json"
+      ],
+      "routes": [
+        "POST /reload"
+      ],
+      "schemas": [
+        1
+      ]
+    },
+    {
+      "operation": "expose.off",
+      "argv": [
+        "expose",
+        "--off",
+        "--json"
+      ],
+      "routes": [
+        "POST /reload"
+      ],
+      "schemas": [
+        1
+      ]
+    },
+    {
+      "operation": "service.status",
+      "argv": [
+        "service",
+        "status",
+        "--json"
+      ],
+      "routes": [],
+      "schemas": [
+        1
+      ]
+    },
+    {
+      "operation": "service.install",
+      "argv": [
+        "service",
+        "install",
+        "--json",
+        "[--start-at-login=false]"
+      ],
+      "routes": [],
+      "schemas": [
+        1
+      ]
+    },
+    {
+      "operation": "service.uninstall",
+      "argv": [
+        "service",
+        "uninstall",
+        "--json"
+      ],
+      "routes": [],
+      "schemas": [
+        1
+      ]
+    },
+    {
+      "operation": "service.start",
+      "argv": [
+        "service",
+        "start",
+        "--json"
+      ],
+      "routes": [],
+      "schemas": [
+        1
+      ]
+    },
+    {
+      "operation": "service.stop",
+      "argv": [
+        "service",
+        "stop",
+        "--json"
+      ],
+      "routes": [],
+      "schemas": [
+        1
+      ]
+    },
+    {
+      "operation": "service.restart",
+      "argv": [
+        "service",
+        "restart",
+        "--json"
+      ],
+      "routes": [],
+      "schemas": [
+        1
+      ]
+    },
+    {
+      "operation": "service.login",
+      "argv": [
+        "service",
+        "login",
+        "on|off",
+        "--json"
+      ],
+      "routes": [],
+      "schemas": [
+        1
+      ]
+    },
+    {
+      "operation": "version",
+      "argv": [
+        "version",
+        "--json"
+      ],
+      "routes": [],
+      "schemas": [
+        1
+      ]
+    },
+    {
+      "operation": "api",
+      "argv": [
+        "api",
+        "--json"
+      ],
+      "routes": [],
+      "schemas": [
+        1
+      ]
+    }
+  ]
+}

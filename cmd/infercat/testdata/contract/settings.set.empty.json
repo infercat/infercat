@@ -1,0 +1,21 @@
+{
+  "schema": 1,
+  "command": "settings.set",
+  "host": {
+    "version": "0.1.6-fixture",
+    "name": "Example host"
+  },
+  "data": {
+    "log_prompts": false,
+    "upstream": "",
+    "derpmap_url": "",
+    "region": "",
+    "configured_web_url": "",
+    "name": "",
+    "web_url": "",
+    "slots": 0,
+    "log_requests": false,
+    "log_requests_remembered": false,
+    "data_dir": ""
+  }
+}

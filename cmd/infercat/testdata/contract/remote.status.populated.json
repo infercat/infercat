@@ -1,0 +1,138 @@
+{
+  "schema": 1,
+  "command": "remote.status",
+  "host": {
+    "version": "0.1.6-fixture",
+    "name": "Example host"
+  },
+  "data": {
+    "members": [
+      {
+        "id": "k_example",
+        "state": "completed",
+        "healthy": true,
+        "restarts": 1,
+        "error": "example"
+      }
+    ],
+    "image_orphans_for_review": 1,
+    "image_cleanup_pending": 1,
+    "agent": {
+      "state": "completed",
+      "pid": 1,
+      "restarts": 1,
+      "last_error": "example"
+    },
+    "destinations": [
+      {
+        "id": "k_example",
+        "kind": "image",
+        "models": [
+          "example"
+        ],
+        "slots": 1,
+        "in_flight": 1,
+        "waiting": 1,
+        "image_abandons": 1,
+        "image_retry_at": 1
+      }
+    ],
+    "bridge": {
+      "slots": 1,
+      "enabled": true,
+      "url": "https://example.invalid/",
+      "connected": true,
+      "since": "2026-09-28T00:00:00Z",
+      "last_error": "example",
+      "requests_today": 1
+    },
+    "remote": {
+      "warning_file": "example",
+      "enabled": true,
+      "since": "2026-09-28T00:00:00Z",
+      "in_use": true
+    },
+    "audio": {
+      "example": {
+        "kind": "image",
+        "url": "https://example.invalid/",
+        "healthy": true,
+        "since": "2026-09-28T00:00:00Z",
+        "model_context": 1,
+        "slots": 1
+      }
+    },
+    "models_pinned": [
+      "example"
+    ],
+    "console": "example",
+    "product": "example",
+    "version": "0.1.6-fixture",
+    "uptime_s": 1,
+    "mode": "host",
+    "name": "Example host",
+    "tunnel": {
+      "addr": "example",
+      "region": "example",
+      "clients": 1,
+      "sessions": [
+        {
+          "key": "example",
+          "path": "example",
+          "via": "example",
+          "rtt_ms": 1,
+          "handshake_ms": 1,
+          "conns": 1,
+          "rx_bytes": 1,
+          "tx_bytes": 1,
+          "since": "2026-09-28T00:00:00Z",
+          "last_byte": "2026-09-28T00:00:00Z",
+          "active": true
+        }
+      ],
+      "rx_bytes": 1,
+      "tx_bytes": 1
+    },
+    "upstream": {
+      "kind": "image",
+      "url": "https://example.invalid/",
+      "healthy": true,
+      "since": "2026-09-28T00:00:00Z",
+      "model_context": 1,
+      "slots": 1
+    },
+    "queue": {
+      "in_flight": 1,
+      "waiting": 1
+    },
+    "engine": {
+      "slots_peak_sampled": 1,
+      "tokens_per_s_1m": 1,
+      "metrics": true,
+      "busy": 1,
+      "waiting": 1,
+      "memory_bytes": 1,
+      "kv_cache_pct": 1
+    },
+    "process": {
+      "goroutines": 1,
+      "heap_bytes": 1,
+      "sys_bytes": 1,
+      "rss_bytes": 1
+    },
+    "keys": [
+      {
+        "connected": true,
+        "sessions": 1,
+        "id": "k_example",
+        "name": "Example host",
+        "status": "active",
+        "in_flight": 1,
+        "rpm_used": 1,
+        "tpm_used": 1,
+        "today_tokens": 1,
+        "last_seen": "2026-09-28T00:00:00Z"
+      }
+    ]
+  }
+}

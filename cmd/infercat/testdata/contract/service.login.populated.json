@@ -1,0 +1,19 @@
+{
+  "schema": 1,
+  "command": "service.login",
+  "host": {
+    "version": "0.1.6-fixture",
+    "name": "Example host"
+  },
+  "data": {
+    "binary": "example",
+    "log": "example",
+    "since": "example",
+    "pid": 1,
+    "installed": true,
+    "loaded": true,
+    "running": true,
+    "start_at_login": true,
+    "lingering": true
+  }
+}

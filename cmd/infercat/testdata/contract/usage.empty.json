@@ -1,0 +1,29 @@
+{
+  "schema": 1,
+  "command": "usage",
+  "host": {
+    "version": "0.1.6-fixture",
+    "name": "Example host"
+  },
+  "data": {
+    "total": {
+      "seconds": 0,
+      "characters": 0,
+      "requests": 0,
+      "model_calls": 0,
+      "app_polls": 0,
+      "errors": 0,
+      "prompt_tokens": 0,
+      "completion_tokens": 0,
+      "ttft_median_ms": 0,
+      "ttft_p95_ms": 0,
+      "total_median_ms": 0,
+      "total_p95_ms": 0,
+      "first_seen": "0001-01-01T00:00:00Z",
+      "last_seen": "0001-01-01T00:00:00Z",
+      "last_call": "0001-01-01T00:00:00Z"
+    },
+    "keys": null,
+    "malformed_lines": 0
+  }
+}

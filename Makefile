@@ -26,8 +26,8 @@ vet:
 	go vet ./...
 
 cli-contract:
-	go test ./cmd/infercat -run '^TestMachine(FieldInventory|OperationDocs)$$' -args -update-cli-contract
-	git diff --exit-code -- cmd/infercat/testdata/cli-schema-1.txt docs/CLI-JSON.md docs/CLI-JSON.zh-CN.md
+	go test ./cmd/infercat -run '^TestMachine(FieldInventory|OperationDocs|VendorFixtures)$$' -args -update-cli-contract
+	git diff --exit-code -- cmd/infercat/testdata/cli-schema-1.txt cmd/infercat/testdata/contract docs/CLI-JSON.md docs/CLI-JSON.zh-CN.md
 
 check: size-check console-check vet test client-check bridge-check web-lint host-compat
 	# host-compat built web/dist; run every no-invite launch assertion against that exact build.

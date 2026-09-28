@@ -1,0 +1,18 @@
+{
+  "schema": 1,
+  "command": "service.install",
+  "host": {
+    "version": "0.1.6-fixture",
+    "name": "Example host"
+  },
+  "data": {
+    "binary": "",
+    "log": "",
+    "since": "",
+    "pid": 0,
+    "installed": false,
+    "loaded": false,
+    "running": false,
+    "start_at_login": false
+  }
+}

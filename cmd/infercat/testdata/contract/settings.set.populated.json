@@ -1,0 +1,35 @@
+{
+  "schema": 1,
+  "command": "settings.set",
+  "host": {
+    "version": "0.1.6-fixture",
+    "name": "Example host"
+  },
+  "data": {
+    "default_web_url": "https://example.invalid/",
+    "writes_supported": true,
+    "configured_console": "example",
+    "console_address": "example",
+    "running_slots": 1,
+    "saved_at": {
+      "example": "2026-09-28T00:00:00Z"
+    },
+    "remote": {
+      "warning_file": "example",
+      "enabled": true,
+      "since": "2026-09-28T00:00:00Z",
+      "in_use": true
+    },
+    "log_prompts": true,
+    "upstream": "example",
+    "derpmap_url": "example",
+    "region": "example",
+    "configured_web_url": "example",
+    "name": "Example host",
+    "web_url": "https://example.invalid/",
+    "slots": 1,
+    "log_requests": true,
+    "log_requests_remembered": true,
+    "data_dir": "example"
+  }
+}

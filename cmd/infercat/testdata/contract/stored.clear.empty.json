@@ -1,0 +1,14 @@
+{
+  "schema": 1,
+  "command": "stored.clear",
+  "host": {
+    "version": "0.1.6-fixture",
+    "name": "Example host"
+  },
+  "data": {
+    "cleared": 0,
+    "retried_cleanup": 0,
+    "skipped": 0,
+    "cleared_images": 0
+  }
+}

@@ -1,0 +1,22 @@
+{
+  "schema": 1,
+  "command": "engine",
+  "host": {
+    "version": "0.1.6-fixture",
+    "name": "Example host"
+  },
+  "data": {
+    "url": "",
+    "kind": "",
+    "health": {
+      "ok": false,
+      "since": "0001-01-01T00:00:00Z",
+      "err": ""
+    },
+    "model_context": 0,
+    "slots": 0,
+    "models": null,
+    "vision": null,
+    "probed_at": "0001-01-01T00:00:00Z"
+  }
+}

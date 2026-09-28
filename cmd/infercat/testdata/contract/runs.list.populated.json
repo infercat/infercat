@@ -1,0 +1,24 @@
+{
+  "schema": 1,
+  "command": "runs.list",
+  "host": {
+    "version": "0.1.6-fixture",
+    "name": "Example host"
+  },
+  "data": {
+    "runs": [
+      {
+        "created": "2026-09-28T00:00:00Z",
+        "client_request_id": "example",
+        "id": "k_example",
+        "key_id": "k_example",
+        "kind": "image",
+        "priority": "example",
+        "state": "completed",
+        "updated": "2026-09-28T00:00:00Z",
+        "expires": "2026-09-28T00:00:00Z"
+      }
+    ],
+    "truncated": true
+  }
+}

@@ -1,0 +1,33 @@
+{
+  "schema": 1,
+  "command": "engine",
+  "host": {
+    "version": "0.1.6-fixture",
+    "name": "Example host"
+  },
+  "data": {
+    "model_details": {
+      "example": {
+        "context": 1,
+        "state": "completed",
+        "slots": 1
+      }
+    },
+    "url": "https://example.invalid/",
+    "kind": "image",
+    "health": {
+      "ok": true,
+      "since": "2026-09-28T00:00:00Z",
+      "err": "example"
+    },
+    "model_context": 1,
+    "slots": 1,
+    "models": [
+      "example"
+    ],
+    "vision": {
+      "example": true
+    },
+    "probed_at": "2026-09-28T00:00:00Z"
+  }
+}

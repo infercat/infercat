@@ -1,0 +1,26 @@
+{
+  "schema": 1,
+  "command": "stored.get",
+  "host": {
+    "version": "0.1.6-fixture",
+    "name": "Example host"
+  },
+  "data": {
+    "cursor": "",
+    "reserved": 0,
+    "observed_orphans": 0,
+    "retry_cleanup": 0,
+    "key_id": "",
+    "kinds": null,
+    "total": 0,
+    "terminal": 0,
+    "bytes": 0,
+    "budget": 0,
+    "images": 0,
+    "image_bytes": 0,
+    "image_budget": 0,
+    "clear_images": 0,
+    "runs": null,
+    "truncated": false
+  }
+}

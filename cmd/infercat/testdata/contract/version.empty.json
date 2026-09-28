@@ -1,0 +1,14 @@
+{
+  "schema": 1,
+  "command": "version",
+  "host": {
+    "version": "0.1.6-fixture",
+    "name": "Example host"
+  },
+  "data": {
+    "version": "",
+    "commit": "",
+    "date": "",
+    "schemas": []
+  }
+}

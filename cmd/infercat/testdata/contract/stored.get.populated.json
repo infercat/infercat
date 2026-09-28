@@ -1,0 +1,51 @@
+{
+  "schema": 1,
+  "command": "stored.get",
+  "host": {
+    "version": "0.1.6-fixture",
+    "name": "Example host"
+  },
+  "data": {
+    "cursor": "example",
+    "reserved": 1,
+    "observed_orphans": 1,
+    "retry_cleanup": 1,
+    "key_id": "k_example",
+    "kinds": {
+      "example": {
+        "stored": 1,
+        "live": 1
+      }
+    },
+    "total": 1,
+    "terminal": 1,
+    "bytes": 1,
+    "budget": 1,
+    "images": 1,
+    "image_bytes": 1,
+    "image_budget": 1,
+    "clear_images": 1,
+    "expires_first": "2026-09-28T00:00:00Z",
+    "expires_last": "2026-09-28T00:00:00Z",
+    "pending_cleanup": 1,
+    "runs": [
+      {
+        "created": "2026-09-28T00:00:00Z",
+        "client_request_id": "example",
+        "id": "k_example",
+        "key_id": "k_example",
+        "kind": "image",
+        "priority": "example",
+        "state": "completed",
+        "updated": "2026-09-28T00:00:00Z",
+        "expires": "2026-09-28T00:00:00Z",
+        "bytes": 1,
+        "image": {
+          "bytes": 1,
+          "expires": "2026-09-28T00:00:00Z"
+        }
+      }
+    ],
+    "truncated": true
+  }
+}

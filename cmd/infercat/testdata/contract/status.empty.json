@@ -1,0 +1,51 @@
+{
+  "schema": 1,
+  "command": "status",
+  "host": {
+    "version": "0.1.6-fixture",
+    "name": "Example host"
+  },
+  "data": {
+    "product": "",
+    "version": "",
+    "uptime_s": 0,
+    "mode": "",
+    "name": "",
+    "tunnel": {
+      "addr": "",
+      "region": "",
+      "clients": 0,
+      "sessions": null,
+      "rx_bytes": 0,
+      "tx_bytes": 0
+    },
+    "upstream": {
+      "kind": "",
+      "url": "",
+      "healthy": false,
+      "since": "0001-01-01T00:00:00Z",
+      "model_context": 0,
+      "slots": 0
+    },
+    "queue": {
+      "in_flight": 0,
+      "waiting": 0
+    },
+    "engine": {
+      "slots_peak_sampled": 0,
+      "tokens_per_s_1m": 0,
+      "metrics": false,
+      "busy": 0,
+      "waiting": 0,
+      "memory_bytes": 0,
+      "kv_cache_pct": 0
+    },
+    "process": {
+      "goroutines": 0,
+      "heap_bytes": 0,
+      "sys_bytes": 0,
+      "rss_bytes": 0
+    },
+    "keys": null
+  }
+}

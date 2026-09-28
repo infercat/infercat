@@ -1,0 +1,8 @@
+{
+  "schema": 1,
+  "command": "keys.revoke",
+  "error": {
+    "code": "confirmation_required",
+    "message": "pass --yes to confirm"
+  }
+}

@@ -1,0 +1,9 @@
+{
+  "schema": 1,
+  "command": "remote.off",
+  "host": {
+    "version": "0.1.6-fixture",
+    "name": "Example host"
+  },
+  "data": {}
+}

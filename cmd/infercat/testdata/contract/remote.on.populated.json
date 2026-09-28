@@ -1,0 +1,15 @@
+{
+  "schema": 1,
+  "command": "remote.on",
+  "host": {
+    "version": "0.1.6-fixture",
+    "name": "Example host"
+  },
+  "data": {
+    "key_id": "k_example",
+    "name": "Example host",
+    "invite": "synthetic-invite-not-valid-for-connection",
+    "link": "https://example.invalid/",
+    "ok": true
+  }
+}

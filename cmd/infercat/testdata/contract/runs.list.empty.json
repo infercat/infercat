@@ -1,0 +1,12 @@
+{
+  "schema": 1,
+  "command": "runs.list",
+  "host": {
+    "version": "0.1.6-fixture",
+    "name": "Example host"
+  },
+  "data": {
+    "runs": null,
+    "truncated": false
+  }
+}

@@ -71,6 +71,8 @@ CLI 最多缓存 256 个事件。stdout 读取缓慢不会阻塞事件读取；`
 
 由 `infercat api --json` 生成；`{id}` 是管理路由路径参数。所有命令都支持 `--data-dir DIR`。
 
+供应用直接保存的 [JSON 解码示例](../cmd/infercat/testdata/contract/) 覆盖每个操作和 watch 行；它们由 Go 响应类型构造，并非真实主机记录。`make cli-contract` 同时生成并检查这些文件。
+
 <!-- cli-operations:start -->
 | 操作 | `infercat` 后的 argv | 管理路由 | Schema |
 |---|---|---|---|

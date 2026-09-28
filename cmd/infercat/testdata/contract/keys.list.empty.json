@@ -1,0 +1,9 @@
+{
+  "schema": 1,
+  "command": "keys.list",
+  "host": {
+    "version": "0.1.6-fixture",
+    "name": "Example host"
+  },
+  "data": []
+}
