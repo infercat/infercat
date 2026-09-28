@@ -21,6 +21,7 @@ import (
 	"github.com/infercat/infercat/internal/agent"
 	"github.com/infercat/infercat/internal/gateway"
 	"github.com/infercat/infercat/internal/keys"
+	"github.com/infercat/infercat/internal/machine"
 	"github.com/infercat/infercat/internal/product"
 	runstate "github.com/infercat/infercat/internal/run"
 	"github.com/infercat/infercat/internal/supervise"
@@ -93,7 +94,8 @@ type env struct {
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	os.Exit(run(ctx, os.Args[1:], os.Stdout, os.Stderr, os.Stdin, isTerminal(os.Stdout), newPlatform()))
+	_, asJSON, _ := machine.Parse(os.Args[1:])
+	os.Exit(run(ctx, os.Args[1:], os.Stdout, os.Stderr, os.Stdin, !asJSON && isTerminal(os.Stdout), newPlatform()))
 }
 
 // isTerminal reports whether f is a character device, which is what "someone is watching" means
@@ -114,6 +116,9 @@ func run(ctx context.Context, args []string, out, errw io.Writer, in io.Reader, 
 		return supervise.Guardian(args[1:], false)
 	}
 	e := &env{out: out, errw: errw, in: in, plat: plat, tty: tty}
+	if code, handled := e.machineRead(ctx, args); handled {
+		return code
+	}
 	dataDir, rest, err := splitGlobal(args)
 	if err != nil {
 		fmt.Fprintf(errw, "%s: %v\n\n", product.CLIName, err)
