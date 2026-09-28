@@ -7,7 +7,7 @@ import SwiftUI
 struct OverviewScreen: View {
     @ObservedObject var model: HostModel
     var openConsole: () -> Void
-    var onStop: () -> Void
+    @Binding var invite: InviteRequest?
 
     var body: some View {
         ScrollView {
@@ -127,10 +127,9 @@ struct OverviewScreen: View {
                 Text(model.text("fr_first_body"))
                     .font(.callout).foregroundStyle(.secondary)
                     .multilineTextAlignment(.center).frame(maxWidth: 340)
-                Button(model.text("act_invite")) {}
+                Button(model.text("act_invite")) { invite = InviteRequest() }
                     .buttonStyle(.borderedProminent)
-                    .disabled(true)
-                    .help(model.text("soon_invite"))
+                    .disabled(!model.hostRunning)
                 Button(model.text("act_console"), action: openConsole).buttonStyle(.link)
             }
             .frame(maxWidth: .infinity)
@@ -248,12 +247,23 @@ struct OverviewScreen: View {
                     StatusSquare(kind: .caution, label: model.text("sq_attention")).padding(.top, 5)
                     Text(item.text).font(.callout).fixedSize(horizontal: false, vertical: true)
                     Spacer(minLength: 10)
-                    Button(remedyTitle(item.remedy), action: openConsole)
+                    Button(remedyTitle(item.remedy)) { remedy(item.remedy) }
                         .controlSize(.small)
-                        .help(model.text("soon_invite"))
                 }
                 .accessibilityElement(children: .combine)
             }
+        }
+    }
+
+    /// Each attention item carries its one fix, so the remedy is a single click away.
+    private func remedy(_ remedy: HostModel.Attention.Remedy) {
+        switch remedy {
+        case .changeLimit(let keyID):
+            guard let key = model.friendKeys.first(where: { $0.id == keyID }) else { return openConsole() }
+            invite = InviteRequest(kind: .limits(keyID: keyID, name: key.name))
+        case .openSettings, .openEngine:
+            // Settings and Engine are cut C; the console already has both.
+            openConsole()
         }
     }
 

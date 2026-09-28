@@ -590,5 +590,417 @@
   "mb_no_answer": {
     "en": "Infercat — the host is not answering",
     "zh": "Infercat — 主机没有响应"
+  },
+  "fr_filter": {
+    "en": "Filter friends",
+    "zh": "筛选朋友"
+  },
+  "fr_tokens_today": {
+    "en": "Tokens today",
+    "zh": "今天 token"
+  },
+  "fr_count_1": {
+    "en": "1 friend",
+    "zh": "1 位朋友"
+  },
+  "fr_count_n": {
+    "en": "{n} friends",
+    "zh": "{n} 位朋友"
+  },
+  "fr_paused_n": {
+    "en": "{n} paused",
+    "zh": "{n} 位已暂停"
+  },
+  "fr_revoked_show": {
+    "en": "{n} revoked keys — Show",
+    "zh": "{n} 串已撤销的邀请码——显示"
+  },
+  "fr_revoked_hide": {
+    "en": "{n} revoked keys — Hide",
+    "zh": "{n} 串已撤销的邀请码——隐藏"
+  },
+  "fr_revoked": {
+    "en": "revoked",
+    "zh": "已撤销"
+  },
+  "fr_revoked_body": {
+    "en": "{name}'s invite was revoked. A new invite is the only way back.",
+    "zh": "{name} 的邀请码已被撤销。只有重新生成邀请码才能恢复。"
+  },
+  "fr_none": {
+    "en": "No friends yet",
+    "zh": "还没有朋友"
+  },
+  "fr_none_body": {
+    "en": "One invite is one person. Mint one and send your first friend the link.",
+    "zh": "一串邀请码对应一个人。生成一串，把链接发给第一位朋友。"
+  },
+  "fr_pick": {
+    "en": "Pick a friend to see them in full.",
+    "zh": "选择一位朋友查看完整信息。"
+  },
+  "fr_active": {
+    "en": "active",
+    "zh": "使用中"
+  },
+  "fr_created": {
+    "en": "created {date}",
+    "zh": "{date} 创建"
+  },
+  "row_connected": {
+    "en": "connected",
+    "zh": "已连接"
+  },
+  "row_paused": {
+    "en": "paused",
+    "zh": "已暂停"
+  },
+  "row_never": {
+    "en": "never connected",
+    "zh": "从未连接"
+  },
+  "row_invited": {
+    "en": "invited {date}",
+    "zh": "{date} 邀请"
+  },
+  "row_last_seen": {
+    "en": "last seen {ago}",
+    "zh": "{ago}最后活动"
+  },
+  "insp_now": {
+    "en": "Now",
+    "zh": "此刻"
+  },
+  "insp_rpm": {
+    "en": "Requests this minute",
+    "zh": "本分钟请求数"
+  },
+  "insp_tpm": {
+    "en": "Tokens this minute",
+    "zh": "本分钟 token"
+  },
+  "insp_today": {
+    "en": "Tokens today",
+    "zh": "今天 token"
+  },
+  "insp_7d": {
+    "en": "Last 7 days · tokens per day",
+    "zh": "最近 7 天 · 每天 token"
+  },
+  "insp_invite": {
+    "en": "Invite",
+    "zh": "邀请码"
+  },
+  "insp_masked": {
+    "en": "Only its hash is stored — shown once, when it was minted.",
+    "zh": "只保存哈希——生成时显示过一次。"
+  },
+  "insp_agent_on": {
+    "en": "Agent access is on for this friend.",
+    "zh": "这位朋友拥有智能体权限。"
+  },
+  "sum_rpm": {
+    "en": "{n} requests a minute",
+    "zh": "每分钟 {n} 次请求"
+  },
+  "sum_daily": {
+    "en": "{n} tokens a day",
+    "zh": "每天 {n} token"
+  },
+  "sum_conc": {
+    "en": "{n} at once",
+    "zh": "同时 {n} 条"
+  },
+  "sum_out": {
+    "en": "{n} max output",
+    "zh": "单次回复上限 {n}"
+  },
+  "act_pause": {
+    "en": "Pause",
+    "zh": "暂停"
+  },
+  "act_resume": {
+    "en": "Resume",
+    "zh": "恢复"
+  },
+  "act_edit": {
+    "en": "Edit…",
+    "zh": "编辑…"
+  },
+  "act_edit_limits": {
+    "en": "Edit limits…",
+    "zh": "调整限额…"
+  },
+  "act_rotate": {
+    "en": "Rotate invite…",
+    "zh": "换发邀请码…"
+  },
+  "act_revoke": {
+    "en": "Revoke…",
+    "zh": "撤销…"
+  },
+  "act_dismiss": {
+    "en": "Dismiss",
+    "zh": "知道了"
+  },
+  "act_unanswered": {
+    "en": "No answer from the host. The action may have completed. Check the row before trying again.",
+    "zh": "主机没有响应。操作可能已经完成。重试前请先查看该行。"
+  },
+  "rev_title": {
+    "en": "Revoke {name}'s invite?",
+    "zh": "要撤销 {name} 的邀请码吗？"
+  },
+  "rev_body": {
+    "en": "Revoking is permanent — {name} would need a new invite. Pause stops them temporarily instead.",
+    "zh": "撤销是永久的——{name} 需要一串新的邀请码。暂停只是临时停用。"
+  },
+  "rev_ok": {
+    "en": "Revoke {name}",
+    "zh": "撤销 {name}"
+  },
+  "rev_pause": {
+    "en": "Pause instead",
+    "zh": "改为暂停"
+  },
+  "rot_title": {
+    "en": "Rotate {name}'s invite?",
+    "zh": "要换发 {name} 的邀请码吗？"
+  },
+  "rot_body": {
+    "en": "The current invite stops working at once. {name} needs the new one to reconnect.",
+    "zh": "当前邀请码会立刻失效。{name} 需要用新的重新连接。"
+  },
+  "rot_ok": {
+    "en": "Rotate",
+    "zh": "换发"
+  },
+  "lim_title": {
+    "en": "Edit limits",
+    "zh": "调整限额"
+  },
+  "lim_save": {
+    "en": "Save limits",
+    "zh": "保存限额"
+  },
+  "inv_none": {
+    "en": "no limit",
+    "zh": "不限"
+  },
+  "inv_host_default": {
+    "en": "the host's default",
+    "zh": "主机默认值"
+  },
+  "inv_host_defaults": {
+    "en": "The host's defaults.",
+    "zh": "使用主机的默认限额。"
+  },
+  "inv_agent_refused": {
+    "en": "The invite was created, but the host did not grant agent access.",
+    "zh": "邀请码已生成，但主机没有授予智能体权限。"
+  },
+  "l_ceiling": {
+    "en": "max {n}",
+    "zh": "最多 {n}"
+  },
+  "a11y_meter": {
+    "en": "{used} of {limit} tokens today, {p} percent",
+    "zh": "今天 {limit} 中的 {used} token，{p}%"
+  },
+  "a11y_named_meter": {
+    "en": "{what}, {used} of {limit}, {p} percent",
+    "zh": "{what}，{limit} 中的 {used}，{p}%"
+  },
+  "a11y_more": {
+    "en": "More actions",
+    "zh": "更多操作"
+  },
+  "a11y_qr": {
+    "en": "QR code for {name}'s invite link",
+    "zh": "{name} 邀请链接的二维码"
+  },
+  "a11y_once_link": {
+    "en": "Invite link, shown once",
+    "zh": "邀请链接，只显示一次"
+  },
+  "inv_title": {
+    "en": "New invite",
+    "zh": "生成邀请码"
+  },
+  "inv_name": {
+    "en": "Name",
+    "zh": "名称"
+  },
+  "inv_name_hint": {
+    "en": "One person. A second device is a second invite: lin-laptop.",
+    "zh": "一个人一把。第二台设备就再生成一把：lin-laptop。"
+  },
+  "inv_dup": {
+    "en": "{name} already has an invite, last used {ago}. Rotate it to issue a new one, or pick another name.",
+    "zh": "{name} 已经有邀请码了，{ago}用过。可以换发一串新的，或者换个名称。"
+  },
+  "inv_limits": {
+    "en": "Limits",
+    "zh": "限额"
+  },
+  "inv_summary": {
+    "en": "{rpm} requests a minute · {day} tokens a day · {c} at once",
+    "zh": "每分钟 {rpm} 次请求 · 每天 {day} token · 同时 {c} 条"
+  },
+  "inv_change": {
+    "en": "Change…",
+    "zh": "调整…"
+  },
+  "inv_defaults": {
+    "en": "The defaults. Change them any time; changes take effect at once.",
+    "zh": "这是默认值。随时可以改；改完立刻生效。"
+  },
+  "l_rpm": {
+    "en": "Requests per minute",
+    "zh": "每分钟请求数"
+  },
+  "l_daily": {
+    "en": "Tokens per day",
+    "zh": "每天 token 数"
+  },
+  "l_conc": {
+    "en": "At once",
+    "zh": "同时进行"
+  },
+  "l_out": {
+    "en": "Max output tokens",
+    "zh": "单次回复上限"
+  },
+  "l_tpm": {
+    "en": "Tokens per minute",
+    "zh": "每分钟 token 数"
+  },
+  "l_ctx": {
+    "en": "Context",
+    "zh": "上下文"
+  },
+  "l_models": {
+    "en": "Models",
+    "zh": "模型"
+  },
+  "l_search": {
+    "en": "Searches per day",
+    "zh": "每天搜索次数"
+  },
+  "l_images": {
+    "en": "Images per day",
+    "zh": "每天图片数"
+  },
+  "l_queue": {
+    "en": "Queued images",
+    "zh": "排队图片数"
+  },
+  "l_audio": {
+    "en": "Audio seconds per day",
+    "zh": "每天音频秒数"
+  },
+  "l_speech": {
+    "en": "Speech characters per day",
+    "zh": "每天语音字符数"
+  },
+  "l_agent": {
+    "en": "Agent access",
+    "zh": "智能体权限"
+  },
+  "inv_more": {
+    "en": "More limits",
+    "zh": "更多限额"
+  },
+  "inv_empty": {
+    "en": "An empty field means no limit.",
+    "zh": "留空表示不限。"
+  },
+  "inv_ceiling": {
+    "en": "Engine ceiling, {n}",
+    "zh": "引擎上限，{n}"
+  },
+  "inv_all_models": {
+    "en": "All models",
+    "zh": "全部模型"
+  },
+  "inv_cancel": {
+    "en": "Cancel",
+    "zh": "取消"
+  },
+  "inv_create": {
+    "en": "Create invite",
+    "zh": "生成邀请码"
+  },
+  "inv_waiting": {
+    "en": "Waiting for the host…",
+    "zh": "正在等待主机…"
+  },
+  "once_title": {
+    "en": "{name}'s invite",
+    "zh": "{name} 的邀请码"
+  },
+  "once_tag": {
+    "en": "Shown once",
+    "zh": "只显示一次"
+  },
+  "once_body": {
+    "en": "Only its hash is stored. Copy it now; after you close this sheet it can't be shown again.",
+    "zh": "只保存哈希。现在就复制；关闭之后就无法再显示。"
+  },
+  "once_copy_link": {
+    "en": "Copy link",
+    "zh": "复制链接"
+  },
+  "once_copy_code": {
+    "en": "Copy code",
+    "zh": "复制邀请码"
+  },
+  "once_share": {
+    "en": "Share…",
+    "zh": "共享…"
+  },
+  "once_copied": {
+    "en": "Copied",
+    "zh": "已复制"
+  },
+  "once_scan": {
+    "en": "Scan to open",
+    "zh": "扫码打开"
+  },
+  "once_send": {
+    "en": "Send {name} the link. Their browser opens the web app with the code filled in; the code alone works too.",
+    "zh": "把链接发给 {name}。浏览器会打开网页版，邀请码已填好；只发邀请码也行。"
+  },
+  "once_lost": {
+    "en": "Lost it later? Rotate issues a new one.",
+    "zh": "以后弄丢了？换发会生成新的。"
+  },
+  "once_done": {
+    "en": "Done",
+    "zh": "完成"
+  },
+  "guard_title": {
+    "en": "Close without copying?",
+    "zh": "还没复制就关闭？"
+  },
+  "guard_body": {
+    "en": "This invite can't be shown again. {name} would need a new one.",
+    "zh": "这串邀请码无法再次显示。{name} 会需要一串新的。"
+  },
+  "guard_copy": {
+    "en": "Copy link and close",
+    "zh": "复制链接并关闭"
+  },
+  "guard_close": {
+    "en": "Close anyway",
+    "zh": "仍然关闭"
+  },
+  "guard_back": {
+    "en": "Back",
+    "zh": "返回"
+  },
+  "after_waiting": {
+    "en": "Waiting for {name}'s first connection.",
+    "zh": "等待 {name} 首次连接。"
   }
 }
