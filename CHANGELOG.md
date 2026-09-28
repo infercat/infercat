@@ -32,6 +32,9 @@ and context-checkpoint caps; an existing installation must be refreshed. (185)
 
 **Hosts**
 
+- **Confirm model swaps from status.** The human upstream line shows all reported text
+  model IDs and the host’s pinned list together. JSON output is unchanged. (201)
+
 - **Safer macOS service installation.** Refuse binaries in privacy-protected folders
   before writing the LaunchAgent. Service status reports a loaded job still lacking
   a PID after two seconds as stuck, without guessing the cause. (199)

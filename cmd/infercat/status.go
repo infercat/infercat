@@ -240,16 +240,26 @@ func writeStatus(w io.Writer, st admin.Status) {
 	if st.Console != "" {
 		fmt.Fprintf(w, "console   http://%s/ (infercat console opens it)\n", st.Console)
 	}
-	fmt.Fprintf(w, "upstream  %s  %s  %s  context %s  slots %d\n",
+	models := "(no models reported)"
+	for _, destination := range st.Destinations {
+		if destination.ID == "text" {
+			if len(destination.Models) > 0 {
+				models = strings.Join(destination.Models, ", ")
+			}
+			break
+		}
+	}
+	fmt.Fprintf(w, "upstream  %s  %s  %s  models %s  context %s  slots %d",
 		kindWord(st.Upstream.Kind), st.Upstream.URL, healthWord(st.Upstream.Healthy, st.Upstream.Since),
-		contextStr(st.Upstream.ModelContext), st.Upstream.Slots)
+		models, contextStr(st.Upstream.ModelContext), st.Upstream.Slots)
+	if len(st.ModelsPinned) > 0 {
+		fmt.Fprintf(w, "  %s (pinned)", strings.Join(st.ModelsPinned, ", "))
+	}
+	fmt.Fprintln(w)
 	for _, route := range []string{"transcriptions", "speech"} {
 		if a, ok := st.Audio[route]; ok {
 			fmt.Fprintf(w, "audio     /v1/audio/%s  %s  %s\n", route, a.URL, healthWord(a.Healthy, a.Since))
 		}
-	}
-	if len(st.ModelsPinned) > 0 {
-		fmt.Fprintf(w, "models    %s (pinned)\n", modelList(st.ModelsPinned))
 	}
 	fmt.Fprintf(w, "tunnel    %s  relay %s  %s\n", orDash(tunnel.Display(st.Tunnel.Addr)), orDash(st.Tunnel.Region), plural(st.Tunnel.Clients, "client"))
 	if b := st.Bridge; b != nil {
