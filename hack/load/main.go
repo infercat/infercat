@@ -326,20 +326,27 @@ func firstLine(s string) string { l, _, _ := strings.Cut(s, "\n"); return l }
 func mintKey(bin, hostDir, name string, maxConc int) (id, secret, addr string, err error) {
 	out, err := exec.Command(bin, "keys", "add", "--data-dir", hostDir, "--json", "--force", "--no-qr",
 		"--rpm", "1000", "--tpm", "100000000", "--daily-tokens", "1000000000", "--max-output-tokens", "4096",
-		"--max-concurrent", strconv.Itoa(maxConc), name).Output()
+		"--max-concurrent", strconv.Itoa(maxConc), "--", name).Output()
 	if err != nil {
 		if ee, ok := err.(*exec.ExitError); ok {
 			err = fmt.Errorf("%w: %s", err, ee.Stderr)
 		}
 		return "", "", "", err
 	}
-	var v struct {
-		KeyID  string `json:"key_id"`
-		Invite string `json:"invite"`
+	var envelope struct {
+		Schema int `json:"schema"`
+		Data   struct {
+			KeyID  string `json:"key_id"`
+			Invite string `json:"invite"`
+		} `json:"data"`
 	}
-	if err := json.Unmarshal(out, &v); err != nil {
+	if err := json.Unmarshal(out, &envelope); err != nil {
 		return "", "", "", fmt.Errorf("keys add --json: %v: %s", err, out)
 	}
+	if envelope.Schema != 1 {
+		return "", "", "", fmt.Errorf("keys add --json: unsupported schema %d", envelope.Schema)
+	}
+	v := envelope.Data
 	inv, err := invite.Decode(v.Invite)
 	if err != nil {
 		return "", "", "", err

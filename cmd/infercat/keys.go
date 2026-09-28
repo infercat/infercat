@@ -3,7 +3,6 @@ package main
 import (
 	"bufio"
 	"context"
-	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -25,6 +24,8 @@ func (e *env) cmdKeys(ctx context.Context, pre string, args []string) error {
 	}
 	sub, rest := args[0], args[1:]
 	switch sub {
+	case "show":
+		return e.cmdInspect(ctx, pre, "keys", args)
 	case "add":
 		return e.keysAdd(ctx, pre, rest)
 	case "list", "ls":
@@ -136,34 +137,46 @@ func (e *env) open(verb, help, pre string, args []string, want int, reg func(*fl
 
 func (e *env) keysAdd(ctx context.Context, pre string, args []string) error {
 	var apply func(keys.Limits) keys.Limits
-	var force, asJSON, noQR *bool
+	var force, noQR *bool
 	store, dataDir, pos, err := e.open("add", keysAddHelp, pre, args, 1, func(fs *flag.FlagSet) {
 		apply = limitFlags(fs)
 		force = fs.Bool("force", false, "mint a second key for a name that already has one")
-		asJSON = fs.Bool("json", false, "print only the machine-readable invite object")
 		noQR = fs.Bool("no-qr", false, "do not draw the QR code")
 	})
 	if err != nil {
 		return err
 	}
-	if !*force {
-		if err := e.refuseDuplicate(ctx, store, dataDir, pos[0]); err != nil {
+	client, err := onlineClient(ctx, dataDir)
+	if err != nil {
+		return err
+	}
+	var k *keys.Key
+	var inv string
+	if client != nil {
+		var result inviteJSON
+		limits := apply(keys.Limits{})
+		if err := callJSON(ctx, client, "POST", "/keys", map[string]any{"name": pos[0], "limits": limits, "force": *force}, &result); err != nil {
 			return err
 		}
-	}
-	// Resolve the address before minting: a key whose invite cannot be printed is worse than no
-	// key at all, because the secret is only ever shown here.
-	addr, err := e.hostAddr(ctx, dataDir)
-	if err != nil {
-		return err
-	}
-	k, inv, err := e.mintKey(ctx, store, addr, pos[0], apply(keys.Limits{}))
-	if err != nil {
-		return err
-	}
-	e.reloadHost(ctx, dataDir)
-	if *asJSON {
-		return e.printInviteJSON(dataDir, k, inv)
+		k = &keys.Key{ID: result.KeyID, Name: result.Name, Limits: keys.WithDefaults(limits)}
+		inv = result.Invite
+	} else {
+		if !*force {
+			if err := e.refuseDuplicate(ctx, store, dataDir, pos[0]); err != nil {
+				return err
+			}
+		}
+		// Resolve the address before minting: a key whose invite cannot be printed is worse than no
+		// key at all, because the secret is only ever shown here.
+		addr, err := e.hostAddr(ctx, dataDir)
+		if err != nil {
+			return err
+		}
+		k, inv, err = e.mintKey(ctx, store, addr, pos[0], apply(keys.Limits{}))
+		if err != nil {
+			return err
+		}
+		e.reloadHost(ctx, dataDir)
 	}
 	fmt.Fprintf(e.out, "key %s  %s\n%s\n\n", k.ID, k.Name, limitsLine(k.Limits))
 	fmt.Fprintf(e.out, "Invite for %s — it is shown once and stored only as a hash:\n\n  %s\n\n", k.Name, inv)
@@ -246,14 +259,6 @@ type inviteJSON struct {
 	Link   string `json:"link"`
 }
 
-// printInviteJSON is `keys add --json`: the four fields a script needs and nothing else, so the
-// invite can be handed to a chat bot or a provisioning script without scraping the human output.
-func (e *env) printInviteJSON(dataDir string, k *keys.Key, inv string) error {
-	enc := json.NewEncoder(e.out)
-	enc.SetIndent("", "  ")
-	return enc.Encode(inviteJSON{k.ID, k.Name, inv, inviteLink(dataDir, inv)})
-}
-
 // reloadHost pushes a key change to the running host over the admin socket so it is in force
 // before the command returns, instead of within the store's once-per-second re-read. No running
 // host is not a problem: keys.json is the truth either way (ticket 009 promise 9).
@@ -313,7 +318,16 @@ func (e *env) keysStatus(ctx context.Context, pre string, args []string, st keys
 	if err != nil {
 		return err
 	}
-	k, err := store.Find(ctx, pos[0])
+	client, err := onlineClient(ctx, dataDir)
+	if err != nil {
+		return err
+	}
+	var k *keys.Key
+	if client != nil {
+		k, err = remoteKey(ctx, client, pos[0])
+	} else {
+		k, err = store.Find(ctx, pos[0])
+	}
 	if err != nil {
 		return err
 	}
@@ -327,10 +341,17 @@ func (e *env) keysStatus(ctx context.Context, pre string, args []string, st keys
 			return nil
 		}
 	}
-	if err := store.SetStatus(ctx, k.ID, st); err != nil {
-		return err
+	if client != nil {
+		action := map[keys.Status]string{keys.Paused: "pause", keys.Active: "resume", keys.Revoked: "revoke"}[st]
+		if err := callJSON(ctx, client, "POST", "/keys/"+k.ID+"/"+action, nil, nil); err != nil {
+			return err
+		}
+	} else {
+		if err := store.SetStatus(ctx, k.ID, st); err != nil {
+			return err
+		}
+		e.reloadHost(ctx, dataDir)
 	}
-	e.reloadHost(ctx, dataDir)
 	fmt.Fprintf(e.out, "%s (%s) is now %s\n", k.ID, k.Name, word)
 	return nil
 }
@@ -352,29 +373,43 @@ func (e *env) confirm(question string) bool {
 }
 
 func (e *env) keysRotate(ctx context.Context, pre string, args []string) error {
-	var asJSON, noQR *bool
+	var noQR *bool
 	store, dataDir, pos, err := e.open("rotate", keysHelp, pre, args, 1, func(fs *flag.FlagSet) {
-		asJSON = fs.Bool("json", false, "print only the machine-readable invite object")
 		noQR = fs.Bool("no-qr", false, "do not draw the QR code")
 	})
 	if err != nil {
 		return err
 	}
-	addr, err := e.hostAddr(ctx, dataDir)
+	client, err := onlineClient(ctx, dataDir)
 	if err != nil {
 		return err
 	}
-	k, err := store.Find(ctx, pos[0])
+	var k *keys.Key
+	if client != nil {
+		k, err = remoteKey(ctx, client, pos[0])
+	} else {
+		k, err = store.Find(ctx, pos[0])
+	}
 	if err != nil {
 		return err
 	}
-	inv, err := e.rotateKey(ctx, store, addr, k.ID)
-	if err != nil {
-		return err
-	}
-	e.reloadHost(ctx, dataDir)
-	if *asJSON {
-		return e.printInviteJSON(dataDir, k, inv)
+	var inv string
+	if client != nil {
+		var result inviteJSON
+		if err := callJSON(ctx, client, "POST", "/keys/"+k.ID+"/rotate", nil, &result); err != nil {
+			return err
+		}
+		inv = result.Invite
+	} else {
+		addr, err := e.hostAddr(ctx, dataDir)
+		if err != nil {
+			return err
+		}
+		inv, err = e.rotateKey(ctx, store, addr, k.ID)
+		if err != nil {
+			return err
+		}
+		e.reloadHost(ctx, dataDir)
 	}
 	fmt.Fprintf(e.out, "key %s  %s — the previous invite no longer works.\n\n  %s\n\n", k.ID, k.Name, inv)
 	e.printDestination(dataDir, k.Name, inv, *noQR)
@@ -385,7 +420,9 @@ func (e *env) keysLimits(ctx context.Context, pre string, args []string) error {
 	var apply func(keys.Limits) keys.Limits
 	var agent *bool
 	var selected *bool
+	var flags *flag.FlagSet
 	store, dataDir, pos, err := e.open("limits", keysLimitsHelp, pre, args, 1, func(fs *flag.FlagSet) {
+		flags = fs
 		agent = fs.Bool("agent", false, "allow agent runs; use --agent=false to disable")
 		limits := limitFlags(fs)
 		apply = func(l keys.Limits) keys.Limits {
@@ -400,15 +437,34 @@ func (e *env) keysLimits(ctx context.Context, pre string, args []string) error {
 	if err != nil {
 		return err
 	}
-	k, err := store.Find(ctx, pos[0])
+	client, err := onlineClient(ctx, dataDir)
+	if err != nil {
+		return err
+	}
+	var k *keys.Key
+	if client != nil {
+		k, err = remoteKey(ctx, client, pos[0])
+	} else {
+		k, err = store.Find(ctx, pos[0])
+	}
 	if err != nil {
 		return err
 	}
 	next := apply(k.Limits)
-	if err := store.SetLimitsAndAgent(ctx, k.ID, next, selected); err != nil {
-		return err
+	if client != nil {
+		patch := selectedLimits(flags, next)
+		if selected != nil {
+			patch["agent"] = *selected
+		}
+		if err := callJSON(ctx, client, "PATCH", "/keys/"+k.ID, patch, nil); err != nil {
+			return err
+		}
+	} else {
+		if err := store.SetLimitsAndAgent(ctx, k.ID, next, selected); err != nil {
+			return err
+		}
+		e.reloadHost(ctx, dataDir)
 	}
-	e.reloadHost(ctx, dataDir)
 	fmt.Fprintf(e.out, "key %s  %s\n%s\n", k.ID, k.Name, limitsLine(next))
 	return nil
 }
@@ -471,6 +527,7 @@ One key is one person. Limits live on the key.
 Subcommands:
   add NAME [limits]   mint a key and print the invite and its QR code
   list                every key with its limits and when it last used the engine
+  show ID             inspect one key and its seven-day usage
   pause ID            stop a key answering, keep it
   resume ID           undo pause
   revoke ID           stop it for good (asks first; --yes skips the question)
@@ -513,7 +570,7 @@ Limit flags:
 
 Other flags:
   --force                 mint a second key for a name that already has an active one
-  --json                  print {"key_id","name","invite","link"} and nothing else
+  --json                  print the schema-1 envelope; put NAME after --
   --no-qr                 skip the QR code (it is also skipped when stdout is not a terminal)
   --data-dir DIR          where keys, usage, and the host key live
 `
@@ -546,11 +603,11 @@ func mintableAddr(addr string) error {
 }
 
 // Mint and rotation share the exact secret-to-invite path with the admin API.
-func (e *env) mintKey(ctx context.Context, store *keys.FileStore, addr, name string, limits keys.Limits) (*keys.Key, string, error) {
+func (e *env) mintKey(ctx context.Context, store *keys.FileStore, addr, name string, limits keys.Limits, agent ...bool) (*keys.Key, string, error) {
 	if err := mintableAddr(addr); err != nil {
 		return nil, "", err
 	}
-	k, secret, err := store.Add(ctx, name, limits)
+	k, secret, err := store.Add(ctx, name, limits, agent...)
 	if err != nil {
 		return nil, "", err
 	}

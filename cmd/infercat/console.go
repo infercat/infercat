@@ -125,6 +125,22 @@ type consoleDay struct {
 	Counts usage.Stats `json:"counts"`
 }
 
+var errLocalKeyFields = errors.New("force and agent changes are available only on the host")
+
+func optionalBool(raw json.RawMessage) (*bool, error) {
+	if raw == nil {
+		return nil, nil
+	}
+	var value bool
+	if string(raw) == "null" {
+		return nil, errors.New("expected a boolean")
+	}
+	if err := json.Unmarshal(raw, &value); err != nil {
+		return nil, err
+	}
+	return &value, nil
+}
+
 // Strict, bounded JSON; a refusal must occur before a store operation.
 func decodeConsole(w http.ResponseWriter, r *http.Request, out any) error {
 	d := json.NewDecoder(http.MaxBytesReader(w, r.Body, 16<<10))
@@ -143,7 +159,7 @@ func (e *env) consoleAPI(store *keys.FileStore, addr string, up upstream.Upstrea
 	if len(states) > 0 {
 		state = states[0]
 	}
-	mux := http.NewServeMux()
+	mux := admin.NewMux()
 	var mu sync.Mutex // serialize duplicate checks and patches with other API mutations
 	route := func(pattern string, f func(http.ResponseWriter, *http.Request) (any, error)) {
 		mux.HandleFunc(pattern, func(w http.ResponseWriter, r *http.Request) {
@@ -154,6 +170,9 @@ func (e *env) consoleAPI(store *keys.FileStore, addr string, up upstream.Upstrea
 				code := http.StatusBadRequest
 				if errors.Is(err, keys.ErrNotFound) {
 					code = http.StatusNotFound
+				}
+				if errors.Is(err, errLocalKeyFields) {
+					code = http.StatusForbidden
 				}
 				w.Header().Set("Content-Type", "application/json")
 				w.WriteHeader(code)
@@ -220,6 +239,23 @@ func (e *env) consoleAPI(store *keys.FileStore, addr string, up upstream.Upstrea
 		return v, nil
 	})
 	route("GET /usage", func(w http.ResponseWriter, r *http.Request) (any, error) {
+		if since, ok := r.URL.Query()["since"]; ok {
+			if consoleRemote(r) {
+				return nil, errors.New("since: local host only")
+			}
+			if len(since) != 1 || r.URL.Query().Has("window") {
+				return nil, errors.New("use since or window, not both")
+			}
+			var start time.Time
+			if since[0] != "all" {
+				var err error
+				start, err = time.Parse(time.RFC3339Nano, since[0])
+				if err != nil {
+					return nil, errors.New("since must be all or an RFC3339 timestamp")
+				}
+			}
+			return usage.AggregateFile(settings.DataDir, usage.Filter{Since: start, KeyID: r.URL.Query().Get("key_id")})
+		}
 		start := today()
 		days := 1
 		switch r.URL.Query().Get("window") {
@@ -230,7 +266,7 @@ func (e *env) consoleAPI(store *keys.FileStore, addr string, up upstream.Upstrea
 		default:
 			return nil, errors.New("window must be today or week")
 		}
-		return usage.AggregateFile(settings.DataDir, usage.Filter{Since: start, Until: today().AddDate(0, 0, 1), Days: days})
+		return usage.AggregateFile(settings.DataDir, usage.Filter{Since: start, Until: today().AddDate(0, 0, 1), Days: days, KeyID: r.URL.Query().Get("key_id")})
 	})
 	route("GET /engine", func(w http.ResponseWriter, r *http.Request) (any, error) { return up.Info(), nil })
 	route("GET /settings", func(w http.ResponseWriter, r *http.Request) (any, error) {
@@ -264,22 +300,37 @@ func (e *env) consoleAPI(store *keys.FileStore, addr string, up upstream.Upstrea
 	}
 	route("POST /keys", func(w http.ResponseWriter, r *http.Request) (any, error) {
 		var in struct {
-			Name   string      `json:"name"`
-			Limits keys.Limits `json:"limits"`
+			Name   string          `json:"name"`
+			Limits keys.Limits     `json:"limits"`
+			Force  json.RawMessage `json:"force"`
+			Agent  json.RawMessage `json:"agent"`
 		}
 		if err := decodeConsole(w, r, &in); err != nil {
+			return nil, err
+		}
+		if consoleRemote(r) && (in.Force != nil || in.Agent != nil) {
+			return nil, errLocalKeyFields
+		}
+		force, err := optionalBool(in.Force)
+		if err != nil {
+			return nil, err
+		}
+		agent, err := optionalBool(in.Agent)
+		if err != nil {
 			return nil, err
 		}
 		if strings.TrimSpace(in.Name) == "" {
 			return nil, errors.New("name is required")
 		}
-		if err := e.refuseDuplicate(r.Context(), store, settings.DataDir, in.Name); err != nil {
-			return nil, err
+		if force == nil || !*force {
+			if err := e.refuseDuplicate(r.Context(), store, settings.DataDir, in.Name); err != nil {
+				return nil, err
+			}
 		}
 		if addr == "" {
 			return nil, errors.New("host has no address")
 		}
-		k, inv, err := e.mintKey(r.Context(), store, addr, in.Name, in.Limits)
+		k, inv, err := e.mintKey(r.Context(), store, addr, in.Name, in.Limits, agent != nil && *agent)
 		if err != nil {
 			return nil, err
 		}
@@ -321,11 +372,25 @@ func (e *env) consoleAPI(store *keys.FileStore, addr string, up upstream.Upstrea
 			return nil, err
 		}
 		// Decoding over the existing value preserves omitted fields and explicit zero limits.
-		next := k.Limits
+		next := struct {
+			keys.Limits
+			Agent json.RawMessage `json:"agent"`
+			Force json.RawMessage `json:"force"`
+		}{Limits: k.Limits}
 		if err := decodeConsole(w, r, &next); err != nil {
 			return nil, err
 		}
-		if err := store.SetLimits(r.Context(), k.ID, next); err != nil {
+		if consoleRemote(r) && (next.Agent != nil || next.Force != nil) {
+			return nil, errLocalKeyFields
+		}
+		if next.Force != nil {
+			return nil, errors.New("force is only valid when adding a key")
+		}
+		agent, err := optionalBool(next.Agent)
+		if err != nil {
+			return nil, err
+		}
+		if err := store.SetLimitsAndAgent(r.Context(), k.ID, next.Limits, agent); err != nil {
 			return nil, err
 		}
 		return applied()

@@ -43,16 +43,17 @@ func TestRemoteCLIUsesRunningHostAndOnceResults(t *testing.T) {
 		t.Helper()
 		out.Reset()
 		args := append([]string{action, "--data-dir", dir}, flags...)
-		if err := e.cmdRemote(context.Background(), "", args); err != nil {
-			t.Fatal(action, err)
+		if code := run(context.Background(), append([]string{"remote"}, args...), &out, io.Discard, nil, e.tty, newPlatform()); code != 0 {
+			t.Fatal(action, code, out.String())
 		}
 		return out.String()
 	}
 	if text := call("status"); !strings.Contains(text, "admin.json") || !strings.Contains(text, "remote    off") {
 		t.Fatal(text)
 	}
-	var first admin.RemoteResult
-	json.Unmarshal([]byte(call("on", "--json")), &first)
+	var envelope struct{ Data admin.RemoteResult }
+	json.Unmarshal([]byte(call("on", "--json")), &envelope)
+	first := envelope.Data
 	prefix := "ia1." + fakeAddr + "."
 	if !strings.HasPrefix(first.Invite, prefix) || !remote.Authenticate(strings.TrimPrefix(first.Invite, prefix)) {
 		t.Fatal("mint")

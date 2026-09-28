@@ -18,7 +18,7 @@ await new Promise(r=>engine.listen(0,'127.0.0.1',r));let browser;
 try{
  await mkdir(join(dir,'host'));start(binary,['serve','--data-dir',join(dir,'host'),'--upstream',`http://127.0.0.1:${engine.address().port}`,'--console','127.0.0.1:0','--name','085 isolated proof'],'host');
  const url=await until(()=>cli('console','--print','--data-dir',join(dir,'host')));
- const friend=JSON.parse(await cli('keys','add','proof-friend','--json','--data-dir',join(dir,'host')));
+ const friend=JSON.parse(await cli('keys','add','--json','--data-dir',join(dir,'host'),'--','proof-friend')).data;
  browser=await chromium.launch();const page=await browser.newPage({viewport:{width:1280,height:1100}});const errors=[];page.on('pageerror',e=>errors.push(e.message));await page.goto(url);await page.locator('#settings').waitFor();await page.evaluate(()=>document.fonts.ready);
  async function mutation(click){const answer=page.waitForResponse(r=>r.request().method()!=='GET'&&new URL(r.url()).pathname.startsWith('/api/'));await click();assert.equal((await answer).status(),200);await page.locator('[data-action="new"]:not(:disabled)').waitFor({state:'attached'});}
  await page.locator('#setting-name').fill('085 renamed live');await page.locator('#setting-slots').fill('4');await mutation(()=>page.locator('[data-form="settings"] button[type="submit"]').click());assert.ok((await page.locator('.head').innerText()).includes('085 renamed live'));assert.ok((await page.locator('#settings').innerText()).includes('running with 2'));

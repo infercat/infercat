@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"encoding/json"
 	"errors"
 	"flag"
 	"fmt"
@@ -18,7 +17,7 @@ Manage remote console access on the running host. Requires the loopback console 
   rotate   replace the code; existing remote sessions are refused
   status   show on/off, in-use state and any recovery warning; never the code
 
-  --json   print the API result for scripts (on/rotate contain the secret)
+  --json   print the schema-1 envelope (on/rotate contain the secret)
   --no-qr  omit the QR; QR is also omitted when stdout is not a terminal
 
 Anyone with the admin code controls this host's keys. Keep it private.
@@ -36,7 +35,6 @@ func (e *env) cmdRemote(ctx context.Context, pre string, args []string) error {
 	}
 	fs := flag.NewFlagSet("remote", flag.ContinueOnError)
 	dd := fs.String("data-dir", pre, dataDirUsage)
-	asJSON := fs.Bool("json", false, "print JSON")
 	noQR := fs.Bool("no-qr", false, "omit the QR")
 	if err := e.parse(fs, remoteHelp, args[1:]); err != nil {
 		return err
@@ -59,9 +57,6 @@ func (e *env) cmdRemote(ctx context.Context, pre string, args []string) error {
 		return errors.New("this host does not support remote console access")
 	}
 	if action == "status" {
-		if *asJSON {
-			return json.NewEncoder(e.out).Encode(st.Remote)
-		}
 		label := "off"
 		if st.Remote.Enabled {
 			label = "on · not in use"
@@ -81,9 +76,6 @@ func (e *env) cmdRemote(ctx context.Context, pre string, args []string) error {
 	result, err := admin.RemoteAction(ctx, dir, action)
 	if err != nil {
 		return err
-	}
-	if *asJSON {
-		return json.NewEncoder(e.out).Encode(result)
 	}
 	if action == "off" {
 		fmt.Fprintln(e.out, "Remote access is off. The admin code no longer works.")

@@ -45,9 +45,9 @@ function start(name, cmd, args, env = {}) {
   return child;
 }
 function keyAdd(name, ...limits) {
-  const r = spawnSync(INFERCAT_BIN, ['keys', 'add', name, '--json', '--no-qr', '--data-dir', INFERCAT_DATA_DIR, ...limits], { encoding: 'utf8' });
+  const r = spawnSync(INFERCAT_BIN, ['keys', 'add', '--json', '--no-qr', '--data-dir', INFERCAT_DATA_DIR, ...limits, '--', name], { encoding: 'utf8' });
   if (r.status !== 0) throw new Error(`keys add ${name}: ${r.stderr}`);
-  return JSON.parse(r.stdout);
+  return JSON.parse(r.stdout).data;
 }
 const events = () => {
   try { return readFileSync(join(INFERCAT_DATA_DIR, 'usage.jsonl'), 'utf8').trim().split('\n').filter(Boolean).map(JSON.parse); }

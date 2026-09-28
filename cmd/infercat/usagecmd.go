@@ -2,13 +2,16 @@ package main
 
 import (
 	"context"
+	"encoding/json"
 	"flag"
 	"fmt"
+	"net/url"
 	"sort"
 	"strconv"
 	"strings"
 	"time"
 
+	"github.com/infercat/infercat/internal/admin"
 	"github.com/infercat/infercat/internal/keys"
 	"github.com/infercat/infercat/internal/usage"
 )
@@ -28,6 +31,45 @@ func (e *env) cmdUsage(ctx context.Context, pre string, args []string) error {
 	window, err := parseSince(*since)
 	if err != nil {
 		return err
+	}
+	client, err := onlineClient(ctx, dataDir)
+	if err != nil {
+		return err
+	}
+	if client != nil {
+		var list []consoleKey
+		if err := callJSON(ctx, client, "GET", "/keys", nil, &list); err != nil {
+			return err
+		}
+		names := map[string]string{}
+		for _, k := range list {
+			names[k.ID] = k.Name
+		}
+		keyID := ""
+		if *key != "" {
+			k, err := remoteKey(ctx, client, *key)
+			if err != nil {
+				return err
+			}
+			keyID = k.ID
+		}
+		q := url.Values{"since": []string{"all"}}
+		if window > 0 {
+			q.Set("since", time.Now().Add(-window).UTC().Format(time.RFC3339Nano))
+		}
+		if keyID != "" {
+			q.Set("key_id", keyID)
+		}
+		raw, err := client.Call(ctx, "GET", "/usage?"+q.Encode(), nil)
+		if err != nil {
+			return err
+		}
+		var rep usage.Report
+		if json.Unmarshal(raw, &rep) != nil {
+			return admin.ErrResponse
+		}
+		e.writeUsage(&rep, *since, keyID, names)
+		return nil
 	}
 
 	names := map[string]string{}

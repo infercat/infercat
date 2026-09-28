@@ -26,7 +26,7 @@ const server = createServer(async (req, res) => {
 await new Promise((ready) => server.listen(49183, '127.0.0.1', ready)); const base = 'http://127.0.0.1:49183/';
 const wait = (ms) => new Promise((r) => setTimeout(r, ms));
 async function until(read, name, timeout = 30_000) { const end = Date.now() + timeout; while (Date.now() < end) { if (await read()) return; await wait(50); } throw new Error('Timed out: ' + name); }
-function cli(args) { return execFileSync(join(repo, 'bin/infercat'), [...args, '--data-dir', data], { cwd: repo, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }); }
+function cli(args) { return execFileSync(join(repo, 'bin/infercat'), ['--data-dir', data, ...args], { cwd: repo, encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'] }); }
 function check(name, value = true) { assert.ok(value, name); passed++; console.log(`PASS ${name}`); }
 async function shot(page, name) { await page.evaluate(() => document.fonts.ready); await page.screenshot({ path: join(out, name + '.png'), fullPage: false }); }
 async function agent(args) { return await new Promise((done, fail) => execFile('npx', ['--yes', 'agent-browser', '--session', 'infercat083', ...args], { cwd: web, timeout: 60_000 }, (error, stdout) => error ? fail(error) : done(stdout))); }
@@ -45,7 +45,7 @@ try {
   host = spawn(join(repo, 'bin/infercat'), ['serve', '--data-dir', data, '--upstream', engine, '--slots', '1', '--name', '083 isolated host'], { cwd: repo, stdio: ['ignore', 'pipe', 'pipe'] });
   host.stdout.resume(); host.stderr.resume();
   for (let i = 0; ; i++) { try { cli(['status']); break; } catch { if (i >= 60 || host.exitCode !== null) throw new Error('Own host failed to start'); await wait(1000); } }
-  const { invite } = JSON.parse(cli(['keys', 'add', 'pwa-proof', '--json', '--max-output-tokens', '96']));
+  const { invite } = JSON.parse(cli(['keys', 'add', '--json', '--max-output-tokens', '96', '--', 'pwa-proof'])).data;
   context = await chromium.launchPersistentContext(profile, { channel: 'chrome', headless: false, viewport: { width: 1280, height: 900 }, locale: 'en-US' });
   await context.addInitScript(() => { window.__installSeen = false; window.addEventListener('beforeinstallprompt', () => { window.__installSeen = true; }); });
   const page = context.pages()[0]; page.on('pageerror', (e) => errors.push(e.message));

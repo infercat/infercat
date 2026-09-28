@@ -13,6 +13,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/infercat/infercat/internal/admin"
 	"github.com/infercat/infercat/internal/keys"
 	"github.com/infercat/infercat/internal/tunnel"
 	"github.com/infercat/infercat/internal/upstream"
@@ -54,7 +55,7 @@ func TestLegacyInviteMintingRefusesWithoutMutation(t *testing.T) {
 	before := readFile(t, filepath.Join(dir, keys.FileName))
 	identity := readFile(t, filepath.Join(dir, tunnel.KeyFile))
 	for _, sub := range [][]string{{"add", "new"}, {"rotate", old.ID}} {
-		r := exec(t, newPlatform(), append([]string{"--data-dir", dir, "keys"}, append(sub, "--json", "--no-qr")...)...)
+		r := exec(t, newPlatform(), append([]string{"--data-dir", dir, "keys"}, append(sub, "--no-qr")...)...)
 		if r.code == 0 || r.out != "" || !strings.Contains(r.err, errLegacyIdentity.Error()) || strings.Count(strings.TrimSpace(r.err), "\n") != 0 {
 			t.Fatal(r)
 		}
@@ -79,15 +80,34 @@ func TestLegacyInviteMintingRefusesWithoutMutation(t *testing.T) {
 
 func TestVersionTwoKeysStillMintAndRotate(t *testing.T) {
 	t.Parallel()
-	dir := t.TempDir()
-	savedTestIdentity(t, dir, 2)
+	dir, err := os.MkdirTemp("", "ic137-")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer os.RemoveAll(dir)
+	addr := savedTestIdentity(t, dir, 2)
+	store, err := keys.NewFileStore(dir)
+	if err != nil {
+		t.Fatal(err)
+	}
+	e := &env{plat: newPlatform(), out: io.Discard, errw: io.Discard}
+	server, err := admin.Serve(dir, func() admin.Status { return admin.Status{} }, store.Reload, nil, e.consoleAPI(store, addr, displayEngine{}, consoleSettings{DataDir: dir}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer server.Close()
 	var first inviteJSON
-	for i, sub := range [][]string{{"add", "friend"}, {"rotate", "friend"}} {
-		r := exec(t, newPlatform(), append([]string{"--data-dir", dir, "keys"}, append(sub, "--json", "--no-qr")...)...)
-		var got inviteJSON
-		if r.code != 0 || json.Unmarshal([]byte(r.out), &got) != nil || !strings.HasPrefix(got.Invite, "ic2.") {
+	for i := 0; i < 2; i++ {
+		sub := []string{"add", "--json", "--no-qr", "--", "friend"}
+		if i == 1 {
+			sub = []string{"rotate", first.KeyID, "--json", "--no-qr"}
+		}
+		r := exec(t, newPlatform(), append([]string{"--data-dir", dir, "keys"}, sub...)...)
+		var envelope struct{ Data inviteJSON }
+		if r.code != 0 || json.Unmarshal([]byte(r.out), &envelope) != nil || !strings.HasPrefix(envelope.Data.Invite, "ic2.") {
 			t.Fatal(r)
 		}
+		got := envelope.Data
 		if i == 0 {
 			first = got
 		} else if got.KeyID != first.KeyID || got.Invite == first.Invite {

@@ -258,7 +258,7 @@ def main():
     with tempfile.TemporaryDirectory(prefix='infercat-096-') as tmp:
         work = Path(tmp)
         def cli(*args):
-            return run(str(ROOT / 'bin/infercat'), *args, '--data-dir', work / 'host')
+            return run(str(ROOT / 'bin/infercat'), '--data-dir', work / 'host', *args)
         try:
             result['site_html_sha256'] = hashlib.sha256(urllib.request.urlopen(urllib.request.Request(
                 SITE, headers={'User-Agent': 'Infercat-iOS-proof/096'}), timeout=30).read()).hexdigest()
@@ -277,7 +277,7 @@ def main():
                     str(work / 'host'), '--upstream', engine, '--slots', '1', '--name',
                     '096 isolated host', '--console', 'off'], stdout=log, stderr=log)
             until(lambda: cli('status'), 'own host')
-            invite = json.loads(cli('keys', 'add', 'ios-proof', '--json', '--max-output-tokens', '96'))['invite']
+            invite = json.loads(cli('keys', 'add', '--json', '--max-output-tokens', '96', '--', 'ios-proof'))['data']['invite']
             for lang in ['en', 'zh']:
                 print('Booting real iOS simulator:', lang, flush=True)
                 device = run('xcrun', 'simctl', 'create', 'Infercat 096 ' + lang, DEVICE, RUNTIME)

@@ -42,13 +42,13 @@ async function waitFor(url, what, tries = 300) {
   throw new Error(`${what} never came up at ${url}`);
 }
 function keys(...args) {
-  const r = spawnSync(INFERCAT_BIN, ['keys', ...args, '--data-dir', INFERCAT_DATA_DIR], { encoding: 'utf8' });
+  const r = spawnSync(INFERCAT_BIN, ['--data-dir', INFERCAT_DATA_DIR, 'keys', ...args], { encoding: 'utf8' });
   if (r.status !== 0) throw new Error(`keys ${args.join(' ')}: ${r.stderr || r.stdout}`);
   return r.stdout;
 }
 const RUN = Date.now().toString(36).slice(-4);
 /** The secret is the invite's third segment (docs/ARCHITECTURE.md, invite format); the CLI never prints it twice. */
-const mint = (name) => { const k = JSON.parse(keys('add', `${name}-${RUN}`, '--json', '--no-qr')); k.secret = k.invite.split('.')[2]; return k; };
+const mint = (name) => { const k = JSON.parse(keys('add', '--json', '--no-qr', '--', `${name}-${RUN}`)).data; k.secret = k.invite.split('.')[2]; return k; };
 const events = () => {
   try { return readFileSync(join(INFERCAT_DATA_DIR, 'usage.jsonl'), 'utf8').trim().split('\n').filter(Boolean).map(JSON.parse); }
   catch { return []; }

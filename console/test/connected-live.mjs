@@ -16,7 +16,7 @@ const engine=createServer(async(req,res)=>{for await(const _ of req){void _;}res
 try{
  await mkdir(join(dir,'host'));const host=spawn(binary,['serve','--data-dir',join(dir,'host'),'--upstream',`http://127.0.0.1:${engine.address().port}`,'--console','127.0.0.1:0','--web-url',web,'--name','086 own host'],{stdio:['ignore','pipe','pipe']});children.push(host);host.stdout.on('data',b=>logs.push(String(b)));host.stderr.on('data',b=>logs.push(String(b)));
  let url='';for(let i=0;i<150;i++){try{url=await cli('console','--print','--data-dir',join(dir,'host'));break;}catch{await sleep(200);}}assert.ok(url);
- const friend=JSON.parse(await cli('keys','add','proof-friend','--json','--data-dir',join(dir,'host')));
+ const friend=JSON.parse(await cli('keys','add','--json','--data-dir',join(dir,'host'),'--','proof-friend')).data;
  const [,address,secret]=friend.invite.split('.');
  for(let device=0;device<2;device++){
   const peer=spawn(adapter,[address],{stdio:['ignore','pipe','pipe']});children.push(peer);let output='';peer.stdout.on('data',b=>output+=String(b));

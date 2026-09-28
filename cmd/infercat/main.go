@@ -21,7 +21,6 @@ import (
 	"github.com/infercat/infercat/internal/agent"
 	"github.com/infercat/infercat/internal/gateway"
 	"github.com/infercat/infercat/internal/keys"
-	"github.com/infercat/infercat/internal/machine"
 	"github.com/infercat/infercat/internal/product"
 	runstate "github.com/infercat/infercat/internal/run"
 	"github.com/infercat/infercat/internal/supervise"
@@ -97,7 +96,7 @@ type env struct {
 func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
-	_, asJSON, _ := machine.Parse(os.Args[1:])
+	_, asJSON, _ := parseMachineSchema(os.Args[1:])
 	os.Exit(run(ctx, os.Args[1:], os.Stdout, os.Stderr, os.Stdin, !asJSON && isTerminal(os.Stdout), newPlatform()))
 }
 

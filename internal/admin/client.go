@@ -10,6 +10,7 @@ import (
 	"net"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"syscall"
 )
@@ -37,6 +38,18 @@ type Client struct {
 func NewClient(dir string) (*Client, error) {
 	hc, base, token, err := dial(dir)
 	if err != nil {
+		// A present endpoint with unreadable credentials is not evidence that the host
+		// is stopped. In particular, callers must not choose an offline mutation here.
+		if errors.Is(err, ErrNoDaemon) {
+			for _, name := range []string{SockName, PortName} {
+				if _, statErr := os.Stat(filepath.Join(dir, name)); statErr == nil {
+					raw, readErr := os.ReadFile(filepath.Join(dir, TokenName))
+					if readErr != nil || strings.TrimSpace(string(raw)) == "" {
+						return nil, errors.New("admin credentials unavailable; check the running host")
+					}
+				}
+			}
+		}
 		return nil, err
 	}
 	hc.CheckRedirect = func(*http.Request, []*http.Request) error { return http.ErrUseLastResponse }

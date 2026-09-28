@@ -882,12 +882,17 @@ func TestInviteNamesItsDestination(t *testing.T) {
 		t.Errorf("no link when a web app is known:\n%s", r.out)
 	}
 
-	// --json is exactly the four fields, and nothing human.
-	r = exec(t, plat, "keys", "add", "carol", "--json", "--data-dir", dir)
-	var got map[string]any
-	if err := json.Unmarshal([]byte(r.out), &got); err != nil {
-		t.Fatalf("--json did not print an object: %v\n%s", err, r.out)
+	// --json wraps the same four invite fields in schema 1, and prints nothing human.
+	r = exec(t, plat, "keys", "add", "--json", "--data-dir", dir, "--", "carol")
+	var envelope struct {
+		Schema  int
+		Command string
+		Data    map[string]any
 	}
+	if err := json.Unmarshal([]byte(r.out), &envelope); err != nil || envelope.Schema != 1 || envelope.Command != "keys.add" {
+		t.Fatalf("--json envelope: %v %s", err, r.out)
+	}
+	got := envelope.Data
 	if len(got) != 4 || got["name"] != "carol" || got["key_id"] == "" {
 		t.Errorf("--json fields = %v", got)
 	}
@@ -1016,12 +1021,13 @@ func TestKeyWritesPokeTheRunningHost(t *testing.T) {
 	defer os.RemoveAll(dir)
 	plat := testPlatform(fakeAddr, nil)
 
-	r := exec(t, plat, "keys", "add", "alice", "--json", "--data-dir", dir)
+	r := exec(t, plat, "keys", "add", "--json", "--data-dir", dir, "--", "alice")
 	if r.code != 0 {
 		t.Fatal(r.err)
 	}
-	var minted struct{ Invite string }
-	if err := json.Unmarshal([]byte(r.out), &minted); err != nil {
+	var envelope struct{ Data struct{ Invite string } }
+	minted := &envelope.Data
+	if err := json.Unmarshal([]byte(r.out), &envelope); err != nil {
 		t.Fatal(err)
 	}
 	secret := minted.Invite[strings.LastIndex(minted.Invite, ".")+1:]
@@ -1031,7 +1037,8 @@ func TestKeyWritesPokeTheRunningHost(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	adm, err := admin.Serve(dir, func() admin.Status { return admin.Status{} }, store.Reload, nil)
+	e := &env{plat: plat, out: io.Discard, errw: io.Discard}
+	adm, err := admin.Serve(dir, func() admin.Status { return admin.Status{} }, store.Reload, nil, e.consoleAPI(store, fakeAddr, displayEngine{}, consoleSettings{DataDir: dir}))
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -207,8 +207,9 @@ func WithDefaults(l Limits) Limits {
 }
 
 // Add creates a key with limits l (zero fields take the defaults) and returns the plaintext
-// secret, which is never stored and never shown again.
-func (s *FileStore) Add(ctx context.Context, name string, l Limits) (*Key, string, error) {
+// secret, which is never stored and never shown again. An optional initial agent capability
+// is committed in the same save, so a mint never needs a fallible second write.
+func (s *FileStore) Add(ctx context.Context, name string, l Limits, agent ...bool) (*Key, string, error) {
 	name = strings.TrimSpace(name)
 	if name == "" {
 		return nil, "", errors.New("a key needs a name")
@@ -227,6 +228,7 @@ func (s *FileStore) Add(ctx context.Context, name string, l Limits) (*Key, strin
 		return nil, "", err
 	}
 	k := &Key{
+		Agent:      len(agent) > 0 && agent[0],
 		ID:         id,
 		Name:       name,
 		SecretHash: HashSecret(secret),

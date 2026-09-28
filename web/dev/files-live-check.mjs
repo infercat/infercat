@@ -17,7 +17,7 @@ const host = spawn(binary, ['serve', '--data-dir', data, '--upstream', engine, '
 let log = ''; host.stdout.on('data', (chunk) => { log += chunk; }); host.stderr.on('data', (chunk) => { log += chunk; });
 function cli(args) {
   return new Promise((resolve, reject) => {
-    const child = spawn(binary, [...args, '--data-dir', data], { cwd: repo }); let output = '';
+    const child = spawn(binary, ['--data-dir', data, ...args], { cwd: repo }); let output = '';
     child.stdout.on('data', (chunk) => { output += chunk; }); child.stderr.on('data', (chunk) => { output += chunk; });
     child.on('error', reject); child.on('exit', (code) => resolve({ code, output }));
   });
@@ -31,9 +31,9 @@ try {
     await new Promise((resolve) => setTimeout(resolve, 1000));
   }
   assert.ok(ready, 'own host ready');
-  const key = await cli(['keys', 'add', 'file-proof', '--json', '--max-output-tokens', '256']);
+  const key = await cli(['keys', 'add', '--json', '--max-output-tokens', '256', '--', 'file-proof']);
   assert.equal(key.code, 0, key.output);
-  const { invite } = JSON.parse(key.output); // Never printed or written to evidence.
+  const { invite } = JSON.parse(key.output).data; // Never printed or written to evidence.
   browser = await chromium.launch(); const context = await browser.newContext({ viewport: { width: 1280, height: 900 } });
   const page = await context.newPage(); const errors = []; page.on('pageerror', (error) => errors.push(error.message));
   await page.goto(`${base}/?invite=${encodeURIComponent(invite)}&autoconnect`);

@@ -15,7 +15,7 @@ const engine=createServer(async(req,res)=>{for await(const _ of req){void _;}res
 try{
  await mkdir(join(dir,'host'));const host=spawn(binary,['serve','--data-dir',join(dir,'host'),'--upstream',`http://127.0.0.1:${engine.address().port}`,'--console','127.0.0.1:0','--web-url',web,'--name','086 own host'],{stdio:['ignore','pipe','pipe']});children.push(host);host.stdout.on('data',b=>logs.push(String(b)));host.stderr.on('data',b=>logs.push(String(b)));
  let url='';for(let i=0;i<150;i++){try{url=await cli('console','--print','--data-dir',join(dir,'host'));break;}catch{await sleep(200);}}assert.ok(url);
- const friend=JSON.parse(await cli('keys','add','proof-friend','--json','--data-dir',join(dir,'host')));
+ const friend=JSON.parse(await cli('keys','add','--json','--data-dir',join(dir,'host'),'--','proof-friend')).data;
  browser=await chromium.launch();const localContext=await browser.newContext(),remoteContext=await browser.newContext(),local=await localContext.newPage(),remote=await remoteContext.newPage();const errors=[];remote.on('pageerror',e=>errors.push(e.message));remote.on('console',m=>{if(m.type()==='error')errors.push(m.text());});
  await local.goto(url);await local.locator('#friends').waitFor();
  async function localAction(action){const response=local.waitForResponse(r=>r.request().method()==='POST');await local.locator(`[data-action="${action}"]`).click();assert.equal((await response).status(),200);await local.locator('[data-action="new"]:not(:disabled)').waitFor({state:'attached'});}

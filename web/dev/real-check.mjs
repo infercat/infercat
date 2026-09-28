@@ -57,13 +57,13 @@ function killHost(child) {
 }
 /** The host's own CLI, on the host's own data dir: what the host does to a key is done here. */
 function keys(...args) {
-  const r = spawnSync(INFERCAT_BIN, ['keys', ...args, '--data-dir', INFERCAT_DATA_DIR], { encoding: 'utf8' });
+  const r = spawnSync(INFERCAT_BIN, ['--data-dir', INFERCAT_DATA_DIR, 'keys', ...args], { encoding: 'utf8' });
   if (r.status !== 0) throw new Error(`keys ${args.join(' ')}: ${r.stderr || r.stdout}`);
   return r.stdout;
 }
 /** Run-unique names: a data dir that has seen a run before holds a paused alice and a revoked bob. */
 const RUN = Date.now().toString(36).slice(-4);
-const mint = (name) => JSON.parse(keys('add', `${name}-${RUN}`, '--json', '--no-qr'));
+const mint = (name) => JSON.parse(keys('add', '--json', '--no-qr', '--', `${name}-${RUN}`)).data;
 const events = () => {
   try { return readFileSync(join(INFERCAT_DATA_DIR, 'usage.jsonl'), 'utf8').trim().split('\n').filter(Boolean).map(JSON.parse); }
   catch { return []; }
